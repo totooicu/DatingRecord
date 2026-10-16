@@ -1,0 +1,38 @@
+# ---- 依赖与构建产物 ----
+node_modules/
+dist/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+target/
+__pycache__/
+*.egg-info/
+
+# ---- 环境变量与密钥 ----
+.env
+.env.*
+!.env.example
+
+# ---- 日志与临时文件 ----
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# ---- 运行时数据（用户自己的记录，不进版本库）----
+data/
+attachments/
+*.drp
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- 工具状态 ----
+# 保留项目级配置（含 git 自动同步钩子），忽略会话/缓存数据
+.codebuddy/*
+!.codebuddy/settings.json

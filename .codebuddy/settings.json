@@ -1,0 +1,38 @@
+{
+  "enabledPlugins": {
+    "agent-browser@codebuddy-plugins-official": true,
+    "docx@codebuddy-plugins-official": true,
+    "hot-skills@codebuddy-plugins-official": true,
+    "pdf@codebuddy-plugins-official": true,
+    "playwright-cli@codebuddy-plugins-official": true,
+    "pptx@codebuddy-plugins-official": true,
+    "workbuddy-docx@workbuddy-docx": true,
+    "workbuddy-pptx@workbuddy-pptx": true,
+    "workbuddy-sheetagent@workbuddy-sheetagent": true,
+    "xlsx@codebuddy-plugins-official": true
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/workspace/scripts/git-sync.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/workspace/scripts/git-sync.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
