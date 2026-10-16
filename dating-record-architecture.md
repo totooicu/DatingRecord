@@ -403,6 +403,8 @@ packages/
   search/        索引、查询 DSL、智能集合求值器
   io/            .drp 导入导出、Markdown 导入导出
   app-core/      用例编排（命令层，UI 无关）
+  ai/            AI 能力（provider/capability/context/privacy/index/task/guard）
+                 —— 单向依赖 Domain，不被 Domain 依赖，可整体关闭
   ui-web/        界面（可换 Electron/Tauri/React Native 外壳）
 ```
 
@@ -479,7 +481,9 @@ packages/
 | **MVP** | 三层模型 + 自定义属性 + 树状事件集 + 时间线 + 全文搜索 + JSON 导入导出 |
 | **v1** | 智能集合、属性历史曲线、统计看板、模糊时间解析、撤销重做、加密 |
 | **v1.5** | 事件集多父（DAG）、人物关系图谱、事件关联边 |
-| **v2** | 端到端加密同步（多设备）、模板市场、AI 回顾摘要（架构已留扩展点） |
+| **v2** | 端到端加密同步（多设备）、模板市场、AI 能力（详见《AI 能力规划》） |
+
+> AI 能力的完整设计（六层 31 项功能、架构组件、隐私分级与红线）见 **`dating-record-ai-capabilities.md`**。核心约束：AI 是可选增强，关掉后软件完整可用；AI 只产出「建议」，落库带 `source: ai` + `confidence` + 引用事件 ID，永不直接改写档案。
 
 ---
 
