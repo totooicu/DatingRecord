@@ -3,7 +3,9 @@
 # git-sync.sh —— 对话结束时自动提交并推送
 #
 # 由 .codebuddy/settings.json 的 Stop / SessionEnd 钩子自动调用，
-# 也可手动运行：bash scripts/git-sync.sh
+# 也可手动运行：
+#   bash scripts/git-sync.sh                      自动提交并推送
+#   bash scripts/git-sync.sh "feat: 新增属性分组"  自定义提交信息（重要改动请用）
 #
 # 行为：
 #   1. 无改动            -> 直接跳过（不产生空提交）
@@ -63,7 +65,12 @@ if [ "$COUNT" -gt 20 ]; then
   SUMMARY="${SUMMARY}"$'\n'"- ...等共 ${COUNT} 个文件"
 fi
 
-MSG="$(printf 'chore: 自动提交 %s\n\n%s\n\n%s' "$TS" "$SHORTSTAT" "$SUMMARY")"
+CUSTOM_MSG="${1:-}"
+if [ -n "$CUSTOM_MSG" ]; then
+  MSG="$(printf '%s\n\n%s\n\n%s' "$CUSTOM_MSG" "$SHORTSTAT" "$SUMMARY")"
+else
+  MSG="$(printf 'chore: 自动提交 %s\n\n%s\n\n%s' "$TS" "$SHORTSTAT" "$SUMMARY")"
+fi
 
 if ! git commit -q -m "$MSG"; then
   warn "提交失败，请检查 git 配置"
