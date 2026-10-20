@@ -26,6 +26,7 @@ export default function App() {
   const [keyword, setKeyword] = useState('');
   const [filter, setFilter] = useState<TimelineFilter>(defaultFilter);
   const [quickEvent, setQuickEvent] = useState(false);
+  const [sideOpen, setSideOpen] = useState(false);
 
   const isEmpty = useMemo(() => !hasAnyPerson(), [v]);
 
@@ -44,9 +45,12 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
+        <button className="menu-btn" onClick={() => setSideOpen((s) => !s)} aria-label="侧边栏">
+          ☰
+        </button>
         <div className="brand">
           <span className="brand-dot" />
-          约会记录
+          <span className="brand-text">约会记录</span>
         </div>
         <div className="tabs">
           {TABS.map((t) => (
@@ -72,11 +76,31 @@ export default function App() {
 
       <div className="body">
         {tab !== 'settings' && (
-          <aside className="sidebar">
-            {tab === 'persons' && <PersonList selectedId={personId} onSelect={setPersonId} keyword={keyword} />}
-            {tab === 'collections' && <CollectionTree selectedId={collectionId} onSelect={setCollectionId} />}
-            {tab === 'timeline' && <TimelineFilters filter={filter} onChange={setFilter} />}
-          </aside>
+          <>
+            {sideOpen && <div className="side-mask" onClick={() => setSideOpen(false)} />}
+            <aside className={sideOpen ? 'sidebar sidebar-open' : 'sidebar'}>
+              {tab === 'persons' && (
+                <PersonList
+                  selectedId={personId}
+                  onSelect={(id) => {
+                    setPersonId(id);
+                    setSideOpen(false);
+                  }}
+                  keyword={keyword}
+                />
+              )}
+              {tab === 'collections' && (
+                <CollectionTree
+                  selectedId={collectionId}
+                  onSelect={(id) => {
+                    setCollectionId(id);
+                    setSideOpen(false);
+                  }}
+                />
+              )}
+              {tab === 'timeline' && <TimelineFilters filter={filter} onChange={setFilter} />}
+            </aside>
+          </>
         )}
 
         <main className="content">

@@ -222,8 +222,12 @@ CREATE INDEX IF NOT EXISTS idx_oplog_hlc ON oplog(hlc);
 export async function initDb(): Promise<Database> {
   if (db) return db;
 
+  // 用 BASE_URL 拼接，保证部署到子路径（如 GitHub Pages 的 /DatingRecord/）时也能取到
+  const base = import.meta.env.BASE_URL.endsWith('/')
+    ? import.meta.env.BASE_URL
+    : `${import.meta.env.BASE_URL}/`;
   SQL = await initSqlJs({
-    locateFile: () => 'sql-wasm.wasm',
+    locateFile: () => `${base}sql-wasm.wasm`,
   });
 
   const bytes = await idbGet();
