@@ -455,4 +455,4 @@ git status                                # 确认工作区干净
 | 6 | AI 产出自动改写 or 逐条确认 | AI 篇 §6 | ⏳ 待定（建议：低风险自动，高风险确认） |
 | 7 | 跨端技术栈（TS 核心 / Flutter / Rust） | 存储同步篇 §11 | ⏳ 待定 |
 | 8 | 同步载体（对象存储 / WebDAV / 网盘） | 存储同步篇 §11 | ⏳ 待定 |
-| 9 | Git 远程仓库地址与认证 | — | ✅ 已配置：`origin → git@github.com:totooicu/DatingRecord.git`（**须走 SSH**，沙箱到 github.com 的 HTTPS 被阻断） |
+| 9 | Git 远程仓库地址与认证 | — | ✅ 已配置：`origin → git@github.com:totooicu/DatingRecord.git`（SSH 已实测可用；HTTPS 亦可用） |

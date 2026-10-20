@@ -57,4 +57,5 @@
 
 - git 身份：`WorkBuddy Agent <workbuddy@agent.local>`（可按需改为本人身份）
 - 远程仓库：已配置 `origin → git@github.com:totooicu/DatingRecord.git`，`git-sync.sh` 会自动推送。
-- **注意**：沙箱到 github.com 的 **HTTPS 被阻断**，只能走 SSH（已配好 `~/.ssh/config` + `~/.ssh/id_ed25519_github`）。若沙箱重置导致私钥丢失，需重新生成密钥并让用户添加公钥，再执行 `bash scripts/git-remote.sh git@github.com:totooicu/DatingRecord.git`。
+- **网络**：沙箱到 github.com 的 **HTTPS 与 SSH(22/443) 均可用**（2026-10-20 实测：HTTPS clone 成功、SSH 认证成功）。远程按约定走 SSH：`ssh-ed25519` 密钥在 `~/.ssh/id_ed25519_github`，`~/.ssh/config` 已指定。
+- **密钥随沙箱重置丢失**：这是常态，不是故障。恢复流程：`ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_github -N ""` → 把 `.pub` 交给用户添加到 GitHub → `ssh -T git@github.com` 验证。不要把私钥贴进对话。

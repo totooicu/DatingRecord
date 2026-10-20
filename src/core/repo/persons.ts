@@ -329,7 +329,12 @@ export function setAttribute(
   transact(() => {
     const attrs = { ...p.attrs };
     const prev = attrs[key];
-    const isEmpty = value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+    // 注意：false / 0 是合法值，不能当空值处理，否则开关字段无法存「否」
+    const isEmpty =
+      value === null ||
+      value === undefined ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0);
 
     if (isEmpty) {
       delete attrs[key];

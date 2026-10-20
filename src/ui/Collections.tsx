@@ -3,6 +3,7 @@ import {
   addMember,
   createCollection,
   deleteCollection,
+  descendantEventIds,
   getBreadcrumb,
   getCollection,
   getRoot,
@@ -61,7 +62,7 @@ export function CollectionTree({
           </button>
           <button className="tree-name" onClick={() => onSelect(node.id)}>
             {node.name}
-            {node.eventCount > 0 && <em>{node.eventCount}</em>}
+            {node.totalEventCount > 0 && <em>{node.totalEventCount}</em>}
           </button>
         </div>
         {!isCollapsed && node.children.map((c) => render(c, depth + 1))}
@@ -193,6 +194,21 @@ export function CollectionDetail({ id }: { id: string }) {
       </div>
 
       {msg && <div className="alert">{msg}</div>}
+
+      <div className="stat-row">
+        <div className="stat-card">
+          <span className="stat-num">{members.filter((m) => m.memberType === 'event').length}</span>
+          <span className="stat-label">直接事件</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{descendantEventIds(id).filter((eid) => !!getEvent(eid)).length}</span>
+          <span className="stat-label">含子集合的事件</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{children.length}</span>
+          <span className="stat-label">子事件集</span>
+        </div>
+      </div>
 
       <section className="card">
         <div className="card-head">

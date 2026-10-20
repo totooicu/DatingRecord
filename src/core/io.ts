@@ -74,8 +74,23 @@ export interface ImportResult {
   backupName?: string;
 }
 
-function upsertByHlc(table: string, pkCol: string, id: string, hlc: string | null, cols: Record<string, unknown>): boolean {
-  const existing = queryOne<{ hlc: string | null }>(`SELECT hlc FROM ${table} WHERE ${pkCol} = ?`, [id]);
+/**
+ * 按 hlc 合并写入。
+ * pk 支持联合主键（如 collection_members 的 collection_id + member_type + member_id），
+ * 否则同一事件在多个集合下的成员关系会互相覆盖。
+ */
+function upsertByHlc(
+  table: string,
+  pk: string | string[],
+  id: string | Record<string, unknown>,
+  hlc: string | null,
+  cols: Record<string, unknown>,
+): boolean {
+  const pkCols = Array.isArray(pk) ? pk : [pk];
+  const idMap = typeof id === 'string' ? null : id;
+  const pkValues = pkCols.map((c) => (idMap ? idMap[c] : id));
+  const where = pkCols.map((c) => `${c} = ?`).join(' AND ');
+  const existing = queryOne<{ hlc: string | null }>(`SELECT hlc FROM ${table} WHERE ${where}`, pkValues);
   if (existing?.hlc && hlc && hlcCompare(existing.hlc, hlc) >= 0) return false; // 本地更新或相同 → 跳过
 
   const keys = Object.keys(cols);
@@ -161,10 +176,11 @@ export async function importLibrary(
       hlcReceive(c.hlc);
     }
     for (const m of lib.members ?? []) {
+      // 联合主键：(collection_id, member_type, member_id)
       const ok = upsertByHlc(
         'collection_members',
-        'member_id',
-        m.memberId,
+        ['collection_id', 'member_type', 'member_id'],
+        { collection_id: m.collectionId, member_type: m.memberType, member_id: m.memberId },
         m.hlc ?? null,
         {
           collection_id: m.collectionId,

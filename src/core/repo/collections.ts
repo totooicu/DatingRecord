@@ -107,9 +107,11 @@ export function getCollection(id: string): Collection | null {
 export interface TreeNode extends Collection {
   children: TreeNode[];
   eventCount: number;
+  /** 含所有子孙集合在内的事件数（闭包表聚合，根集合即为全库事件数） */
+  totalEventCount: number;
 }
 
-/** 构建完整树（含每节点下的事件数，直接事件数，非递归） */
+/** 构建完整树（eventCount = 直接成员事件数；totalEventCount = 含子孙的事件数） */
 export function getTree(): TreeNode | null {
   const root = getRoot();
   if (!root) return null;
@@ -124,10 +126,24 @@ export function getTree(): TreeNode | null {
     counts.set(row.collection_id, row.c);
   }
 
+  // 按闭包表聚合：一次查询算出每个集合（含所有嵌套层级）下的事件数
+  const totals = new Map<string, number>();
+  for (const row of queryAll<{ ancestor_id: string; c: number }>(
+    `SELECT cl.ancestor_id AS ancestor_id, COUNT(DISTINCT m.member_id) AS c
+     FROM collection_closure cl
+     JOIN collection_members m ON m.collection_id = cl.descendant_id
+     JOIN events e ON e.id = m.member_id
+     WHERE m.member_type = 'event' AND m.deleted_at IS NULL AND e.deleted_at IS NULL
+     GROUP BY cl.ancestor_id`,
+  )) {
+    totals.set(row.ancestor_id, row.c);
+  }
+
   const build = (c: Collection): TreeNode => ({
     ...c,
     children: all.filter((x) => x.parentId === c.id).map(build),
     eventCount: counts.get(c.id) ?? 0,
+    totalEventCount: totals.get(c.id) ?? 0,
   });
   return build(root);
 }
