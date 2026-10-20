@@ -1,7 +1,7 @@
 // Service Worker：只缓存静态资源，让应用可以离线打开、可「添加到主屏幕」。
 // 注意：用户的数据存在 IndexedDB 里，SW 完全不碰，也不会上传任何东西。
 
-const CACHE = 'dating-record-v2';
+const CACHE = 'dating-record-v3';
 
 // 构建后带 hash 的资源走运行时缓存；这里先预缓存固定入口与体积较大的 wasm
 const PRECACHE = [
@@ -41,9 +41,27 @@ self.addEventListener('fetch', (event) => {
   // 只处理同源静态资源，跨域请求（如果将来接 AI）直接放行
   if (url.origin !== self.location.origin) return;
 
+  // 导航请求（HTML）必须 network-first。
+  // 若对 HTML 也用 stale-while-revalidate，用户会一直拿到缓存里的旧 index.html，
+  // 而它引用的带 hash 资源早已被新版本清掉 —— 表现为「改了却没生效」甚至白屏。
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((c) => c || caches.match('./index.html'))),
+    );
+    return;
+  }
+
+  // 静态资源：stale-while-revalidate（带 hash 的资源不会互相污染）
   event.respondWith(
     caches.match(req).then((cached) => {
-      // 后台取新版本，下次打开生效（stale-while-revalidate）
       const network = fetch(req)
         .then((res) => {
           if (res && res.status === 200 && res.type === 'basic') {
