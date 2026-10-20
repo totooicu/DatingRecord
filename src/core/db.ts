@@ -219,21 +219,32 @@ CREATE INDEX IF NOT EXISTS idx_oplog_hlc ON oplog(hlc);
 
 // ---------------- 初始化 ----------------
 
-export async function initDb(): Promise<Database> {
+/**
+ * 初始化数据库。
+ *
+ * `onProgress` 用于把阶段进度透给首屏加载态——WASM 有近 700KB，
+ * 弱网下这一步可能要几十秒，没有反馈用户会以为页面挂了。
+ */
+export async function initDb(onProgress?: (msg: string) => void): Promise<Database> {
   if (db) return db;
+  const report = (m: string) => onProgress?.(m);
 
   // 用 BASE_URL 拼接，保证部署到子路径（如 GitHub Pages 的 /DatingRecord/）时也能取到
   const base = import.meta.env.BASE_URL.endsWith('/')
     ? import.meta.env.BASE_URL
     : `${import.meta.env.BASE_URL}/`;
+  report('正在加载数据库引擎…');
   SQL = await initSqlJs({
     locateFile: () => `${base}sql-wasm.wasm`,
   });
+  // 引擎到手就该能干活了，之后都是本地同步操作，把超时计时清掉
 
+  report('正在读取本地数据…');
   const bytes = await idbGet();
   db = bytes ? new SQL.Database(bytes) : new SQL.Database();
   db.run('PRAGMA foreign_keys = ON');
 
+  report('正在准备数据表…');
   migrate(db);
 
   // 页面隐藏/关闭前尽力落盘，减少丢数据的窗口
