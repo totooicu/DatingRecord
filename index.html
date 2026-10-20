@@ -15,10 +15,64 @@
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>约会记录 · Dating Record</title>
-    <script type="module" crossorigin src="./assets/index-DzDae3b9.js"></script>
+    <!--
+      提前拉取 WASM：它约 700KB，是首屏最慢的一环。
+      用 preload 让浏览器和 JS/CSS 并行下载，别等主包解析完才发现要它。
+      crossorigin 必填，否则会与 WASM 实例化时的凭证模式不匹配而重复下载一次。
+    -->
+    <link rel="preload" href="./sql-wasm.wasm" as="fetch" type="application/wasm" crossorigin="anonymous" />
+    <!--
+      首屏加载态：内联在 HTML 里，JS/CSS 下载完成前就能看到。
+      应用要等 SQLite WASM（约 700KB）下载 + 初始化完成后才有内容，
+      没有这层会先白屏几十秒，在手机上会被当成「打不开」。
+    -->
+    <style>
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #f6f5f3;
+        color: #4a4640;
+        font: 14px/1.6 system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        z-index: 999;
+      }
+      #boot .boot-name {
+        font-size: 17px;
+        font-weight: 700;
+        color: #2f2c28;
+      }
+      #boot .boot-spin {
+        width: 30px;
+        height: 30px;
+        border: 3px solid #e6e2dc;
+        border-top-color: #d9536b;
+        border-radius: 50%;
+        animation: boot-spin 0.8s linear infinite;
+      }
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #boot .boot-tip {
+        font-size: 13px;
+        color: #8b857c;
+        min-height: 1.6em;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-D5y8EUMn.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CtV82FeC.css">
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot">
+      <div class="boot-name">约会记录</div>
+      <div class="boot-spin"></div>
+      <div class="boot-tip" id="boot-tip">正在启动…</div>
+    </div>
   </body>
 </html>
