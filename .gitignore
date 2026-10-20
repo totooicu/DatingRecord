@@ -32,6 +32,9 @@ attachments/
 *.sqlite
 *.sqlite3
 
+# ---- 发布工具产生的元数据（含发布记录，不入库）----
+.cloudstudio/
+
 # ---- 工具状态 ----
 # 保留项目级配置（含 git 自动同步钩子），忽略会话/缓存数据
 .codebuddy/*
