@@ -21,10 +21,12 @@ export function PersonList({
   selectedId,
   onSelect,
   keyword,
+  onKeyword,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
   keyword: string;
+  onKeyword: (k: string) => void;
 }) {
   const v = useVersion();
   const persons = useMemo(() => listPersons({ keyword }), [v, keyword]);
@@ -42,8 +44,8 @@ export function PersonList({
   };
 
   return (
-    <div className="side-list">
-      <div className="side-head">
+    <div className="pane-body">
+      <div className="pane-head">
         <strong>人物</strong>
         <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">
           ＋
@@ -66,17 +68,30 @@ export function PersonList({
           </button>
         </div>
       )}
+      <div className="list-search">
+        <input
+          type="search"
+          value={keyword}
+          placeholder="搜索姓名、标签、备注"
+          onChange={(e) => onKeyword(e.target.value)}
+        />
+        {keyword && (
+          <button className="icon-btn" onClick={() => onKeyword('')} aria-label="清除搜索">
+            ✕
+          </button>
+        )}
+      </div>
       {persons.length === 0 && <div className="muted pad">暂无人物</div>}
       {persons.map((p) => (
         <button
           key={p.id}
-          className={p.id === selectedId ? 'side-item side-item-on' : 'side-item'}
+          className={p.id === selectedId ? 'list-item list-item-on' : 'list-item'}
           onClick={() => onSelect(p.id)}
         >
           <span className="avatar">{p.displayName.slice(0, 1)}</span>
-          <span className="side-item-main">
-            <span className="side-item-title">{p.displayName}</span>
-            <span className="side-item-sub">
+          <span className="list-item-main">
+            <span className="list-item-title">{p.displayName}</span>
+            <span className="list-item-sub">
               {p.stats.eventCount} 次事件
               {p.stats.lastMeetTs ? ` · ${relativeDays(new Date(p.stats.lastMeetTs).toISOString())}` : ''}
             </span>

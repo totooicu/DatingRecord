@@ -71,8 +71,8 @@ export function CollectionTree({
   };
 
   return (
-    <div className="side-list">
-      <div className="side-head">
+    <div className="pane-body">
+      <div className="pane-head">
         <strong>事件集</strong>
         <button className="icon-btn" onClick={() => setCreating(true)} title="新建事件集">
           ＋

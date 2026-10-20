@@ -66,7 +66,6 @@ export function Settings() {
 
   return (
     <div className="detail">
-      <h2 className="page-title">设置与数据</h2>
 
       <Section
         title="数据备份（导入 / 导出）"

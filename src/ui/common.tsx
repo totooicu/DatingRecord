@@ -1,4 +1,22 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
+
+/** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
+let openModals = 0;
+const modalListeners = new Set<(n: number) => void>();
+function setModalOpen(delta: number) {
+  openModals = Math.max(0, openModals + delta);
+  modalListeners.forEach((fn) => fn(openModals));
+}
+export function useModalOpenCount() {
+  const [n, setN] = useState(openModals);
+  useEffect(() => {
+    modalListeners.add(setN);
+    return () => {
+      modalListeners.delete(setN);
+    };
+  }, []);
+  return n;
+}
 
 export function Modal({
   title,
@@ -13,6 +31,11 @@ export function Modal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
+  useEffect(() => {
+    setModalOpen(1);
+    return () => setModalOpen(-1);
+  }, []);
+
   return (
     <div className="modal-mask" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={wide ? 'modal modal-wide' : 'modal'}>
@@ -78,6 +101,32 @@ export function ConfirmButton({
         取消
       </button>
     </span>
+  );
+}
+
+/**
+ * 详情页顶部条：手机端显示返回按钮（页面栈），宽屏由 CSS 隐藏返回键。
+ * 宽屏下标题可隐藏，因为左侧列表已经表明了当前项。
+ */
+export function PageHead({
+  title,
+  onBack,
+  right,
+}: {
+  title: string;
+  onBack?: () => void;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="page-head">
+      {onBack && (
+        <button className="back-btn" onClick={onBack} aria-label="返回">
+          ‹
+        </button>
+      )}
+      <h2 className="page-head-title">{title}</h2>
+      {right && <div className="page-head-right">{right}</div>}
+    </div>
   );
 }
 

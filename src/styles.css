@@ -62,18 +62,22 @@ textarea {
   resize: vertical;
 }
 
-/* ---------- 布局 ---------- */
+/* ---------- 布局（mobile-first） ---------- */
+/* .app 为纵向 flex：内容区 .stack 占满剩余高度，底部 .tabbar 用 sticky
+   贴在末尾（不用 fixed，天然不遮挡内容）。 */
 .app {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100dvh;
 }
 
+/* 手机端隐藏顶部栏（改用底部 Tab Bar）；≥1024px 才显示 */
 .topbar {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 20px;
   height: 56px;
+  flex-shrink: 0;
   padding: 0 18px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -128,28 +132,184 @@ textarea {
   width: 220px;
 }
 
-.body {
+/* 页面栈容器：手机端只显示一栏（由 data-view 决定），宽屏两栏并排 */
+.stack {
   flex: 1;
-  display: flex;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.sidebar {
-  width: 268px;
-  flex-shrink: 0;
-  background: var(--side);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-
-.content {
+.pane {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 18px 22px 60px;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 24px;
+  background: var(--bg);
 }
 
-/* ---------- 侧栏 ---------- */
-.side-head {
+.pane-list {
+  background: var(--side);
+}
+
+/* 手机页面栈：list 态显示列表，detail 态显示详情。
+   注意：这里刻意用 class 而非 [data-view='list'] —— 构建时 CSS 压缩器会把
+   属性选择器的引号去掉，产出非法的 [data-view=list]，导致整段规则被浏览器丢弃。 */
+.app.at-list .pane-detail,
+.app.at-detail .pane-list {
+  display: none;
+}
+
+.pane-solo {
+  padding: 0 0 24px;
+}
+
+/* ---------- 详情页顶部条 ---------- */
+.page-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-head-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.back-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-left: -8px;
+  border: none;
+  background: transparent;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--primary);
+}
+
+.page-head-right {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+/* ---------- 底部 Tab Bar ---------- */
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 100;
+  flex-shrink: 0;
+  display: flex;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tabbar-item {
+  flex: 1;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tabbar-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.tabbar-item-on {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ---------- 悬浮记录按钮 ---------- */
+.fab {
+  position: fixed;
+  z-index: 110;
+  right: 16px;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 14px);
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  box-shadow: 0 4px 14px rgba(217, 83, 107, 0.4);
+}
+
+/* ---------- 时间线筛选折叠 ---------- */
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.filter-count {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  text-align: center;
+}
+
+.filter-caret {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* 折叠态：整块面板（含「筛选/重置」小标题）一起收起来 */
+.pane-body:not(.filters-open) .filter-inner {
+  display: none;
+}
+
+/* 宽屏由 JS 判断 wide，此时折叠按钮本身也要让位 */
+.filter-toggle-hidden {
+  display: none;
+}
+
+/* 时间线内嵌的「记一件事」在手机端隐藏，避免与 FAB 重复 */
+.btn-new-inline {
+  display: none;
+}
+
+/* ---------- 列表 ---------- */
+.pane-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -157,40 +317,42 @@ textarea {
   font-size: 13px;
 }
 
-.side-item {
+.list-item {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-height: 48px;
   padding: 9px 14px;
   border: none;
   background: transparent;
   text-align: left;
 }
 
-.side-item:hover {
+.list-item:hover {
   background: #f1efec;
 }
 
-.side-item-on {
-  background: #fff;
-  border-left: 3px solid var(--primary);
+/* 选中态用整块浅底 + 左侧色条，手机上比细边框更好点 */
+.list-item-on {
+  background: var(--panel);
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
-.side-item-main {
+.list-item-main {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.side-item-title {
+.list-item-title {
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.side-item-sub {
+.list-item-sub {
   color: var(--muted);
   font-size: 12px;
 }
@@ -218,6 +380,22 @@ textarea {
   display: flex;
   gap: 6px;
   padding: 0 14px 10px;
+}
+
+/* 列表页搜索框：手机端唯一入口（宽屏 topbar 里的搜索框已移除） */
+.list-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 10px;
+}
+
+.list-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  border-radius: 10px;
+  background: var(--panel);
 }
 
 /* ---------- 树 ---------- */
@@ -262,7 +440,11 @@ textarea {
 /* 去掉浏览器对 type=date 的空白占位导致的高度抖动 */
 input[type='date'],
 input[type='datetime-local'] {
-  min-height: 30px;
+  min-height: 38px;
+  /* iOS 上原生日期控件有默认最小宽度，不约束会撑破容器 */
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .tree-name em {
@@ -275,8 +457,12 @@ input[type='datetime-local'] {
 }
 
 /* ---------- 详情 ---------- */
+/* 详情页自身带内边距，不再依赖外层容器（手机上 .pane 无 padding，
+   宽屏 .pane-detail 也只有少许）。max-width 防止横屏时内容拉得过宽。 */
 .detail {
   max-width: 900px;
+  margin: 0 auto;
+  padding: 14px 14px 8px;
 }
 
 .detail-head {
@@ -353,9 +539,10 @@ input[type='datetime-local'] {
 }
 
 /* ---------- 统计 ---------- */
+/* 手机端 2 列，≥768px 变 4 列 */
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -373,6 +560,10 @@ input[type='datetime-local'] {
 .stat-num {
   font-size: 20px;
   font-weight: 700;
+  /* 「19 天前」这类带单位的数字不换行 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-label {
@@ -474,15 +665,21 @@ input[type='datetime-local'] {
   padding: 0;
 }
 
+/* 事件行：手机用「两行」卡片式（时间/人物一行，标题一行），宽屏改单行表格式。
+   单行在 390px 下会把标题挤到只剩省略号，所以 base 必须是两行。 */
 .event-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'time people'
+    'title title';
+  align-items: baseline;
+  gap: 2px 10px;
   width: 100%;
   border: none;
   background: transparent;
   text-align: left;
-  padding: 9px 6px;
+  padding: 10px 6px;
   border-bottom: 1px dashed #efece7;
 }
 
@@ -491,17 +688,16 @@ input[type='datetime-local'] {
 }
 
 .event-time {
+  grid-area: time;
   color: var(--muted);
   font-size: 12px;
-  width: 92px;
-  flex-shrink: 0;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 .event-title {
+  grid-area: title;
   font-weight: 600;
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -509,17 +705,19 @@ input[type='datetime-local'] {
 }
 
 .event-people {
+  grid-area: people;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .event-meta {
+  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .member-list li,
@@ -575,15 +773,18 @@ input[type='datetime-local'] {
 .month-label {
   font-size: 12px;
   color: var(--muted);
-  padding: 6px 2px;
+  padding: 8px 14px 4px;
   font-weight: 600;
 }
 
 /* ---------- 时间线头 ---------- */
+/* 手机是满宽列表，头部需要左右留白；宽屏在 pane-solo 里已有容器留白 */
 .timeline-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 6px;
   margin-bottom: 10px;
 }
 
@@ -667,14 +868,15 @@ input[type='datetime-local'] {
 }
 
 /* ---------- 表单 ---------- */
+/* 手机端单列：390px 下两列会让日期/时间控件互相挤压并溢出 */
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
 .span-2 {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 
 .field {
@@ -723,24 +925,38 @@ input[type='datetime-local'] {
 }
 
 /* ---------- 弹窗 ---------- */
+/* 手机端：底部弹出的全屏抽屉，比居中小卡更符合原生手感 */
 .modal-mask {
   position: fixed;
   inset: 0;
   background: rgba(30, 28, 26, 0.35);
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: center;
-  padding: 40px 16px;
-  z-index: 50;
+  padding: 0;
+  z-index: 200;
   overflow-y: auto;
 }
 
 .modal {
   background: var(--panel);
-  border-radius: 14px;
+  border-radius: 16px 16px 0 0;
   width: 100%;
-  max-width: 520px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  max-width: 100%;
+  height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 弹窗内部滚动，头尾固定 */
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 18px;
 }
 
 .modal-wide {
@@ -758,10 +974,6 @@ input[type='datetime-local'] {
 .modal-head h3 {
   margin: 0;
   font-size: 15px;
-}
-
-.modal-body {
-  padding: 16px 18px;
 }
 
 .modal-foot {
@@ -906,203 +1118,163 @@ input[type='datetime-local'] {
   margin-bottom: 8px;
 }
 
-.page-title {
-  margin: 0 0 16px;
-}
+/* ============================================================
+   响应式：mobile-first，只用 min-width。
+   手机（base）→ 768px 平板增强 → 1024px 桌面双栏
+   ============================================================ */
 
-/* ---------- 平板 / 窄屏 ---------- */
-@media (max-width: 900px) {
-  .sidebar {
-    width: 220px;
+/* ---------- ≥768px：平板 / 横屏，表单与统计不再挤一列 ---------- */
+@media (min-width: 768px) {
+  /* 输入控件恢复小字号（手机上 16px 是为了防 iOS 聚焦缩放） */
+  input,
+  select,
+  textarea {
+    font-size: 13px;
   }
+
   .stat-row {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
+
   .form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
   .span-2 {
-    grid-column: span 1;
-  }
-  .content {
-    padding: 14px 16px 60px;
-  }
-  .search {
-    width: 150px;
-  }
-}
-
-/* ---------- 手机端 ---------- */
-.menu-btn {
-  display: none;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: 8px;
-  width: 44px;
-  height: 44px;
-  font-size: 17px;
-  line-height: 1;
-  color: var(--text);
-  flex-shrink: 0;
-}
-
-.side-mask {
-  display: none;
-}
-
-@media (max-width: 720px) {
-  .topbar {
-    gap: 8px;
-    padding: 0 12px;
-    padding-top: env(safe-area-inset-top, 0px);
-    height: auto;
-    min-height: 54px;
-  }
-
-  .menu-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .brand-text {
-    display: none;
-  }
-
-  .tabs {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .tabs::-webkit-scrollbar {
-    display: none;
-  }
-  .tab {
-    padding: 9px 12px;
-    font-size: 14px;
-    white-space: nowrap;
-    min-height: 44px;
-  }
-
-  /* 顶栏右下角只留「记一件事」，搜索框移出顶栏避免挤在一起 */
-  .topbar-right .search {
-    display: none;
-  }
-  .topbar-right {
-    gap: 6px;
-  }
-  .topbar-right .btn {
-    padding: 9px 12px;
-    font-size: 14px;
-    white-space: nowrap;
-  }
-
-  /* 侧边栏改为抽屉：默认收起，点汉堡键或遮罩切换 */
-  .sidebar {
-    position: fixed;
-    z-index: 60;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 78vw;
-    max-width: 320px;
-    transform: translateX(-100%);
-    transition: transform 0.22s ease;
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-  .sidebar-open {
-    transform: translateX(0);
-  }
-  .side-mask {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    background: rgba(0, 0, 0, 0.35);
-  }
-
-  .content {
-    padding: 12px 12px 80px;
-  }
-
-  /* 触控目标放大到 44px 以上 */
-  .side-item,
-  .tree-row,
-  .btn,
-  .chip,
-  .icon-btn {
-    min-height: 44px;
-  }
-  .icon-btn {
-    min-width: 40px;
-  }
-
-  .detail-head {
-    flex-wrap: wrap;
-  }
-  .detail-head-actions {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .stat-row {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-
-  /* 事件行改为两行排版，避免手机上挤成一条（原为 flex，此处改 grid） */
-  .event-item {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    grid-template-areas:
-      'time title'
-      'meta meta';
-    row-gap: 4px;
-    align-items: center;
-    gap: 8px;
-  }
-  .event-time {
-    grid-area: time;
-  }
-  .event-title {
-    grid-area: title;
-  }
-  .event-people {
-    display: none;
-  }
-  .event-meta {
-    grid-area: meta;
-  }
-
-  /* 弹窗在手机上接近全屏，方便输入 */
-  .modal {
-    max-width: none;
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    border-radius: 0;
-  }
-  .modal-wide {
-    max-width: none;
-  }
-  .modal-mask {
-    align-items: stretch;
-    padding: 0;
-  }
-  .modal-body {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  .def-table {
-    display: block;
-    overflow-x: auto;
+    grid-column: span 2;
   }
 
   .attr-grid {
     grid-template-columns: 1fr;
   }
   .attr-row {
-    grid-template-columns: 90px 1fr;
+    grid-template-columns: 120px 1fr;
+  }
+
+  /* 弹窗恢复居中卡片（手机上是底部抽屉） */
+  .modal-mask {
+    align-items: flex-start;
+    padding: 40px 16px;
+  }
+  .modal {
+    height: auto;
+    max-height: calc(100dvh - 80px);
+    border-radius: 14px;
+    max-width: 520px;
+    padding-bottom: 0;
+  }
+  .modal-wide {
+    max-width: 760px;
+  }
+
+  /* 宽屏回到单行表格式：时间 | 标题 | 人物 | 元信息 */
+  .event-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .event-time {
+    width: 92px;
+    flex-shrink: 0;
+  }
+  .event-title {
+    flex: 1;
+  }
+  .event-people {
+    display: inline;
+    flex-shrink: 0;
+  }
+  .event-meta {
+    flex-shrink: 0;
+  }
+
+  /* 宽屏 timeline 容器已有留白，头部去重 */
+  .timeline-head,
+  .month-label {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .timeline {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .btn-new-inline {
+    display: inline-block;
+  }
+}
+
+/* ---------- ≥1024px：桌面双栏，列表与详情同屏 ---------- */
+@media (min-width: 1024px) {
+  /* 顶部栏回来，底部 Tab Bar 退场 */
+  .topbar {
+    display: flex;
+  }
+  .tabbar {
+    display: none;
+  }
+  .fab {
+    bottom: 24px;
+    right: 24px;
+  }
+
+  .stack {
+    flex-direction: row;
+  }
+
+  /* 关键：宽屏忽略页面栈状态，两栏同屏显示 */
+  .app.at-list .pane-detail,
+  .app.at-detail .pane-list {
+    display: block;
+  }
+
+  .pane-list {
+    flex: 0 0 320px;
+    width: 320px;
+    border-right: 1px solid var(--border);
+  }
+
+  .pane-detail {
+    flex: 1;
+    padding: 0 0 40px;
+  }
+
+  /* 宽屏下左侧列表已表明当前项，详情页顶部条只留操作区、隐藏返回键和标题 */
+  .page-head {
+    display: none;
+  }
+
+  .pane-detail .detail {
+    padding: 18px 22px;
+    margin: 0;
+  }
+
+  /* 筛选面板在宽屏恒展开，折叠开关隐藏 */
+  .filter-toggle,
+  .filter-toggle-hidden {
+    display: none;
+  }
+  .pane-body:not(.filters-open) .filter-inner {
+    display: block;
+  }
+
+  /* 宽屏筛选：限宽居中 + 两列，避免纵向占掉整个首屏 */
+  .filter-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 22px;
+  }
+  .filter-head {
+    display: flex;
+  }
+  .filter-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 18px;
+  }
+
+  .welcome {
+    margin: 80px auto;
   }
 }
