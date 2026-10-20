@@ -95,6 +95,36 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 3. 跨层依赖一律走**接口**（`SqlDriver`、`Repository`、`AiProvider`）。
 4. `ai` 包**单向依赖 domain**，domain 永不依赖 ai。
 
+## 1.3b 布局规范（手机优先）
+
+**铁律：样式表只用 `min-width` 媒体查询。基准样式 = 手机，逐级增强。**
+
+| 断点 | 形态 |
+|---|---|
+| base（<768px） | 单栏页面栈：列表 / 详情二选一，底部 Tab Bar + 悬浮 FAB |
+| ≥768px | 表单与统计不再挤一列；弹窗回到居中卡片 |
+| ≥1024px | 顶部栏 + 双栏并排（列表 320px + 详情自适应），Tab Bar 退场 |
+
+**导航状态机**：`View` 联合体 `{list|detail|timeline|settings}`，由 `.app.at-<k>` 类驱动 CSS 显隐，
+**不在 JS 里判断屏幕宽度**——宽屏在媒体查询里把「列表/详情同屏」的隐藏规则覆盖掉即可。
+唯一例外是时间线筛选面板（需要 JS 知道是否展开），用 `matchMedia` 订阅。
+
+**已踩的坑，别再踩**：
+
+1. **属性选择器不要用引号**：构建压缩会把 `[data-view='list']` 压成 `[data-view=list]`，
+   浏览器整段丢弃规则且不报错。改用普通 class。
+2. **留空的 CSS 规则会吞掉后面的整段**：`.page-title {` 后面没内容时，紧随其后的
+   `@media` 块会被解析成它的内部声明，媒体查询直接消失（不报错）。
+3. **`display:none` 的 base 规则会压过媒体查询**：`.filter-body{display:none}` + base 后置的
+   `{display:flex}` + 1024 块里的 `{display:grid}` —— 三者同权重时源码顺序决定，flex 获胜。
+   折叠态要用**后代选择器**（`.pane-body:not(.filters-open) .filter-body`）收窄作用域。
+4. **iOS 聚焦会缩放页面**：输入控件 `font-size` 必须 ≥ 16px（≥768px 才降回 13px）。
+5. **390px 下两列表单会挤压日期/时间控件**：`.form-grid` base 是单列，≥768px 才两列。
+6. **图标用内联 SVG，不用 emoji**：emoji 在部分安卓/Linux 上渲染成空心方框，且不跟随主题色。
+
+**验收清单**：改动 UI 后必须跑 playwright 三视口实测——**390×844**（iPhone）、
+**820×1180**（iPad）、**1440×900**（桌面），断言：无横向溢出、无控制台报错、关键元素可见性符合断点预期。
+
 ## 1.4 测试策略
 
 | 层 | 测试类型 | 覆盖要求 |
@@ -439,9 +469,18 @@ library.drp/
 ```bash
 bash scripts/git-sync.sh "feat: 描述"     # 提交并推送
 bash scripts/git-remote.sh <URL>          # 配置远程仓库
+bash scripts/deploy-pages.sh              # 构建并发布到 gh-pages
 git tag -a v0.1.0 -m "MVP"                # 打版本标签
 git status                                # 确认工作区干净
 ```
+
+**发布说明**：本仓库 GitHub Pages 源是「**从分支部署（gh-pages）**」，
+所以**不能**用 `actions/deploy-pages`（它要求 Pages 源为 GitHub Actions，deploy job 必失败）。
+`.github/workflows/deploy-pages.yml` 与 `scripts/deploy-pages.sh` 都走同一条路：
+构建 → 用 `dist` 覆盖 `gh-pages` 分支（含 `.nojekyll`）。
+
+**改动 UI 后务必先本地验证再发布**：`pnpm build` 后起个静态服务（如
+`python3 -m http.server 4191 -d dist`），用 playwright 跑三视口实测。
 
 ## C. 待决策事项汇总
 
