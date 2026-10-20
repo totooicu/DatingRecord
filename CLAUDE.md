@@ -56,4 +56,5 @@
 ## 环境备注
 
 - git 身份：`WorkBuddy Agent <workbuddy@agent.local>`（可按需改为本人身份）
-- 远程仓库：尚未配置。用户提供地址后执行 `bash scripts/git-remote.sh <URL>` 即可启用自动推送。
+- 远程仓库：已配置 `origin → git@github.com:totooicu/DatingRecord.git`，`git-sync.sh` 会自动推送。
+- **注意**：沙箱到 github.com 的 **HTTPS 被阻断**，只能走 SSH（已配好 `~/.ssh/config` + `~/.ssh/id_ed25519_github`）。若沙箱重置导致私钥丢失，需重新生成密钥并让用户添加公钥，再执行 `bash scripts/git-remote.sh git@github.com:totooicu/DatingRecord.git`。
