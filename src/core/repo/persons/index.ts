@@ -26,4 +26,15 @@ export {
 } from './merge';
 export { setAttribute, countAttrValues, retuneAttrValues, type RetuneResult } from './values';
 export { listAttrHistory, type AttrHistoryRow } from './history';
+export {
+  listTemplates,
+  getTemplate,
+  createTemplate,
+  renameTemplate,
+  deleteTemplate,
+  applyTemplate,
+  saveAsTemplate,
+  sanitizeKeys,
+} from './templates';
+export type { AttrTemplate } from '../../types';
 export { FIRST_ORDER_KEY } from '../../order';

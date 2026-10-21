@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createPerson, listPersons } from '../../core/repo/persons';
+import { applyTemplate, createPerson, listPersons, listTemplates } from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
 import { Avatar } from './Avatar';
@@ -18,8 +18,11 @@ export function PersonList({
   const v = useVersion();
   const persons = useMemo(() => listPersons({ keyword }), [v, keyword]);
   const allPersons = useMemo(() => listPersons({ includeArchived: true }), [v]);
+  const templates = useMemo(() => listTemplates(), [v]);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  /** 新建时套哪个模板；空 = 不套 */
+  const [tplId, setTplId] = useState('');
   /** 重名时拦一次：不是禁止（同名真实存在），而是让用户确认「是不是同一个人」 */
   const [dupWarn, setDupWarn] = useState<string | null>(null);
 
@@ -28,6 +31,7 @@ export function PersonList({
 
   const close = () => {
     setName('');
+    setTplId('');
     setCreating(false);
     setDupWarn(null);
   };
@@ -41,6 +45,7 @@ export function PersonList({
       return;
     }
     const p = createPerson({ displayName: n });
+    if (tplId) applyTemplate(tplId, p.id);
     bump();
     close();
     onSelect(p.id);
@@ -69,6 +74,21 @@ export function PersonList({
               if (e.key === 'Escape') close();
             }}
           />
+          {templates.length > 0 && (
+            <select
+              className="inline-create-tpl"
+              value={tplId}
+              onChange={(e) => setTplId(e.target.value)}
+              aria-label="选择属性模板"
+            >
+              <option value="">不套模板</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}（{t.keys.length} 字段）
+                </option>
+              ))}
+            </select>
+          )}
           <button className="btn btn-primary btn-sm" onClick={() => submit()}>
             创建
           </button>

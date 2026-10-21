@@ -7,6 +7,7 @@ import { LockSection } from './LockSection';
 import { EncSection } from './EncSection';
 import { DefTable } from './DefTable';
 import { DefFormModal } from './DefFormModal';
+import { TemplateSection } from './TemplateSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { OverviewSection } from './OverviewSection';
@@ -59,6 +60,8 @@ export function Settings() {
             }}
           />
         )}
+
+        {active === 'templates' && <TemplateSection />}
 
         {active === 'people' && (
           <Section title="重复人物" desc="同名建了多次的记录，合并后事件关联会归到一起。">

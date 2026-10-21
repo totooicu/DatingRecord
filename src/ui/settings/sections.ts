@@ -8,6 +8,7 @@ export type SettingsKey =
   | 'lock'
   | 'enc'
   | 'attrs'
+  | 'templates'
   | 'people'
   | 'archive'
   | 'files'
@@ -25,6 +26,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'lock', title: '应用锁', hint: '口令、自动锁定' },
   { key: 'enc', title: '本地库加密', hint: '口令、恢复码' },
   { key: 'attrs', title: '属性字典', hint: '自定义字段的类型与分组' },
+  { key: 'templates', title: '属性模板', hint: '一组字段，新建人物时套用' },
   { key: 'people', title: '人物整理', hint: '重复人物合并' },
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除' },
   { key: 'files', title: '文件', hint: '正文引用的图片与附件' },

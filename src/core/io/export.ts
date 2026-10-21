@@ -4,7 +4,16 @@ import { queryAll, getDeviceId, getMeta } from '../db';
 import { newId } from '../id';
 import { getBlob, blobToBase64 } from '../db/blob';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
-import { rowToDef, rowToPerson, rowToEvent, rowToCollection, rowToMember, rowToAttachment, type Row } from './mappers';
+import {
+  rowToDef,
+  rowToPerson,
+  rowToEvent,
+  rowToCollection,
+  rowToMember,
+  rowToAttachment,
+  rowToTemplate,
+  type Row,
+} from './mappers';
 
 async function exportAttachments(): Promise<Attachment[]> {
   const rows = queryAll<Row>('SELECT * FROM attachments');
@@ -24,6 +33,9 @@ export async function buildLibrary(opts: { includeAttachments?: boolean } = {}):
   const collections = queryAll<Record<string, never>>('SELECT * FROM collections').map(rowToCollection);
   const members = queryAll<Record<string, never>>('SELECT * FROM collection_members').map(rowToMember);
   const attachments = opts.includeAttachments ? await exportAttachments() : [];
+  const templates = queryAll<Row>(
+    'SELECT * FROM attribute_templates WHERE deleted_at IS NULL ORDER BY created_at ASC',
+  ).map(rowToTemplate);
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -49,6 +61,7 @@ export async function buildLibrary(opts: { includeAttachments?: boolean } = {}):
     collections,
     members,
     attachments,
+    templates,
   };
 }
 

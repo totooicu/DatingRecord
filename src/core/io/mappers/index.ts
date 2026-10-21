@@ -6,3 +6,4 @@ export { rowToPerson, personToRow } from './person';
 export { rowToEvent, eventToRow } from './event';
 export { rowToCollection, collectionToRow, rowToMember } from './collection';
 export { rowToAttachment } from './attachment';
+export { rowToTemplate, templateToRow } from './template';

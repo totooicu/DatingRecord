@@ -31,7 +31,7 @@ export function ulid(seedTime: number = Date.now()): string {
   return encodeTime(seedTime, TIME_LEN) + encodeRandom(RANDOM_LEN);
 }
 
-export type IdPrefix = 'p' | 'e' | 'c' | 'att' | 'd' | 'lib' | 'f';
+export type IdPrefix = 'p' | 'e' | 'c' | 'att' | 'd' | 'lib' | 'f' | 'tpl';
 
 /** 生成带前缀的实体 ID，如 p_01J... */
 export function newId(prefix: IdPrefix): string {

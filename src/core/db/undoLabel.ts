@@ -11,6 +11,7 @@ const ENTITY_NAME: Record<string, string> = {
   event: '事件',
   collection: '事件集',
   attribute_def: '属性',
+  template: '属性模板',
   collection_member: '事件集成员',
   file: '文件',
   setting: '设置',

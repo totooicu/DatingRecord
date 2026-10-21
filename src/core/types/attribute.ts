@@ -65,6 +65,15 @@ export interface AttributeDef {
   hlc: string;
 }
 
+/** 属性模板（F-P04）：一组 def key 的有序集合 */
+export interface AttrTemplate {
+  id: string;
+  name: string;
+  keys: string[];
+  createdAt: string;
+  hlc?: string;
+}
+
 /** 属性值：只存值，类型由 def 决定；额外元信息保证脱离字典也能解析 */
 export interface AttributeValue {
   v: unknown;

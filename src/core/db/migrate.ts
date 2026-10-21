@@ -56,6 +56,17 @@ export function runMigrations(d: Database, current: number): string {
     // 迁移页据此提示「N 个文件尚未计算 hash」
     setMeta('files_addressed', 'legacy');
   }
+  if (v < 3) {
+    // 属性模板（F-P04）：新表，幂等；新库在建表语句里已经有了
+    d.run(`CREATE TABLE IF NOT EXISTS attribute_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      keys_json TEXT NOT NULL DEFAULT '[]',
+      device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+      created_at TEXT, updated_at TEXT
+    )`);
+    v = 3;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

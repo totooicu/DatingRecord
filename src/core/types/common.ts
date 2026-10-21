@@ -1,6 +1,6 @@
 // 附件、操作日志、库交换格式
 
-import type { AttributeDef, AttrHistoryEntry } from './attribute';
+import type { AttributeDef, AttrHistoryEntry, AttrTemplate } from './attribute';
 import type { Person } from './person';
 import type { DREvent } from './event';
 import type { Collection, Member } from './collection';
@@ -48,6 +48,8 @@ export interface LibraryFile {
   collections: Collection[];
   members: Member[];
   attachments?: Attachment[];
+  /** 属性模板（v3 新增）；老备份没有这个字段，导入时按空处理 */
+  templates?: AttrTemplate[];
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;

@@ -328,3 +328,23 @@
 .event-rel {
   color: var(--primary);
 }
+
+/* ---------- 属性模板（F-P04） ---------- */
+.attr-tpl-bar {
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 0 2px 8px;
+}
+
+.template-group {
+  margin-top: 10px;
+}
+
+.template-keys {
+  margin-top: 6px;
+}
+
+.inline-create-tpl {
+  max-width: 130px;
+  font-size: 12px;
+}

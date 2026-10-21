@@ -16,7 +16,7 @@ import { hlcCompare, hlcNow, hlcReceive } from '../time';
 import { putBlob, base64ToBlob } from '../db/blob';
 import { ensureClosure } from '../repo/collections';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
-import { defToRow, personToRow, eventToRow, collectionToRow } from './mappers';
+import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow } from './mappers';
 import { exportToFile } from './export';
 
 export interface ImportResult {
@@ -64,7 +64,7 @@ export async function importLibrary(
     throw new Error(`文件版本 ${version} 高于当前支持的 ${SCHEMA_VERSION}，请升级软件`);
   }
 
-  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0 };
+  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0 };
   const importedAttachments: Attachment[] = [];
   let skipped = 0;
   let backupName: string | undefined;
@@ -153,6 +153,16 @@ export async function importLibrary(
         },
       );
       ok ? counts.members++ : skipped++;
+    }
+    for (const t of lib.templates ?? []) {
+      const ok = upsertByHlc(
+        'attribute_templates',
+        'id',
+        t.id,
+        t.hlc ?? null,
+        templateToRow(t),
+      );
+      ok ? counts.templates++ : skipped++;
     }
     for (const a of lib.attachments ?? []) {
       run('INSERT OR IGNORE INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared) VALUES (?,?,?,?,?,?,?,?,?,?)', [

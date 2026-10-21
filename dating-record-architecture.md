@@ -363,6 +363,7 @@ journal(seq INTEGER PK AUTOINCREMENT, ts, op, entity, entity_id, payload_json)
 fts_events    USING fts5(title, content, tags, tokenize='unicode61')
 fts_persons   USING fts5(display_name, aliases, search_text, tokenize='unicode61')
 attribute_defs(key PK, label, type, group, config_json, archived, updated_at)
+attribute_templates(id PK, name, keys_json, hlc, deleted_at)   -- F-P04 属性模板
 ```
 
 **索引**

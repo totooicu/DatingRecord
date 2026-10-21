@@ -116,6 +116,15 @@ CREATE TABLE IF NOT EXISTS collection_members (
 );
 CREATE INDEX IF NOT EXISTS idx_cm_member ON collection_members(member_id);
 
+-- 属性模板（schema v3 新增，见 F-P04）：一组 def key 的有序集合
+CREATE TABLE IF NOT EXISTS attribute_templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  keys_json TEXT NOT NULL DEFAULT '[]',
+  device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+  created_at TEXT, updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS attachments (
   id TEXT PRIMARY KEY,
   sha256 TEXT NOT NULL DEFAULT '',
