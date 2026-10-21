@@ -68,6 +68,18 @@
   line-height: 1;
 }
 
+.ref-group-title {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.ref-group-title:first-of-type {
+  margin-top: 4px;
+}
+
 /* ---------- 冲突裁决 / 合并预览的卡片 ---------- */
 
 .col-grid {

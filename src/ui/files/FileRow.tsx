@@ -3,8 +3,9 @@
 //   第二行起 文件名：单独成行，长名字按需换行，绝不截断
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
-import { countRefs, renameFile } from '../../core/repo/files';
+import { countRefs, personsUsingFile, renameFile } from '../../core/repo/files';
 import { ConfirmButton } from '../common';
+import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
 import { CheckIcon, EyeIcon, IconButton, LinkIcon, PencilIcon, TrashIcon } from './rowIcons';
 import { bump } from '../../store';
@@ -54,6 +55,7 @@ export function FileRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(file.name);
   const refs = countRefs(file);
+  const avatars = personsUsingFile(file);
   const kind = kindOf(file.name, file.mime);
 
   /** 批量模式勾选、挑选模式插入，其余情况预览 */
@@ -135,11 +137,11 @@ export function FileRow({
                 icon={<TrashIcon />}
                 className="file-icon-btn file-icon-btn-danger"
                 danger
-                confirmText={
-                  refs > 0
-                    ? `删除「${file.name}」？还有 ${refs} 个事件在正文里引用它，那些位置会显示成「附件已删除」。`
-                    : `删除「${file.name}」？`
-                }
+                confirmText={deleteHint(
+                  file.name,
+                  refs,
+                  avatars.map((a) => a.displayName),
+                )}
                 onConfirm={() => onDelete(file)}
               />
             </span>
@@ -178,12 +180,22 @@ export function FileRow({
           <span>·</span>
           <span>{fmtDate(file.createdAt)}</span>
           <span>·</span>
-          {refs > 0 ? (
-            <button type="button" className="file-refs-btn" onClick={() => onShowRefs(file)} title="查看引用它的事件">
-              被 {refs} 个事件引用
-            </button>
-          ) : (
+          {refs + avatars.length === 0 ? (
             <span>未被引用</span>
+          ) : (
+            <button
+              type="button"
+              className="file-refs-btn"
+              onClick={() => onShowRefs(file)}
+              title="查看谁在用它"
+            >
+              {[
+                refs > 0 ? `${refs} 个事件` : '',
+                avatars.length > 0 ? `${avatars.length} 个头像` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </button>
           )}
         </div>
       </div>

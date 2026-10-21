@@ -115,7 +115,13 @@ export function MergeModal({
 
       <ul className="mig-plan">
         <li>{preview.events.length} 个事件的正文会改写</li>
-        <li>{preview.avatars} 个人物头像会改指到目标文件</li>
+        <li>
+          {preview.avatarPersons.length > 0
+            ? `${preview.avatarPersons.length} 个人物头像会改指到目标文件：${preview.avatarPersons
+                .map((p) => p.displayName)
+                .join('、')}`
+            : '没有人物的头像指向这些文件'}
+        </li>
         <li>合并后可释放 {fmtSize(preview.freedBytes)}</li>
       </ul>
 

@@ -6,7 +6,6 @@
 // 正文引用只存 file:<id>，不存文件名，所以这里改名不会影响任何既有引用。
 import { useMemo, useState } from 'react';
 import { deleteFile, fileRefSyntax, listFiles, type StoredFile } from '../../core/repo/files';
-import { openEvent } from '../openEvent';
 import { useVersion, bump } from '../../store';
 import { PreviewModal } from '../preview';
 import { CollisionModal } from './CollisionModal';
@@ -170,7 +169,6 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
         <FileRefsModal
           file={refsFile}
           onClose={() => setRefsFile(null)}
-          onOpenEvent={(eid) => openEvent(eid)}
         />
       )}
       {merge && (

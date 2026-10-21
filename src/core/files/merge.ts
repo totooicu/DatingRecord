@@ -10,7 +10,14 @@
 
 import { getBlob } from '../db/blob';
 import { queryAll } from '../db';
-import { deleteFile, eventsReferencingFile, getFile, type StoredFile } from '../repo/files';
+import {
+  deleteFile,
+  eventsReferencingFile,
+  getFile,
+  personsUsingFile,
+  type FileRefPerson,
+  type StoredFile,
+} from '../repo/files';
 import { rewriteRefs } from './rewrite';
 import { sameBytes } from './naming';
 
@@ -26,6 +33,8 @@ export interface MergePreview {
   sources: StoredFile[];
   /** 合并后会受影响的事件（去重后的并集） */
   events: MergeEventHit[];
+  /** 头像指向源文件的人物名单（预览里要让用户看到会牵动谁） */
+  avatarPersons: FileRefPerson[];
   /** 头像指向源文件的人物数 */
   avatars: number;
   /** 执行时会被删掉的二进制总字节 */
@@ -39,12 +48,17 @@ function countRefOccurrences(md: string, name: string): number {
   return (md.match(re) ?? []).length;
 }
 
+/**
+ * 源文件里有几个人物头像。
+ *
+ * 头像字段是 `file:<文件id>`，参数必须带前缀，否则永远查不到人。
+ */
 function avatarTargets(ids: string[]): number {
   if (ids.length === 0) return 0;
   const marks = ids.map(() => '?').join(',');
   const rows = queryAll<{ c: number | null }>(
     `SELECT COUNT(*) AS c FROM persons WHERE avatar IN (${marks})`,
-    ids,
+    ids.map((id) => `file:${id}`),
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -79,6 +93,7 @@ export function previewMerge(targetId: string, sourceIds: string[]): MergePrevie
     target,
     sources,
     events: Array.from(hits.values()).sort((a, b) => b.count - a.count),
+    avatarPersons: sources.flatMap((s) => personsUsingFile(s)),
     avatars: avatarTargets(sources.map((s) => s.id)),
     freedBytes: sources.reduce((n, s) => n + s.size, 0),
   };

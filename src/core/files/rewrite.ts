@@ -44,7 +44,7 @@ export interface RefTarget {
 /**
  * 把引用名在全库范围内改掉（正文 + 头像）。
  *
- * 覆盖 events.content 与 persons.avatar —— 头像字段存的是文件 id 而不是引用名，
+ * 覆盖 events.content 与 persons.avatar —— 头像字段存的是 `file:<文件id>`，
  * 合并/迁移时不一起改，人物头像就会指向已经被删掉的那条记录。
  */
 export function rewriteRefs(pairs: RefTarget[]): RewriteReport {
@@ -92,11 +92,18 @@ export function rewriteRefs(pairs: RefTarget[]): RewriteReport {
   return { events, avatars };
 }
 
-/** 头像字符串 → 新 id：先按 id 命中，再按引用名命中 */
+/**
+ * 头像字符串 → 新头像值。
+ *
+ * persons.avatar 存的是 `file:<文件id>`（不是引用名），所以必须先剥掉前缀
+ * 再按 id 匹配。之前直接拿 id 与 avatar 比较，永远匹配不上，
+ * 结果合并时头像不跟着改，源文件一删头像就失效。
+ */
 function matchAvatar(avatar: string, pairs: RefTarget[]): string | null {
+  if (!avatar) return null;
+  const raw = avatar.startsWith('file:') ? avatar.slice(5) : avatar;
   for (const p of pairs) {
-    if (p.id && avatar === p.id) return p.id;
-    if (avatar === p.from) return p.to;
+    if (raw === p.id || (p.from && raw === p.from)) return `file:${p.id}`;
   }
   return null;
 }

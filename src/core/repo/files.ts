@@ -186,6 +186,28 @@ export async function deleteFile(id: string): Promise<void> {
  * 老数据里正文写的是 file:<老id>，新数据是 file:<storedId>，
  * 所以两个名字都要匹配（用 / 分隔的正则串做不到，直接两次 LIKE 拼起来）。
  */
+/**
+ * 头像引用：把该文件设为头像的人物。
+ *
+ * 注意 persons.avatar 存的是 `file:<文件id>`（见 AvatarPicker.pick），
+ * 不是引用名。所以这里按 id 匹配，同时兼容极少数只存裸 id 的老数据。
+ */
+export interface FileRefPerson {
+  id: string;
+  displayName: string;
+}
+
+export function personsUsingFile(file: StoredFile | string): FileRefPerson[] {
+  const id = typeof file === 'string' ? file : file.id;
+  if (!id) return [];
+  return queryAll<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM persons
+     WHERE deleted_at IS NULL AND (avatar = ? OR avatar = ?)
+     ORDER BY display_name ASC`,
+    [`file:${id}`, id],
+  ).map((r) => ({ id: r.id, displayName: r.display_name || '（未命名）' }));
+}
+
 export interface FileRefEvent {
   id: string;
   title: string;

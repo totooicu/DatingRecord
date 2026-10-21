@@ -121,7 +121,10 @@ export function MigrateSection() {
                 <code>{g.sha256.slice(0, 12)}</code> · {g.files.length} 个 · {g.files[0].name}
                 <span className="muted small">
                   {' '}
-                  （引用 {g.refEvents} 个事件{g.avatars ? `、${g.avatars} 个头像` : ''}
+                  （{g.refEvents} 个事件
+                  {g.avatarPersons.length
+                    ? `、头像 ${g.avatarPersons.map((p) => p.displayName).join('、')}`
+                    : ''}
                   {g.sameSize ? '' : '，大小不一，不会自动合并'}）
                 </span>
               </li>

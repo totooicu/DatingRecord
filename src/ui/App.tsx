@@ -13,6 +13,7 @@ import { listPersons } from '../core/repo/persons';
 import { useVersion, bump } from '../store';
 import { getEvent } from '../core/repo/events';
 import { setEventOpener } from './openEvent';
+import { setPersonOpener } from './openPerson';
 import type { TabKey } from './icons';
 
 /**
@@ -51,6 +52,15 @@ export default function App() {
       setJumpEventId(id);
     });
     return () => setEventOpener(null);
+  }, []);
+
+  // 文件库里点「谁在用它当头像」→ 切到人物列表并打开那个人的详情
+  useEffect(() => {
+    setPersonOpener((id) => {
+      setPersonId(id);
+      setView({ k: 'detail', s: 'persons', id });
+    });
+    return () => setPersonOpener(null);
   }, []);
 
   // 首次进入自动选中第一项，避免宽屏右侧空白

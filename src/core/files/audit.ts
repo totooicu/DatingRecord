@@ -5,8 +5,19 @@
 
 import { getBlob } from '../db/blob';
 import { queryAll } from '../db';
-import { delBlob, listFiles, setFileHash, eventsReferencingFile, type StoredFile } from '../repo/files';
+import {
+  delBlob,
+  listFiles,
+  setFileHash,
+  eventsReferencingFile,
+  personsUsingFile,
+  type FileRefPerson,
+  type StoredFile,
+} from '../repo/files';
 import { sha256Hex } from './naming';
+
+/** 头像指向的文件（合并预览里列出人物名单用） */
+export type { FileRefPerson } from '../repo/files';
 
 /** 一个 hash 分组：内容相同的一批文件 */
 export interface HashGroup {
@@ -14,6 +25,8 @@ export interface HashGroup {
   files: StoredFile[];
   /** 组内被正文引用的事件数（去重后的事件数，不是引用条数） */
   refEvents: number;
+  /** 组内被用作头像的人物（合并预览要列出名单，不只给数字） */
+  avatarPersons: FileRefPerson[];
   /** 组内被用作头像的人物数 */
   avatars: number;
   /** 组内文件大小是否全相同（不同则不能自动判定为同一份内容） */
@@ -30,12 +43,18 @@ export interface AuditResult {
   legacyNames: number;
 }
 
+/**
+ * 有多少人物把这些文件设成了头像。
+ *
+ * 头像字段存的是 `file:<文件id>`，所以参数要带上前缀再查——
+ * 直接拿裸 id 匹配会永远得到 0。
+ */
 function avatarCountOf(ids: string[]): number {
   if (ids.length === 0) return 0;
   const marks = ids.map(() => '?').join(',');
   const rows = queryAll<{ c: number | null }>(
     `SELECT COUNT(*) AS c FROM persons WHERE avatar IN (${marks})`,
-    ids,
+    ids.map((id) => `file:${id}`),
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -76,6 +95,7 @@ export function auditFiles(): AuditResult {
       sha256: sha,
       files: arr,
       refEvents: evs.size,
+      avatarPersons: arr.flatMap((f) => personsUsingFile(f)),
       avatars: avatarCountOf(arr.map((f) => f.id)),
       sameSize: arr.every((f) => f.size === arr[0].size),
     });
