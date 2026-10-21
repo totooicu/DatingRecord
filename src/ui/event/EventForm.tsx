@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createEvent, updateEvent } from '../../core/repo/events';
+import { createEvent, deleteEvent, updateEvent } from '../../core/repo/events';
 import { listPersons } from '../../core/repo/persons';
 import {
   addMember,
@@ -9,7 +9,7 @@ import {
   type TreeNode,
 } from '../../core/repo/collections';
 import type { Collection, DREvent } from '../../core/types';
-import { Modal } from '../common';
+import { ConfirmButton, Modal } from '../common';
 import { bump } from '../../store';
 import { EventFields } from './EventFields';
 import { draftToPayload, initialDraft, type EventDraft } from './draft';
@@ -60,6 +60,18 @@ export function EventForm({
       onClose={onClose}
       footer={
         <>
+          {event && (
+            <ConfirmButton
+              text="删除"
+              danger
+              confirmText="删除这个事件？它会先进「设置 → 归档与回收」，之后可以恢复或彻底删除。"
+              onConfirm={() => {
+                deleteEvent(event.id);
+                bump();
+                onClose();
+              }}
+            />
+          )}
           <button className="btn btn-ghost" onClick={onClose}>
             取消
           </button>

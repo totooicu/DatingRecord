@@ -9,9 +9,13 @@ import { insertText as insert, toggleLineMark as mark, wrapSelection as wrapFn, 
 export function MarkdownToolbar({
   apply,
   onPickFile,
+  onOpenFiles,
 }: {
   apply: (fn: (c: Caret) => Caret) => void;
+  /** 从本机上传新文件 */
   onPickFile: () => void;
+  /** 打开悬浮文件库，挑一个已有文件插入引用 */
+  onOpenFiles: () => void;
 }) {
   const wrap = (before: string, after: string, placeholder: string) =>
     apply((c) => ({
@@ -50,8 +54,11 @@ export function MarkdownToolbar({
       >
         链接
       </button>
-      <button type="button" className="md-tool md-tool-file" onClick={onPickFile} title="插入图片或文件">
+      <button type="button" className="md-tool md-tool-file" onClick={onPickFile} title="上传并插入图片或文件">
         插图
+      </button>
+      <button type="button" className="md-tool md-tool-file" onClick={onOpenFiles} title="从文件库选择已有文件">
+        文件
       </button>
     </div>
   );

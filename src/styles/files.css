@@ -145,6 +145,22 @@
   color: var(--primary);
 }
 
+/* 引用计数可点：打开「引用它的事件」列表 */
+.file-refs-btn {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.file-refs-btn:hover {
+  color: var(--primary-dark);
+}
+
 /* 手机上不留白，宽屏文件列表也不该铺满整行 */
 .file-item .member-actions {
   flex: none;

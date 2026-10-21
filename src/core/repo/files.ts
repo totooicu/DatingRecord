@@ -91,7 +91,7 @@ export async function deleteFile(id: string): Promise<void> {
   });
 }
 
-/** 正文里有多少处引用了这个文件（用于删除前的提示） */
+/** 有多少个事件在正文里引用了这个文件（用于删除前的提示） */
 export function countRefs(id: string): number {
   const r = queryOne<{ c: number | null }>(
     `SELECT COUNT(*) AS c FROM events
@@ -99,6 +99,33 @@ export function countRefs(id: string): number {
     [`%${FILE_REF_PREFIX}${id}%`],
   );
   return r?.c ?? 0;
+}
+
+export interface FileRefEvent {
+  id: string;
+  title: string;
+  startTs: number | null;
+  createdAt: string;
+}
+
+/**
+ * 引用该文件的事件列表（只含未删除的）。
+ *
+ * 和 countRefs 用同一个 LIKE 条件，两边的数字必须一致；
+ * 点「被 N 处正文引用」时展示的就是这些事件。
+ */
+export function eventsReferencingFile(id: string): FileRefEvent[] {
+  return queryAll<{ id: string; title: string; start_ts: number | null; created_at: string }>(
+    `SELECT id, title, start_ts, created_at FROM events
+     WHERE deleted_at IS NULL AND content LIKE ?
+     ORDER BY COALESCE(start_ts, 0) DESC, created_at DESC`,
+    [`%${FILE_REF_PREFIX}${id}%`],
+  ).map((r) => ({
+    id: r.id,
+    title: r.title || '（无标题）',
+    startTs: r.start_ts === null ? null : Number(r.start_ts),
+    createdAt: r.created_at,
+  }));
 }
 
 /** 渲染用：拿到可放进 <img src> 的 objectURL */

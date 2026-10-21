@@ -60,6 +60,13 @@ export function getTree(): TreeNode | null {
   return build(root);
 }
 
+/** 归档的事件集：只改了 status，成员与事件都还在，可原样恢复 */
+export function listArchivedCollections(): Collection[] {
+  return queryAll<CollectionRow>(
+    `SELECT * FROM collections WHERE deleted_at IS NULL AND status = 'archived' ORDER BY updated_at DESC`,
+  ).map(collectionFromRow);
+}
+
 export function getBreadcrumb(id: string): Collection[] {
   const rows = queryAll<{ ancestor_id: string }>(
     'SELECT ancestor_id FROM collection_closure WHERE descendant_id = ? ORDER BY depth DESC',

@@ -15,7 +15,7 @@ export function ArchivedPersons() {
   const v = useVersion();
   const list = useMemo(() => listArchivedPersons(), [v]);
 
-  if (list.length === 0) return <Empty text="没有归档的人物" />;
+  if (list.length === 0) return <Empty compact text="没有归档的人物" />;
 
   return (
     <ul className="merge-list">

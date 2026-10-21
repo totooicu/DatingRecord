@@ -80,6 +80,19 @@ export function upsertDef(input: Partial<AttributeDef> & { key: string; label: s
   });
 }
 
+/** 从归档恢复：定义与历史值一直都还在 */
+export function restoreDef(key: string): void {
+  const now = new Date().toISOString();
+  transact(() => {
+    run('UPDATE attribute_defs SET archived = 0, hlc = ?, updated_at = ? WHERE key = ?', [
+      hlcNow(getDeviceId()),
+      now,
+      key,
+    ]);
+    appendOplog('attribute_def', key, 'update', { archived: false });
+  });
+}
+
 /** 归档（软删除）：历史值全部保留，永不物理删除定义 */
 export function archiveDef(key: string): void {
   const now = new Date().toISOString();

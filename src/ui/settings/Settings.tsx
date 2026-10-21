@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ArchivedPersons, DuplicatePersons } from '../merge';
+import { DuplicatePersons } from '../merge';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupSection } from './BackupSection';
 import { DefTable } from './DefTable';
 import { DefFormModal } from './DefFormModal';
-import { FilesSection } from './FilesSection';
+import { FilesSection } from '../files';
+import { ArchiveSection } from './ArchiveSection';
 import { OverviewSection } from './OverviewSection';
 import { SampleSection } from './SampleSection';
 import { DEFAULT_SETTINGS_KEY, type SettingsKey } from './sections';
@@ -49,18 +50,12 @@ export function Settings() {
         )}
 
         {active === 'people' && (
-          <>
-            <Section title="重复人物" desc="同名建了多次的记录，合并后事件关联会归到一起。">
-              <DuplicatePersons />
-            </Section>
-            <Section
-              title="归档的人物"
-              desc="不在人物列表里、但仍保存在库中的记录——库概览里「+N 归档」的 N 就等于这里的条数。手动归档的可原样恢复；合并重复人物时被并入的那条也列在这里（事件已转到对方名下，只能彻底清理）。"
-            >
-              <ArchivedPersons />
-            </Section>
-          </>
+          <Section title="重复人物" desc="同名建了多次的记录，合并后事件关联会归到一起。">
+            <DuplicatePersons />
+          </Section>
         )}
+
+        {active === 'archive' && <ArchiveSection />}
 
         {active === 'files' && (
           <Section

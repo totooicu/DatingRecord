@@ -114,6 +114,8 @@ export function FileRow({
   onPreview,
   onCopy,
   onDelete,
+  onShowRefs,
+  onPick,
 }: {
   file: StoredFile;
   thumb?: string;
@@ -123,15 +125,19 @@ export function FileRow({
   onPreview: (f: StoredFile) => void;
   onCopy: (f: StoredFile) => void;
   onDelete: (f: StoredFile) => void;
+  onShowRefs: (f: StoredFile) => void;
+  /** 编辑器里的挑选模式：给了就在行内显示「插入」，点名字也直接插入 */
+  onPick?: (f: StoredFile) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(file.name);
   const refs = countRefs(file.id);
   const kind = kindOf(file.name, file.mime);
 
-  /** 批量模式下，点缩略图/文件名是勾选，不是预览 */
+  /** 批量模式勾选、挑选模式插入，其余情况预览 */
   const openOrSelect = () => {
     if (batch) onToggleSelect(file.id);
+    else if (onPick) onPick(file);
     else onPreview(file);
   };
 
@@ -162,7 +168,12 @@ export function FileRow({
         </button>
       )}
 
-      <button className="file-thumb-btn" onClick={openOrSelect} title={batch ? '选择' : '预览'} aria-label={batch ? '选择' : '预览'}>
+      <button
+        className="file-thumb-btn"
+        onClick={() => (batch ? onToggleSelect(file.id) : onPreview(file))}
+        title={batch ? '选择' : '预览'}
+        aria-label={batch ? '选择' : '预览'}
+      >
         {thumb ? (
           <img className="file-thumb" src={thumb} alt="" />
         ) : (
@@ -176,6 +187,11 @@ export function FileRow({
 
           {!batch && (
             <span className="file-actions">
+              {onPick && (
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => onPick(file)}>
+                  插入
+                </button>
+              )}
               <IconButton label="预览" onClick={() => onPreview(file)}>
                 <EyeIcon />
               </IconButton>
@@ -199,7 +215,7 @@ export function FileRow({
                 danger
                 confirmText={
                   refs > 0
-                    ? `删除「${file.name}」？还有 ${refs} 处正文引用它，那些位置会显示成「附件已删除」。`
+                    ? `删除「${file.name}」？还有 ${refs} 个事件在正文里引用它，那些位置会显示成「附件已删除」。`
                     : `删除「${file.name}」？`
                 }
                 onConfirm={() => onDelete(file)}
@@ -224,7 +240,11 @@ export function FileRow({
             }}
           />
         ) : (
-          <button className="file-name" onClick={openOrSelect} title={file.name}>
+          <button
+            className="file-name"
+            onClick={openOrSelect}
+            title={onPick && !batch ? '插入引用' : file.name}
+          >
             <FileNameText name={file.name} />
           </button>
         )}
@@ -234,7 +254,13 @@ export function FileRow({
           <span>·</span>
           <span>{fmtDate(file.createdAt)}</span>
           <span>·</span>
-          <span>{refs > 0 ? `被 ${refs} 处正文引用` : '未被引用'}</span>
+          {refs > 0 ? (
+            <button type="button" className="file-refs-btn" onClick={() => onShowRefs(file)} title="查看引用它的事件">
+              被 {refs} 个事件引用
+            </button>
+          ) : (
+            <span>未被引用</span>
+          )}
         </div>
       </div>
     </li>

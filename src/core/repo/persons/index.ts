@@ -5,7 +5,7 @@
 
 export { defFromRow, personFromRow } from './rows';
 export type { DefRow, PersonRow } from './rows';
-export { listDefs, getDef, upsertDef, archiveDef } from './attrs';
+export { listDefs, getDef, upsertDef, archiveDef, restoreDef } from './attrs';
 export {
   listPersons,
   listArchivedPersons,

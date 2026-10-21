@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
-import { addFile, fileRefSyntax } from '../../core/repo/files';
+import { addFile, fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { bump } from '../../store';
+import { Modal } from '../common';
+import { FilesSection } from '../files';
 import { MarkdownView } from './MarkdownView';
 import { MarkdownToolbar } from './MarkdownToolbar';
 import { caretOf, insertText, type Caret } from './insert';
@@ -26,6 +28,7 @@ export function MarkdownEditor({
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [libOpen, setLibOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -59,6 +62,12 @@ export function MarkdownEditor({
     }
   };
 
+  /** 从文件库挑一个已有文件：插入引用后关掉悬浮窗，回到正文 */
+  const pickExisting = (f: StoredFile) => {
+    apply((c) => insertText(c, fileRefSyntax(f)));
+    setLibOpen(false);
+  };
+
   return (
     <div className="md-editor">
       <div className="md-editor-head">
@@ -78,7 +87,13 @@ export function MarkdownEditor({
             预览
           </button>
         </div>
-        {mode === 'edit' && <MarkdownToolbar apply={apply} onPickFile={() => fileRef.current?.click()} />}
+        {mode === 'edit' && (
+          <MarkdownToolbar
+            apply={apply}
+            onPickFile={() => fileRef.current?.click()}
+            onOpenFiles={() => setLibOpen(true)}
+          />
+        )}
       </div>
 
       {mode === 'edit' ? (
@@ -108,6 +123,12 @@ export function MarkdownEditor({
       />
       {busy && <p className="muted small">正在上传…</p>}
       {err && <p className="warn-line">{err}</p>}
+
+      {libOpen && (
+        <Modal title="文件库 · 插入引用" wide onClose={() => setLibOpen(false)}>
+          <FilesSection onPick={pickExisting} />
+        </Modal>
+      )}
     </div>
   );
 }

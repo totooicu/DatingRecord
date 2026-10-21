@@ -76,6 +76,11 @@ export function updateCollection(
   });
 }
 
+/** 从归档恢复：status 回到「进行中」，成员关系本来就没动过 */
+export function restoreCollection(id: string): void {
+  updateCollection(id, { status: 'ongoing' });
+}
+
 /**
  * 移动集合：必须做环检测（不能把集合移进自己的子孙），移动后重建闭包表。
  */

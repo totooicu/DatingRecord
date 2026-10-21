@@ -57,6 +57,10 @@
   color: var(--muted);
 }
 
+.empty-compact {
+  padding: 14px 0;
+}
+
 .muted {
   color: var(--muted);
 }

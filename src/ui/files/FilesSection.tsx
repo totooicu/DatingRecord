@@ -17,11 +17,12 @@ import { useVersion, bump } from '../../store';
 import { ConfirmButton } from '../common';
 import { PreviewModal } from '../preview';
 import { FileFilters } from './FileFilters';
+import { FileRefsModal } from './FileRefsModal';
 import { FileRow } from './FileRow';
 import { applyFilter, EMPTY_FILTER, type FileFilter, type FileSort } from './fileFilter';
 import { fmtSize } from './fileFormat';
 
-export function FilesSection() {
+export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const v = useVersion();
   const files = useMemo(() => listFiles(), [v]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -29,6 +30,7 @@ export function FilesSection() {
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [tip, setTip] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [refsFile, setRefsFile] = useState<StoredFile | null>(null);
 
   const [filter, setFilter] = useState<FileFilter>(EMPTY_FILTER);
   const [sort, setSort] = useState<FileSort>('new');
@@ -124,6 +126,7 @@ export function FilesSection() {
 
   return (
     <div>
+      {onPick && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
       <div className="row-actions">
         <button className="btn btn-primary btn-sm" onClick={() => inputRef.current?.click()} disabled={busy}>
           {busy ? '处理中…' : '＋ 上传文件'}
@@ -201,6 +204,8 @@ export function FilesSection() {
               onPreview={(x) => setPreviewId(x.id)}
               onCopy={copyRef}
               onDelete={remove}
+              onShowRefs={setRefsFile}
+              onPick={onPick}
             />
           ))}
         </ul>
@@ -208,6 +213,7 @@ export function FilesSection() {
 
       {tip && <p className="muted small">{tip}</p>}
       {previewId && <PreviewModal file={files.find((f) => f.id === previewId)!} onClose={() => setPreviewId(null)} />}
+      {refsFile && <FileRefsModal file={refsFile} onClose={() => setRefsFile(null)} />}
     </div>
   );
 }

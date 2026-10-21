@@ -69,9 +69,18 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-export function Empty({ text, action }: { text: string; action?: ReactNode }) {
+export function Empty({
+  text,
+  action,
+  compact,
+}: {
+  text: string;
+  action?: ReactNode;
+  /** 卡片里连续出现多个空状态时用更小的留白 */
+  compact?: boolean;
+}) {
   return (
-    <div className="empty">
+    <div className={compact ? 'empty empty-compact' : 'empty'}>
       <p>{text}</p>
       {action}
     </div>

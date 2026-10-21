@@ -5,8 +5,22 @@
 export { collectionFromRow, type CollectionRow } from './rows';
 export { flattenTree, type FlatNode } from './flatten';
 export { rebuildClosure, ensureClosure } from './closure';
-export { getRoot, getCollection, getTree, getBreadcrumb, listChildren, type TreeNode } from './read';
-export { createCollection, updateCollection, moveCollection, deleteCollection } from './write';
+export {
+  getRoot,
+  getCollection,
+  getTree,
+  getBreadcrumb,
+  listChildren,
+  listArchivedCollections,
+  type TreeNode,
+} from './read';
+export {
+  createCollection,
+  updateCollection,
+  restoreCollection,
+  moveCollection,
+  deleteCollection,
+} from './write';
 export {
   listMembers,
   addMember,
