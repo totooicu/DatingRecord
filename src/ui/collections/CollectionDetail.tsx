@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getBreadcrumb,
   getCollection,
+  isSmart,
+  isEmptyRule,
   listChildren,
   listMembers,
+  listSmartEvents,
+  updateCollection,
 } from '../../core/repo/collections';
 import { getEvent } from '../../core/repo/events';
 import { EventForm } from '../event';
@@ -12,6 +16,8 @@ import { useVersion, bump } from '../../store';
 import { CollectionHead } from './CollectionHead';
 import { CollectionStats } from './CollectionStats';
 import { MemberList, ChildList } from './MemberList';
+import { SmartList } from './SmartList';
+import { RuleModal } from './RuleModal';
 import { AddEventModal } from './AddEventModal';
 import { MoveModal } from './MoveModal';
 
@@ -21,11 +27,39 @@ export function CollectionDetail({ id }: { id: string }) {
   const members = useMemo(() => listMembers(id), [id, v]);
   const children = useMemo(() => listChildren(id), [id, v]);
   const breadcrumb = useMemo(() => getBreadcrumb(id), [id, v]);
+  // 智能集合的成员是现算的，跟着 version 一起重算
+  const smartEvents = useMemo(
+    () => (collection && isSmart(collection) ? listSmartEvents(collection) : []),
+    [collection, v],
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [ruleOpen, setRuleOpen] = useState(false);
+  // 新建出来的智能集合规则是空的，进详情页就弹规则编辑，省得先被「全部事件」唬住
+  const [ruleDismissed, setRuleDismissed] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // 所有 hook 必须集中在「collection 不存在」的早退之前，否则组件复用时会乱序
+  const smart = !!collection && isSmart(collection);
+
+  useEffect(() => {
+    setRuleDismissed(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (!smart) {
+      setRuleOpen(false);
+    } else if (!ruleDismissed && isEmptyRule(collection?.rule)) {
+      setRuleOpen(true);
+    }
+  }, [smart, ruleDismissed, collection]);
+
+  const closeRule = () => {
+    setRuleOpen(false);
+    setRuleDismissed(true);
+  };
 
   useEffect(() => {
     if (msg) {
@@ -47,15 +81,40 @@ export function CollectionDetail({ id }: { id: string }) {
 
       {msg && <div className="alert">{msg}</div>}
 
-      <CollectionStats collectionId={id} members={members} children={children} />
-      <ChildList children={children} />
-      <MemberList
+      <CollectionStats
         collectionId={id}
-        members={members}
-        onEditEvent={setEditingEventId}
-        onAdd={() => setAddOpen(true)}
+        members={smart ? [] : members}
+        children={children}
+        smartCount={smart ? smartEvents.length : undefined}
       />
+      <ChildList children={children} />
+      {smart ? (
+        <SmartList
+          events={smartEvents}
+          rule={collection.rule}
+          onEditEvent={setEditingEventId}
+          onEditRule={() => setRuleOpen(true)}
+        />
+      ) : (
+        <MemberList
+          collectionId={id}
+          members={members}
+          onEditEvent={setEditingEventId}
+          onAdd={() => setAddOpen(true)}
+        />
+      )}
 
+      {ruleOpen && (
+        <RuleModal
+          rule={collection.rule}
+          onClose={closeRule}
+          onSave={(r) => {
+            updateCollection(id, { rule: r });
+            bump();
+            closeRule();
+          }}
+        />
+      )}
       {addOpen && <AddEventModal collectionId={id} onClose={() => setAddOpen(false)} />}
       {moveOpen && (
         <MoveModal collectionId={id} onClose={() => setMoveOpen(false)} onError={setMsg} />

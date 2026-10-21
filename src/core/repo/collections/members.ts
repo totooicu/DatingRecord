@@ -5,6 +5,7 @@ import { hlcNow } from '../../time';
 import { orderKeyBetween } from '../../order';
 import type { Collection } from '../../types';
 import { getCollection } from './read';
+import { isSmart } from './smart';
 
 // ---------------- 成员 ----------------
 
@@ -28,6 +29,9 @@ export function listMembers(collectionId: string): MemberItem[] {
 }
 
 export function addMember(collectionId: string, memberType: 'event' | 'collection', memberId: string): void {
+  // 智能集合的成员是规则算出来的，手动挂进去下一秒就会被求值结果覆盖，没意义
+  const col = getCollection(collectionId);
+  if (col && isSmart(col)) return;
   const members = listMembers(collectionId);
   if (members.some((m) => m.memberType === memberType && m.memberId === memberId)) return;
   const lastKey = members.length ? members[members.length - 1].orderKey : null;

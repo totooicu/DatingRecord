@@ -97,6 +97,29 @@
   padding: 0 14px 10px;
 }
 
+.inline-create input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-create-kind {
+  flex: none;
+  width: 72px;
+  min-height: 38px;
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.tree-smart {
+  font-style: normal;
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+.rule-summary {
+  margin: 0 0 8px;
+}
+
 /* 列表页搜索框：手机端唯一入口（宽屏 topbar 里的搜索框已移除） */
 .list-search {
   display: flex;

@@ -4,9 +4,10 @@ import { queryAll, run, transact, appendOplog, getDeviceId } from '../../db';
 import { newId } from '../../id';
 import { hlcNow } from '../../time';
 import { orderKeyBetween } from '../../order';
-import type { Collection, CollectionKind } from '../../types';
+import type { Collection, CollectionKind, SmartRule } from '../../types';
 import { rebuildClosure } from './closure';
 import { getRoot, getCollection, listChildren } from './read';
+import { isSmart } from './smart';
 
 // ---------------- 写操作 ----------------
 
@@ -15,18 +16,21 @@ export function createCollection(input: {
   parentId?: string | null;
   kind?: CollectionKind;
   description?: string;
+  /** 智能集合的匹配规则；普通集合忽略 */
+  rule?: SmartRule | null;
 }): Collection {
   const id = newId('c');
   const now = new Date().toISOString();
   const parentId = input.parentId ?? getRoot()?.id ?? null;
   const siblings = parentId ? listChildren(parentId) : [];
   const lastKey = siblings.length ? siblings[siblings.length - 1].orderKey : null;
+  const rule = input.kind === 'smart' ? input.rule ?? {} : null;
 
   transact(() => {
     run(
       `INSERT INTO collections
-       (id,name,kind,parent_id,order_key,description,status,is_root,time_range_auto,device_id,rev,hlc,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id,name,kind,parent_id,order_key,description,status,rule_json,is_root,time_range_auto,device_id,rev,hlc,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         input.name,
@@ -35,6 +39,7 @@ export function createCollection(input: {
         orderKeyBetween(lastKey, null),
         input.description ?? '',
         'ongoing',
+        rule ? JSON.stringify(rule) : null,
         0,
         1,
         getDeviceId(),
@@ -44,7 +49,7 @@ export function createCollection(input: {
         now,
       ],
     );
-    appendOplog('collection', id, 'insert', { name: input.name, parentId });
+    appendOplog('collection', id, 'insert', { name: input.name, parentId, kind: input.kind ?? 'arc' });
   });
   rebuildClosure();
   return getCollection(id)!;
@@ -52,27 +57,35 @@ export function createCollection(input: {
 
 export function updateCollection(
   id: string,
-  patch: Partial<Pick<Collection, 'name' | 'description' | 'status' | 'kind' | 'cover'>>,
+  patch: Partial<Pick<Collection, 'name' | 'description' | 'status' | 'kind' | 'cover' | 'rule'>>,
 ): void {
   const now = new Date().toISOString();
   const hlc = hlcNow(getDeviceId());
   transact(() => {
     const c = getCollection(id);
     if (!c) return;
+    // 智能集合的成员是算出来的，不允许手动挂；把集合改成智能时清掉旧成员，
+    // 改回普通时成员早就手动加回去了，这里不用管。
+    if (patch.kind !== undefined && patch.kind !== c.kind && isSmart({ kind: patch.kind })) {
+      run('UPDATE collection_members SET deleted_at = ? WHERE collection_id = ?', [now, id]);
+    }
+    const rule = 'rule' in patch ? patch.rule : c.rule;
     run(
-      `UPDATE collections SET name=?, description=?, status=?, kind=?, cover=?, rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
+      `UPDATE collections SET name=?, description=?, status=?, kind=?, cover=?, rule_json=?, rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
       [
         patch.name ?? c.name,
         patch.description ?? c.description,
         patch.status ?? c.status,
         patch.kind ?? c.kind,
         patch.cover ?? c.cover ?? null,
+        rule ? JSON.stringify(rule) : null,
         hlc,
         now,
         id,
       ],
     );
-    appendOplog('collection', id, 'update', patch);
+    // title 给撤销提示条用：改名时是新名，改规则/状态时用当前名（撤销回滚由快照负责）
+    appendOplog('collection', id, 'update', { ...patch, title: patch.name ?? c.name });
   });
 }
 

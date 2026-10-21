@@ -14,15 +14,22 @@ export function CollectionTree({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const [newKind, setNewKind] = useState<'manual' | 'smart'>('manual');
 
   if (!tree) return <div className="muted pad">暂无事件集</div>;
 
   const submit = () => {
     const n = name.trim();
     if (!n) return;
-    const c = createCollection({ name: n, parentId: selectedId ?? tree.id });
+    const c = createCollection({
+      name: n,
+      parentId: selectedId ?? tree.id,
+      kind: newKind === 'smart' ? 'smart' : 'arc',
+      rule: newKind === 'smart' ? {} : null,
+    });
     bump();
     setName('');
+    setNewKind('manual');
     setCreating(false);
     onSelect(c.id);
   };
@@ -44,6 +51,7 @@ export function CollectionTree({
           </button>
           <button className="tree-name" onClick={() => onSelect(node.id)}>
             {node.name}
+            {node.kind === 'smart' && <em className="tree-smart" title="智能集合：成员由规则实时算出">⚡</em>}
             {node.totalEventCount > 0 && <em>{node.totalEventCount}</em>}
           </button>
         </div>
@@ -72,6 +80,15 @@ export function CollectionTree({
               if (e.key === 'Escape') setCreating(false);
             }}
           />
+          <select
+            className="inline-create-kind"
+            value={newKind}
+            onChange={(e) => setNewKind(e.target.value as 'manual' | 'smart')}
+            title="普通集合手动添加成员；智能集合按规则自动匹配"
+          >
+            <option value="manual">普通</option>
+            <option value="smart">智能</option>
+          </select>
           <button className="btn btn-primary btn-sm" onClick={submit}>
             创建
           </button>

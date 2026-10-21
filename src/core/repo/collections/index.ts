@@ -15,6 +15,15 @@ export {
   type TreeNode,
 } from './read';
 export {
+  isSmart,
+  isEmptyRule,
+  emptyRule,
+  ruleToFilter,
+  listSmartEvents,
+  smartEventCount,
+  describeRule,
+} from './smart';
+export {
   createCollection,
   updateCollection,
   restoreCollection,

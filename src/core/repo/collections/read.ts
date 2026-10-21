@@ -3,6 +3,7 @@
 import { queryAll, queryOne } from '../../db';
 import type { Collection } from '../../types';
 import { collectionFromRow, type CollectionRow } from './rows';
+import { isSmart, listSmartEvents } from './smart';
 
 // ---------------- 查询 ----------------
 
@@ -51,12 +52,16 @@ export function getTree(): TreeNode | null {
     totals.set(row.ancestor_id, row.c);
   }
 
-  const build = (c: Collection): TreeNode => ({
-    ...c,
-    children: all.filter((x) => x.parentId === c.id).map(build),
-    eventCount: counts.get(c.id) ?? 0,
-    totalEventCount: totals.get(c.id) ?? 0,
-  });
+  const build = (c: Collection): TreeNode => {
+    // 智能集合的成员一条都不落库，计数只能现算，否则树里永远显示 0
+    const n = isSmart(c) ? listSmartEvents(c).length : (counts.get(c.id) ?? 0);
+    return {
+      ...c,
+      children: all.filter((x) => x.parentId === c.id).map(build),
+      eventCount: n,
+      totalEventCount: isSmart(c) ? n : (totals.get(c.id) ?? 0),
+    };
+  };
   return build(root);
 }
 
