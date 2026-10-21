@@ -4,75 +4,41 @@
 // 而「导出备份」需要临时把二进制转成 base64（见 core/io 的附件处理）。
 //
 // 正文引用只存 file:<id>，不存文件名，所以这里改名不会影响任何既有引用。
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  addFile,
-  deleteFile,
-  fileRefSyntax,
-  listFiles,
-  urlForFile,
-  type StoredFile,
-} from '../../core/repo/files';
+import { useMemo, useState } from 'react';
+import { deleteFile, fileRefSyntax, listFiles, type StoredFile } from '../../core/repo/files';
+import { openEvent } from '../openEvent';
 import { useVersion, bump } from '../../store';
-import { ConfirmButton } from '../common';
 import { PreviewModal } from '../preview';
+import { CollisionModal } from './CollisionModal';
+import { MergeModal } from './MergeModal';
+import { FileBatchBar } from './FileBatchBar';
 import { FileFilters } from './FileFilters';
 import { FileRefsModal } from './FileRefsModal';
 import { FileRow } from './FileRow';
+import { useThumbs } from './useThumbs';
+import { useUploader } from './useUploader';
 import { applyFilter, EMPTY_FILTER, type FileFilter, type FileSort } from './fileFilter';
 import { fmtSize } from './fileFormat';
 
 export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const v = useVersion();
   const files = useMemo(() => listFiles(), [v]);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const thumbs = useThumbs(files);
   const [tip, setTip] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [refsFile, setRefsFile] = useState<StoredFile | null>(null);
+  const { busy, ask, inputRef, upload, openPicker } = useUploader(setTip);
 
   const [filter, setFilter] = useState<FileFilter>(EMPTY_FILTER);
   const [sort, setSort] = useState<FileSort>('new');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [batch, setBatch] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
 
   const visible = useMemo(() => applyFilter(files, filter, sort), [files, filter, sort]);
   const selectedVisible = visible.filter((f) => selected.has(f.id));
   const allSelected = visible.length > 0 && selectedVisible.length === visible.length;
-
-  const key = files.map((f) => f.id).join(',');
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const next: Record<string, string> = {};
-      await Promise.all(
-        files
-          .filter((f) => f.mime.startsWith('image/'))
-          .map(async (f) => {
-            const u = await urlForFile(f.id);
-            if (u) next[f.id] = u;
-          }),
-      );
-      if (alive) setThumbs(next);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [key]);
-
-  const upload = async (list: FileList | null) => {
-    if (!list || list.length === 0) return;
-    setBusy(true);
-    try {
-      for (const f of Array.from(list)) await addFile(f);
-      bump();
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  };
 
   const copyRef = async (f: StoredFile) => {
     const text = fileRefSyntax(f);
@@ -112,14 +78,10 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const removeSelected = async () => {
     const ids = selectedVisible.map((f) => f.id);
     if (!ids.length) return;
-    setBusy(true);
-    try {
-      for (const id of ids) await deleteFile(id);
-      setSelected(new Set());
-      bump();
-    } finally {
-      setBusy(false);
-    }
+    for (const id of ids) await deleteFile(id);
+    setSelected(new Set());
+    bump();
+    setTip(`已删除 ${ids.length} 个文件`);
   };
 
   const totalSize = visible.reduce((s, f) => s + f.size, 0);
@@ -128,7 +90,7 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
     <div>
       {onPick && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
       <div className="row-actions">
-        <button className="btn btn-primary btn-sm" onClick={() => inputRef.current?.click()} disabled={busy}>
+        <button className="btn btn-primary btn-sm" onClick={openPicker} disabled={busy}>
           {busy ? '处理中…' : '＋ 上传文件'}
         </button>
         <span className="muted small">
@@ -160,26 +122,17 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
       />
 
       {batch && (
-        <div className="file-batch-bar">
-          <button className="btn btn-sm" onClick={toggleAll} disabled={visible.length === 0}>
-            {allSelected ? '取消全选' : '全选'}
-          </button>
-          <span className="muted small">已选 {selectedVisible.length} 个</span>
-          {selectedVisible.length > 0 ? (
-            <ConfirmButton
-              compact
-              danger
-              className="btn-sm"
-              text={`删除选中 (${selectedVisible.length})`}
-              confirmText={`删除选中的 ${selectedVisible.length} 个文件？正文里的引用会显示成「附件已删除」。`}
-              onConfirm={() => void removeSelected()}
-            />
-          ) : (
-            <button className="btn btn-sm" disabled>
-              删除选中
-            </button>
-          )}
-        </div>
+        <FileBatchBar
+          count={selectedVisible.length}
+          total={visible.length}
+          allSelected={allSelected}
+          targetName={selectedVisible[0]?.name}
+          onToggleAll={toggleAll}
+          onMerge={() =>
+            setMerge({ target: selectedVisible[0].id, sources: selectedVisible.slice(1).map((f) => f.id) })
+          }
+          onDelete={() => void removeSelected()}
+        />
       )}
 
       {files.length === 0 ? (
@@ -213,7 +166,32 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
 
       {tip && <p className="muted small">{tip}</p>}
       {previewId && <PreviewModal file={files.find((f) => f.id === previewId)!} onClose={() => setPreviewId(null)} />}
-      {refsFile && <FileRefsModal file={refsFile} onClose={() => setRefsFile(null)} />}
+      {refsFile && (
+        <FileRefsModal
+          file={refsFile}
+          onClose={() => setRefsFile(null)}
+          onOpenEvent={(eid) => openEvent(eid)}
+        />
+      )}
+      {merge && (
+        <MergeModal
+          targetId={merge.target}
+          sourceIds={merge.sources}
+          onClose={() => setMerge(null)}
+          onDone={(m) => {
+            setSelected(new Set());
+            setTip(m);
+          }}
+        />
+      )}
+      {ask && (
+        <CollisionModal
+          prompt={ask.prompt}
+          uploading={ask.preview}
+          onDecide={(pick) => ask.step(pick)}
+          onCancel={ask.cancel}
+        />
+      )}
     </div>
   );
 }

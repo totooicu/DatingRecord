@@ -7,6 +7,8 @@ import type { Collection, Member } from './collection';
 
 export interface Attachment {
   id: string;
+  /** 引用名（hash 名）。老备份里没有这个字段，导入时回退成 id */
+  storedId?: string;
   sha256: string;
   mime: string;
   name: string;
@@ -14,6 +16,8 @@ export interface Attachment {
   size: number;
   takenAt?: string | null;
   createdAt: string;
+  /** 1 = 与别的文件同 hash 但内容不同（用户确认过碰撞） */
+  hashShared?: boolean;
 }
 
 export interface OplogEntry {
@@ -46,4 +50,4 @@ export interface LibraryFile {
   attachments?: Attachment[];
 }
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;

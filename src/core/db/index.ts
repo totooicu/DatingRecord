@@ -13,7 +13,7 @@ import { queryOne } from './query';
 import { setMeta } from './meta';
 import { flushPersist } from './persist';
 import { seedDefaults } from './seed';
-import { SCHEMA_VERSION } from '../types';
+import { ensureAttachmentColumns, runMigrations } from './migrate';
 
 /**
  * 初始化数据库。
@@ -55,17 +55,18 @@ export async function initDb(onProgress?: (msg: string) => void): Promise<Databa
   return db;
 }
 
-/** 迁移链：按 schemaVersion 逐级升级 */
+/** 迁移链：按 schemaVersion 逐级升级（结构升级见 db/migrate.ts） */
 function migrate(d: Database): void {
   d.run(SCHEMA_SQL);
+  ensureAttachmentColumns(d);
   const row = queryOne<{ value: string }>('SELECT value FROM meta WHERE key = ?', ['schema_version']);
   const current = row ? Number(row.value) : 0;
 
   if (current < 1) {
     seedDefaults(d);
-    setMeta('schema_version', String(SCHEMA_VERSION));
+    setMeta('schema_version', '1');
   }
-  // 未来：if (current < 2) { ...升级...; setMeta('schema_version','2') }
+  runMigrations(d, Math.max(current, 1));
   setMeta('last_opened_at', new Date().toISOString());
 }
 
@@ -98,3 +99,4 @@ export { getMeta, setMeta } from './meta';
 export { markDirty, flushPersist, persist } from './persist';
 export { openIdb, BLOB_STORE } from './idb';
 export { SCHEMA_SQL } from './schema';
+export { runMigrations, ensureAttachmentColumns } from './migrate';

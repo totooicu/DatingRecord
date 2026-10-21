@@ -3,6 +3,12 @@
 // 分工：元数据（名称/类型/大小/时间）存 SQLite attachments 表，
 // 二进制存 IndexedDB blobs store —— 后者详见 core/db/blob.ts 的说明。
 // 表里的 data 列不再写内容（历史上是 base64），只在导出备份时临时填充。
+//
+// 内容寻址（schema v2）：
+//   stored_id   正文引用里用的名字，由内容 hash 生成（sha-xxx.jpg）
+//   name        用户看到的实际名，随时可改，与引用无关
+//   hash_shared 1 = 与别的行同 hash 但内容不同（用户确认过碰撞）
+// 上传判重、迁移、合并的逻辑都在 core/files/ 下，这里只负责读写库。
 
 import { queryAll, queryOne, run, transact, appendOplog } from '../db';
 import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
@@ -11,74 +17,154 @@ import { FILE_REF_PREFIX } from '../markdown';
 
 export interface StoredFile {
   id: string;
+  /** 引用名（hash 名），正文里 file:<storedId> 用的就是它 */
+  storedId: string;
+  /** 实际名，用户可见、可改 */
   name: string;
   mime: string;
   size: number;
   sha256: string;
+  /** 同 hash 但内容不同（用户确认碰撞） */
+  hashShared: boolean;
   createdAt: string;
 }
 
 interface FileRow {
   id: string;
+  stored_id: string | null;
   name: string;
   mime: string;
   size: number;
   sha256: string;
+  hash_shared: number | null;
   created_at: string;
 }
 
 function fromRow(r: FileRow): StoredFile {
   return {
     id: r.id,
+    // 老库没跑完迁移时 stored_id 会是空的，退回 id：语义等同「老的引用名」
+    storedId: r.stored_id || r.id,
     name: r.name,
     mime: r.mime,
     size: Number(r.size ?? 0),
     sha256: r.sha256 ?? '',
+    hashShared: Number(r.hash_shared ?? 0) === 1,
     createdAt: r.created_at ?? '',
   };
 }
 
 export function listFiles(): StoredFile[] {
   return queryAll<FileRow>(
-    'SELECT id, name, mime, size, sha256, created_at FROM attachments ORDER BY created_at DESC',
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments ORDER BY created_at DESC',
   ).map(fromRow);
 }
 
 export function getFile(id: string): StoredFile | null {
   const r = queryOne<FileRow>(
-    'SELECT id, name, mime, size, sha256, created_at FROM attachments WHERE id = ?',
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments WHERE id = ?',
     [id],
   );
   return r ? fromRow(r) : null;
 }
 
-/** 非安全上下文（局域网 http 打开）没有 crypto.subtle，算不出就留空，不影响使用 */
-async function sha256Of(blob: Blob): Promise<string> {
-  try {
-    const buf = await blob.arrayBuffer();
-    const digest = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(digest))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  } catch {
-    return '';
-  }
+/** 原样插入一条附件记录（不做判重）。判重逻辑见 core/files/upload.ts */
+export interface RawFileInput {
+  file: Blob;
+  name: string;
+  storedId: string;
+  sha256: string;
+  hashShared?: boolean;
+  createdAt?: string;
 }
 
-/** 上传一个文件：二进制进 IndexedDB，元数据进库，全程一个事务 + oplog */
-export async function addFile(file: File): Promise<StoredFile> {
+export async function insertFileRaw(input: RawFileInput): Promise<StoredFile> {
   const id = newId('f');
-  const sha = await sha256Of(file);
-  const now = new Date().toISOString();
-  await putBlob(id, file);
+  const mime = input.file.type || 'application/octet-stream';
+  const now = input.createdAt ?? new Date().toISOString();
+  await putBlob(id, input.file);
   transact(() => {
     run(
-      'INSERT INTO attachments (id, sha256, mime, name, data, size, taken_at, created_at) VALUES (?,?,?,?,?,?,?,?)',
-      [id, sha, file.type || 'application/octet-stream', file.name, '', file.size, null, now],
+      `INSERT INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [id, input.storedId, input.sha256, mime, input.name, '', input.file.size, null, now, input.hashShared ? 1 : 0],
     );
-    appendOplog('attachment', id, 'insert', { name: file.name, size: file.size, mime: file.type });
+    appendOplog('attachment', id, 'insert', { name: input.name, size: input.file.size, mime, storedId: input.storedId });
   });
   return getFile(id)!;
+}
+
+/** 改引用名（迁移/合并用）；正文里已有的旧引用需要调用方自己替换 */
+export function setStoredId(id: string, storedId: string, hashShared?: boolean): void {
+  transact(() => {
+    if (hashShared === undefined) {
+      run('UPDATE attachments SET stored_id = ? WHERE id = ?', [storedId, id]);
+    } else {
+      run('UPDATE attachments SET stored_id = ?, hash_shared = ? WHERE id = ?', [storedId, hashShared ? 1 : 0, id]);
+    }
+    appendOplog('attachment', id, 'update', { storedId, hashShared });
+  });
+}
+
+/** 写回算出来的 hash（迁移里给老文件补 sha256 用） */
+export function setFileHash(id: string, sha256: string): void {
+  transact(() => {
+    run('UPDATE attachments SET sha256 = ? WHERE id = ?', [sha256, id]);
+    appendOplog('attachment', id, 'update', { sha256 });
+  });
+}
+
+/** 同 hash 且未标记碰撞的行（判重的候选集合） */
+export function filesByHash(sha256: string): StoredFile[] {
+  if (!sha256) return [];
+  return queryAll<FileRow>(
+    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments
+     WHERE sha256 = ? AND hash_shared = 0 ORDER BY created_at ASC`,
+    [sha256],
+  ).map(fromRow);
+}
+
+/**
+ * 按引用名找文件。
+ *
+ * stored_id 是内容寻址之后的名字；老库里的引用写的是老 id，所以这里必须
+ * 两级回退（stored_id → id），否则从旧备份导入的正文会整片变成「附件已删除」。
+ */
+export function fileByStoredId(key: string): StoredFile | null {
+  const k = key.trim();
+  if (!k) return null;
+  const r =
+    queryOne<FileRow>(
+      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments
+       WHERE stored_id = ? ORDER BY created_at ASC LIMIT 1`,
+      [k],
+    ) ??
+    queryOne<FileRow>(
+      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments
+       WHERE id = ? LIMIT 1`,
+      [k],
+    );
+  return r ? fromRow(r) : null;
+}
+
+/** 按引用名批量取 id（渲染层把正文里的 file:<key> 映射成真实 id） */
+export function resolveFileIds(keys: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of keys) {
+    const f = fileByStoredId(k);
+    if (f) out[k] = f.id;
+  }
+  return out;
+}
+
+/** 所有引用名占用情况（挑新名字时用） */
+export function nameSlots(excludeId?: string): { storedId: string; hashShared: boolean; id: string }[] {
+  return queryAll<FileRow>(
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments',
+  )
+    .map(fromRow)
+    .filter((f) => f.id !== excludeId)
+    .map((f) => ({ id: f.id, storedId: f.storedId, hashShared: f.hashShared }));
 }
 
 /** 彻底删除：元数据、二进制、objectURL 缓存三处一起清 */
@@ -91,16 +177,15 @@ export async function deleteFile(id: string): Promise<void> {
   });
 }
 
-/** 有多少个事件在正文里引用了这个文件（用于删除前的提示） */
-export function countRefs(id: string): number {
-  const r = queryOne<{ c: number | null }>(
-    `SELECT COUNT(*) AS c FROM events
-     WHERE deleted_at IS NULL AND content LIKE ?`,
-    [`%${FILE_REF_PREFIX}${id}%`],
-  );
-  return r?.c ?? 0;
-}
-
+/**
+ * 引用查询的唯一入口：文件被哪些未删除的事件在正文里引用了。
+ *
+ * countRefs 与 eventsReferencingFile 必须同源，否则会出现
+ * 「被 3 个事件引用」点开只有 2 条这种对不上的情况。
+ *
+ * 老数据里正文写的是 file:<老id>，新数据是 file:<storedId>，
+ * 所以两个名字都要匹配（用 / 分隔的正则串做不到，直接两次 LIKE 拼起来）。
+ */
 export interface FileRefEvent {
   id: string;
   title: string;
@@ -108,24 +193,29 @@ export interface FileRefEvent {
   createdAt: string;
 }
 
-/**
- * 引用该文件的事件列表（只含未删除的）。
- *
- * 和 countRefs 用同一个 LIKE 条件，两边的数字必须一致；
- * 点「被 N 处正文引用」时展示的就是这些事件。
- */
-export function eventsReferencingFile(id: string): FileRefEvent[] {
+export function eventsReferencingFile(file: StoredFile | string): FileRefEvent[] {
+  const keys =
+    typeof file === 'string'
+      ? [file]
+      : Array.from(new Set([file.storedId, file.id].filter(Boolean)));
+  if (keys.length === 0) return [];
+  const where = keys.map(() => 'content LIKE ?').join(' OR ');
   return queryAll<{ id: string; title: string; start_ts: number | null; created_at: string }>(
     `SELECT id, title, start_ts, created_at FROM events
-     WHERE deleted_at IS NULL AND content LIKE ?
+     WHERE deleted_at IS NULL AND (${where})
      ORDER BY COALESCE(start_ts, 0) DESC, created_at DESC`,
-    [`%${FILE_REF_PREFIX}${id}%`],
+    keys.map((k) => `%${FILE_REF_PREFIX}${k}%`),
   ).map((r) => ({
     id: r.id,
     title: r.title || '（无标题）',
     startTs: r.start_ts === null ? null : Number(r.start_ts),
     createdAt: r.created_at,
   }));
+}
+
+/** 有多少个事件在正文里引用了这个文件（用于删除前的提示） */
+export function countRefs(file: StoredFile | string): number {
+  return eventsReferencingFile(file).length;
 }
 
 /** 渲染用：拿到可放进 <img src> 的 objectURL */
@@ -157,7 +247,7 @@ export function renameFile(id: string, name: string): void {
  */
 export function fileRefSyntax(f: StoredFile): string {
   const bang = f.mime.startsWith('image/') ? '!' : '';
-  return `${bang}[](${FILE_REF_PREFIX}${f.id})`;
+  return `${bang}[](${FILE_REF_PREFIX}${f.storedId})`;
 }
 
 /**

@@ -5,7 +5,7 @@ import { SettingsNav } from './SettingsNav';
 import { BackupSection } from './BackupSection';
 import { DefTable } from './DefTable';
 import { DefFormModal } from './DefFormModal';
-import { FilesSection } from '../files';
+import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { OverviewSection } from './OverviewSection';
 import { SampleSection } from './SampleSection';
@@ -65,9 +65,9 @@ export function Settings() {
         {active === 'files' && (
           <Section
             title="文件"
-            desc="单层文件库（不分子文件夹）。文件存在浏览器本地，正文里用「插图」按钮引用；引用只记 id，所以改名不会影响已有正文。"
+            desc="单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改，改名不影响已有正文。"
           >
-            <FilesSection />
+            <FilesPanel />
           </Section>
         )}
 

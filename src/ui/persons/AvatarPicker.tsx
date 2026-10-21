@@ -1,7 +1,9 @@
 // 头像选择器：从文件库选择或上传新图片
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../common';
-import { addFile, listFiles, urlForFile } from '../../core/repo/files';
+import { uploadFileQuiet } from '../../core/files';
+import { getSmallLimit } from '../filePrefs';
+import { listFiles, urlForFile } from '../../core/repo/files';
 import { updatePerson } from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 
@@ -49,8 +51,8 @@ export function AvatarPicker({ personId, currentAvatar, onClose }: AvatarPickerP
     if (!list || list.length === 0) return;
     setBusy(true);
     try {
-      const file = await addFile(list[0]);
-      pick(file.id);
+      const saved = await uploadFileQuiet(list[0], getSmallLimit());
+      pick(saved.id);
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';

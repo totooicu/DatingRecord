@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { listEvents } from '../../core/repo/events';
+import { getEvent, listEvents } from '../../core/repo/events';
 import { listPersons } from '../../core/repo/persons';
 import { EventForm } from '../event';
 import { Empty } from '../common';
@@ -9,7 +9,18 @@ import type { TimelineFilter } from './filter';
 import { MonthGroup, groupByMonth } from './EventGroup';
 import { TrashModal } from './TrashModal';
 
-export function Timeline({ filter, keyword }: { filter: TimelineFilter; keyword: string }) {
+export function Timeline({
+  filter,
+  keyword,
+  openId,
+  onOpened,
+}: {
+  filter: TimelineFilter;
+  keyword: string;
+  /** 外部要求打开的某条事件（文件库的引用列表点进来的） */
+  openId?: string | null;
+  onOpened?: () => void;
+}) {
   const v = useVersion();
   const persons = useMemo(() => listPersons({ includeArchived: true }), [v]);
   const nameOf = (id: string) => persons.find((p) => p.id === id)?.displayName ?? '?';
@@ -28,6 +39,17 @@ export function Timeline({ filter, keyword }: { filter: TimelineFilter; keyword:
   }, [v, filter, keyword]);
 
   const [editing, setEditing] = useState<DREvent | null>(null);
+
+  // 外部跳转：把目标事件找出来直接开编辑框。
+  // 用 ref 比较避免重复打开——父层在 onOpened 里清空 openId 之前，
+  // 任何一次重渲染都会让这个 effect 再跑一遍。
+  const [seenOpenId, setSeenOpenId] = useState<string | null>(null);
+  if (openId && openId !== seenOpenId) {
+    setSeenOpenId(openId);
+    const target = getEvent(openId);
+    if (target) setEditing(target);
+    onOpened?.();
+  }
   const [creating, setCreating] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const groups = useMemo(() => groupByMonth(events), [events]);

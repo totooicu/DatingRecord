@@ -126,6 +126,10 @@ CREATE TABLE IF NOT EXISTS attachments (
   taken_at TEXT,
   created_at TEXT
 );
+-- 内容寻址（schema v2 新增，见 db/migrate.ts）：
+--   stored_id   正文引用里用的名字（hash 名），如 A.jpg / A_1.jpg
+--   hash_shared 1 = 与别的行同 hash 但内容不同（用户确认过碰撞），参与查重时要排除
+-- 这里不给老库加列——ALTER 放在 migrate 里做，建表语句只管新库。
 
 CREATE TABLE IF NOT EXISTS oplog (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,

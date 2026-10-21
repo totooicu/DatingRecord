@@ -11,6 +11,8 @@ import { hasAnyPerson } from '../core/seed';
 import { getRoot } from '../core/repo/collections';
 import { listPersons } from '../core/repo/persons';
 import { useVersion, bump } from '../store';
+import { getEvent } from '../core/repo/events';
+import { setEventOpener } from './openEvent';
 import type { TabKey } from './icons';
 
 /**
@@ -32,12 +34,24 @@ export default function App() {
   const [keyword, setKeyword] = useState('');
   const [filter, setFilter] = useState<TimelineFilter>(defaultFilter);
   const [quickEvent, setQuickEvent] = useState(false);
+  /** 从别处（文件库的引用列表）点进来要打开的事件 */
+  const [jumpEventId, setJumpEventId] = useState<string | null>(null);
 
   const isEmpty = useMemo(() => !hasAnyPerson(), [v]);
   const listRef = useRef<HTMLDivElement>(null);
   const scrollMemo = useRef<Record<string, number>>({});
   // 弹窗打开时收起 FAB，避免浮层压住弹窗内容
   const modalCount = useModalOpenCount();
+
+  // 文件库里点「引用它的事件」→ 切到时间线并打开那条事件
+  useEffect(() => {
+    setEventOpener((id) => {
+      if (!getEvent(id)) return;
+      setView({ k: 'timeline' });
+      setJumpEventId(id);
+    });
+    return () => setEventOpener(null);
+  }, []);
 
   // 首次进入自动选中第一项，避免宽屏右侧空白
   useEffect(() => {
@@ -143,7 +157,12 @@ export default function App() {
           <div className="pane pane-solo">
             <PageHead title="时间线" />
             <TimelineFilters filter={filter} onChange={setFilter} />
-            <Timeline filter={filter} keyword={keyword} />
+            <Timeline
+              filter={filter}
+              keyword={keyword}
+              openId={jumpEventId}
+              onOpened={() => setJumpEventId(null)}
+            />
           </div>
         )}
         {view.k === 'settings' && (

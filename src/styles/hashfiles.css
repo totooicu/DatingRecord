@@ -1,0 +1,224 @@
+/* 内容寻址相关：hash 名、引用事件列表、冲突裁决卡片、迁移与合并面板 */
+
+/* 文件行里的引用名：等宽、可点复制，长 hash 用省略号收尾 */
+.file-hash {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 14em;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: copy;
+}
+
+.file-hash:hover {
+  color: var(--primary);
+}
+
+/* ---------- 引用事件列表 ---------- */
+
+.ref-ev-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ref-ev-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ref-ev-item:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ref-ev-item:disabled {
+  cursor: default;
+}
+
+.ref-ev-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ref-ev-go {
+  flex: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ---------- 冲突裁决 / 合并预览的卡片 ---------- */
+
+.col-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.col-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.col-card:hover {
+  border-color: var(--primary);
+}
+
+.col-card-target {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  cursor: default;
+}
+
+.col-thumb {
+  width: 100%;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.col-thumb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.col-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-self {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  margin: 6px 0;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.col-badge {
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+}
+
+/* ---------- 迁移面板 ---------- */
+
+.files-advanced {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.files-advanced > summary,
+.mig-groups > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mig-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.mig-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mig-mode-on {
+  border-color: var(--primary);
+  background: rgba(217, 83, 107, 0.06);
+}
+
+.mig-mode input {
+  display: none;
+}
+
+.mig-mode-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mig-plan {
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.mig-plan li {
+  margin: 2px 0;
+}
+
+.mig-groups ul {
+  margin: 6px 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.mig-preview {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.file-pref {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.file-pref select {
+  align-self: flex-start;
+}

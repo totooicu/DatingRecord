@@ -6,6 +6,7 @@ import type { Attachment } from '../../types';
 export function rowToAttachment(r: Row): Attachment {
   return {
     id: r.id,
+    storedId: r.stored_id || r.id,
     sha256: r.sha256 ?? '',
     mime: r.mime ?? '',
     name: r.name ?? '',
@@ -13,5 +14,6 @@ export function rowToAttachment(r: Row): Attachment {
     size: r.size ?? 0,
     takenAt: r.taken_at ?? null,
     createdAt: r.created_at ?? '',
+    hashShared: Number(r.hash_shared ?? 0) === 1,
   };
 }

@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
-import { addFile, fileRefSyntax, type StoredFile } from '../../core/repo/files';
+import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
+import { uploadFileQuiet } from '../../core/files';
+import { getSmallLimit } from '../filePrefs';
 import { bump } from '../../store';
 import { Modal } from '../common';
 import { FilesSection } from '../files';
@@ -49,7 +51,9 @@ export function MarkdownEditor({
     setErr(null);
     try {
       for (const f of Array.from(list)) {
-        const saved = await addFile(f);
+        // 小文件自动判重；大文件撞车时按「都不一样」处理，不让插入动作被打断
+        // （真正的裁量入口在设置的文件库里）
+        const saved = await uploadFileQuiet(f, getSmallLimit());
         apply((c) => insertText(c, fileRefSyntax(saved)));
       }
       // 让设置页的文件列表同步刷新

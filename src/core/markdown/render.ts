@@ -26,7 +26,8 @@ function escapeHtml(s: string): string {
 export function extractFileRefs(md: string): string[] {
   const ids: string[] = [];
   // 匹配 ![alt](file:xxx) 与 [text](file:xxx)
-  const re = /!?\[[^\]]*\]\(\s*file:([A-Za-z0-9_-]+)\s*\)/g;
+  // 名字里允许点：内容寻址后引用名是 sha-xxxx.jpg 这种带扩展名的形式
+  const re = /!?\[[^\]]*\]\(\s*file:([A-Za-z0-9._-]+)\s*\)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(md)) !== null) {
     if (!ids.includes(m[1])) ids.push(m[1]);
