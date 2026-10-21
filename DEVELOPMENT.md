@@ -343,6 +343,13 @@ interface SqlDriver {
 ### F-E08 事件关联 — P2
 
 - `followedBy` / `causedBy` / `sameDay` 轻量有向边，详情页展示上下游。
+- **做法**：单向边，存在 `events.related_json`（`[{type, targetId}]`，该列 schema 里早有、此前是死列）。
+  写入走 `EventInput.relatedEvents`，`createEvent` / `updateEvent` 都序列化它；读取时 `eventFromRow` 早就会解析成 `DREvent.relatedEvents`。
+- **UI**：事件编辑框里「关联事件」字段——搜索标题加点（默认「后续」，可下拉改成「起因 / 同日」），已关联的行可改类型、可移除；
+  反向关联（「被以下事件关联」）由全表扫描得出，只读展示，不落库。时间线行有 `🔗n` 角标。
+- **边界**：不能关联自己、同一目标只保留一条；软删除目标后链接保留（回收站可恢复，恢复了还能看见），
+  但**彻底删除**会用 `stripRefsTo()` 把别人 `related_json` 里指向它的条目摘掉，不留下「（已删除的事件）」死链。
+- **未做**：关联图谱可视化；`sameDay` 只是一个人工标记，不会按日期自动补全。
 
 ---
 

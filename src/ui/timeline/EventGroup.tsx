@@ -31,6 +31,11 @@ export function MonthGroup({
                 {e.metrics.rating ? '★'.repeat(e.metrics.rating) : ''}
                 {e.metrics.cost ? ` ¥${e.metrics.cost}` : ''}
                 {e.tags.length ? ` #${e.tags.join(' #')}` : ''}
+                {e.relatedEvents.length > 0 && (
+                  <span className="event-rel" title={`关联了 ${e.relatedEvents.length} 个事件`}>
+                    {` 🔗${e.relatedEvents.length}`}
+                  </span>
+                )}
               </span>
               {/* 正文此前没有任何展示点，写完了只能在编辑框里看到 */}
               {e.content.trim() && <span className="event-excerpt">{markdownExcerpt(e.content, 60)}</span>}

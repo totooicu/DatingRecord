@@ -1,6 +1,6 @@
 // 事件表单的草稿状态：新建时给默认值，编辑时从事件回填
 import { fromLocalInput, toLocalInput, type Precision, type TimeKind, type TimeSpec } from '../../core/time';
-import type { DREvent, Participant } from '../../core/types';
+import type { DREvent, Participant, RelatedEvent } from '../../core/types';
 
 export interface EventDraft {
   title: string;
@@ -19,6 +19,7 @@ export interface EventDraft {
   intimacyDelta: number | '';
   participantIds: string[];
   cols: string[];
+  relatedEvents: RelatedEvent[];
 }
 
 export function initialDraft(
@@ -45,6 +46,7 @@ export function initialDraft(
     participantIds:
       event?.participants.map((p) => p.personId) ?? (defaultPersonId ? [defaultPersonId] : []),
     cols: existingCols.length ? existingCols : defaultCollectionId ? [defaultCollectionId] : [],
+    relatedEvents: event?.relatedEvents ?? [],
   };
 }
 
@@ -63,6 +65,7 @@ export interface EventPayload {
     mood?: string;
     intimacyDelta?: number;
   };
+  relatedEvents: RelatedEvent[];
 }
 
 export function draftToPayload(d: EventDraft): EventPayload {
@@ -87,5 +90,6 @@ export function draftToPayload(d: EventDraft): EventPayload {
       mood: d.mood || undefined,
       intimacyDelta: d.intimacyDelta === '' ? undefined : Number(d.intimacyDelta),
     },
+    relatedEvents: d.relatedEvents,
   };
 }

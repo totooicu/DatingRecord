@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createEvent, deleteEvent, updateEvent } from '../../core/repo/events';
+import { createEvent, deleteEvent, listEvents, updateEvent } from '../../core/repo/events';
 import { listPersons } from '../../core/repo/persons';
 import {
   addMember,
@@ -27,6 +27,10 @@ export function EventForm({
 }) {
   const persons = useMemo(() => listPersons({ includeArchived: true }), []);
   const flat = useMemo(() => flatten(getTree()), []);
+  const candidates = useMemo(
+    () => listEvents().map((e) => ({ id: e.id, title: e.title, startTs: e.startTs, relatedEvents: e.relatedEvents })),
+    [],
+  );
   const existingCols = useMemo(
     () => (event ? collectionsOfEvent(event.id).map((c) => c.id) : []),
     [event?.id],
@@ -81,7 +85,14 @@ export function EventForm({
         </>
       }
     >
-      <EventFields d={d} patch={patch} persons={persons} flat={flat} />
+      <EventFields
+        d={d}
+        patch={patch}
+        persons={persons}
+        flat={flat}
+        eventId={event?.id}
+        candidates={candidates}
+      />
     </Modal>
   );
 }

@@ -3,9 +3,10 @@
 import { run, transact, appendOplog, getDeviceId } from '../../db';
 import { newId } from '../../id';
 import { hlcNow, toTs } from '../../time';
-import type { DREvent, EventMetrics, Participant, Place } from '../../types';
+import type { DREvent, EventMetrics, Participant, Place, RelatedEvent } from '../../types';
 import type { TimeSpec } from '../../time';
 import { getEvent } from './read';
+import { normalizeRelated, stripRefsTo } from './related';
 
 export interface EventInput {
   title: string;
@@ -17,6 +18,7 @@ export interface EventInput {
   tags?: string[];
   metrics?: EventMetrics;
   media?: string[];
+  relatedEvents?: RelatedEvent[];
   primaryCollectionId?: string | null;
 }
 
@@ -45,7 +47,7 @@ export function createEvent(input: EventInput): DREvent {
         JSON.stringify(input.tags ?? []),
         JSON.stringify(input.metrics ?? {}),
         JSON.stringify(input.media ?? []),
-        '[]',
+        JSON.stringify(normalizeRelated(input.relatedEvents, id)),
         input.primaryCollectionId ?? null,
         getDeviceId(),
         1,
@@ -74,7 +76,7 @@ export function updateEvent(id: string, input: Partial<EventInput>): void {
     const time = input.time ?? e.time;
     run(
       `UPDATE events SET title=?, kind=?, start_ts=?, end_ts=?, time_json=?, place_json=?, content=?,
-       tags_json=?, metrics_json=?, media_json=?, primary_collection_id=?, rev=rev+1, hlc=?, updated_at=?
+       tags_json=?, metrics_json=?, media_json=?, related_json=?, primary_collection_id=?, rev=rev+1, hlc=?, updated_at=?
        WHERE id=?`,
       [
         input.title ?? e.title,
@@ -87,6 +89,7 @@ export function updateEvent(id: string, input: Partial<EventInput>): void {
         JSON.stringify(input.tags ?? e.tags),
         JSON.stringify(input.metrics ?? e.metrics),
         JSON.stringify(input.media ?? e.media),
+        JSON.stringify(normalizeRelated(input.relatedEvents ?? e.relatedEvents, id)),
         input.primaryCollectionId ?? e.primaryCollectionId,
         hlc,
         now,
@@ -136,6 +139,7 @@ export function purgeEvent(id: string): void {
     run('DELETE FROM events WHERE id = ?', [id]);
     run('DELETE FROM event_participants WHERE event_id = ?', [id]);
     run('DELETE FROM collection_members WHERE member_type = ? AND member_id = ?', ['event', id]);
+    stripRefsTo(id); // 别的事件 related_json 里可能指着它
     appendOplog('event', id, 'delete', { id, hard: true });
   });
 }

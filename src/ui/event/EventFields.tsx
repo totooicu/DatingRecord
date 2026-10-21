@@ -2,8 +2,9 @@
 import { EVENT_KINDS } from '../../core/repo/events';
 import { Field, TagInput } from '../common';
 import { MarkdownEditor } from '../markdown';
-import type { Collection } from '../../core/types';
+import type { Collection, RelatedEvent } from '../../core/types';
 import type { Precision, TimeKind } from '../../core/time';
+import { RelatedField } from './RelatedField';
 import type { EventDraft } from './draft';
 
 const TIME_KINDS: { value: TimeKind; label: string }[] = [
@@ -27,11 +28,16 @@ export function EventFields({
   patch,
   persons,
   flat,
+  eventId,
+  candidates,
 }: {
   d: EventDraft;
   patch: (p: Partial<EventDraft>) => void;
   persons: { id: string; displayName: string }[];
   flat: { c: Collection; depth: number }[];
+  /** 正在编辑的事件 id；新建时为 undefined */
+  eventId?: string;
+  candidates: { id: string; title: string; startTs: number | null; relatedEvents?: RelatedEvent[] }[];
 }) {
   const toggle = (list: string[], id: string) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -162,6 +168,15 @@ export function EventFields({
           ))}
         </div>
       </Field>
+
+      <div className="span-2">
+        <RelatedField
+          selfId={eventId}
+          related={d.relatedEvents}
+          onChange={(relatedEvents) => patch({ relatedEvents })}
+          candidates={candidates}
+        />
+      </div>
       <Field label="亲密度增减">
         <input
           type="number"
