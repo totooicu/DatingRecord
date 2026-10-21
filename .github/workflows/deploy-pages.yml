@@ -38,11 +38,13 @@ jobs:
         run: |
           # 禁用 Jekyll，避免 Pages 忽略下划线开头的文件
           touch dist/.nojekyll
-          git config user.name "deploy bot"
-          git config user.email "bot@localhost"
           git clone --branch gh-pages --single-branch \
             "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ghp
           cd ghp
+          # 身份必须配在内层克隆里：写在外层 checkout 不生效，而 ubuntu 运行器没有全局
+          # git 身份 → git commit 报 "Author identity unknown"，整步失败、gh-pages 停更
+          git config user.name "deploy bot"
+          git config user.email "bot@localhost"
           find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
           cp -R ../dist/. .
           git add -A
