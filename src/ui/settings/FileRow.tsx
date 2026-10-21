@@ -1,7 +1,8 @@
-// 单个文件行：预览与操作全部收在第一行
-//   第一行 缩略图 · 文件名（点按预览 / 原地改名） · 预览 / 改名 / 引用 / 删除
-//   第二行 类型 · 大小 · 时间 · 引用数
-import { useState, type ReactNode } from 'react';
+// 单个文件行：
+//   第一行 类型 + 预览/改名/引用/删除（缩略图也是预览入口）
+//   第二行起 文件名：单独成行，长名字按需换行，绝不截断
+//   最后一行 大小 · 时间 · 引用数
+import { Fragment, useState, type ReactNode } from 'react';
 import { countRefs, renameFile } from '../../core/repo/files';
 import { ConfirmButton } from '../common';
 import { bump } from '../../store';
@@ -81,6 +82,21 @@ function TrashIcon() {
   );
 }
 
+/** 文件名折行：优先在 _ - . / 空格后断行，避免把单词从中间劈开 */
+function FileNameText({ name }: { name: string }) {
+  const segments = name.split(/(?<=[_\-./\s])/);
+  return (
+    <>
+      {segments.map((seg, i) => (
+        <Fragment key={i}>
+          {seg}
+          {i < segments.length - 1 && <wbr />}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 export function FileRow({
   file,
   thumb,
@@ -124,26 +140,7 @@ export function FileRow({
 
       <div className="file-main">
         <div className="file-row-top">
-          {editing ? (
-            <input
-              className="file-rename"
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={commit}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commit();
-                if (e.key === 'Escape') {
-                  setDraft(file.name);
-                  setEditing(false);
-                }
-              }}
-            />
-          ) : (
-            <button className="file-name" onClick={() => onPreview(file)} title={file.name}>
-              {file.name}
-            </button>
-          )}
+          <span className="file-type">{kindLabel(kind)}</span>
 
           <span className="file-actions">
             <IconButton label="预览" onClick={() => onPreview(file)}>
@@ -177,9 +174,28 @@ export function FileRow({
           </span>
         </div>
 
+        {editing ? (
+          <input
+            className="file-rename"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') {
+                setDraft(file.name);
+                setEditing(false);
+              }
+            }}
+          />
+        ) : (
+          <button className="file-name" onClick={() => onPreview(file)} title={file.name}>
+            <FileNameText name={file.name} />
+          </button>
+        )}
+
         <div className="file-row-meta muted small">
-          <span className="file-type">{kindLabel(kind)}</span>
-          <span>·</span>
           <span>{fmtSize(file.size)}</span>
           <span>·</span>
           <span>{fmtDate(file.createdAt)}</span>

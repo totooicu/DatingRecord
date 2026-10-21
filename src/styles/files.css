@@ -5,10 +5,10 @@
   list-style: none;
 }
 
-/* 一行一个文件：缩略图在左，主区里第一行放「名字 + 全部操作」 */
+/* 一行一个文件：缩略图在左；主区第一行放类型与操作，名字独占其下的行 */
 .file-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 9px 0;
   border-top: 1px solid var(--border);
@@ -49,25 +49,30 @@
   gap: 2px;
 }
 
-/* 第一行：文件名（弹性收缩）+ 操作（不换行、不压缩） */
+/* 第一行：类型（左）+ 操作（右） */
 .file-row-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   min-width: 0;
+  min-height: 30px;
 }
 
+/* 文件名单独成行：长名字完整换行，绝不省略 */
 .file-name {
-  flex: 1;
-  min-width: 40px;
-  overflow: hidden;
+  display: block;
+  width: 100%;
+  margin: 2px 0 1px;
+  padding: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   border: none;
   background: none;
-  padding: 0;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
   font-weight: 600;
+  line-height: 1.5;
   color: var(--text);
 }
 
@@ -82,7 +87,7 @@
   gap: 4px;
 }
 
-/* 比常规 btn-sm 再紧一点，390px 宽也要能和文件名排在同一行 */
+/* 确认/取消也保持紧凑，避免撑高第一行 */
 .file-actions .btn-sm {
   padding: 3px 7px;
   font-size: 12px;
@@ -114,8 +119,8 @@
 }
 
 .file-rename {
-  flex: 1;
-  min-width: 40px;
+  width: 100%;
+  margin: 2px 0 1px;
   font-size: 13px;
   padding: 4px 8px;
 }
@@ -131,7 +136,12 @@
 }
 
 .file-type {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
   color: var(--primary);
 }
 
