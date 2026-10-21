@@ -105,3 +105,44 @@
   display: flex;
   gap: 8px;
 }
+
+/* ---------- 撤销提示条 ---------- */
+.undo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 14px;
+  background: #2b2a28;
+  color: #f6f5f3;
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+}
+
+.undo-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo-btn {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: #ffb3c0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.undo-btn-2 {
+  color: #b9d8c6;
+}

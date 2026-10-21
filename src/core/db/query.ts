@@ -2,6 +2,7 @@
 
 import { getDb } from './state';
 import { markDirty } from './persist';
+import { beginStep, labelTopFromOplog } from './undo';
 
 export function queryAll<T>(sql: string, params: unknown[] = []): T[] {
   const d = getDb();
@@ -25,14 +26,16 @@ export function run(sql: string, params: unknown[] = []): void {
   getDb().run(sql, params as never[]);
 }
 
-/** 写事务：业务变更 + oplog 原子提交 */
+/** 写事务：业务变更 + oplog 原子提交；顺带给撤销栈记一步 */
 export function transact<T>(fn: () => T): T {
   const d = getDb();
+  beginStep();
   d.run('BEGIN');
   try {
     const result = fn();
     d.run('COMMIT');
     markDirty();
+    labelTopFromOplog();
     return result;
   } catch (err) {
     try {

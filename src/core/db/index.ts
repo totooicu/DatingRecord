@@ -94,6 +94,21 @@ export async function resetAll(): Promise<void> {
 export { getDb, getDbInstance } from './state';
 export { queryAll, queryOne, run, transact } from './query';
 export { appendOplog } from './oplog';
+export {
+  undo,
+  redo,
+  bulkAction,
+  noteUndoStep,
+  suspendUndo,
+  resumeUndo,
+} from './undo';
+export {
+  subscribeUndo,
+  getUndoState,
+  type UndoState,
+  type UndoStepInfo,
+  type UndoOp,
+} from './undoStore';
 export { getDeviceId } from './device';
 export { getMeta, setMeta } from './meta';
 export { markDirty, flushPersist, persist } from './persist';

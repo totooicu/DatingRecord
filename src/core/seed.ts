@@ -3,7 +3,7 @@
 import { createPerson, setAttribute, upsertDef } from './repo/persons';
 import { createEvent } from './repo/events';
 import { createCollection, addMember } from './repo/collections';
-import { queryOne } from './db';
+import { queryOne, noteUndoStep, suspendUndo, resumeUndo } from './db';
 
 function daysAgo(n: number, hour = 19, minute = 0): string {
   const d = new Date();
@@ -13,6 +13,10 @@ function daysAgo(n: number, hour = 19, minute = 0): string {
 }
 
 export function loadSampleData(): { persons: number; events: number; collections: number } {
+  // 整批示例数据只记一步撤销
+  noteUndoStep('载入示例数据');
+  suspendUndo();
+  try {
   // 补充示例属性
   upsertDef({ key: 'mbti', label: 'MBTI', type: 'enum', group: '喜好', options: ['INFP', 'ENFP', 'INTJ', '其他'] });
   upsertDef({ key: 'favorite_food', label: '爱吃', type: 'tag', group: '喜好' });
@@ -104,6 +108,9 @@ export function loadSampleData(): { persons: number; events: number; collections
   setAttribute(p1.id, 'affinity', 5);
 
   return { persons: 2, events: 5, collections: 3 };
+  } finally {
+    resumeUndo();
+  }
 }
 
 export function hasAnyPerson(): boolean {

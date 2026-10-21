@@ -6,6 +6,7 @@ import { PageHead, useModalOpenCount } from './common';
 import { PersonsPane, CollectionsPane } from './Panes';
 import { Welcome } from './Welcome';
 import { TopBar } from './TopBar';
+import { UndoSnackbar } from './undo/UndoSnackbar';
 import { TabBar } from './TabBar';
 import { hasAnyPerson } from '../core/seed';
 import { getRoot } from '../core/repo/collections';
@@ -184,6 +185,8 @@ export default function App() {
       </div>
 
       <TabBar section={section} onTab={gotoTab} />
+
+      <UndoSnackbar />
 
       {/* 设置页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
       {modalCount === 0 && section !== 'settings' && (

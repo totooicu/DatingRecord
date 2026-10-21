@@ -5,6 +5,14 @@ import { run } from './query';
 import { getDeviceId } from './device';
 import { hlcNow } from '../time';
 
+/** 一行 oplog 的结构（撤销提示条命名、同步增量都按它读） */
+export interface UndoOpRow {
+  entity: string;
+  entityId: string;
+  op: 'insert' | 'update' | 'delete';
+  payload: string | null;
+}
+
 export function appendOplog(
   entity: string,
   entityId: string,

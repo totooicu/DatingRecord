@@ -1,11 +1,14 @@
 // 库级维护：清空与体积查询
 
-import { transact, run, getDb } from '../db';
+import { transact, run, getDb, noteUndoStep, suspendUndo, resumeUndo } from '../db';
 import { clearBlobs } from '../db/blob';
 
 export async function clearAllData(): Promise<void> {
   // 附件二进制在 IndexedDB，不在这些表里，必须单独清
   await clearBlobs();
+  noteUndoStep('清空全部数据');
+  suspendUndo();
+  try {
   transact(() => {
     for (const t of [
       'oplog',
@@ -22,6 +25,9 @@ export async function clearAllData(): Promise<void> {
       run(`DELETE FROM ${t}`);
     }
   });
+  } finally {
+    resumeUndo();
+  }
 }
 
 export function dbSizeBytes(): number {

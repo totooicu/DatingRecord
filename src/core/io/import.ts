@@ -1,6 +1,16 @@
 // 导入：按 hlc 比较合并，本地更新的数据不会被旧备份覆盖
 
-import { queryOne, run, transact, getDeviceId, persist, setMeta } from '../db';
+import {
+  queryOne,
+  run,
+  transact,
+  getDeviceId,
+  persist,
+  setMeta,
+  noteUndoStep,
+  suspendUndo,
+  resumeUndo,
+} from '../db';
 import { newId } from '../id';
 import { hlcCompare, hlcNow, hlcReceive } from '../time';
 import { putBlob, base64ToBlob } from '../db/blob';
@@ -64,6 +74,10 @@ export async function importLibrary(
     backupName = await exportToFile({ includeAttachments: true });
   }
 
+  // 整次导入只记一步撤销：中间几百次 upsert 不该占满撤销栈
+  noteUndoStep(mode === 'replace' ? '替换导入' : '合并导入');
+  suspendUndo();
+  try {
   transact(() => {
     if (mode === 'replace') {
       for (const t of [
@@ -158,6 +172,9 @@ export async function importLibrary(
       importedAttachments.push(a);
     }
   });
+  } finally {
+    resumeUndo();
+  }
 
   // 二进制在事务外写：IndexedDB 是异步的，塞进 SQL 事务会破坏原子性边界
   for (const a of importedAttachments) {
