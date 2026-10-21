@@ -6,6 +6,7 @@
 
 import { getDbInstance } from './state';
 import { idbPut } from './idb';
+import { getEncStatus, saveEncrypted } from './encStore';
 
 let saveTimer: number | null = null;
 let dirty = false;
@@ -32,6 +33,11 @@ export async function persist(): Promise<void> {
   const db = getDbInstance();
   if (!db || !dirty) return;
   dirty = false;
-  const bytes = db.export();
-  await idbPut(new Uint8Array(bytes));
+  const bytes = new Uint8Array(db.export());
+  // 加密开启时写密文，绝不顺带留一份明文——那等于没加密
+  if (getEncStatus() === 'open') {
+    await saveEncrypted(bytes);
+    return;
+  }
+  await idbPut(bytes);
 }

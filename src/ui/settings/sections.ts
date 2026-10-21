@@ -3,7 +3,16 @@
 // 原来七个 Section 平铺在一屏里，找个「归档的人物」要滚很久；
 // 拆成目录 + 子页后，手机上一屏只有六条入口，宽屏左目录右内容。
 
-export type SettingsKey = 'backup' | 'lock' | 'attrs' | 'people' | 'archive' | 'files' | 'overview' | 'sample';
+export type SettingsKey =
+  | 'backup'
+  | 'lock'
+  | 'enc'
+  | 'attrs'
+  | 'people'
+  | 'archive'
+  | 'files'
+  | 'overview'
+  | 'sample';
 
 export interface SettingsEntry {
   key: SettingsKey;
@@ -14,6 +23,7 @@ export interface SettingsEntry {
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'backup', title: '备份与恢复', hint: '导入 / 导出 .drp.json' },
   { key: 'lock', title: '应用锁', hint: '口令、自动锁定' },
+  { key: 'enc', title: '本地库加密', hint: '口令、恢复码' },
   { key: 'attrs', title: '属性字典', hint: '自定义字段的类型与分组' },
   { key: 'people', title: '人物整理', hint: '重复人物合并' },
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除' },

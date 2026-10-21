@@ -11,10 +11,15 @@ import {
   setPassphrase,
   verifyPassphrase,
 } from '../../core/lock';
+import { getEncStatus } from '../../core/db';
 import { bump } from '../../store';
 import { Section } from './Section';
 
 export function LockSection() {
+  // 加密开着的时候，口令归「本地库加密」管——两处各设一个会让人记混。
+  // 但「锁着」这个状态仍然成立：开机那次解锁同时算应用锁解锁，
+  // 空闲超时照样生效，所以 on 该是 true，只是不给改口令的表单。
+  const encOn = getEncStatus() === 'open';
   const [on, setOn] = useState(hasPassphrase());
   const [idle, setIdle] = useState(getIdleMs());
   // 未设口令：两栏新口令
@@ -125,17 +130,23 @@ export function LockSection() {
             </button>
           </div>
 
-          <div className="lock-form">
-            <label>
-              当前口令
-              <input
-                type="password"
-                value={cur}
-                autoComplete="current-password"
-                onChange={(e) => setCur(e.target.value)}
-              />
-            </label>
-            <label>
+          {encOn ? (
+            <p className="muted small">
+              口令由「本地库加密」管理——加密开着的时候，开机那一次输入同时算应用锁解锁。
+              要改口令请去「本地库加密」。
+            </p>
+          ) : (
+            <div className="lock-form">
+              <label>
+                当前口令
+                <input
+                  type="password"
+                  value={cur}
+                  autoComplete="current-password"
+                  onChange={(e) => setCur(e.target.value)}
+                />
+              </label>
+              <label>
               新口令
               <input
                 type="password"
@@ -162,6 +173,7 @@ export function LockSection() {
               </button>
             </div>
           </div>
+          )}
         </>
       )}
 

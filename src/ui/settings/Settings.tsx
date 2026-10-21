@@ -4,6 +4,7 @@ import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupSection } from './BackupSection';
 import { LockSection } from './LockSection';
+import { EncSection } from './EncSection';
 import { DefTable } from './DefTable';
 import { DefFormModal } from './DefFormModal';
 import { FilesPanel } from '../files';
@@ -43,6 +44,8 @@ export function Settings() {
         {active === 'backup' && <BackupSection />}
 
         {active === 'lock' && <LockSection />}
+
+        {active === 'enc' && <EncSection />}
 
         {active === 'attrs' && (
           <DefTable

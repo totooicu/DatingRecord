@@ -1,0 +1,43 @@
+/* ---------- 本地库加密 ---------- */
+
+/* 恢复码卡片：那串码要显眼、等宽、别被换行拆散 */
+.enc-recovery {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.enc-recovery-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.enc-code {
+  margin: 0;
+  padding: 14px 10px;
+  background: var(--side);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  user-select: all;
+}
+
+.enc-forgot {
+  margin-top: 14px;
+}
+
+/* 解锁界面的「换个方式」文字按钮 */
+.btn-link {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}

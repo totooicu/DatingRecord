@@ -1,8 +1,10 @@
 import { createRoot } from 'react-dom/client';
 import App from './ui/App';
 import { LockGate } from './ui/lock/LockGate';
+import { EncUnlock } from './ui/enc/EncUnlock';
 import { ErrorBoundary } from './ui/ErrorBoundary';
-import { initDb } from './core/db';
+import { initDb, probeEnc } from './core/db';
+import { unlock } from './core/lock';
 import './styles.css';
 
 const el = document.getElementById('root')!;
@@ -64,31 +66,61 @@ const hardTimer = window.setTimeout(() => {
   );
 }, 90_000);
 
-initDb(setTip)
-  .then(() => {
-    window.clearTimeout(slowTimer);
-    window.clearTimeout(hardTimer);
+// 启动分两步：先看库是不是加密的，是的话拦住要口令；拿到明文后再 initDb。
+//
+// 顺序不能反——initDb 内部要 new sql.Database(明文)，密文状态下它什么都读不出来。
+// 所以「加密且锁着」时先挂一个只有解锁界面的 React 树，解锁成功再走原来的路。
+probeEnc()
+  .then((status) => {
+    if (status !== 'locked') {
+      startDb();
+      return;
+    }
     createRoot(el).render(
       <ErrorBoundary>
-        <LockGate>
-          <App />
-        </LockGate>
+        <EncUnlock
+          onUnlocked={() => {
+            // 口令刚验过一次，应用锁没必要再问一遍
+            unlock();
+            startDb();
+          }}
+        />
       </ErrorBoundary>,
     );
     finishBoot();
-    registerServiceWorker();
   })
-  .catch((err: unknown) => {
-    window.clearTimeout(slowTimer);
-    window.clearTimeout(hardTimer);
-    const raw = err instanceof Error ? err.message : String(err);
-    finishBoot(
-      errorCard(
-        '启动失败',
-        '数据库引擎没能加载。<br />请确认浏览器支持 WebAssembly 与 IndexedDB' +
-          '（建议较新版本的 Chrome / Edge / Safari，并关闭无痕模式），或稍后重试。' +
-          `<details style="margin-top:12px;font-size:12px;color:#a8a29a"><summary style="cursor:pointer">技术细节</summary>` +
-          `<div style="margin-top:6px;word-break:break-all">${raw}</div></details>`,
-      ),
-    );
+  .catch(() => {
+    // 探测失败（IndexedDB 被禁之类）别在这儿卡死，照常尝试启动
+    startDb();
   });
+
+function startDb(): void {
+  initDb(setTip)
+    .then(() => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(hardTimer);
+      createRoot(el).render(
+        <ErrorBoundary>
+          <LockGate>
+            <App />
+          </LockGate>
+        </ErrorBoundary>,
+      );
+      finishBoot();
+      registerServiceWorker();
+    })
+    .catch((err: unknown) => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(hardTimer);
+      const raw = err instanceof Error ? err.message : String(err);
+      finishBoot(
+        errorCard(
+          '启动失败',
+          '数据库引擎没能加载。<br />请确认浏览器支持 WebAssembly 与 IndexedDB' +
+            '（建议较新版本的 Chrome / Edge / Safari，并关闭无痕模式），或稍后重试。' +
+            `<details style="margin-top:12px;font-size:12px;color:#a8a29a"><summary style="cursor:pointer">技术细节</summary>` +
+            `<div style="margin-top:6px;word-break:break-all">${raw}</div></details>`,
+        ),
+      );
+    });
+}

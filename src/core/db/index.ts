@@ -7,9 +7,10 @@
 
 import initSqlJs, { type Database } from 'sql.js';
 import { SCHEMA_SQL } from './schema';
-import { idbGet, IDB_STORE, IDB_KEY, openIdb } from './idb';
+import { IDB_STORE, IDB_KEY, openIdb } from './idb';
 import { getDbInstance, getSql, setDbInstance, setSql } from './state';
 import { queryOne } from './query';
+import { dropEncContent, readPlaintextBytes, resealAfterReset } from './encStore';
 import { setMeta } from './meta';
 import { flushPersist } from './persist';
 import { seedDefaults } from './seed';
@@ -39,7 +40,7 @@ export async function initDb(onProgress?: (msg: string) => void): Promise<Databa
   }
 
   report('正在读取本地数据…');
-  const bytes = await idbGet();
+  const bytes = await readPlaintextBytes();
   const db = bytes ? new sql.Database(bytes) : new sql.Database();
   db.run('PRAGMA foreign_keys = ON');
   // 先登记实例：migrate 内部要用 queryOne，那时 getDb() 必须已经可用
@@ -88,7 +89,11 @@ export async function resetAll(): Promise<void> {
   } catch {
     /* ignore */
   }
+  // 加密开着的话，盘上密文立刻删（否则 initDb 会把旧数据解出来，清空白做），
+  // 但主密钥留在内存里，等空库建好再原样封回去
+  await dropEncContent();
   await initDb();
+  await resealAfterReset();
 }
 
 export { getDb, getDbInstance } from './state';
@@ -110,6 +115,20 @@ export {
   type UndoOp,
 } from './undoStore';
 export { getDeviceId } from './device';
+export {
+  probeEnc,
+  getEncStatus,
+  getEncRecord,
+  unlockEnc,
+  enableEnc,
+  disableEnc,
+  changeEncPassphrase,
+  resetEncPassphraseWithRecovery,
+  readPlaintextBytes,
+  dropEncContent,
+  resealAfterReset,
+  type EncStatus,
+} from './encStore';
 export { getMeta, setMeta } from './meta';
 export { markDirty, flushPersist, persist } from './persist';
 export { openIdb, BLOB_STORE } from './idb';

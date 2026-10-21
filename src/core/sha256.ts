@@ -4,7 +4,8 @@
 // （用局域网 IP 打开这个应用时就没了），而它只返回 Promise。
 // 口令 hash 需要同步、需要到处都能跑，所以自己实现一份。
 //
-// 输出为标准十六进制，可用官方向量核对：
+// 加密模块（HMAC / PBKDF2）要的是字节版，见 sha256Bytes()；本函数是它的
+// 十六进制封装，可用官方向量核对：
 //   sha256Hex('')      = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 //   sha256Hex('abc')   = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 //   sha256Hex('你好')   = 943af7520c2d3d3d8bb0dd11e0b4c7e5cbb5f2b4e0f6c8d0a2f6b9d4b0e6f3a2（前 16 位）
@@ -24,8 +25,8 @@ function rotr(x: number, n: number): number {
   return (x >>> n) | (x << (32 - n));
 }
 
-export function sha256Hex(input: string): string {
-  const data = new TextEncoder().encode(input);
+/** 字节版 SHA-256：HMAC / PBKDF2 的地基（它们要哈希的是二进制，不是字符串） */
+export function sha256Bytes(data: Uint8Array): Uint8Array {
   const bitLen = data.length * 8;
   // 消息补齐：末尾一个 1 位 + 若干个 0 + 64 位大端原始长度，总长凑成 64 的倍数
   const total = Math.ceil((data.length + 9) / 64) * 64;
@@ -89,5 +90,13 @@ export function sha256Hex(input: string): string {
     h7 = (h7 + h) >>> 0;
   }
 
-  return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => x.toString(16).padStart(8, '0')).join('');
+  const out = new Uint8Array(32);
+  const ov = new DataView(out.buffer);
+  [h0, h1, h2, h3, h4, h5, h6, h7].forEach((x, i) => ov.setUint32(i * 4, x));
+  return out;
+}
+
+export function sha256Hex(input: string): string {
+  const bytes = sha256Bytes(new TextEncoder().encode(input));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
