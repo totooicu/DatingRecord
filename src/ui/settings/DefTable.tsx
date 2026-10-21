@@ -8,7 +8,7 @@ export function DefTable({ onEdit, onNew }: { onEdit: (key: string) => void; onN
   return (
     <Section
       title="属性字典"
-      desc="属性定义决定字段的类型、校验与显示方式。key 与 type 创建后不可修改（避免历史数据无法解释），删除一律为归档。"
+      desc="属性定义决定字段的类型、校验与显示方式。key 创建后不可修改；类型可以改，保存时会按新类型转换已有值（转不了的会清空）。删除一律为归档。"
     >
       <table className="def-table">
         <thead>

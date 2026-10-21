@@ -24,5 +24,11 @@ export {
   type MergeAttrChoice,
   type MergePreview,
 } from './merge';
-export { setAttribute, listAttrHistory } from './values';
+export {
+  setAttribute,
+  listAttrHistory,
+  countAttrValues,
+  retuneAttrValues,
+  type RetuneResult,
+} from './values';
 export { FIRST_ORDER_KEY } from '../../order';

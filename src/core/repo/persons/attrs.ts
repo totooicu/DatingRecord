@@ -28,12 +28,13 @@ export function upsertDef(input: Partial<AttributeDef> & { key: string; label: s
 
   transact(() => {
     if (existing) {
-      // 关键约束：type 不可改，key 不可改
+      // 关键约束：key 不可改；type 可以改，调用方负责先按新类型转换已有值
       run(
-        `UPDATE attribute_defs SET label=?, group_name=?, options_json=?, unit=?, max_value=?,
+        `UPDATE attribute_defs SET label=?, type=?, group_name=?, options_json=?, unit=?, max_value=?,
          required=?, sensitive=?, time_varying=?, archived=?, hlc=?, updated_at=? WHERE key=?`,
         [
           input.label ?? existing.label,
+          input.type ?? existing.type,
           input.group ?? existing.group,
           JSON.stringify(input.options ?? existing.options ?? []),
           input.unit ?? existing.unit ?? null,

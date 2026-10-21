@@ -1,6 +1,12 @@
 // 新建 / 编辑属性定义
 import { useState } from 'react';
-import { listDefs, upsertDef } from '../../core/repo/persons';
+import {
+  countAttrValues,
+  getDef,
+  listDefs,
+  retuneAttrValues,
+  upsertDef,
+} from '../../core/repo/persons';
 import { ATTRIBUTE_TYPES, type AttributeType } from '../../core/types';
 import { Field, Modal } from '../common';
 
@@ -28,8 +34,10 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
     !existing && typedKey
       ? listDefs(true).find((d) => d.key === typedKey && !d.archived) ?? null
       : null;
-  // 类型跟着已有定义走：档案里的历史值是按这个类型写的，不能换
-  const effType = existing?.type ?? archivedMatch?.type ?? type;
+  // 复用归档定义时类型必须沿用原定义；编辑启用中的定义则可以改类型
+  const effType = archivedMatch ? archivedMatch.type : type;
+  const typeChanged = !!existing && existing.type !== effType;
+  const valueCount = typeChanged && existing ? countAttrValues(existing.key) : 0;
 
   const save = () => {
     if (!existing && !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) {
@@ -56,10 +64,16 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
         .map((s) => s.trim())
         .filter(Boolean),
       unit: unit || undefined,
-      max: type === 'rating' ? max : undefined,
+      max: effType === 'rating' ? max : undefined,
       sensitive,
       timeVarying,
     });
+
+    // 类型变了：把所有人的旧值按新类型重写一遍（转不了的清空，见 retuneAttrValues）
+    if (typeChanged) {
+      const nd = getDef(existing.key);
+      if (nd) retuneAttrValues(existing.key, nd);
+    }
     onClose();
   };
 
@@ -93,7 +107,7 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
         <Field label="类型（创建后不可改）">
           <select
             value={effType}
-            disabled={!!existing || !!archivedMatch}
+            disabled={!!archivedMatch}
             onChange={(e) => setType(e.target.value as AttributeType)}
           >
             {ATTRIBUTE_TYPES.map((t) => (
@@ -106,19 +120,19 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
         <Field label="分组">
           <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="基本信息 / 喜好 / 关系…" />
         </Field>
-        {(type === 'enum' || type === 'enumMulti') && (
+        {(effType === 'enum' || effType === 'enumMulti') && (
           <div className="span-2">
             <Field label="选项（用、分隔）">
               <input value={options} onChange={(e) => setOptions(e.target.value)} />
             </Field>
           </div>
         )}
-        {type === 'number' && (
+        {effType === 'number' && (
           <Field label="单位">
             <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="cm / kg" />
           </Field>
         )}
-        {type === 'rating' && (
+        {effType === 'rating' && (
           <Field label="满分">
             <input type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} />
           </Field>
@@ -136,6 +150,15 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
           </label>
         </Field>
       </div>
+      {typeChanged && (
+        <p className="warn-line">
+          类型从「{ATTRIBUTE_TYPES.find((t) => t.value === existing.type)?.label ?? existing.type}」改为
+          「{ATTRIBUTE_TYPES.find((t) => t.value === effType)?.label ?? effType}」。
+          {valueCount > 0
+            ? `已有 ${valueCount} 条值会按新类型转换，无法转换的会被清空（历史记录仍保留）。`
+            : '目前还没有人填过这个属性，可以直接改。'}
+        </p>
+      )}
       {archivedMatch && (
         <p className="warn-line">
           这个 key 对应一条已归档的属性「{archivedMatch.label}」，保存会把它恢复为可见属性（类型沿用
