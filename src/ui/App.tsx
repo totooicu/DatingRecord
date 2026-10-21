@@ -285,7 +285,8 @@ export default function App() {
         ))}
       </nav>
 
-      {modalCount === 0 && (
+      {/* 设置页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
+      {modalCount === 0 && section !== 'settings' && (
         <button className="fab" onClick={() => setQuickEvent(true)} aria-label="记一件事">
           ＋
         </button>

@@ -30,16 +30,28 @@ export function PersonList({
 }) {
   const v = useVersion();
   const persons = useMemo(() => listPersons({ keyword }), [v, keyword]);
+  const allPersons = useMemo(() => listPersons({ includeArchived: true }), [v]);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  /** 重名时拦一次：不是禁止（同名真实存在），而是让用户确认「是不是同一个人」 */
+  const [dupWarn, setDupWarn] = useState<string | null>(null);
 
-  const submit = () => {
-    const n = name.trim();
+  const trimmed = name.trim();
+  const existing = trimmed ? allPersons.find((p) => p.displayName.trim() === trimmed) : undefined;
+
+  const submit = (force = false) => {
+    const n = trimmed;
     if (!n) return;
+    // 已经有同名，且用户还没确认过 → 先把已有的那条拎出来给用户看
+    if (existing && !force) {
+      setDupWarn(existing.id);
+      return;
+    }
     const p = createPerson({ displayName: n });
     bump();
     setName('');
     setCreating(false);
+    setDupWarn(null);
     onSelect(p.id);
   };
 
@@ -57,15 +69,45 @@ export function PersonList({
             autoFocus
             value={name}
             placeholder="姓名"
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setDupWarn(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') submit();
-              if (e.key === 'Escape') setCreating(false);
+              if (e.key === 'Escape') {
+                setCreating(false);
+                setDupWarn(null);
+              }
             }}
           />
-          <button className="btn btn-primary btn-sm" onClick={submit}>
+          <button className="btn btn-primary btn-sm" onClick={() => submit()}>
             创建
           </button>
+        </div>
+      )}
+      {creating && existing && dupWarn && (
+        <div className="dup-warn">
+          <p>
+            已经有「{existing.displayName}」了（{existing.stats.eventCount} 次事件）。要直接用它，还是确实要再建一个同名的人？
+          </p>
+          <div className="row-actions">
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                const id = existing.id;
+                setName('');
+                setCreating(false);
+                setDupWarn(null);
+                onSelect(id);
+              }}
+            >
+              用已有的
+            </button>
+            <button className="btn btn-sm" onClick={() => submit(true)}>
+              仍要新建
+            </button>
+          </div>
         </div>
       )}
       <div className="list-search">

@@ -292,18 +292,33 @@ export function listDeletedEvents(): DREvent[] {
   );
 }
 
-/** 全局统计 */
-export function globalStats(): { eventCount: number; personCount: number; totalCost: number; avgRating: number | null } {
+/**
+ * 全局统计。
+ * 注意：personCount 是「未删除的行数」，包含归档；人物列表默认只显示 active，
+ * 两边数字天然可能不等，所以把归档数也一并返回，好在界面上说清楚。
+ */
+export function globalStats(): {
+  eventCount: number;
+  personCount: number;
+  archivedPersonCount: number;
+  totalCost: number;
+  avgRating: number | null;
+} {
   const e = queryOne<{ c: number | null; cost: number | null; rating: number | null }>(
     `SELECT COUNT(*) AS c,
             COALESCE(SUM(json_extract(metrics_json,'$.cost')),0) AS cost,
             AVG(json_extract(metrics_json,'$.rating')) AS rating
      FROM events WHERE deleted_at IS NULL`,
   );
-  const p = queryOne<{ c: number | null }>('SELECT COUNT(*) AS c FROM persons WHERE deleted_at IS NULL');
+  const p = queryOne<{ c: number | null; a: number | null }>(
+    `SELECT COUNT(*) AS c,
+            COALESCE(SUM(CASE WHEN status <> 'active' THEN 1 ELSE 0 END), 0) AS a
+     FROM persons WHERE deleted_at IS NULL`,
+  );
   return {
     eventCount: e?.c ?? 0,
     personCount: p?.c ?? 0,
+    archivedPersonCount: Number(p?.a ?? 0),
     totalCost: e?.cost ?? 0,
     avgRating: e?.rating ?? null,
   };

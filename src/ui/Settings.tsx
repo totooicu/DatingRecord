@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { clearAllData, dbSizeBytes, exportToFile, importLibrary } from '../core/io';
 import { archiveDef, listDefs, upsertDef } from '../core/repo/persons';
+import { DuplicatePersons } from './MergePersons';
 import { globalStats } from '../core/repo/events';
 import { getRoot } from '../core/repo/collections';
 import { queryOne, getMeta, persist } from '../core/db';
@@ -171,10 +172,19 @@ export function Settings() {
         </div>
       </Section>
 
+      <Section title="重复人物">
+        <DuplicatePersons />
+      </Section>
+
       <Section title="库概览">
         <div className="stat-row">
           <div className="stat-card">
-            <span className="stat-num">{stats.personCount}</span>
+            <span className="stat-num">
+              {stats.personCount - stats.archivedPersonCount}
+              {stats.archivedPersonCount > 0 && (
+                <em className="stat-sub">+{stats.archivedPersonCount} 归档</em>
+              )}
+            </span>
             <span className="stat-label">人物</span>
           </div>
           <div className="stat-card">
