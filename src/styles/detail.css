@@ -9,22 +9,26 @@
 
 .detail-head {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
   align-items: flex-start;
   margin-bottom: 14px;
 }
 
 .detail-head-main {
-  flex: 1;
+  flex: 1 1 200px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
 
+/* 操作区固定单独一行：标签不会再被按钮挤成竖排，按钮之间也始终并排 */
 .detail-head-actions {
+  flex: 1 1 100%;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   align-items: center;
 }
@@ -33,17 +37,7 @@
   flex: 1 1 100%;
 }
 
-/* 二次确认时操作区单独占一行：姓名和标签保持原宽度，确认文案也不再挤成一列 */
-.detail-head:has(.confirm-box) {
-  flex-wrap: wrap;
-}
-
-.detail-head:has(.confirm-box) .detail-head-actions {
-  flex: 1 1 100%;
-  justify-content: flex-end;
-}
-
-/* 同一行其他按钮先收起，避免「记一件事」和「确认」并排误点 */
+/* 事件集删除确认期间，同行的「移动」先收起，避免和「确认」并排误点 */
 .detail-head:has(.confirm-box) .detail-head-actions > .btn {
   display: none;
 }

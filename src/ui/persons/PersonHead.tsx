@@ -1,6 +1,7 @@
 // 详情头：头像 + 改名 + 标签 + 归档按钮
+import { useState } from 'react';
 import { updatePerson, listPersons, deletePerson } from '../../core/repo/persons';
-import { ConfirmButton, TagInput } from '../common';
+import { TagInput } from '../common';
 import { bump } from '../../store';
 import type { Person } from '../../core/types';
 
@@ -13,6 +14,19 @@ export function PersonHead({
   onNewEvent: () => void;
   onArchived?: (nextId: string | null) => void;
 }) {
+  // 归档二次确认就地替换按钮：记一件事 → 确认，归档 → 取消。
+  // 不额外展开一块文案，头部布局在确认前后保持不变。
+  const [confirming, setConfirming] = useState(false);
+
+  const archive = () => {
+    deletePerson(person.id);
+    // 归档后别停在本人详情页——那看起来像没生效。
+    // 手机端退回列表，宽屏右侧顺延到下一位。
+    const next = listPersons()[0];
+    onArchived?.(next?.id ?? null);
+    bump();
+  };
+
   return (
     <div className="detail-head">
       <span className="avatar avatar-lg">{person.displayName.slice(0, 1)}</span>
@@ -33,21 +47,25 @@ export function PersonHead({
         />
       </div>
       <div className="detail-head-actions">
-        <button className="btn btn-primary" onClick={onNewEvent}>
-          记一件事
-        </button>
-        <ConfirmButton
-          text="归档"
-          confirmText="确认归档？"
-          onConfirm={() => {
-            deletePerson(person.id);
-            // 归档后别停在本人详情页——那看起来像没生效。
-            // 手机端退回列表，宽屏右侧顺延到下一位。
-            const next = listPersons()[0];
-            onArchived?.(next?.id ?? null);
-            bump();
-          }}
-        />
+        {confirming ? (
+          <>
+            <button className="btn btn-danger" onClick={archive} title="确认归档？" aria-label="确认归档">
+              确认
+            </button>
+            <button className="btn btn-ghost" onClick={() => setConfirming(false)}>
+              取消
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn btn-primary" onClick={onNewEvent}>
+              记一件事
+            </button>
+            <button className="btn" onClick={() => setConfirming(true)}>
+              归档
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
