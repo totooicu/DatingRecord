@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { renderMarkdown } from '../../core/markdown';
-import { useFileUrls } from './useFileUrls';
+import { useFileRefs } from './useFileRefs';
 
 /**
  * 正文渲染。
@@ -15,23 +15,8 @@ export function MarkdownView({
   source: string;
   className?: string;
 }) {
-  const urls = useFileUrls(source);
-  const html = useMemo(() => renderMarkdown(source, urls), [source, urls]);
-  if (!source || !source.trim()) return null;
-  return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-/** 只读渲染（调用方已备好 URL 时用，省一次扫描） */
-export function MarkdownHtml({
-  source,
-  urlMap,
-  className = 'md-body',
-}: {
-  source: string;
-  urlMap?: Record<string, string>;
-  className?: string;
-}) {
-  const html = useMemo(() => renderMarkdown(source, urlMap ?? {}), [source, urlMap]);
+  const { urls, names } = useFileRefs(source);
+  const html = useMemo(() => renderMarkdown(source, urls, names), [source, urls, names]);
   if (!source || !source.trim()) return null;
   return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }

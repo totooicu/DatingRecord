@@ -106,11 +106,41 @@ export function urlForFile(id: string): Promise<string | null> {
   return objectUrlFor(id);
 }
 
-/** 生成插入正文的引用片段：图片用 ![]()，其他用 []() */
+/**
+ * 重命名：只动元数据里的 name，id 与二进制都不变。
+ *
+ * 正文里存的是 file:<id>，名字压根没写进引用里（见 fileRefSyntax），
+ * 所以改名后所有既有引用照旧有效，显示的名字也自动跟着变。
+ */
+export function renameFile(id: string, name: string): void {
+  const n = name.trim();
+  if (!n) return;
+  transact(() => {
+    run('UPDATE attachments SET name = ? WHERE id = ?', [n, id]);
+    appendOplog('attachment', id, 'update', { name: n });
+  });
+}
+
+/**
+ * 生成插入正文的引用片段。
+ *
+ * 方括号里**故意留空**——名字不写进正文，只靠 id 定位文件。
+ * 否则改一次名字，正文里那串旧名字就成了永远对不上的死文字。
+ * 显示时的名字由渲染层按 id 现查（见 renderMarkdown 的 nameMap）。
+ */
 export function fileRefSyntax(f: StoredFile): string {
-  const isImage = f.mime.startsWith('image/');
-  const label = f.name.replace(/[[\]]/g, '');
-  return `${isImage ? '!' : ''}[${label}](${FILE_REF_PREFIX}${f.id})`;
+  const bang = f.mime.startsWith('image/') ? '!' : '';
+  return `${bang}[](${FILE_REF_PREFIX}${f.id})`;
+}
+
+/** 批量取文件名，供渲染层把 file:<id> 显示成当前名字 */
+export function fileNames(ids: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const id of ids) {
+    const f = getFile(id);
+    if (f) out[id] = f.name;
+  }
+  return out;
 }
 
 export { delBlob, clearBlobs } from '../db/blob';

@@ -35,37 +35,42 @@ export function extractFileRefs(md: string): string[] {
 }
 
 /** 文件未加载/已删除时的占位——不用 emoji（部分安卓字体渲染成空心方块） */
-function missingFile(label: string): string {
-  return `<span class="md-file md-file-missing">附件已删除：${escapeHtml(label || '未命名')}</span>`;
+function missingFile(name: string): string {
+  return `<span class="md-file md-file-missing">附件已删除${name ? '：' + escapeHtml(name) : ''}</span>`;
 }
 
-function buildMarked(urlMap: Record<string, string>): Marked {
+function buildMarked(urlMap: Record<string, string>, nameMap: Record<string, string>): Marked {
   return new Marked({
     gfm: true,
     // 中文记录习惯回车即换行，不开 breaks 会把所有行挤成一段
     breaks: true,
     renderer: {
       image(token: Tokens.Image) {
-        const text = escapeHtml(token.text ?? '');
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
         if (isFileRef(token.href)) {
-          const url = urlMap[fileIdOf(token.href)];
+          const id = fileIdOf(token.href);
+          const url = urlMap[id];
+          // alt 用文件库的当前名字：正文里那串方括号文字可能是改名前的旧名，不可信
+          const alt = escapeHtml(nameMap[id] ?? '');
           return url
-            ? `<img src="${escapeHtml(url)}" alt="${text}"${title} class="md-img" loading="lazy" />`
-            : missingFile(token.text);
+            ? `<img src="${escapeHtml(url)}" alt="${alt}"${title} class="md-img" loading="lazy" />`
+            : missingFile(nameMap[id] ?? '');
         }
+        const text = escapeHtml(token.text ?? '');
         return `<img src="${escapeHtml(token.href)}" alt="${text}"${title} class="md-img" loading="lazy" />`;
       },
       link(token: Tokens.Link) {
-        const text = token.text ?? '';
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
         if (isFileRef(token.href)) {
-          const url = urlMap[fileIdOf(token.href)];
+          const id = fileIdOf(token.href);
+          const url = urlMap[id];
+          // 链接文字同样取当前名字；正文里写的旧名一律忽略
+          const text = escapeHtml(nameMap[id] ?? '附件');
           return url
             ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"${title} class="md-file-link">${text}</a>`
-            : missingFile(token.text.replace(/<[^>]+>/g, ''));
+            : missingFile(nameMap[id] ?? '');
         }
-        return `<a href="${escapeHtml(token.href)}" target="_blank" rel="noopener noreferrer"${title}>${text}</a>`;
+        return `<a href="${escapeHtml(token.href)}" target="_blank" rel="noopener noreferrer"${title}>${token.text ?? ''}</a>`;
       },
     },
   });
@@ -90,12 +95,18 @@ const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
  * @param md 原始 markdown
  * @param urlMap fileId → objectURL。未提供时文件引用渲染成「已删除」占位，
  *               这样异步加载 URL 的过程中页面也不会闪空白。
+ * @param nameMap fileId → 当前文件名。文件引用的显示名以此为准，
+ *                正文方括号里的文字只当作历史残留，一律忽略。
  */
-export function renderMarkdown(md: string, urlMap: Record<string, string> = {}): string {
+export function renderMarkdown(
+  md: string,
+  urlMap: Record<string, string> = {},
+  nameMap: Record<string, string> = {},
+): string {
   if (!md || !md.trim()) return '';
   let raw: string;
   try {
-    raw = buildMarked(urlMap).parse(md, { async: false }) as string;
+    raw = buildMarked(urlMap, nameMap).parse(md, { async: false }) as string;
   } catch {
     // 解析失败不该让整页崩：退回纯文本
     return `<p>${escapeHtml(md)}</p>`;
