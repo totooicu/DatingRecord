@@ -8,19 +8,33 @@ import { queryAll, queryOne, run, transact, getDb, getDeviceId, getMeta, setMeta
 import { newId } from './id';
 import { hlcCompare, hlcNow, hlcReceive } from './time';
 import { ensureClosure } from './repo/collections';
+import { getBlob, putBlob, clearBlobs, blobToBase64, base64ToBlob } from './db/blob';
 import { SCHEMA_VERSION, type Attachment, type AttributeDef, type Collection, type DREvent, type LibraryFile, type Member, type Person } from './types';
 
 // ---------------- 导出 ----------------
 
-export function buildLibrary(opts: { includeAttachments?: boolean } = {}): LibraryFile {
+/**
+ * 附件导出：库里只有元数据，二进制在 IndexedDB，这里临时转成 base64。
+ * 所以包含附件的备份会明显变大——这也是导出默认可以关掉它的原因。
+ */
+async function exportAttachments(): Promise<Attachment[]> {
+  const rows = queryAll<Row>('SELECT * FROM attachments');
+  const out: Attachment[] = [];
+  for (const r of rows) {
+    const meta = rowToAttachment(r);
+    const blob = await getBlob(r.id);
+    out.push({ ...meta, data: blob ? await blobToBase64(blob) : '' });
+  }
+  return out;
+}
+
+export async function buildLibrary(opts: { includeAttachments?: boolean } = {}): Promise<LibraryFile> {
   const defs = queryAll<Record<string, never>>('SELECT * FROM attribute_defs').map(rowToDef);
   const persons = queryAll<Record<string, never>>('SELECT * FROM persons').map(rowToPerson);
   const events = queryAll<Record<string, never>>('SELECT * FROM events').map(rowToEvent);
   const collections = queryAll<Record<string, never>>('SELECT * FROM collections').map(rowToCollection);
   const members = queryAll<Record<string, never>>('SELECT * FROM collection_members').map(rowToMember);
-  const attachments = opts.includeAttachments
-    ? queryAll<Record<string, never>>('SELECT * FROM attachments').map(rowToAttachment)
-    : [];
+  const attachments = opts.includeAttachments ? await exportAttachments() : [];
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -49,8 +63,8 @@ export function buildLibrary(opts: { includeAttachments?: boolean } = {}): Libra
   };
 }
 
-export function exportToFile(opts: { includeAttachments?: boolean } = {}): string {
-  const lib = buildLibrary(opts);
+export async function exportToFile(opts: { includeAttachments?: boolean } = {}): Promise<string> {
+  const lib = await buildLibrary(opts);
   const text = JSON.stringify(lib, null, 2);
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
   const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
@@ -113,12 +127,13 @@ export async function importLibrary(
   }
 
   const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0 };
+  const importedAttachments: Attachment[] = [];
   let skipped = 0;
   let backupName: string | undefined;
 
   if (mode === 'replace') {
     // 危险操作：替换前自动导出一份备份
-    backupName = exportToFile({ includeAttachments: true });
+    backupName = await exportToFile({ includeAttachments: true });
   }
 
   transact(() => {
@@ -133,6 +148,8 @@ export async function importLibrary(
         'person_attr_history',
         'persons',
         'attribute_defs',
+        // 之前的清空列表漏了 attachments，替换导入会留下上一份库的附件
+        'attachments',
       ]) {
         run(`DELETE FROM ${t}`);
       }
@@ -201,14 +218,21 @@ export async function importLibrary(
         a.sha256 ?? '',
         a.mime ?? '',
         a.name ?? '',
-        a.data ?? '',
+        // data 只作为交换格式存在，运行期二进制在 IndexedDB，库里留空
+        '',
         a.size ?? 0,
         a.takenAt ?? null,
         a.createdAt ?? new Date().toISOString(),
       ]);
-      counts.attachments++;
+      importedAttachments.push(a);
     }
   });
+
+  // 二进制在事务外写：IndexedDB 是异步的，塞进 SQL 事务会破坏原子性边界
+  for (const a of importedAttachments) {
+    if (a.data) await putBlob(a.id, base64ToBlob(a.data));
+    counts.attachments++;
+  }
 
   ensureClosure();
   setMeta('last_import_at', new Date().toISOString());
@@ -217,7 +241,9 @@ export async function importLibrary(
 }
 
 /** 清空全部数据（用于「重置」） */
-export function clearAllData(): void {
+export async function clearAllData(): Promise<void> {
+  // 附件二进制在 IndexedDB，不在这些表里，必须单独清
+  await clearBlobs();
   transact(() => {
     for (const t of [
       'oplog',

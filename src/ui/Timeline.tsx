@@ -5,6 +5,7 @@ import { getTree, type TreeNode } from '../core/repo/collections';
 import { EventForm } from './EventForm';
 import { Empty, Modal, ConfirmButton } from './common';
 import { formatCompact, formatTime } from '../core/time';
+import { markdownExcerpt } from '../core/markdown';
 import { useVersion, bump } from '../store';
 import type { DREvent } from '../core/types';
 
@@ -235,6 +236,8 @@ export function Timeline({ filter, keyword }: { filter: TimelineFilter; keyword:
                     {e.metrics.cost ? ` ¥${e.metrics.cost}` : ''}
                     {e.tags.length ? ` #${e.tags.join(' #')}` : ''}
                   </span>
+                  {/* 正文此前没有任何展示点，写完了只能在编辑框里看到 */}
+                  {e.content.trim() && <span className="event-excerpt">{markdownExcerpt(e.content, 60)}</span>}
                 </button>
               </li>
             ))}

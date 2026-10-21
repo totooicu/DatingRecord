@@ -1,0 +1,113 @@
+import { useRef, useState } from 'react';
+import { addFile, fileRefSyntax } from '../../core/repo/files';
+import { bump } from '../../store';
+import { MarkdownView } from './MarkdownView';
+import { MarkdownToolbar } from './MarkdownToolbar';
+import { caretOf, insertText, type Caret } from './insert';
+
+/**
+ * 正文编辑器：工具栏 + textarea + 预览。
+ *
+ * 手机上工具栏横向滚动，编辑/预览用 tab 切换（同屏放两栏会挤没）。
+ */
+export function MarkdownEditor({
+  value,
+  onChange,
+  placeholder = '记录发生了什么…支持 Markdown，可插图',
+  rows = 6,
+  autoFocus = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+  autoFocus?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  /** 变换后立刻同步 DOM 值，避免连续插入时读到未提交的旧文本 */
+  const apply = (fn: (c: Caret) => Caret) => {
+    const el = ref.current;
+    if (!el) return;
+    const out = fn(caretOf(el));
+    el.value = out.text;
+    el.setSelectionRange(out.start, out.end);
+    el.focus();
+    onChange(out.text);
+  };
+
+  const pick = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      for (const f of Array.from(list)) {
+        const saved = await addFile(f);
+        apply((c) => insertText(c, fileRefSyntax(saved)));
+      }
+      // 让设置页的文件列表同步刷新
+      bump();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '文件上传失败');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="md-editor">
+      <div className="md-editor-head">
+        <div className="md-tabs">
+          <button
+            type="button"
+            className={mode === 'edit' ? 'md-tab md-tab-on' : 'md-tab'}
+            onClick={() => setMode('edit')}
+          >
+            编辑
+          </button>
+          <button
+            type="button"
+            className={mode === 'preview' ? 'md-tab md-tab-on' : 'md-tab'}
+            onClick={() => setMode('preview')}
+          >
+            预览
+          </button>
+        </div>
+        {mode === 'edit' && <MarkdownToolbar apply={apply} onPickFile={() => fileRef.current?.click()} />}
+      </div>
+
+      {mode === 'edit' ? (
+        <textarea
+          ref={ref}
+          rows={rows}
+          value={value}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : value.trim() ? (
+        <div className="md-preview">
+          <MarkdownView source={value} />
+        </div>
+      ) : (
+        <div className="md-preview muted">还没有内容</div>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        hidden
+        accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json"
+        onChange={(e) => void pick(e.target.files)}
+      />
+      {busy && <p className="muted small">正在上传…</p>}
+      {err && <p className="warn-line">{err}</p>}
+    </div>
+  );
+}

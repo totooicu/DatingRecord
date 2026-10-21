@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal, Field, TagInput } from './common';
+import { MarkdownEditor } from './markdown';
 import { EVENT_KINDS, createEvent, updateEvent } from '../core/repo/events';
 import { listPersons } from '../core/repo/persons';
 import { getTree, addMember, removeMember, collectionsOfEvent, type TreeNode } from '../core/repo/collections';
@@ -225,7 +226,7 @@ export function EventForm({
 
         <div className="span-2">
           <Field label="正文">
-            <textarea rows={6} value={content} onChange={(e) => setContent(e.target.value)} placeholder="记录发生了什么…" />
+            <MarkdownEditor value={content} onChange={setContent} rows={6} />
           </Field>
         </div>
       </div>

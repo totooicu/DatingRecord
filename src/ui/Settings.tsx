@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { clearAllData, dbSizeBytes, exportToFile, importLibrary } from '../core/io';
 import { archiveDef, listDefs, upsertDef } from '../core/repo/persons';
 import { ArchivedPersons, DuplicatePersons } from './MergePersons';
+import { FilesSection } from './settings/FilesSection';
 import { globalStats } from '../core/repo/events';
 import { getRoot } from '../core/repo/collections';
 import { queryOne, getMeta, persist } from '../core/db';
@@ -77,7 +78,7 @@ export function Settings() {
             <input type="checkbox" checked={withAttachments} onChange={(e) => setWithAttachments(e.target.checked)} />
             包含附件（图片等，会让文件变大）
           </label>
-          <button className="btn btn-primary" onClick={() => exportToFile({ includeAttachments: withAttachments })}>
+          <button className="btn btn-primary" onClick={() => void exportToFile({ includeAttachments: withAttachments })}>
             导出备份文件
           </button>
         </div>
@@ -183,6 +184,13 @@ export function Settings() {
         <ArchivedPersons />
       </Section>
 
+      <Section
+        title="文件"
+        desc="单层文件库（不分子文件夹）。文件存在浏览器本地，正文里用「插图」按钮引用；导出备份时会一并打包。"
+      >
+        <FilesSection />
+      </Section>
+
       <Section title="库概览">
         <div className="stat-row">
           <div className="stat-card">
@@ -228,7 +236,7 @@ export function Settings() {
             danger
             confirmText="确认清空？建议先导出备份！"
             onConfirm={async () => {
-              clearAllData();
+              await clearAllData();
               await persist(); // 必须先落盘再刷新，否则 debounce 未触发会「清不掉」
               location.reload();
             }}
