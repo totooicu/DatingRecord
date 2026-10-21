@@ -83,26 +83,44 @@ export function ConfirmButton({
   danger,
   confirmText,
   onConfirm,
+  compact,
+  icon,
+  className,
 }: {
   text: string;
   danger?: boolean;
   confirmText: string;
   onConfirm: () => void;
+  /** 紧凑模式：确认时只显示「确认 / 取消」，用于文件行这类挤在一行的场景 */
+  compact?: boolean;
+  /** 用图标代替文字（图标按钮仍需传 text 作为无障碍名称） */
+  icon?: ReactNode;
+  /** 追加到未确认按钮上的类名（如图标按钮样式） */
+  className?: string;
 }) {
   const [armed, setArmed] = useState(false);
   if (!armed) {
     return (
-      <button className={danger ? 'btn btn-danger' : 'btn'} onClick={() => setArmed(true)}>
-        {text}
+      <button
+        className={['btn', danger ? 'btn-danger' : '', className ?? ''].filter(Boolean).join(' ')}
+        onClick={() => setArmed(true)}
+        title={confirmText}
+        aria-label={text}
+      >
+        {icon ?? text}
       </button>
     );
   }
   return (
     <span className="confirm-row">
-      <button className="btn btn-danger" onClick={() => { onConfirm(); setArmed(false); }}>
-        {confirmText}
+      <button
+        className={compact ? 'btn btn-danger btn-sm' : 'btn btn-danger'}
+        onClick={() => { onConfirm(); setArmed(false); }}
+        title={confirmText}
+      >
+        {compact ? '确认' : confirmText}
       </button>
-      <button className="btn btn-ghost" onClick={() => setArmed(false)}>
+      <button className={compact ? 'btn btn-ghost btn-sm' : 'btn btn-ghost'} onClick={() => setArmed(false)}>
         取消
       </button>
     </span>

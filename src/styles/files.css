@@ -1,18 +1,29 @@
-/* ---------- 文件管理 ---------- */
+/* ---------- 文件管理（单层） ---------- */
 .file-list {
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
+
+/* 一行一个文件：缩略图在左，主区里第一行放「名字 + 全部操作」 */
 .file-item {
   display: flex;
-  gap: 10px;
   align-items: center;
-  padding: 8px 0;
+  gap: 10px;
+  padding: 9px 0;
   border-top: 1px solid var(--border);
 }
-.file-thumb {
+
+.file-thumb-btn {
   flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  line-height: 0;
+}
+
+.file-thumb {
   width: 44px;
   height: 44px;
   object-fit: cover;
@@ -20,24 +31,111 @@
   border-radius: 8px;
   background: var(--side);
 }
+
 .file-thumb-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--muted);
   font-size: 13px;
+  line-height: 1;
 }
+
 .file-main {
   display: flex;
   flex: 1;
   min-width: 0;
   flex-direction: column;
+  gap: 2px;
 }
+
+/* 第一行：文件名（弹性收缩）+ 操作（不换行、不压缩） */
+.file-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .file-name {
+  flex: 1;
+  min-width: 40px;
   overflow: hidden;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
 }
+
+.file-name:hover {
+  color: var(--primary);
+}
+
+.file-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 比常规 btn-sm 再紧一点，390px 宽也要能和文件名排在同一行 */
+.file-actions .btn-sm {
+  padding: 3px 7px;
+  font-size: 12px;
+}
+
+/* 图标操作按钮：4 个也才 130px 左右，给文件名留出可读宽度 */
+.file-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+}
+
+.file-icon-btn:hover {
+  border-color: #d3cec5;
+  background: #faf9f7;
+  color: var(--text);
+}
+
+.file-icon-btn-danger {
+  color: var(--danger);
+  border-color: #e8c4bf;
+}
+
+.file-rename {
+  flex: 1;
+  min-width: 40px;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.file-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.file-type {
+  flex: none;
+  color: var(--primary);
+}
+
+/* 手机上不留白，宽屏文件列表也不该铺满整行 */
 .file-item .member-actions {
   flex: none;
 }

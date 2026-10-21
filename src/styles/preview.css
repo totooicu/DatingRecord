@@ -1,0 +1,314 @@
+/* ============================================================
+   文件预览：图片 / 视频 / 音频 / 文本 / Markdown / 未知类型
+   ============================================================ */
+
+/* 预览弹窗比普通表单宽：媒体需要更多面积 */
+.modal-media .modal-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-media .modal-head h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 通用 ---------- */
+.pv-viewer,
+.pv-video,
+.pv-text,
+.pv-markdown,
+.pv-unknown {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pv-loading,
+.pv-error {
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.pv-error {
+  color: var(--danger);
+}
+
+/* ---------- 缩放舞台（图片 / 视频） ---------- */
+.pv-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #171614;
+  touch-action: none;
+  overscroll-behavior: contain;
+  cursor: grab;
+}
+
+.pv-stage.is-grabbing {
+  cursor: grabbing;
+}
+
+.pv-zoom-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.pv-zoom-content img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.pv-zoom-content video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 缩放工具条：压在舞台右下角，深色底上可读 */
+.pv-zoom-bar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(20, 18, 17, 0.62);
+  color: #fff;
+  backdrop-filter: blur(6px);
+}
+
+.pv-zoom-bar button {
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 999px;
+}
+
+.pv-zoom-bar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.pv-zoom-bar button:disabled {
+  opacity: 0.4;
+}
+
+.pv-zoom-bar span {
+  min-width: 38px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-zoom-reset {
+  font-size: 11px !important;
+}
+
+/* ---------- 播放控制条（音频 / 视频） ---------- */
+.pv-transport {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.pv-seek {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 覆盖全局 input 样式：滑块不需要边框和内边距 */
+.pv-seek input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--primary);
+}
+
+.pv-time {
+  flex: none;
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pv-play {
+  min-width: 52px;
+}
+
+.pv-rate {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.pv-rate button {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.pv-rate button.on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ---------- 音频 ---------- */
+.pv-audio {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pv-audio-art {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 20px;
+}
+
+.pv-audio-icon {
+  width: 92px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f2efe9;
+  color: var(--primary);
+  font-size: 40px;
+}
+
+.pv-audio-name {
+  max-width: 100%;
+  font-weight: 600;
+  text-align: center;
+  word-break: break-all;
+}
+
+.pv-audio audio {
+  display: none;
+}
+
+/* ---------- 文本 ---------- */
+.pv-text-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.pv-text-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pv-text-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pv-text-body pre {
+  margin: 0;
+  padding: 14px 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.55;
+}
+
+.pv-text-body p {
+  padding: 0 16px 14px;
+}
+
+/* ---------- Markdown ---------- */
+.pv-markdown {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 18px;
+}
+
+/* ---------- 未知类型 ---------- */
+.pv-unknown {
+  overflow: auto;
+  padding: 18px;
+  gap: 12px;
+}
+
+.pv-unknown-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------- 宽屏：弹窗别铺满整屏 ---------- */
+@media (min-width: 768px) {
+  .modal-media {
+    width: min(96vw, 1080px);
+    max-width: 1080px;
+    height: min(88dvh, 860px);
+    max-height: calc(100dvh - 80px);
+  }
+}
