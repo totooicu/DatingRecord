@@ -24,9 +24,33 @@
 .merge-list li {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 6px 0;
   border-bottom: 1px dashed #efece7;
+}
+
+/* 二次确认的文案块要能换到下一行并撑满整行，否则长文案会把列表挤成一团 */
+.merge-list .member-actions {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.merge-list .confirm-box {
+  flex: 1 1 100%;
+}
+
+/* 一旦进入二次确认，操作区整行下移，确认文案从标题左侧对齐；
+   同一行其他按钮暂时收起，避免「恢复」和「确认」并排造成误点 */
+.merge-list li:has(.confirm-box) > .member-actions {
+  flex: 1 1 100%;
+}
+
+.merge-list li:has(.confirm-box) > .member-actions > button {
+  display: none;
 }
 
 .merge-list li:last-child {

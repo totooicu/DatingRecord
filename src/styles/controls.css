@@ -88,6 +88,33 @@
   gap: 6px;
 }
 
+/* 非紧凑确认：长文案单独占一块，不再把一长串字塞进按钮里挤坏列表 */
+.confirm-box {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 确认文案块单独占一行，按钮排在文案下面 */
+.row-actions .confirm-box,
+.modal-foot .confirm-box {
+  flex: 1 1 100%;
+}
+
+.confirm-msg {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.confirm-acts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* ---------- 表单 ---------- */
 /* 手机端单列：390px 下两列会让日期/时间控件互相挤压并溢出 */
 .form-grid {

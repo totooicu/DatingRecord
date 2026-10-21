@@ -24,8 +24,13 @@
 
 .detail-head-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.detail-head-actions .confirm-box {
+  flex: 1 1 100%;
 }
 
 .title-input {

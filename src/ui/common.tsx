@@ -121,17 +121,23 @@ export function ConfirmButton({
     );
   }
   return (
-    <span className="confirm-row">
-      <button
-        className={compact ? 'btn btn-danger btn-sm' : 'btn btn-danger'}
-        onClick={() => { onConfirm(); setArmed(false); }}
-        title={confirmText}
-      >
-        {compact ? '确认' : confirmText}
-      </button>
-      <button className={compact ? 'btn btn-ghost btn-sm' : 'btn btn-ghost'} onClick={() => setArmed(false)}>
-        取消
-      </button>
+    <span className={compact ? 'confirm-row' : 'confirm-row confirm-box'}>
+      {!compact && <span className="confirm-msg">{confirmText}</span>}
+      <span className="confirm-acts">
+        <button
+          className={compact ? 'btn btn-danger btn-sm' : 'btn btn-danger'}
+          onClick={() => { onConfirm(); setArmed(false); }}
+          title={confirmText}
+        >
+          确认
+        </button>
+        <button
+          className={compact ? 'btn btn-ghost btn-sm' : 'btn btn-ghost'}
+          onClick={() => setArmed(false)}
+        >
+          取消
+        </button>
+      </span>
     </span>
   );
 }
