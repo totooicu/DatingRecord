@@ -294,8 +294,11 @@ export function listDeletedEvents(): DREvent[] {
 
 /**
  * 全局统计。
- * 注意：personCount 是「未删除的行数」，包含归档；人物列表默认只显示 active，
- * 两边数字天然可能不等，所以把归档数也一并返回，好在界面上说清楚。
+ *
+ * personCount 只数「活跃」的人（和人物列表里能看到的条数一致），
+ * archivedPersonCount 数所有不在列表里的记录（手动归档 + 合并后留下的墓碑），
+ * 与设置页「归档的人物」列出的条目数严格相等——曾经归档数漏掉了合并墓碑，
+ * 于是出现「列表里 4 个人、概览说 5」这种对不上的困惑。
  */
 export function globalStats(): {
   eventCount: number;
@@ -311,9 +314,9 @@ export function globalStats(): {
      FROM events WHERE deleted_at IS NULL`,
   );
   const p = queryOne<{ c: number | null; a: number | null }>(
-    `SELECT COUNT(*) AS c,
-            COALESCE(SUM(CASE WHEN status <> 'active' THEN 1 ELSE 0 END), 0) AS a
-     FROM persons WHERE deleted_at IS NULL`,
+    `SELECT COALESCE(SUM(CASE WHEN deleted_at IS NULL AND status = 'active' THEN 1 ELSE 0 END), 0) AS c,
+            COALESCE(SUM(CASE WHEN deleted_at IS NOT NULL OR status <> 'active' THEN 1 ELSE 0 END), 0) AS a
+     FROM persons`,
   );
   return {
     eventCount: e?.c ?? 0,

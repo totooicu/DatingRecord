@@ -123,6 +123,12 @@ export default function App() {
     setView({ k: 'list', s: view.k === 'detail' ? view.s : 'persons' });
   }, [view]);
 
+  /** 归档某人后：退回列表，并把选中顺延到下一位（宽屏右侧也随之换人） */
+  const onPersonArchived = useCallback((nextId: string | null) => {
+    setPersonId(nextId);
+    setView({ k: 'list', s: 'persons' });
+  }, []);
+
   // 回到列表页时还原滚动位置
   useEffect(() => {
     if (view.k === 'list') {
@@ -165,12 +171,20 @@ export default function App() {
           {view.k === 'detail' ? (
             <>
               <PageHead title={detailTitle} onBack={backToList} />
-              {s === 'persons' ? <PersonDetail id={view.id} /> : <CollectionDetail id={view.id} />}
+              {s === 'persons' ? (
+                <PersonDetail id={view.id} onArchived={onPersonArchived} />
+              ) : (
+                <CollectionDetail id={view.id} />
+              )}
             </>
           ) : detailId ? (
             <>
               <PageHead title={s === 'persons' ? getPerson(detailId)?.displayName ?? '人物' : getCollection(detailId)?.name ?? '事件集'} />
-              {s === 'persons' ? <PersonDetail id={detailId} /> : <CollectionDetail id={detailId} />}
+              {s === 'persons' ? (
+                <PersonDetail id={detailId} onArchived={onPersonArchived} />
+              ) : (
+                <CollectionDetail id={detailId} />
+              )}
             </>
           ) : (
             <>

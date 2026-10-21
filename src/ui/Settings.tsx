@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { clearAllData, dbSizeBytes, exportToFile, importLibrary } from '../core/io';
 import { archiveDef, listDefs, upsertDef } from '../core/repo/persons';
-import { DuplicatePersons } from './MergePersons';
+import { ArchivedPersons, DuplicatePersons } from './MergePersons';
 import { globalStats } from '../core/repo/events';
 import { getRoot } from '../core/repo/collections';
 import { queryOne, getMeta, persist } from '../core/db';
@@ -172,15 +172,22 @@ export function Settings() {
         </div>
       </Section>
 
-      <Section title="重复人物">
+      <Section title="重复人物" desc="同名建了多次的记录，合并后事件关联会归到一起。">
         <DuplicatePersons />
+      </Section>
+
+      <Section
+        title="归档的人物"
+        desc="不在人物列表里、但仍保存在库中的记录——库概览里「+N 归档」的 N 就等于这里的条数。手动归档的可原样恢复；合并重复人物时被并入的那条也列在这里（事件已转到对方名下，只能彻底清理）。"
+      >
+        <ArchivedPersons />
       </Section>
 
       <Section title="库概览">
         <div className="stat-row">
           <div className="stat-card">
             <span className="stat-num">
-              {stats.personCount - stats.archivedPersonCount}
+              {stats.personCount}
               {stats.archivedPersonCount > 0 && (
                 <em className="stat-sub">+{stats.archivedPersonCount} 归档</em>
               )}

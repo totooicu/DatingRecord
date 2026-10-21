@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import App from './ui/App';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { initDb } from './core/db';
 import './styles.css';
 
@@ -66,7 +67,11 @@ initDb(setTip)
   .then(() => {
     window.clearTimeout(slowTimer);
     window.clearTimeout(hardTimer);
-    createRoot(el).render(<App />);
+    createRoot(el).render(
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>,
+    );
     finishBoot();
     registerServiceWorker();
   })

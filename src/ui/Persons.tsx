@@ -144,7 +144,7 @@ export function PersonList({
   );
 }
 
-export function PersonDetail({ id }: { id: string }) {
+export function PersonDetail({ id, onArchived }: { id: string; onArchived?: (nextId: string | null) => void }) {
   const v = useVersion();
   const person = useMemo(() => getPerson(id), [id, v]);
   const defs = useMemo(() => listDefs(), [v]);
@@ -194,6 +194,10 @@ export function PersonDetail({ id }: { id: string }) {
             confirmText="确认归档？"
             onConfirm={() => {
               deletePerson(id);
+              // 归档后别停在本人详情页——那看起来像没生效。
+              // 手机端退回列表，宽屏右侧顺延到下一位。
+              const next = listPersons()[0];
+              onArchived?.(next?.id ?? null);
               bump();
             }}
           />

@@ -1443,3 +1443,46 @@ input[type='datetime-local'] {
     margin: 80px auto;
   }
 }
+
+/* ---------- 渲染异常兜底 ---------- */
+/* 没有这层兜底时，数据层一句 SQL 写错就会让整棵 React 树卸载，
+   用户看到的是一片空白，什么提示都没有。 */
+.crash {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.crash-card {
+  max-width: 440px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.crash-card h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+.crash-card .row-actions {
+  justify-content: center;
+}
+.crash-detail {
+  margin-top: 8px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
