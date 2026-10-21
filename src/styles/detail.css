@@ -1,0 +1,81 @@
+/* ---------- 详情 ---------- */
+/* 详情页自身带内边距，不再依赖外层容器（手机上 .pane 无 padding，
+   宽屏 .pane-detail 也只有少许）。max-width 防止横屏时内容拉得过宽。 */
+.detail {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 14px 14px 8px;
+}
+
+.detail-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.detail-head-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.detail-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.title-input {
+  font-size: 20px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 6px;
+}
+
+.title-input:hover {
+  border-color: var(--border);
+}
+
+.sub-input {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.breadcrumb {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.breadcrumb em {
+  font-style: normal;
+  margin: 0 6px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}

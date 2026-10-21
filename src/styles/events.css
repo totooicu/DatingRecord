@@ -1,0 +1,121 @@
+/* ---------- 列表 ---------- */
+.event-list,
+.member-list,
+.plain-list,
+.pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 事件行：手机用「两行」卡片式（时间/人物一行，标题一行），宽屏改单行表格式。
+   单行在 390px 下会把标题挤到只剩省略号，所以 base 必须是两行。 */
+.event-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'time people'
+    'title title';
+  align-items: baseline;
+  gap: 2px 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 10px 6px;
+  border-bottom: 1px dashed #efece7;
+}
+
+.event-item:hover {
+  background: #faf9f7;
+}
+
+.event-time {
+  grid-area: time;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-title {
+  grid-area: title;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-people {
+  grid-area: people;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.event-meta {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-list li,
+.plain-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px dashed #efece7;
+}
+
+.member-type {
+  font-size: 11px;
+  color: var(--muted);
+  background: #f2efe9;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.member-title {
+  border: none;
+  background: transparent;
+  text-align: left;
+  flex: 1;
+  font-weight: 600;
+  padding: 0;
+}
+
+.member-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.pick-list button {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 4px;
+  text-align: left;
+}
+
+.pick-list button:hover {
+  background: #faf9f7;
+}
+
+.month-group {
+  margin-bottom: 14px;
+}
+
+.month-label {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 14px 4px;
+  font-weight: 600;
+}

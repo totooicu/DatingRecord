@@ -1,0 +1,41 @@
+/* ---------- 统计 ---------- */
+/* 手机端 2 列，≥768px 变 4 列 */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow);
+}
+
+.stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  /* 「19 天前」这类带单位的数字不换行 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 数字后的小注解，如「+1 归档」 */
+.stat-sub {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  font-style: normal;
+  color: var(--muted);
+}

@@ -1,0 +1,57 @@
+/* ---------- 树 ---------- */
+.tree-row {
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+}
+
+.tree-row:hover {
+  background: #f1efec;
+}
+
+.tree-row-on {
+  background: #fff;
+  border-left: 3px solid var(--primary);
+}
+
+.tree-toggle {
+  width: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 去掉浏览器对 type=date 的空白占位导致的高度抖动 */
+input[type='date'],
+input[type='datetime-local'] {
+  min-height: 38px;
+  /* iOS 上原生日期控件有默认最小宽度，不约束会撑破容器 */
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tree-name em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 11px;
+  background: #eeece8;
+  border-radius: 999px;
+  padding: 0 6px;
+}

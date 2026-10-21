@@ -1,0 +1,43 @@
+/* ---------- 文件管理 ---------- */
+.file-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.file-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.file-thumb {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--side);
+}
+.file-thumb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.file-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-item .member-actions {
+  flex: none;
+}

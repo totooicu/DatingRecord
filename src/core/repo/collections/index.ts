@@ -3,6 +3,7 @@
 // 这里原样转出，外部 import '../repo/collections' 的写法不用改。
 
 export { collectionFromRow, type CollectionRow } from './rows';
+export { flattenTree, type FlatNode } from './flatten';
 export { rebuildClosure, ensureClosure } from './closure';
 export { getRoot, getCollection, getTree, getBreadcrumb, listChildren, type TreeNode } from './read';
 export { createCollection, updateCollection, moveCollection, deleteCollection } from './write';

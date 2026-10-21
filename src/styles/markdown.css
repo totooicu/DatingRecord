@@ -1,0 +1,178 @@
+/* ---------- Markdown 正文 ---------- */
+.md-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.md-editor-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.md-tabs {
+  display: flex;
+  gap: 6px;
+}
+.md-tab {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+}
+.md-tab-on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+/* 手机上按钮横向滚动，换行会把工具栏顶成三行 */
+.md-toolbar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.md-tool {
+  flex: none;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+}
+.md-tool-b {
+  font-weight: 700;
+}
+.md-tool-i {
+  font-style: italic;
+}
+.md-tool-s {
+  text-decoration: line-through;
+}
+.md-tool-file {
+  color: var(--primary);
+}
+.md-preview {
+  min-height: 90px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--side);
+}
+
+.md-body {
+  font-size: 14px;
+  line-height: 1.75;
+  word-break: break-word;
+}
+.md-body > *:first-child {
+  margin-top: 0;
+}
+.md-body > *:last-child {
+  margin-bottom: 0;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  margin: 16px 0 8px;
+  line-height: 1.4;
+}
+.md-body h1 {
+  font-size: 19px;
+}
+.md-body h2 {
+  font-size: 17px;
+}
+.md-body h3 {
+  font-size: 15px;
+}
+.md-body h4 {
+  font-size: 14px;
+}
+.md-body p {
+  margin: 8px 0;
+}
+.md-body ul,
+.md-body ol {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+.md-body li {
+  margin: 3px 0;
+}
+.md-body blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--primary);
+  background: var(--side);
+  color: var(--muted);
+}
+.md-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--side);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.md-body pre {
+  margin: 8px 0;
+  padding: 10px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--side);
+}
+.md-body pre code {
+  padding: 0;
+  background: none;
+}
+.md-body img.md-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0;
+  border-radius: 8px;
+}
+.md-body a {
+  color: var(--primary);
+}
+.md-body hr {
+  margin: 14px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+.md-body table {
+  width: 100%;
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.md-body th,
+.md-body td {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.md-file-missing {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 时间线里的正文摘要：跨整行，超出省略 */
+.event-excerpt {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

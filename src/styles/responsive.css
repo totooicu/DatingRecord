@@ -1,0 +1,160 @@
+/* ============================================================
+   响应式：mobile-first，只用 min-width。
+   手机（base）→ 768px 平板增强 → 1024px 桌面双栏
+   ============================================================ */
+
+/* ---------- ≥768px：平板 / 横屏，表单与统计不再挤一列 ---------- */
+@media (min-width: 768px) {
+  /* 输入控件恢复小字号（手机上 16px 是为了防 iOS 聚焦缩放） */
+  input,
+  select,
+  textarea {
+    font-size: 13px;
+  }
+
+  .stat-row {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .span-2 {
+    grid-column: span 2;
+  }
+
+  .attr-grid {
+    grid-template-columns: 1fr;
+  }
+  .attr-row {
+    grid-template-columns: 120px 1fr;
+  }
+
+  /* 弹窗恢复居中卡片（手机上是底部抽屉） */
+  .modal-mask {
+    align-items: flex-start;
+    padding: 40px 16px;
+  }
+  .modal {
+    height: auto;
+    max-height: calc(100dvh - 80px);
+    border-radius: 14px;
+    max-width: 520px;
+    padding-bottom: 0;
+  }
+  .modal-wide {
+    max-width: 760px;
+  }
+
+  /* 宽屏回到单行表格式：时间 | 标题 | 人物 | 元信息 */
+  .event-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .event-time {
+    width: 92px;
+    flex-shrink: 0;
+  }
+  .event-title {
+    flex: 1;
+  }
+  .event-people {
+    display: inline;
+    flex-shrink: 0;
+  }
+  .event-meta {
+    flex-shrink: 0;
+  }
+
+  /* 宽屏 timeline 容器已有留白，头部去重 */
+  .timeline-head,
+  .month-label {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .timeline {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .btn-new-inline {
+    display: inline-block;
+  }
+}
+
+/* ---------- ≥1024px：桌面双栏，列表与详情同屏 ---------- */
+@media (min-width: 1024px) {
+  /* 顶部栏回来，底部 Tab Bar 退场 */
+  .topbar {
+    display: flex;
+  }
+  .tabbar {
+    display: none;
+  }
+  .fab {
+    bottom: 24px;
+    right: 24px;
+  }
+
+  .stack {
+    flex-direction: row;
+  }
+
+  /* 关键：宽屏忽略页面栈状态，两栏同屏显示 */
+  .app.at-list .pane-detail,
+  .app.at-detail .pane-list {
+    display: block;
+  }
+
+  .pane-list {
+    flex: 0 0 320px;
+    width: 320px;
+    border-right: 1px solid var(--border);
+  }
+
+  .pane-detail {
+    flex: 1;
+    padding: 0 0 40px;
+  }
+
+  /* 宽屏下左侧列表已表明当前项，详情页顶部条只留操作区、隐藏返回键和标题 */
+  .page-head {
+    display: none;
+  }
+
+  .pane-detail .detail {
+    padding: 18px 22px;
+    margin: 0;
+  }
+
+  /* 筛选面板在宽屏恒展开，折叠开关隐藏 */
+  .filter-toggle,
+  .filter-toggle-hidden {
+    display: none;
+  }
+  .pane-body:not(.filters-open) .filter-inner {
+    display: block;
+  }
+
+  /* 宽屏筛选：限宽居中 + 两列，避免纵向占掉整个首屏 */
+  .filter-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 22px;
+  }
+  .filter-head {
+    display: flex;
+  }
+  .filter-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 18px;
+  }
+
+  .welcome {
+    margin: 80px auto;
+  }
+}

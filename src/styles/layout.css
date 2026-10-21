@@ -1,0 +1,103 @@
+
+/* ---------- 布局（mobile-first） ---------- */
+/* .app 为纵向 flex：内容区 .stack 占满剩余高度，底部 .tabbar 用 sticky
+   贴在末尾（不用 fixed，天然不遮挡内容）。 */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* 手机端隐藏顶部栏（改用底部 Tab Bar）；≥1024px 才显示 */
+.topbar {
+  display: none;
+  align-items: center;
+  gap: 20px;
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.tab:hover {
+  background: #f1efec;
+}
+
+.tab-on {
+  background: var(--primary);
+  color: #fff;
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search {
+  width: 220px;
+}
+
+/* 页面栈容器：手机端只显示一栏（由 data-view 决定），宽屏两栏并排 */
+.stack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 24px;
+  background: var(--bg);
+}
+
+.pane-list {
+  background: var(--side);
+}
+
+/* 手机页面栈：list 态显示列表，detail 态显示详情。
+   注意：这里刻意用 class 而非 [data-view='list'] —— 构建时 CSS 压缩器会把
+   属性选择器的引号去掉，产出非法的 [data-view=list]，导致整段规则被浏览器丢弃。 */
+.app.at-list .pane-detail,
+.app.at-detail .pane-list {
+  display: none;
+}
+
+.pane-solo {
+  padding: 0 0 24px;
+}

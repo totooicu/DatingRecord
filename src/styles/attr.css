@@ -1,0 +1,83 @@
+/* ---------- 属性 ---------- */
+.attr-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attr-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.attr-label {
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-style: normal;
+  font-size: 10px;
+  background: #fdecef;
+  color: var(--primary);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.badge-2 {
+  background: #eaf3ee;
+  color: var(--ok);
+}
+
+.attr-note {
+  grid-column: 2;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-field em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.inline-field input {
+  flex: 1;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.switch input {
+  width: auto;
+}
+
+.stars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.star {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: #ddd8d0;
+  padding: 0;
+}
+
+.star-on {
+  color: #e8b23a;
+}

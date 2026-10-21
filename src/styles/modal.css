@@ -1,0 +1,59 @@
+/* ---------- 弹窗 ---------- */
+/* 手机端：底部弹出的全屏抽屉，比居中小卡更符合原生手感 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 28, 26, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  z-index: 200;
+  overflow-y: auto;
+}
+
+.modal {
+  background: var(--panel);
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 100%;
+  height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 弹窗内部滚动，头尾固定 */
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 18px;
+}
+
+.modal-wide {
+  max-width: 760px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}

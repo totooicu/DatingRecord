@@ -1,0 +1,142 @@
+/* ---------- 详情页顶部条 ---------- */
+.page-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-head-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.back-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-left: -8px;
+  border: none;
+  background: transparent;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--primary);
+}
+
+.page-head-right {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+/* ---------- 底部 Tab Bar ---------- */
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 100;
+  flex-shrink: 0;
+  display: flex;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tabbar-item {
+  flex: 1;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tabbar-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.tabbar-item-on {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ---------- 悬浮记录按钮 ---------- */
+.fab {
+  position: fixed;
+  z-index: 110;
+  right: 16px;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 14px);
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  box-shadow: 0 4px 14px rgba(217, 83, 107, 0.4);
+}
+
+/* ---------- 时间线筛选折叠 ---------- */
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.filter-count {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  text-align: center;
+}
+
+.filter-caret {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* 折叠态：整块面板（含「筛选/重置」小标题）一起收起来 */
+.pane-body:not(.filters-open) .filter-inner {
+  display: none;
+}
+
+/* 宽屏由 JS 判断 wide，此时折叠按钮本身也要让位 */
+.filter-toggle-hidden {
+  display: none;
+}
+
+/* 时间线内嵌的「记一件事」在手机端隐藏，避免与 FAB 重复 */
+.btn-new-inline {
+  display: none;
+}
