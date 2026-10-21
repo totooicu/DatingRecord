@@ -33,6 +33,21 @@
   flex: 1 1 100%;
 }
 
+/* 二次确认时操作区单独占一行：姓名和标签保持原宽度，确认文案也不再挤成一列 */
+.detail-head:has(.confirm-box) {
+  flex-wrap: wrap;
+}
+
+.detail-head:has(.confirm-box) .detail-head-actions {
+  flex: 1 1 100%;
+  justify-content: flex-end;
+}
+
+/* 同一行其他按钮先收起，避免「记一件事」和「确认」并排误点 */
+.detail-head:has(.confirm-box) .detail-head-actions > .btn {
+  display: none;
+}
+
 .title-input {
   font-size: 20px;
   font-weight: 700;
