@@ -1,0 +1,107 @@
+/* ---------- 应用锁 ---------- */
+.lock-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.lock-card {
+  width: 100%;
+  max-width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+
+.lock-card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.lock-card .muted {
+  margin: 0;
+  font-size: 13px;
+}
+
+.lock-icon {
+  width: 34px;
+  height: 34px;
+  color: var(--primary);
+  align-self: center;
+}
+
+.lock-card input {
+  text-align: center;
+}
+
+.lock-err {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.lock-ok {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ok);
+}
+
+.lock-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lock-giveup {
+  display: block;
+  margin: 6px auto 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* 设置页内 */
+.lock-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.lock-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.lock-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.lock-row select {
+  margin-left: auto;
+}
+
+.lock-acts {
+  display: flex;
+  gap: 8px;
+}

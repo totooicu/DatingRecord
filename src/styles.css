@@ -21,5 +21,6 @@
 @import './styles/files.css';
 @import './styles/preview.css';
 @import './styles/settings.css';
+@import './styles/lock.css';
 @import './styles/avatar-picker.css';
 @import './styles/hashfiles.css';

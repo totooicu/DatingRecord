@@ -3,6 +3,7 @@ import { DuplicatePersons } from '../merge';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupSection } from './BackupSection';
+import { LockSection } from './LockSection';
 import { DefTable } from './DefTable';
 import { DefFormModal } from './DefFormModal';
 import { FilesPanel } from '../files';
@@ -40,6 +41,8 @@ export function Settings() {
         </button>
 
         {active === 'backup' && <BackupSection />}
+
+        {active === 'lock' && <LockSection />}
 
         {active === 'attrs' && (
           <DefTable

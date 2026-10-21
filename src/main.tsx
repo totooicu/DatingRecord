@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import App from './ui/App';
+import { LockGate } from './ui/lock/LockGate';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { initDb } from './core/db';
 import './styles.css';
@@ -69,7 +70,9 @@ initDb(setTip)
     window.clearTimeout(hardTimer);
     createRoot(el).render(
       <ErrorBoundary>
-        <App />
+        <LockGate>
+          <App />
+        </LockGate>
       </ErrorBoundary>,
     );
     finishBoot();

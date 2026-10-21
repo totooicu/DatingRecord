@@ -1,5 +1,6 @@
 // 敏感字段遮罩：有值时默认不渲染明文控件，点「显示」才展开，空闲自动收起
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { hasPassphrase } from '../../core/lock';
 
 const REVEAL_MS = 15000;
 
@@ -24,6 +25,10 @@ function maskOf(value: unknown): string {
 export function SensitiveMask({ value, children }: { value: unknown; children: ReactNode }) {
   const [shown, setShown] = useState(false);
   const timer = useRef<number | null>(null);
+  // 设过应用锁且已经解锁 = 本会话验过身份，这时再逐字段打码只是徒增麻烦；
+  // 没设口令时，遮罩就是唯一的防线，仍然照常生效。
+  // （锁着的时候整个 App 都不渲染，走不到这里。）
+  const trusted = hasPassphrase();
 
   const arm = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -42,7 +47,7 @@ export function SensitiveMask({ value, children }: { value: unknown; children: R
 
   useEffect(() => clear, []);
 
-  if (!hasMaskableValue(value)) return <>{children}</>;
+  if (trusted || !hasMaskableValue(value)) return <>{children}</>;
 
   return (
     <span className="sens-wrap">
