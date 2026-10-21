@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { createPerson, listPersons } from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
+import { Avatar } from './Avatar';
 
 export function PersonList({
   selectedId,
@@ -115,7 +116,7 @@ export function PersonList({
           className={p.id === selectedId ? 'list-item list-item-on' : 'list-item'}
           onClick={() => onSelect(p.id)}
         >
-          <span className="avatar">{p.displayName.slice(0, 1)}</span>
+          <Avatar name={p.displayName} avatar={p.avatar} />
           <span className="list-item-main">
             <span className="list-item-title">{p.displayName}</span>
             <span className="list-item-sub">

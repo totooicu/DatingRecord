@@ -55,7 +55,7 @@ export function updatePerson(
         JSON.stringify(patch.tags ?? p.tags),
         patch.notes ?? p.notes,
         patch.status ?? p.status,
-        patch.avatar ?? p.avatar ?? null,
+        patch.avatar !== undefined ? patch.avatar : p.avatar,
         patch.kind ?? p.kind,
         hlc,
         now,

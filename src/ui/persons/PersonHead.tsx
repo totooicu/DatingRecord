@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { updatePerson, listPersons, deletePerson } from '../../core/repo/persons';
 import { TagInput } from '../common';
+import { Avatar } from './Avatar';
+import { AvatarPicker } from './AvatarPicker';
 import { bump } from '../../store';
 import type { Person } from '../../core/types';
 
@@ -17,6 +19,7 @@ export function PersonHead({
   // 归档二次确认就地替换按钮：记一件事 → 确认，归档 → 取消。
   // 不额外展开一块文案，头部布局在确认前后保持不变。
   const [confirming, setConfirming] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   const archive = () => {
     deletePerson(person.id);
@@ -28,45 +31,61 @@ export function PersonHead({
   };
 
   return (
-    <div className="detail-head">
-      <span className="avatar avatar-lg">{person.displayName.slice(0, 1)}</span>
-      <div className="detail-head-main">
-        <input
-          className="title-input"
-          value={person.displayName}
-          onChange={(e) => updatePerson(person.id, { displayName: e.target.value })}
-          onBlur={() => bump()}
+    <>
+      <div className="detail-head">
+        <Avatar
+          name={person.displayName}
+          avatar={person.avatar}
+          size="lg"
+          onClick={() => setAvatarOpen(true)}
+          className="avatar-head"
         />
-        <TagInput
-          value={person.tags}
-          onChange={(t) => {
-            updatePerson(person.id, { tags: t });
-            bump();
-          }}
-          placeholder="添加标签"
+        <div className="detail-head-main">
+          <input
+            className="title-input"
+            value={person.displayName}
+            onChange={(e) => updatePerson(person.id, { displayName: e.target.value })}
+            onBlur={() => bump()}
+          />
+          <TagInput
+            value={person.tags}
+            onChange={(t) => {
+              updatePerson(person.id, { tags: t });
+              bump();
+            }}
+            placeholder="添加标签"
+          />
+        </div>
+        <div className="detail-head-actions">
+          {confirming ? (
+            <>
+              <button className="btn btn-danger" onClick={archive} title="确认归档？" aria-label="确认归档">
+                确认
+              </button>
+              <button className="btn btn-ghost" onClick={() => setConfirming(false)}>
+                取消
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-primary" onClick={onNewEvent}>
+                记一件事
+              </button>
+              <button className="btn" onClick={() => setConfirming(true)}>
+                归档
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {avatarOpen && (
+        <AvatarPicker
+          personId={person.id}
+          currentAvatar={person.avatar}
+          onClose={() => setAvatarOpen(false)}
         />
-      </div>
-      <div className="detail-head-actions">
-        {confirming ? (
-          <>
-            <button className="btn btn-danger" onClick={archive} title="确认归档？" aria-label="确认归档">
-              确认
-            </button>
-            <button className="btn btn-ghost" onClick={() => setConfirming(false)}>
-              取消
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="btn btn-primary" onClick={onNewEvent}>
-              记一件事
-            </button>
-            <button className="btn" onClick={() => setConfirming(true)}>
-              归档
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+      )}
+    </>
   );
 }

@@ -11,6 +11,7 @@ import { OverviewSection } from './OverviewSection';
 import { SampleSection } from './SampleSection';
 import { DEFAULT_SETTINGS_KEY, type SettingsKey } from './sections';
 import { bump } from '../../store';
+import { fmtBuildTime } from '../../core/buildInfo';
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -30,6 +31,10 @@ export function Settings() {
       <SettingsNav active={active} onPick={setSub} />
 
       <div className="settings-body">
+        <div className="settings-build-time muted small">
+          最后构建：{fmtBuildTime()}
+        </div>
+
         <button className="settings-back" onClick={() => setSub(null)}>
           ← 返回目录
         </button>
