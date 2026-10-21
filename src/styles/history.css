@@ -1,0 +1,125 @@
+/* ---------- 属性历史 ---------- */
+.hist-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.hist-toggle .card-title {
+  margin: 0;
+}
+
+.hist-sub {
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-caret {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hist-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hist-chart {
+  margin: 0;
+}
+
+.hist-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.hist-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.hist-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.hist-dot {
+  fill: var(--panel);
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.hist-val {
+  font-size: 10px;
+  fill: var(--text);
+}
+
+.hist-date {
+  font-size: 9px;
+  fill: var(--muted);
+}
+
+.hist-chart figcaption {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 2px;
+}
+
+.hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.hist-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.hist-time {
+  flex: none;
+  width: 76px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hist-val-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.hist-reason {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--side);
+  border-radius: 4px;
+  padding: 1px 5px;
+}

@@ -1,5 +1,4 @@
-// 属性值读写与变更历史。
-// 随时间变化的字段（timeVarying）会自动留一条历史，便于回看趋势。
+// 属性值读写。随时间变化的字段（timeVarying）会自动留一条历史，查询在 history.ts。
 
 import { queryAll, run, transact, appendOplog, getDeviceId } from '../../db';
 import { newId } from '../../id';
@@ -263,14 +262,6 @@ export function retuneAttrValues(key: string, def: AttributeDef): RetuneResult {
   }
 
   return out;
-}
-
-export function listAttrHistory(personId: string, key?: string): { key: string; valueJson: string; changedAt: string }[] {
-  const sql = key
-    ? 'SELECT attr_key AS key, value_json AS valueJson, changed_at AS changedAt FROM person_attr_history WHERE person_id = ? AND attr_key = ? ORDER BY changed_at'
-    : 'SELECT attr_key AS key, value_json AS valueJson, changed_at AS changedAt FROM person_attr_history WHERE person_id = ? ORDER BY changed_at';
-  const params = key ? [personId, key] : [personId];
-  return queryAll<{ key: string; valueJson: string; changedAt: string }>(sql, params);
 }
 
 export { FIRST_ORDER_KEY };

@@ -266,8 +266,8 @@ interface SqlDriver {
 ### F-P05 属性历史 — P1
 
 - `timeVarying: true` 的字段每次变更写入 `person_attr_history`；
-- 详情页展示该字段的**变化曲线**，并可关联触发事件（`by_event_id`）；
-- 支持"回看某一天的状态"。
+- 详情页「属性变化」卡片：默认收起，展开后可按字段切换——数值型（number/money/rating）画 SVG 曲线，其余列时间轴；
+- 待办：关联触发事件（`by_event_id` 已存但未展示）、"回看某一天的状态"。
 
 ### F-P06 人物列表 — P0
 

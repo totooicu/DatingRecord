@@ -7,6 +7,7 @@ import { useVersion, bump } from '../../store';
 import { PersonHead } from './PersonHead';
 import { PersonStats } from './PersonStats';
 import { PersonAttrs } from './PersonAttrs';
+import { AttrHistory } from './AttrHistory';
 import { PersonEvents } from './PersonEvents';
 
 export function PersonDetail({ id, onArchived }: { id: string; onArchived?: (nextId: string | null) => void }) {
@@ -24,6 +25,8 @@ export function PersonDetail({ id, onArchived }: { id: string; onArchived?: (nex
       <PersonHead person={person} onNewEvent={() => setNewEvent(true)} onArchived={onArchived} />
       <PersonStats stats={stats} />
       <PersonAttrs person={person} defs={defs} />
+      {/* key：换人物时重置展开态与选中项，否则会继承上一个人的状态 */}
+      <AttrHistory key={id} personId={id} defs={defs} />
       <PersonEvents events={events} />
 
       {newEvent && (
