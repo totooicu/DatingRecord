@@ -40,6 +40,9 @@ export default function App() {
   const [jumpEventId, setJumpEventId] = useState<string | null>(null);
 
   const isEmpty = useMemo(() => !hasAnyPerson(), [v]);
+  // 欢迎页只拦一次：点过「直接开始创建」就放行，否则空库时那个按钮是死的
+  // （isEmpty 仍为真，早退分支会把下面的新建事件弹窗一起吃掉）
+  const [welcomeDone, setWelcomeDone] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const scrollMemo = useRef<Record<string, number>>({});
   // 弹窗打开时收起 FAB，避免浮层压住弹窗内容
@@ -113,12 +116,12 @@ export default function App() {
     }
   }, [view]);
 
-  if (isEmpty && view.k !== 'settings') {
+  if (isEmpty && !welcomeDone && view.k !== 'settings') {
     return (
       <Welcome
         onImport={() => gotoTab('settings')}
         onCreate={() => {
-          setView({ k: 'list', s: 'persons' });
+          setWelcomeDone(true);
           setQuickEvent(true);
         }}
       />

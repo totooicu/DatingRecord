@@ -1,12 +1,13 @@
 // 事件写入：新建 / 更新 / 软删除 / 恢复 / 彻底删除
 
-import { run, transact, appendOplog, getDeviceId } from '../../db';
+import { run, transact, appendOplog, getDeviceId, queryOne } from '../../db';
 import { newId } from '../../id';
 import { hlcNow, toTs } from '../../time';
 import type { DREvent, EventMetrics, Participant, Place, RelatedEvent } from '../../types';
 import type { TimeSpec } from '../../time';
 import { getEvent } from './read';
 import { normalizeRelated, stripRefsTo } from './related';
+import { sweepEventFiles } from '../fileGc';
 
 export interface EventInput {
   title: string;
@@ -136,10 +137,17 @@ export function restoreEvent(id: string): void {
 
 export function purgeEvent(id: string): void {
   transact(() => {
+    // 先读正文/媒体：行一删就无从知道它用过哪些附件
+    const row = queryOne<{ content: string; media_json: string }>(
+      'SELECT content, media_json FROM events WHERE id = ?',
+      [id],
+    );
     run('DELETE FROM events WHERE id = ?', [id]);
     run('DELETE FROM event_participants WHERE event_id = ?', [id]);
     run('DELETE FROM collection_members WHERE member_type = ? AND member_id = ?', ['event', id]);
     stripRefsTo(id); // 别的事件 related_json 里可能指着它
     appendOplog('event', id, 'delete', { id, hard: true });
+    // 附件回收放在最后：此刻「还有没有别的主」才是准的（F-E05）
+    if (row) sweepEventFiles(row.content, row.media_json);
   });
 }
