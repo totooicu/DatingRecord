@@ -71,6 +71,14 @@ function LinkIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg {...ICON} strokeWidth={2.6}>
+      <path d="M5 12.5l4.6 4.6L19 6.8" />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg {...ICON}>
@@ -100,12 +108,18 @@ function FileNameText({ name }: { name: string }) {
 export function FileRow({
   file,
   thumb,
+  batch,
+  selected,
+  onToggleSelect,
   onPreview,
   onCopy,
   onDelete,
 }: {
   file: StoredFile;
   thumb?: string;
+  batch: boolean;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
   onPreview: (f: StoredFile) => void;
   onCopy: (f: StoredFile) => void;
   onDelete: (f: StoredFile) => void;
@@ -114,6 +128,12 @@ export function FileRow({
   const [draft, setDraft] = useState(file.name);
   const refs = countRefs(file.id);
   const kind = kindOf(file.name, file.mime);
+
+  /** 批量模式下，点缩略图/文件名是勾选，不是预览 */
+  const openOrSelect = () => {
+    if (batch) onToggleSelect(file.id);
+    else onPreview(file);
+  };
 
   /** 回车/失焦保存，Esc 放弃；空名视为放弃（文件总得有个名字） */
   const commit = () => {
@@ -129,8 +149,20 @@ export function FileRow({
   };
 
   return (
-    <li className="file-item">
-      <button className="file-thumb-btn" onClick={() => onPreview(file)} title="预览" aria-label="预览">
+    <li className={selected ? 'file-item file-item-selected' : 'file-item'}>
+      {batch && (
+        <button
+          type="button"
+          className={selected ? 'file-check file-check-on' : 'file-check'}
+          onClick={() => onToggleSelect(file.id)}
+          aria-pressed={selected}
+          aria-label={selected ? `取消选择「${file.name}」` : `选择「${file.name}」`}
+        >
+          {selected && <CheckIcon />}
+        </button>
+      )}
+
+      <button className="file-thumb-btn" onClick={openOrSelect} title={batch ? '选择' : '预览'} aria-label={batch ? '选择' : '预览'}>
         {thumb ? (
           <img className="file-thumb" src={thumb} alt="" />
         ) : (
@@ -142,39 +174,41 @@ export function FileRow({
         <div className="file-row-top">
           <span className="file-type">{kindLabel(kind)}</span>
 
-          <span className="file-actions">
-            <IconButton label="预览" onClick={() => onPreview(file)}>
-              <EyeIcon />
-            </IconButton>
-            <IconButton
-              label="改名"
-              onClick={() => {
-                setDraft(file.name);
-                setEditing(true);
-              }}
-            >
-              <PencilIcon />
-            </IconButton>
-            <IconButton label="复制引用" onClick={() => onCopy(file)}>
-              <LinkIcon />
-            </IconButton>
-            <ConfirmButton
-              compact
-              text="删除"
-              icon={<TrashIcon />}
-              className="file-icon-btn file-icon-btn-danger"
-              danger
-              confirmText={
-                refs > 0
-                  ? `删除「${file.name}」？还有 ${refs} 处正文引用它，那些位置会显示成「附件已删除」。`
-                  : `删除「${file.name}」？`
-              }
-              onConfirm={() => onDelete(file)}
-            />
-          </span>
+          {!batch && (
+            <span className="file-actions">
+              <IconButton label="预览" onClick={() => onPreview(file)}>
+                <EyeIcon />
+              </IconButton>
+              <IconButton
+                label="改名"
+                onClick={() => {
+                  setDraft(file.name);
+                  setEditing(true);
+                }}
+              >
+                <PencilIcon />
+              </IconButton>
+              <IconButton label="复制引用" onClick={() => onCopy(file)}>
+                <LinkIcon />
+              </IconButton>
+              <ConfirmButton
+                compact
+                text="删除"
+                icon={<TrashIcon />}
+                className="file-icon-btn file-icon-btn-danger"
+                danger
+                confirmText={
+                  refs > 0
+                    ? `删除「${file.name}」？还有 ${refs} 处正文引用它，那些位置会显示成「附件已删除」。`
+                    : `删除「${file.name}」？`
+                }
+                onConfirm={() => onDelete(file)}
+              />
+            </span>
+          )}
         </div>
 
-        {editing ? (
+        {editing && !batch ? (
           <input
             className="file-rename"
             autoFocus
@@ -190,7 +224,7 @@ export function FileRow({
             }}
           />
         ) : (
-          <button className="file-name" onClick={() => onPreview(file)} title={file.name}>
+          <button className="file-name" onClick={openOrSelect} title={file.name}>
             <FileNameText name={file.name} />
           </button>
         )}

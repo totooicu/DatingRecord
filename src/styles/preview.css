@@ -175,7 +175,13 @@
 }
 
 .pv-play {
-  min-width: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 30px;
+  padding: 0;
 }
 
 .pv-rate {

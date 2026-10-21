@@ -6,6 +6,33 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+const ICON = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.9,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+};
+
+function PlayIcon() {
+  return (
+    <svg {...ICON} aria-hidden="true">
+      <path d="M8 5.2l11 6.8-11 6.8z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg {...ICON} aria-hidden="true">
+      <path d="M8.5 5.5v13M15.5 5.5v13" />
+    </svg>
+  );
+}
+
 function fmtTime(t: number): string {
   const total = Number.isFinite(t) && t > 0 ? Math.floor(t) : 0;
   const h = Math.floor(total / 3600);
@@ -114,8 +141,14 @@ export function MediaTransport({ media }: { media: RefObject<HTMLMediaElement> }
         <button type="button" className="btn btn-sm" onClick={() => seek((media.current?.currentTime ?? 0) - 10)}>
           −10s
         </button>
-        <button type="button" className="btn btn-sm pv-play" onClick={toggle}>
-          {paused ? '播放' : '暂停'}
+        <button
+          type="button"
+          className="btn btn-sm pv-play"
+          onClick={toggle}
+          aria-label={paused ? '播放' : '暂停'}
+          title={paused ? '播放' : '暂停'}
+        >
+          {paused ? <PlayIcon /> : <PauseIcon />}
         </button>
         <button type="button" className="btn btn-sm" onClick={() => seek((media.current?.currentTime ?? 0) + 10)}>
           +10s

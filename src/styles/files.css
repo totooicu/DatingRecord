@@ -149,3 +149,144 @@
 .file-item .member-actions {
   flex: none;
 }
+
+/* ---------- 搜索 / 排序 / 筛选 / 批量 ---------- */
+.file-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+/* iOS 上 16px 以下的输入框聚焦会自动放大页面 */
+.file-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  font-size: 16px;
+  padding: 7px 10px;
+}
+
+.file-sort {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 47%;
+  font-size: 13px;
+  padding: 7px 8px;
+}
+
+.file-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.file-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfaf8;
+}
+
+.file-filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-filter-label {
+  flex: none;
+  width: 30px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.file-filter-group input {
+  flex: 1 1 92px;
+  width: auto;
+  min-width: 0;
+  font-size: 16px;
+  padding: 5px 8px;
+}
+
+.file-filter-group .chip-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.file-filter-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.file-batch-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f7f4ef;
+}
+
+/* 批量模式的勾选框：和 44px 缩略图垂直居中对齐 */
+.file-check {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 11px;
+  padding: 0;
+  border: 1.5px solid #cfc9bf;
+  border-radius: 6px;
+  background: #fff;
+  color: #fff;
+}
+
+.file-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.file-check-on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.file-item-selected {
+  margin: 0 -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+  border-radius: 8px;
+  background: #fdf6f0;
+}
+
+@media (max-width: 767px) {
+  /* 手机上标签独占一行，两个日期/大小输入框才有足够宽度显示完整值 */
+  .file-filter-label {
+    width: 100%;
+  }
+}
+
+@media (min-width: 768px) {
+  .file-search,
+  .file-filter-group input {
+    font-size: 13px;
+  }
+
+  .file-filter-group input {
+    flex: 0 1 130px;
+  }
+}
