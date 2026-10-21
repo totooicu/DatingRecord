@@ -36,13 +36,22 @@ export function MemberList({
           return (
             <li key={`${m.memberType}-${m.memberId}`}>
               <span className="member-type">{m.memberType === 'event' ? '事件' : '集合'}</span>
-              <button className="member-title" onClick={() => ev && onEditEvent(ev.id)}>
-                {title}
-              </button>
-              {ev && <span className="muted">{formatTime(ev.time)}</span>}
-              {ev && ev.participants[0] && (
-                <span className="muted">{getPerson(ev.participants[0].personId)?.displayName ?? ''}</span>
-              )}
+              <div className="member-main">
+                <button className="member-title" onClick={() => ev && onEditEvent(ev.id)}>
+                  {title}
+                </button>
+                {ev && (
+                  <div className="member-meta muted small">
+                    <span>{formatTime(ev.time)}</span>
+                    {ev.participants[0] && (
+                      <>
+                        <span>·</span>
+                        <span>{getPerson(ev.participants[0].personId)?.displayName ?? ''}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
               <span className="member-actions">
                 <button
                   className="icon-btn"

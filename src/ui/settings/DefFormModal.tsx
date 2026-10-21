@@ -17,9 +17,27 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
   const [timeVarying, setTimeVarying] = useState(existing?.timeVarying ?? false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 新建时输入的 key 可能正好是某条「已归档」的属性：那是同一条定义，直接恢复它，
+  // 不能当成新定义插入——否则要么插不进去（主键冲突），要么插进去也不显示。
+  const typedKey = key.trim();
+  const archivedMatch =
+    !existing && typedKey
+      ? listDefs(true).find((d) => d.key === typedKey && d.archived) ?? null
+      : null;
+  const activeMatch =
+    !existing && typedKey
+      ? listDefs(true).find((d) => d.key === typedKey && !d.archived) ?? null
+      : null;
+  // 类型跟着已有定义走：档案里的历史值是按这个类型写的，不能换
+  const effType = existing?.type ?? archivedMatch?.type ?? type;
+
   const save = () => {
     if (!existing && !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) {
       setErr('key 只能用英文字母、数字、下划线，且以字母开头（创建后不可修改）');
+      return;
+    }
+    if (activeMatch) {
+      setErr(`key「${typedKey}」已经被「${activeMatch.label}」占用，换个 key，或直接编辑那条属性。`);
       return;
     }
     if (!label.trim()) {
@@ -29,7 +47,9 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
     upsertDef({
       key: existing?.key ?? key,
       label: label.trim(),
-      type: existing?.type ?? type,
+      type: effType,
+      // 命中的归档定义在这里被恢复（archived=false），否则编辑已有定义时保持原状态
+      archived: existing ? undefined : false,
       group: group.trim() || '自定义',
       options: options
         .split('、')
@@ -71,7 +91,11 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
           />
         </Field>
         <Field label="类型（创建后不可改）">
-          <select value={type} disabled={!!existing} onChange={(e) => setType(e.target.value as AttributeType)}>
+          <select
+            value={effType}
+            disabled={!!existing || !!archivedMatch}
+            onChange={(e) => setType(e.target.value as AttributeType)}
+          >
             {ATTRIBUTE_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
@@ -112,6 +136,12 @@ export function DefFormModal({ defKey, onClose }: { defKey: string | null; onClo
           </label>
         </Field>
       </div>
+      {archivedMatch && (
+        <p className="warn-line">
+          这个 key 对应一条已归档的属性「{archivedMatch.label}」，保存会把它恢复为可见属性（类型沿用
+          {archivedMatch.type}，历史值继续有效）。
+        </p>
+      )}
       {err && <div className="alert alert-err">{err}</div>}
     </Modal>
   );

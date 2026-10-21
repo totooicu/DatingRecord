@@ -72,26 +72,65 @@
   border-bottom: 1px dashed #efece7;
 }
 
+/* 成员行：标题与元信息分成两行，长名字换行整行显示，不被时间/人名挤成竖排 */
+.member-list li {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .member-type {
+  flex: none;
   font-size: 11px;
   color: var(--muted);
   background: #f2efe9;
   border-radius: 4px;
   padding: 1px 6px;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.member-main {
+  flex: 1 1 60%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-main .member-title {
+  flex: none;
+  width: 100%;
+}
+
+.member-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .member-title {
   border: none;
   background: transparent;
   text-align: left;
-  flex: 1;
+  flex: 1 1 60%;
+  min-width: 0;
   font-weight: 600;
   padding: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.member-title:hover {
+  color: var(--primary);
 }
 
 .member-actions {
+  flex: none;
   display: flex;
   gap: 4px;
+  margin-left: auto;
 }
 
 .pick-list button {

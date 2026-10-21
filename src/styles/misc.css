@@ -126,6 +126,75 @@
   opacity: 0.5;
 }
 
+/* 手机上表格变成一行一条的卡片：否则 6 列在 390px 里会把中文挤成竖排 */
+@media (max-width: 767px) {
+  .def-table thead {
+    display: none;
+  }
+
+  .def-table,
+  .def-table tbody,
+  .def-table tr,
+  .def-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .def-table tr {
+    position: relative;
+    padding: 9px 34px 8px 0;
+    border-bottom: 1px dashed #efece7;
+  }
+
+  .def-table td {
+    padding: 0;
+    border: none;
+  }
+
+  .def-table td:empty {
+    display: none;
+  }
+
+  .def-table td:nth-child(1) {
+    font-weight: 600;
+  }
+
+  .def-table td:nth-child(2) {
+    margin-top: 3px;
+  }
+
+  .def-table td:nth-child(3),
+  .def-table td:nth-child(4) {
+    display: inline-block;
+    width: auto;
+    margin-top: 3px;
+    margin-right: 12px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .def-table td:nth-child(3)::before {
+    content: '类型：';
+  }
+
+  .def-table td:nth-child(4)::before {
+    content: '分组：';
+  }
+
+  .def-table td:nth-child(5) {
+    display: inline-block;
+    width: auto;
+    margin-top: 3px;
+  }
+
+  .def-table td:nth-child(6) {
+    position: absolute;
+    top: 8px;
+    right: 0;
+    width: auto;
+  }
+}
+
 .welcome {
   max-width: 560px;
   margin: 60px auto;
