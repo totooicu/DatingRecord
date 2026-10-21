@@ -4,7 +4,7 @@
 // 任何一次编辑都会重传全库。几 MB 的图片塞进去，每次打字都要多传几 MB。
 // 所以库里只留元数据，二进制单独放这里。
 
-import { BLOB_STORE, openIdb } from '../db';
+import { BLOB_STORE, openIdb } from './index';
 
 function tx(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest): Promise<unknown> {
   return openIdb().then(

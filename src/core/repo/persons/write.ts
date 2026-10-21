@@ -1,0 +1,90 @@
+// 人物写入：新建、更新、归档、恢复、彻底删除。
+// 软删除是铁律——物理删除会让将来的同步把数据又推回来。
+
+import { run, transact, appendOplog, getDeviceId } from '../../db';
+import { newId } from '../../id';
+import { hlcNow } from '../../time';
+import type { AttributeValue, Person } from '../../types';
+import { getPerson } from './read';
+
+export function createPerson(input: { displayName: string; tags?: string[]; attrs?: Record<string, AttributeValue> }): Person {
+  const id = newId('p');
+  const now = new Date().toISOString();
+  const hlc = hlcNow(getDeviceId());
+  transact(() => {
+    run(
+      `INSERT INTO persons
+       (id,display_name,aliases_json,kind,status,tags_json,attrs_json,notes,device_id,rev,hlc,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id,
+        input.displayName,
+        '[]',
+        'person',
+        'active',
+        JSON.stringify(input.tags ?? []),
+        JSON.stringify(input.attrs ?? {}),
+        '',
+        getDeviceId(),
+        1,
+        hlc,
+        now,
+        now,
+      ],
+    );
+    appendOplog('person', id, 'insert', { displayName: input.displayName });
+  });
+  return getPerson(id)!;
+}
+
+export function updatePerson(
+  id: string,
+  patch: Partial<Pick<Person, 'displayName' | 'aliases' | 'tags' | 'notes' | 'status' | 'avatar' | 'kind'>>,
+): void {
+  const now = new Date().toISOString();
+  const hlc = hlcNow(getDeviceId());
+  transact(() => {
+    const p = getPerson(id);
+    if (!p) return;
+    run(
+      `UPDATE persons SET display_name=?, aliases_json=?, tags_json=?, notes=?, status=?, avatar=?, kind=?,
+       rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
+      [
+        patch.displayName ?? p.displayName,
+        JSON.stringify(patch.aliases ?? p.aliases),
+        JSON.stringify(patch.tags ?? p.tags),
+        patch.notes ?? p.notes,
+        patch.status ?? p.status,
+        patch.avatar ?? p.avatar ?? null,
+        patch.kind ?? p.kind,
+        hlc,
+        now,
+        id,
+      ],
+    );
+    appendOplog('person', id, 'update', patch);
+  });
+}
+
+/** 软删除（墓碑）：不做物理删除，否则同步时会把数据推回来 */
+export function deletePerson(id: string): void {
+  const now = new Date().toISOString();
+  transact(() => {
+    run('UPDATE persons SET status = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+      'archived',
+      hlcNow(getDeviceId()),
+      now,
+      id,
+    ]);
+    appendOplog('person', id, 'delete', { id });
+  });
+}
+
+export function hardDeletePerson(id: string): void {
+  transact(() => {
+    run('DELETE FROM persons WHERE id = ?', [id]);
+    run('DELETE FROM event_participants WHERE person_id = ?', [id]);
+    run('DELETE FROM person_attr_history WHERE person_id = ?', [id]);
+    appendOplog('person', id, 'delete', { id, hard: true });
+  });
+}

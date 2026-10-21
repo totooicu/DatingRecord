@@ -1,0 +1,141 @@
+// 事件写入：新建 / 更新 / 软删除 / 恢复 / 彻底删除
+
+import { run, transact, appendOplog, getDeviceId } from '../../db';
+import { newId } from '../../id';
+import { hlcNow, toTs } from '../../time';
+import type { DREvent, EventMetrics, Participant, Place } from '../../types';
+import type { TimeSpec } from '../../time';
+import { getEvent } from './read';
+
+export interface EventInput {
+  title: string;
+  kind: string;
+  time: TimeSpec;
+  place?: Place;
+  participants?: Participant[];
+  content?: string;
+  tags?: string[];
+  metrics?: EventMetrics;
+  media?: string[];
+  primaryCollectionId?: string | null;
+}
+
+export function createEvent(input: EventInput): DREvent {
+  const id = newId('e');
+  const now = new Date().toISOString();
+  const hlc = hlcNow(getDeviceId());
+  const startTs = toTs(input.time.start);
+  const endTs = toTs(input.time.end ?? null);
+
+  transact(() => {
+    run(
+      `INSERT INTO events
+       (id,title,kind,start_ts,end_ts,time_json,place_json,content,tags_json,metrics_json,media_json,
+        related_json,primary_collection_id,device_id,rev,hlc,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id,
+        input.title,
+        input.kind ?? 'note',
+        startTs,
+        endTs,
+        JSON.stringify(input.time),
+        JSON.stringify(input.place ?? {}),
+        input.content ?? '',
+        JSON.stringify(input.tags ?? []),
+        JSON.stringify(input.metrics ?? {}),
+        JSON.stringify(input.media ?? []),
+        '[]',
+        input.primaryCollectionId ?? null,
+        getDeviceId(),
+        1,
+        hlc,
+        now,
+        now,
+      ],
+    );
+    for (const p of input.participants ?? []) {
+      run(
+        'INSERT OR REPLACE INTO event_participants (event_id, person_id, role, note, per_person_json) VALUES (?,?,?,?,?)',
+        [id, p.personId, p.role ?? 'primary', p.note ?? '', JSON.stringify(p.perPerson ?? {})],
+      );
+    }
+    appendOplog('event', id, 'insert', { title: input.title });
+  });
+  return getEvent(id)!;
+}
+
+export function updateEvent(id: string, input: Partial<EventInput>): void {
+  const now = new Date().toISOString();
+  const hlc = hlcNow(getDeviceId());
+  transact(() => {
+    const e = getEvent(id);
+    if (!e) return;
+    const time = input.time ?? e.time;
+    run(
+      `UPDATE events SET title=?, kind=?, start_ts=?, end_ts=?, time_json=?, place_json=?, content=?,
+       tags_json=?, metrics_json=?, media_json=?, primary_collection_id=?, rev=rev+1, hlc=?, updated_at=?
+       WHERE id=?`,
+      [
+        input.title ?? e.title,
+        input.kind ?? e.kind,
+        toTs(time.start),
+        toTs(time.end ?? null),
+        JSON.stringify(time),
+        JSON.stringify(input.place ?? e.place),
+        input.content ?? e.content,
+        JSON.stringify(input.tags ?? e.tags),
+        JSON.stringify(input.metrics ?? e.metrics),
+        JSON.stringify(input.media ?? e.media),
+        input.primaryCollectionId ?? e.primaryCollectionId,
+        hlc,
+        now,
+        id,
+      ],
+    );
+    if (input.participants) {
+      run('DELETE FROM event_participants WHERE event_id = ?', [id]);
+      for (const p of input.participants) {
+        run(
+          'INSERT OR REPLACE INTO event_participants (event_id, person_id, role, note, per_person_json) VALUES (?,?,?,?,?)',
+          [id, p.personId, p.role ?? 'primary', p.note ?? '', JSON.stringify(p.perPerson ?? {})],
+        );
+      }
+    }
+    appendOplog('event', id, 'update', { title: input.title });
+  });
+}
+
+/** 软删除：进回收站，可恢复 */
+export function deleteEvent(id: string): void {
+  const now = new Date().toISOString();
+  transact(() => {
+    run('UPDATE events SET deleted_at = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+      now,
+      hlcNow(getDeviceId()),
+      now,
+      id,
+    ]);
+    appendOplog('event', id, 'delete', { id });
+  });
+}
+
+export function restoreEvent(id: string): void {
+  transact(() => {
+    run('UPDATE events SET deleted_at = NULL, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+      hlcNow(getDeviceId()),
+      new Date().toISOString(),
+      id,
+    ]);
+    appendOplog('event', id, 'update', { restored: true });
+  });
+}
+
+export function purgeEvent(id: string): void {
+  transact(() => {
+    run('DELETE FROM events WHERE id = ?', [id]);
+    run('DELETE FROM event_participants WHERE event_id = ?', [id]);
+    run('DELETE FROM collection_members WHERE member_type = ? AND member_id = ?', ['event', id]);
+    appendOplog('event', id, 'delete', { id, hard: true });
+  });
+}
