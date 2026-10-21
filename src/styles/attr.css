@@ -81,3 +81,46 @@
 .star-on {
   color: #e8b23a;
 }
+
+/* ---------- 敏感字段遮罩 ---------- */
+.sens-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sens-real {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.sens-real > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.sens-mask {
+  color: var(--muted);
+  letter-spacing: 2px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.sens-eye {
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sens-eye[aria-pressed='true'] {
+  color: var(--primary);
+  border-color: var(--primary);
+}

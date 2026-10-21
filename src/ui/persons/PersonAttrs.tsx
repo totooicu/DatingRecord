@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { setAttribute } from '../../core/repo/persons';
 import { AttributeField } from '../attr';
+import { SensitiveMask } from '../attr/SensitiveValue';
 import { bump } from '../../store';
 import type { AttributeDef, Person } from '../../core/types';
 
@@ -33,7 +34,13 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
                     {d.timeVarying && <em className="badge badge-2">随时间</em>}
                   </span>
                   <div className="attr-control">
-                    <AttributeField def={d} value={person.attrs[d.key]?.v} onChange={(val) => setVal(d, val)} />
+                    {d.sensitive ? (
+                      <SensitiveMask value={person.attrs[d.key]?.v}>
+                        <AttributeField def={d} value={person.attrs[d.key]?.v} onChange={(val) => setVal(d, val)} />
+                      </SensitiveMask>
+                    ) : (
+                      <AttributeField def={d} value={person.attrs[d.key]?.v} onChange={(val) => setVal(d, val)} />
+                    )}
                   </div>
                   {person.attrs[d.key]?.note && <span className="attr-note">{person.attrs[d.key].note}</span>}
                 </div>
