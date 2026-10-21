@@ -133,6 +133,27 @@ export function fileRefSyntax(f: StoredFile): string {
   return `${bang}[](${FILE_REF_PREFIX}${f.id})`;
 }
 
+/**
+ * 触发下载，存成当前的文件名。
+ *
+ * objectURL 本身没有文件名（浏览器会拿一串随机 uuid 当名字），
+ * 所以必须用 <a download> 才能把名字带下去。
+ */
+export function downloadFile(url: string, name: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** 在新标签页打开（PDF、或用户想用浏览器自带能力看的时候） */
+export function openInTab(url: string): void {
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 /** 批量取文件名，供渲染层把 file:<id> 显示成当前名字 */
 export function fileNames(ids: string[]): Record<string, string> {
   const out: Record<string, string> = {};

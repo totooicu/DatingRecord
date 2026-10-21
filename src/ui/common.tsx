@@ -24,21 +24,26 @@ export function Modal({
   children,
   footer,
   wide,
+  media,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** 媒体预览用：高度随内容走、不限死，图片/视频才不会被挤成一条缝 */
+  media?: boolean;
 }) {
   useEffect(() => {
     setModalOpen(1);
     return () => setModalOpen(-1);
   }, []);
 
+  const cls = ['modal', wide ? 'modal-wide' : '', media ? 'modal-media' : ''].filter(Boolean).join(' ');
+
   return (
     <div className="modal-mask" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={wide ? 'modal modal-wide' : 'modal'}>
+      <div className={cls}>
         <div className="modal-head">
           <h3>{title}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="关闭">

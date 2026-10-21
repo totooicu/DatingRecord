@@ -14,6 +14,7 @@ import {
   type StoredFile,
 } from '../../core/repo/files';
 import { useVersion, bump } from '../../store';
+import { PreviewModal } from '../preview';
 import { FileRow } from './FileRow';
 import { fmtSize } from './fileFormat';
 
@@ -24,6 +25,7 @@ export function FilesSection() {
   const [busy, setBusy] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [tip, setTip] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const key = files.map((f) => f.id).join(',');
   useEffect(() => {
@@ -86,7 +88,7 @@ export function FilesSection() {
         type="file"
         multiple
         hidden
-        accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json"
+        accept="*/*"
         onChange={(e) => void upload(e.target.files)}
       />
 
@@ -95,11 +97,19 @@ export function FilesSection() {
       ) : (
         <ul className="file-list">
           {files.map((f) => (
-            <FileRow key={f.id} file={f} thumb={thumbs[f.id]} onCopy={copyRef} onDelete={remove} />
+            <FileRow
+              key={f.id}
+              file={f}
+              thumb={thumbs[f.id]}
+              onPreview={(x) => setPreviewId(x.id)}
+              onCopy={copyRef}
+              onDelete={remove}
+            />
           ))}
         </ul>
       )}
       {tip && <p className="muted small">{tip}</p>}
+      {previewId && <PreviewModal file={files.find((f) => f.id === previewId)!} onClose={() => setPreviewId(null)} />}
     </div>
   );
 }
