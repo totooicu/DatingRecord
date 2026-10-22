@@ -243,7 +243,39 @@ export function eventsReferencingFile(file: StoredFile | string): FileRefEvent[]
   }));
 }
 
-/** 有多少个事件在正文里引用了这个文件（用于删除前的提示） */
+/**
+ * 把该文件当作图标的事件集（F-C08）。
+ *
+ * svg / image 两类图标存的是 attachments.id，所以按 id 精确匹配；
+ * 这里返回集合名，让文件管理能明确写出「被「初恋」用作图标」，
+ * 而不是含糊的「未被引用」。
+ */
+export interface FileRefCollection {
+  id: string;
+  name: string;
+}
+
+export function collectionsUsingFile(file: StoredFile | string): FileRefCollection[] {
+  const id = typeof file === 'string' ? file : file.id;
+  if (!id) return [];
+  // 这里**不**过滤隐私：和「谁在用这个文件」的语义要对齐 ——
+  // 被隐私集合用着的文件，删除/回收时必须仍然算作「被引用」，
+  // 否则一开隐私模式就会把它当孤儿删掉。只遮名字里的敏感信息是没意义的（文件名本来也可见）。
+  return queryAll<{ id: string; name: string }>(
+    `SELECT id, name FROM collections
+     WHERE deleted_at IS NULL AND json_extract(icon_json, '$.fileId') = ?
+     ORDER BY name ASC`,
+    [id],
+  ).map((r) => ({ id: r.id, name: r.name || '（未命名）' }));
+}
+
+/**
+ * 有多少个事件在正文里引用了这个文件（用于删除前的提示）。
+ *
+ * 注意这里**只数事件正文**：集合图标不计入，因为
+ * 「被 N 处正文引用」这句话在界面上是给正文用的；图标另有 collectionsUsingFile 单独展示。
+ * 但孤儿回收必须把图标算进去（见 fileGc.ts），否则换个图标就把图片删了。
+ */
 export function countRefs(file: StoredFile | string): number {
   return eventsReferencingFile(file).length;
 }

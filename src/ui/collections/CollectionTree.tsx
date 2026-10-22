@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { createCollection, getTree, type TreeNode } from '../../core/repo/collections';
 import { useVersion, bump } from '../../store';
+import { CollectionIconView } from './CollectionIcon';
 
 export function CollectionTree({
   selectedId,
@@ -50,7 +51,8 @@ export function CollectionTree({
             {node.children.length ? (isCollapsed ? '▸' : '▾') : '·'}
           </button>
           <button className="tree-name" onClick={() => onSelect(node.id)}>
-            {node.name}
+            <CollectionIconView icon={node.icon} size="sm" fallback={node.name} />
+            <span className="tree-label">{node.name}</span>
             {node.kind === 'smart' && <em className="tree-smart" title="智能集合：成员由规则实时算出">⚡</em>}
             {node.isPrivate && <em className="tree-private" title="隐私：开启隐私模式后隐藏">隐私</em>}
             {node.totalEventCount > 0 && <em>{node.totalEventCount}</em>}

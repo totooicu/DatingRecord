@@ -174,3 +174,192 @@
   color: #7a6329;
   line-height: 1.6;
 }
+
+/* ---------- 事件集图标（F-C08）：四类共用一个方块 ---------- */
+.coll-icon {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  line-height: 1;
+  user-select: none;
+  font-weight: 600;
+}
+
+.coll-icon-sm {
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.coll-icon-md {
+  width: 32px;
+  height: 32px;
+  font-size: 17px;
+}
+
+.coll-icon-lg {
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+  border-radius: 11px;
+}
+
+/* 双字母：字号降一档，两个字母塞进方块不挤 */
+.coll-icon-alpha.coll-icon-sm { font-size: 11px; }
+.coll-icon-alpha.coll-icon-md { font-size: 14px; letter-spacing: -0.3px; }
+.coll-icon-alpha.coll-icon-lg { font-size: 20px; letter-spacing: -0.4px; }
+
+.coll-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* SVG 不裁边：图的留白本身就是设计的一部分，cover 会把线条切掉 */
+.coll-icon-svg {
+  object-fit: contain;
+  padding: 3px;
+  box-sizing: border-box;
+}
+
+.coll-icon-ph {
+  width: 100%;
+  height: 100%;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.coll-icon-fallback {
+  opacity: 0.65;
+}
+
+/* ---------- 图标选择器（F-C08） ---------- */
+.icon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.icon-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+}
+
+.icon-preview .muted {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.icon-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.icon-tab {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.icon-tab-on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--panel));
+  font-weight: 600;
+}
+
+.icon-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.icon-text-input {
+  font-size: 20px;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.icon-lib-title {
+  margin: 4px 0 0;
+}
+
+.icon-lib {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.icon-lib-tile {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.icon-lib-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.icon-lib-tile-on {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.icon-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.icon-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-color-row .muted {
+  flex: 0 0 32px;
+}
+
+.icon-swatches {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.icon-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.icon-swatch-on {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}

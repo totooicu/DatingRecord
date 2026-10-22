@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS collections (
   cover TEXT,
   status TEXT NOT NULL DEFAULT 'ongoing',
   rule_json TEXT,
+  icon_json TEXT,
   is_root INTEGER NOT NULL DEFAULT 0,
   time_range_auto INTEGER NOT NULL DEFAULT 1,
   time_range_start TEXT, time_range_end TEXT,

@@ -103,3 +103,15 @@
   border-bottom: 1px solid var(--border);
   margin-bottom: 8px;
 }
+
+/* 集合详情头左侧的图标按钮：它本身就是「设置图标」的入口 */
+.head-icon-btn {
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: 11px;
+  line-height: 0;
+}
+
+.head-icon-btn:hover .coll-icon {
+  border-color: var(--primary);
+}

@@ -54,4 +54,4 @@ export interface LibraryFile {
   templates?: AttrTemplate[];
 }
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;

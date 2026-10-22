@@ -30,6 +30,7 @@ export {
   moveCollection,
   deleteCollection,
   setCollectionPrivate,
+  setCollectionIcon,
 } from './write';
 export {
   listMembers,

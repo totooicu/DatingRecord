@@ -3,7 +3,7 @@
 //   第二行起 文件名：单独成行，长名字按需换行，绝不截断
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
-import { countRefs, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
+import { countRefs, collectionsUsingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
 import { ConfirmButton, PrivacyButton } from '../common';
 import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
@@ -56,6 +56,7 @@ export function FileRow({
   const [draft, setDraft] = useState(file.name);
   const refs = countRefs(file);
   const avatars = personsUsingFile(file);
+  const icons = collectionsUsingFile(file);
   const kind = kindOf(file.name, file.mime);
 
   /** 批量模式勾选、挑选模式插入，其余情况预览 */
@@ -149,6 +150,7 @@ export function FileRow({
                   file.name,
                   refs,
                   avatars.map((a) => a.displayName),
+                  icons.map((c) => c.name),
                 )}
                 onConfirm={() => onDelete(file)}
               />
@@ -188,7 +190,7 @@ export function FileRow({
           <span>·</span>
           <span>{fmtDate(file.createdAt)}</span>
           <span>·</span>
-          {refs + avatars.length === 0 ? (
+          {refs + avatars.length + icons.length === 0 ? (
             <span>未被引用</span>
           ) : (
             <button
@@ -200,6 +202,7 @@ export function FileRow({
               {[
                 refs > 0 ? `${refs} 个事件` : '',
                 avatars.length > 0 ? `${avatars.length} 个头像` : '',
+                icons.length > 0 ? `${icons.length} 个图标` : '',
               ]
                 .filter(Boolean)
                 .join(' · ')}

@@ -1,9 +1,10 @@
 // 附件回收（F-E05）：引用计数归零才清理
 //
-// 一条文件引用能出现在三个地方：
+// 一条文件引用能出现在四个地方：
 //   1. 事件正文里的 file:<storedId>（Markdown 内联图 / 下载链接）
 //   2. 事件的 media_json（接口预留，目前 UI 还没写它，一起算上）
 //   3. 人物头像 persons.avatar（存 file:<id>）
+//   4. 事件集图标 collections.icon_json 的 fileId（F-C08，svg / image 两类）
 //
 // 只在**彻底删除事件**时自动回收。软删除不回收——回收站里的事件还能恢复，
 // 恢复了引用还在；而 IndexedDB 里的二进制删了就是真没了（整库快照式撤销
@@ -47,6 +48,14 @@ export function fileStillReferenced(file: StoredFile): boolean {
     [`${FILE_REF_PREFIX}${file.id}`, file.id],
   );
   if (Number(avatar?.c ?? 0) > 0) return true;
+
+  // 事件集图标：换个图标、删个集合，都不该把图片连坐删掉
+  const icon = queryOne<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM collections
+     WHERE deleted_at IS NULL AND json_extract(icon_json, '$.fileId') = ?`,
+    [file.id],
+  );
+  if (Number(icon?.c ?? 0) > 0) return true;
 
   const keys = [file.storedId, file.id].filter(Boolean);
   const events = queryAll<{ content: string; media_json: string }>(

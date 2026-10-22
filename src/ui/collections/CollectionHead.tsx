@@ -1,8 +1,11 @@
-// 事件集详情头：面包屑 + 改名/描述 + 状态 + 移动 + 删除
+// 事件集详情头：面包屑 + 图标 + 改名/描述 + 状态 + 移动 + 删除
+import { useState } from 'react';
 import { deleteCollection, updateCollection, setCollectionPrivate } from '../../core/repo/collections';
 import { ConfirmButton, PrivacyButton } from '../common';
 import { bump } from '../../store';
 import type { Collection } from '../../core/types';
+import { CollectionIconView } from './CollectionIcon';
+import { IconPicker } from './IconPicker';
 
 export function CollectionHead({
   collection,
@@ -15,6 +18,8 @@ export function CollectionHead({
   onMove: () => void;
   onError: (msg: string) => void;
 }) {
+  const [iconOpen, setIconOpen] = useState(false);
+
   return (
     <>
       <div className="breadcrumb">
@@ -27,6 +32,15 @@ export function CollectionHead({
       </div>
 
       <div className="detail-head">
+        <button
+          type="button"
+          className="head-icon-btn"
+          title={collection.icon ? '更换图标' : '设置图标'}
+          aria-label={collection.icon ? '更换图标' : '设置图标'}
+          onClick={() => setIconOpen(true)}
+        >
+          <CollectionIconView icon={collection.icon} size="lg" fallback={collection.name} />
+        </button>
         <div className="detail-head-main">
           <input
             className="title-input"
@@ -78,6 +92,8 @@ export function CollectionHead({
           )}
         </div>
       </div>
+
+      {iconOpen && <IconPicker collection={collection} onClose={() => setIconOpen(false)} />}
     </>
   );
 }

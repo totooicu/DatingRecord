@@ -53,6 +53,15 @@
   cursor: default;
 }
 
+/* 事件集图标那条不可点（详情页不一定在当前路由栈上），样式退化成纯文本 */
+.ref-ev-item-static {
+  cursor: default;
+}
+
+.ref-ev-item-static:hover {
+  background: none;
+}
+
 .ref-ev-title {
   flex: 1 1 auto;
   min-width: 0;

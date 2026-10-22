@@ -77,6 +77,13 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 4;
   }
+  if (v < 5) {
+    // 事件集图标（v5）：icon_json 存 CollectionIcon。同一格表加列，老库幂等补。
+    if (!hasColumn(d, 'collections', 'icon_json')) {
+      d.run(`ALTER TABLE collections ADD COLUMN icon_json TEXT`);
+    }
+    v = 5;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

@@ -4,7 +4,7 @@ import { queryAll, queryOne, run, transact, appendOplog, getDeviceId } from '../
 import { newId } from '../../id';
 import { hlcNow } from '../../time';
 import { orderKeyBetween } from '../../order';
-import type { Collection, CollectionKind, SmartRule } from '../../types';
+import type { Collection, CollectionIcon, CollectionKind, SmartRule } from '../../types';
 import { rebuildClosure } from './closure';
 import { getRoot, getCollection, listChildren } from './read';
 import { isSmart } from './smart';
@@ -57,7 +57,7 @@ export function createCollection(input: {
 
 export function updateCollection(
   id: string,
-  patch: Partial<Pick<Collection, 'name' | 'description' | 'status' | 'kind' | 'cover' | 'rule'>>,
+  patch: Partial<Pick<Collection, 'name' | 'description' | 'status' | 'kind' | 'cover' | 'rule' | 'icon'>>,
 ): void {
   const now = new Date().toISOString();
   const hlc = hlcNow(getDeviceId());
@@ -70,8 +70,10 @@ export function updateCollection(
       run('UPDATE collection_members SET deleted_at = ? WHERE collection_id = ?', [now, id]);
     }
     const rule = 'rule' in patch ? patch.rule : c.rule;
+    const icon = 'icon' in patch ? patch.icon : c.icon;
     run(
-      `UPDATE collections SET name=?, description=?, status=?, kind=?, cover=?, rule_json=?, rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
+      `UPDATE collections SET name=?, description=?, status=?, kind=?, cover=?, rule_json=?, icon_json=?,
+                             rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
       [
         patch.name ?? c.name,
         patch.description ?? c.description,
@@ -79,6 +81,7 @@ export function updateCollection(
         patch.kind ?? c.kind,
         patch.cover ?? c.cover ?? null,
         rule ? JSON.stringify(rule) : null,
+        icon ? JSON.stringify(icon) : null,
         hlc,
         now,
         id,
@@ -86,6 +89,31 @@ export function updateCollection(
     );
     // title 给撤销提示条用：改名时是新名，改规则/状态时用当前名（撤销回滚由快照负责）
     appendOplog('collection', id, 'update', { ...patch, title: patch.name ?? c.name });
+  });
+}
+
+/**
+ * 设置 / 清除事件集图标（F-C08）。
+ *
+ * 单独一个函数而不是走 updateCollection：图标是纯展示属性，改它不该惊动
+ * 名称/状态/成员，撤销提示条也要说人话（「更换事件集图标」而不是「修改事件集」）。
+ * 传 null 表示恢复默认外观。
+ */
+export function setCollectionIcon(id: string, icon: CollectionIcon | null): void {
+  const now = new Date().toISOString();
+  const c = getCollection(id);
+  if (!c) return;
+  const before = JSON.stringify(c.icon ?? null);
+  if (before === JSON.stringify(icon ?? null)) return; // 幂等：没变就不落 oplog
+  transact(() => {
+    run(
+      'UPDATE collections SET icon_json = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?',
+      [icon ? JSON.stringify(icon) : null, hlcNow(getDeviceId()), now, id],
+    );
+    appendOplog('collection', id, 'update', {
+      title: c.name,
+      icon: icon ? { type: icon.type } : null,
+    });
   });
 }
 
