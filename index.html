@@ -41,9 +41,64 @@
         z-index: 999;
       }
       #boot .boot-name {
-        font-size: 17px;
+        display: flex;
+        align-items: baseline;
+        gap: 2px;
+        font-size: 19px;
         font-weight: 700;
         color: #2f2c28;
+        letter-spacing: 1px;
+        /* 入场结束后轻轻呼吸，静止不动会让人以为卡住了 */
+        animation: boot-name-breathe 2.6s ease-in-out 1.3s infinite;
+      }
+      /* 逐字浮入：每个字带一点延迟，读起来像被一个字一个字写出来 */
+      #boot .boot-name span {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(10px);
+        animation: boot-name-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #boot .boot-name span:nth-child(1) {
+        animation-delay: 0.1s;
+      }
+      #boot .boot-name span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      #boot .boot-name span:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      #boot .boot-name span:nth-child(4) {
+        animation-delay: 0.4s;
+      }
+      #boot .boot-name span:nth-child(5) {
+        animation-delay: 0.5s;
+      }
+      #boot .boot-name span:nth-child(6) {
+        animation-delay: 0.6s;
+      }
+      @keyframes boot-name-in {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes boot-name-breathe {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.72;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .boot-name,
+        #boot .boot-name span,
+        #boot .boot-spin {
+          animation: none;
+          opacity: 1;
+          transform: none;
+        }
       }
       #boot .boot-spin {
         width: 30px;
@@ -64,13 +119,15 @@
         min-height: 1.6em;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bwchv3WP.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DJiIPVpv.css">
+    <script type="module" crossorigin src="./assets/index-Dwit7hzg.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DHpa3UnX.css">
   </head>
   <body>
     <div id="root"></div>
     <div id="boot">
-      <div class="boot-name">约会记录</div>
+      <div class="boot-name">
+        <span>记</span><span>录</span><span>美</span><span>好</span><span>生</span><span>活</span>
+      </div>
       <div class="boot-spin"></div>
       <div class="boot-tip" id="boot-tip">正在启动…</div>
     </div>
