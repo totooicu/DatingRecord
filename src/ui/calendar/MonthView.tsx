@@ -11,7 +11,9 @@
 //   · 横条内容超宽时自动跑马灯滚动。
 // 日期框本身只显示日期数字 + 有记录时的小红点，不放事件内容。
 //
-// 切换月份：直接上下滚动即可（原生滚动，无限延伸）；
+// 排布：整段月份展平成一条条「周」首尾相接地流下去（不重复、不补空白）。
+// 月初就直接接在月末后面（例如 28 29 30 1 2 3 4 在同一行），
+// 月边界只插一条轻量的「10 月」标签做标尺，不再用块标题把周断开。
 // 点标题里的年 / 月打开选择器可跳转到任意月份并居中；点某一天回时间线按那天过滤。
 import {
   useEffect,
@@ -26,15 +28,16 @@ import {
   collectDaySummaries,
   collectMonthCounts,
   collectSpanBars,
-  monthOf,
+  dayKeyOf,
   monthKey,
+  monthOf,
   shiftMonth,
   todayKey,
   WEEKDAY_LABELS,
   EMPTY_CALENDAR_FILTER,
   type CalendarFilter,
   type DayCell,
-  type DaySummary,
+  type DayKey,
   type MonthRef,
   type SpanBar,
 } from '../../core/calendar';
@@ -59,6 +62,67 @@ function buildWindow(center: MonthRef): MonthRef[] {
   return out;
 }
 
+/** 日键 +N 天（本地零点推进，避开 toISOString 的时区穿越） */
+function addDays(key: DayKey, n: number): DayKey {
+  const [y, m, d] = key.split('-').map(Number);
+  return dayKeyOf(new Date(y, m - 1, d + n));
+}
+
+/** 日键 → 所属月份（0 起） */
+function monthOfKey(key: DayKey): MonthRef {
+  const [y, m] = key.split('-').map(Number);
+  return { year: y, month: m - 1 };
+}
+
+interface WeekRow {
+  /** 周一起始日的日键（周一为每周第一列） */
+  key: string;
+  /** 7 个连续日期格 */
+  cells: DayCell[];
+  /** 该周是否为某个月份的第一周（用于挂居中/跳转定位的 ref） */
+  marker: boolean;
+}
+
+/**
+ * 把一段月份展平成「连续周流」：从第一个月网格的首个周一开始，
+ * 每 7 天一条周，一路连到最后一月网格的最后一个周日。
+ * 相邻月份的边界周只出现一次（首尾相接、不重复），所以 28 29 30 | 1 2 3 4
+ * 落在同一行，月初直接接在月末后面，不会被空白或分隔线断开。
+ * 月份归属交给顶部常驻标题实时指示，周流里不再插月份标签/横线。
+ */
+function buildWeeks(months: MonthRef[], today: DayKey): WeekRow[] {
+  if (months.length === 0) return [];
+  const monthsSet = new Set(months.map(monthKey));
+  const firstGrid = buildMonthGrid(months[0], today);
+  const lastGrid = buildMonthGrid(months[months.length - 1], today);
+  const start = firstGrid[0].key;
+  const end = lastGrid[lastGrid.length - 1].key;
+
+  const weeks: WeekRow[] = [];
+  let cur = start;
+  let first = true;
+  while (cur <= end) {
+    const cells: DayCell[] = [];
+    for (let i = 0; i < 7; i += 1) {
+      const k = addDays(cur, i);
+      const [y, m, d] = k.split('-').map(Number);
+      const inWin = monthsSet.has(monthKey({ year: y, month: m - 1 }));
+      cells.push({
+        key: k,
+        day: d,
+        inMonth: inWin,
+        phase: k === today ? 'today' : k < today ? 'past' : 'future',
+      });
+    }
+    // 首周（窗口起始月）与每月 1 号所在的那一周都算「月份第一周」，留给 ref
+    const marker = first || cells.some((c) => c.inMonth && c.day === 1);
+    weeks.push({ key: cur, cells, marker });
+    cur = addDays(cur, 7);
+    first = false;
+  }
+  return weeks;
+}
+
 export function MonthView({
   onPickDay,
   filter = EMPTY_CALENDAR_FILTER,
@@ -75,7 +139,7 @@ export function MonthView({
   const [picker, setPicker] = useState<'month' | 'year' | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingScroll = useRef<string | null>(monthKey(current));
   const pendingPrepend = useRef(0);
   const prevHeight = useRef(0);
@@ -88,22 +152,31 @@ export function MonthView({
     return map;
   }, [months, v, filter]);
 
+  const weeks = useMemo(() => buildWeeks(months, today), [months, today]);
+
+  // 把某个月整体滚到容器正中：用「下月首周 - 本月首周」的高度当整月高度，
+  // 既让月初露在靠上位置、又不会把今天顶到屏幕外（比只居中首周准确）。
+  const centerMonth = (cont: HTMLDivElement, m: MonthRef) => {
+    const el = monthRefs.current.get(monthKey(m));
+    if (!el) return false;
+    const nextEl = monthRefs.current.get(monthKey(shiftMonth(m, 1)));
+    const height = nextEl ? nextEl.offsetTop - el.offsetTop : cont.clientHeight;
+    cont.scrollTop = el.offsetTop - Math.max(0, (cont.clientHeight - height) / 2);
+    return true;
+  };
+
   // 让某个月滚动到容器正中（跳转换月 / 回今天 / 初始定位都用它）
   const scrollToMonth = (m: MonthRef) => {
     const key = monthKey(m);
     pendingScroll.current = key;
     const cont = scrollRef.current;
-    const el = blockRefs.current.get(key);
+    const el = monthRefs.current.get(key);
     if (cont && el) {
       // 目标已在列表里（最常见：回今天）时，setMonths 会拿回同一引用，
       // React 直接跳过重渲染，useLayoutEffect 不会跑 —— 这里直接定位。
       requestAnimationFrame(() => {
         const c = scrollRef.current;
-        const e = blockRefs.current.get(key);
-        if (c && e) {
-          c.scrollTop = e.offsetTop - (c.clientHeight - e.clientHeight) / 2;
-          pendingScroll.current = null;
-        }
+        if (c && centerMonth(c, m)) pendingScroll.current = null;
       });
     } else {
       // 目标还没加载：交给 useLayoutEffect 在列表扩展后定位
@@ -111,7 +184,7 @@ export function MonthView({
     }
   };
 
-  // 月份块渲染后，处理「顶部续接」的滚动补偿 + 居中跳转
+  // 周渲染后，处理「顶部续接」的滚动补偿 + 居中跳转
   useLayoutEffect(() => {
     const cont = scrollRef.current;
     if (!cont) return;
@@ -121,17 +194,14 @@ export function MonthView({
       pendingPrepend.current = 0;
     }
     if (pendingScroll.current) {
-      const el = blockRefs.current.get(pendingScroll.current);
-      if (el) {
-        cont.scrollTop = el.offsetTop - (cont.clientHeight - el.clientHeight) / 2;
-        pendingScroll.current = null;
-      }
+      const target = months.find((x) => monthKey(x) === pendingScroll.current);
+      if (target && centerMonth(cont, target)) pendingScroll.current = null;
     }
   }, [months]);
 
-  const registerRef = (key: string) => (el: HTMLDivElement | null) => {
-    if (el) blockRefs.current.set(key, el);
-    else blockRefs.current.delete(key);
+  const registerMonthRef = (m: MonthRef) => (el: HTMLDivElement | null) => {
+    if (el) monthRefs.current.set(monthKey(m), el);
+    else monthRefs.current.delete(monthKey(m));
   };
 
   // 找出最靠近视口垂直中线的月份，用它驱动顶部标题
@@ -142,7 +212,7 @@ export function MonthView({
     let best: MonthRef | null = null;
     let bestD = Infinity;
     for (const m of months) {
-      const el = blockRefs.current.get(monthKey(m));
+      const el = monthRefs.current.get(monthKey(m));
       if (!el) continue;
       const r = el.getBoundingClientRect();
       const d = Math.abs(r.top + r.height / 2 - cY);
@@ -197,9 +267,13 @@ export function MonthView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [months]);
 
-  const centerGrid = useMemo(() => buildMonthGrid(center, today), [center, today]);
   const centerMonthCount = monthCounts.get(monthKey(center)) ?? 0;
-  const centerCellCount = centerGrid.filter((c) => c.inMonth && summaries.has(c.key)).length;
+  const centerPrefix = `${center.year}-${String(center.month + 1).padStart(2, '0')}`;
+  const centerCellCount = useMemo(() => {
+    let n = 0;
+    for (const k of summaries.keys()) if (k.startsWith(centerPrefix)) n += 1;
+    return n;
+  }, [summaries, centerPrefix]);
   const isCurrentCentered = center.year === current.year && center.month === current.month;
 
   // 年份列表覆盖「有记录的年份」，并在当前年 / 正在看的年两边各留 5 年
@@ -220,6 +294,15 @@ export function MonthView({
     let n = 0;
     for (let m = 0; m < 12; m += 1) n += monthCounts.get(monthKey({ year, month: m })) ?? 0;
     return n;
+  };
+
+  // 取某周涉及的两个月份的横条（跨月周会把两端月份各裁一段，拼起来正好覆盖整周）
+  const barsForWeek = (w: WeekRow): SpanBar[] => {
+    const ka = monthKey(monthOfKey(w.cells[0].key));
+    const kb = monthKey(monthOfKey(w.cells[6].key));
+    const a = barsByMonth.get(ka) ?? [];
+    if (ka === kb) return a;
+    return [...a, ...(barsByMonth.get(kb) ?? [])];
   };
 
   return (
@@ -254,17 +337,37 @@ export function MonthView({
           ))}
         </div>
 
-        {months.map((m) => (
-          <MonthBlock
-            key={monthKey(m)}
-            month={m}
-            today={today}
-            summaries={summaries}
-            bars={barsByMonth.get(monthKey(m)) ?? []}
-            registerRef={registerRef(monthKey(m))}
-            onPickDay={onPickDay}
-          />
-        ))}
+        {weeks.map((w, idx) => {
+          // 只有标记周（每月首周）才需要挂一个 ref 供居中/跳转定位；
+          // 其余周不计算月份，避免在非标记周上取到 undefined。
+          let refCb: ((el: HTMLDivElement | null) => void) | undefined;
+          if (w.marker) {
+            const mk =
+              idx === 0
+                ? months[0]
+                : monthOfKey(w.cells.find((c) => c.inMonth && c.day === 1)!.key);
+            refCb = registerMonthRef(mk);
+          }
+          return (
+            <div className="cal-week" key={w.key} ref={refCb}>
+              {w.cells.map((cell) => (
+                <DayCellView
+                  key={cell.key}
+                  cell={cell}
+                  hasEvents={summaries.has(cell.key)}
+                  onPick={() => onPickDay(cell.key)}
+                />
+              ))}
+              {weekSegments(w.cells, barsForWeek(w)).map((seg) => (
+                <SpanBarView
+                  key={`${seg.bar.eventId}-${seg.key}`}
+                  seg={seg}
+                  onPick={() => onPickDay(seg.key)}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       {picker === 'month' && (
@@ -321,57 +424,6 @@ export function MonthView({
   );
 }
 
-function MonthBlock({
-  month,
-  today,
-  summaries,
-  bars,
-  registerRef,
-  onPickDay,
-}: {
-  month: MonthRef;
-  today: string;
-  summaries: Map<string, DaySummary>;
-  bars: SpanBar[];
-  registerRef: (el: HTMLDivElement | null) => void;
-  onPickDay: (key: string) => void;
-}) {
-  const grid = useMemo(() => buildMonthGrid(month, today), [month, today]);
-  const weeks = useMemo(() => {
-    const out: DayCell[][] = [];
-    for (let i = 0; i < grid.length; i += 7) out.push(grid.slice(i, i + 7));
-    return out;
-  }, [grid]);
-
-  return (
-    <section className="cal-block" ref={registerRef}>
-      <div className="cal-block-head">
-        <span className="cal-block-title">
-          {month.month === 0 ? `${month.year} 年 ` : ''}
-          {month.month + 1} 月
-        </span>
-      </div>
-      <div className="cal-grid" role="grid">
-        {weeks.map((week) => (
-          <div className="cal-week" key={week[0].key}>
-            {week.map((cell) => (
-              <DayCellView
-                key={cell.key}
-                cell={cell}
-                hasEvents={summaries.has(cell.key)}
-                onPick={() => onPickDay(cell.key)}
-              />
-            ))}
-            {weekSegments(week, bars).map((seg) => (
-              <SpanBarView key={`${seg.bar.eventId}-${week[0].key}`} seg={seg} onPick={() => onPickDay(seg.key)} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function DayCellView({
   cell,
   hasEvents,
@@ -381,15 +433,15 @@ function DayCellView({
   hasEvents: boolean;
   onPick: () => void;
 }) {
-  // 非本月：留空白占位（保持 7 列对齐），不显示邻居月份的数字，也不响应点击。
-  // 这样「跨月那一周」就不会被拆成两半、分别塞进两个月份块里。
-  if (!cell.inMonth) {
-    return <div className="cal-cell cal-out" aria-hidden />;
-  }
+  // 窗口之外的邻月补位（比如整段月份最顶上的 8 月底、最底下的 11 月初）：
+  // 照常显示日期数字、压淡处理，保持 7 列对齐；不作空白占位，避免把周断开。
+  // 窗口内部的跨月周（如 28 29 30 | 1 2 3 4）里两个月的日期都是 inMonth，正常显示，
+  // 所以月初直接接在月末后面，中间没有任何断点。
+  const cls = cell.inMonth ? `cal-cell cal-${cell.phase}` : 'cal-cell cal-out';
   return (
     <button
       type="button"
-      className={`cal-cell cal-${cell.phase}`}
+      className={cls}
       onClick={onPick}
       title={cell.key}
       data-day={cell.key}
@@ -461,6 +513,8 @@ interface WeekSegment {
   key: string;
   clippedStart: boolean;
   clippedEnd: boolean;
+  /** 落到的行（0 起）；同一事件被月边界裁成的两段会强制同一行，跨周才断开 */
+  row: number;
 }
 
 /** 把跨天条裁进某一周：跨周的事件每周各画一段，段与段首尾相接 */
@@ -482,10 +536,34 @@ function weekSegments(week: DayCell[], bars: SpanBar[]): WeekSegment[] {
       key: keyStart,
       clippedStart: bar.clippedStart || bar.startKey < wkStart,
       clippedEnd: bar.clippedEnd || bar.endKey > wkEnd,
+      row: bar.lane,
     });
   }
-  // 行号由 lane 决定，跨周的条能停在同一行；同 lane 的按列序兜底
-  return segs.sort((a, b) => a.bar.lane - b.bar.lane || a.colStart - b.colStart);
+
+  // 同一条事件可能被月边界裁成两段（9 月末一段 + 10 月初一段）塞进同一周，
+  // 它们本是一根连续的条：这里合并成一段，中间就不会冒出 ▶◀ 的假断点；
+  // 合并时顺便把行号取较小值，确保它不会错行。
+  const byEvent = new Map<string, WeekSegment>();
+  for (const s of segs) {
+    const prev = byEvent.get(s.bar.eventId);
+    if (!prev) {
+      byEvent.set(s.bar.eventId, s);
+      continue;
+    }
+    const leftFirst = prev.colStart <= s.colStart;
+    byEvent.set(s.bar.eventId, {
+      bar: prev.bar,
+      colStart: Math.min(prev.colStart, s.colStart),
+      colEnd: Math.max(prev.colEnd, s.colEnd),
+      key: leftFirst ? prev.key : s.key,
+      clippedStart: leftFirst ? prev.clippedStart : s.clippedStart,
+      clippedEnd: prev.colEnd >= s.colEnd ? prev.clippedEnd : s.clippedEnd,
+      row: Math.min(prev.row, s.row),
+    });
+  }
+
+  // 行号由 row 决定，跨周的条能停在同一行；同 row 的按列序兜底
+  return [...byEvent.values()].sort((a, b) => a.row - b.row || a.colStart - b.colStart);
 }
 
 function SpanBarView({ seg, onPick }: { seg: WeekSegment; onPick: () => void }) {
@@ -495,7 +573,7 @@ function SpanBarView({ seg, onPick }: { seg: WeekSegment; onPick: () => void }) 
     <button
       type="button"
       className="cal-span"
-      style={{ gridRow: bar.lane + 2, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}` }}
+      style={{ gridRow: seg.row + 2, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}` }}
       onClick={onPick}
       title={`${bar.title}（${range}）`}
     >

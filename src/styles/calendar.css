@@ -70,8 +70,7 @@
   margin-left: auto;
 }
 
-.cal-weekdays,
-.cal-grid {
+.cal-weekdays {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
@@ -83,10 +82,11 @@
   top: 0;
   z-index: 2;
   background: var(--panel);
+  margin-bottom: 6px;
   padding-bottom: 4px;
 }
 
-/* 连续滚动容器：承载多个月份块，当前月初始居中 */
+/* 连续滚动容器：承载一条首尾相接的「周流」，当前月初始居中 */
 .cal-scroll {
   max-height: 64vh;
   min-height: 340px;
@@ -96,32 +96,6 @@
   /* 阻止浏览器在该容器顶部下拉时触发原生的「下拉刷新」手势 */
   overscroll-behavior-y: none;
   padding-right: 2px;
-}
-
-/* 每个月份块：紧凑的月份标签 + 网格；块之间用细分隔线。
-   月份名在顶部标题里也有（实时指示居中月份），这里只做滚动时的
-   边界标尺，所以刻意用更小、更淡的「10 月」而不是重复完整标题 */
-.cal-block {
-  padding: 8px 0 6px;
-}
-
-.cal-block:first-of-type {
-  padding-top: 2px;
-}
-
-.cal-block + .cal-block {
-  border-top: 1px solid var(--border);
-}
-
-.cal-block-head {
-  padding: 2px 2px 6px;
-}
-
-.cal-block-title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--muted);
 }
 
 .cal-weekdays span {
@@ -137,18 +111,14 @@
 }
 
 /* 网格按「周」分行：每行先摆 7 个日期格，跨天条作为同一行的后续网格项
-   （gridRow 显式指定，落到格子下方），这样条能自然跨列，也不用绝对定位测宽度 */
-.cal-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
+   （gridRow 显式指定，落到格子下方），这样条能自然跨列，也不用绝对定位测宽度。
+   周与周之间留 4px 缝隙；月份标签本身也带上下间距，月份之间自然分隔。 */
 .cal-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
   grid-auto-rows: auto;
+  margin-bottom: 4px;
 }
 
 .cal-cell {
@@ -187,13 +157,14 @@
   background: #fff;
 }
 
-/* 上/下月补位：留空白占位、无背景、不响应点击，
-   只为了保持 7 列对齐，不让「跨月那一周」被拆进两个月份块 */
+/* 窗口之外的邻月补位（最顶上的上月尾巴 / 最底下的下月开头）：
+   照常显示日期数字、压淡处理、可点，只是保持 7 列对齐。
+   窗口内部的跨月周（如 28 29 30 | 1 2 3 4）两个月的日期都是正常色，
+   所以月初直接接在月末后面，中间没有任何断点。 */
 .cal-cell.cal-out {
   background: transparent;
   box-shadow: none;
-  pointer-events: none;
-  cursor: default;
+  cursor: pointer;
 }
 
 .cal-date {
