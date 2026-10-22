@@ -160,16 +160,11 @@ export function EventFields({
               key={c.id}
               type="button"
               className={d.cols.includes(c.id) ? 'chip chip-on' : 'chip'}
-              // 层级用 padding 表达，不再往文字里塞全角空格：
-              // 全角缩进会把 chip 撑得很长，一眼看不出哪个是名字
-              style={depth > 0 ? { paddingLeft: 10 + depth * 8 } : undefined}
+              // 层级只靠左内边距表达：加 └ 之类的符号会多出一段固定宽度的空当，
+              // 文字左边看起来空了一大块
+              style={depth > 0 ? { paddingLeft: 11 + depth * 9 } : undefined}
               onClick={() => patch({ cols: toggle(d.cols, c.id) })}
             >
-              {depth > 0 && (
-                <span className="chip-branch" aria-hidden>
-                  └
-                </span>
-              )}
               {c.name}
             </button>
           ))}
