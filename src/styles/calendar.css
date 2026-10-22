@@ -303,8 +303,19 @@
 }
 
 .cal-filter-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 全局 input 是 width:100%，复选框不覆盖就会撑满整行、把文字挤到最右边 */
+.cal-filter-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--primary);
 }

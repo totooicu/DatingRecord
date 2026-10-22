@@ -45,7 +45,12 @@ jobs:
           # git 身份 → git commit 报 "Author identity unknown"，整步失败、gh-pages 停更
           git config user.name "deploy bot"
           git config user.email "bot@localhost"
-          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          # 保留旧 assets：已经打开的标签页/离线 PWA 手里还是旧 index.html，
+          # 它引用的带 hash 的 chunk 一旦被本次部署删掉，点「导入」这类懒加载入口
+          # 就会报 "Failed to fetch dynamically imported module"。旧文件留着，
+          # 老页面还能正常用完这一次会话；新页面只用新 hash，互不干扰。
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'assets' -exec rm -rf {} +
+          mkdir -p assets
           cp -R ../dist/. .
           git add -A
           if git diff --cached --quiet; then
