@@ -23,4 +23,13 @@ export default defineConfig({
       strict: false,
     },
   },
+  preview: {
+    // 关键：强制不缓存，避免平台预览代理把旧构建（含旧 sw.js）缓存住，
+    // 导致改完代码刷新仍显示旧版。no-store 比 no-cache 更彻底。
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  },
 });
