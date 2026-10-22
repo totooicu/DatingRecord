@@ -12,6 +12,7 @@ export {
   getBreadcrumb,
   listChildren,
   listArchivedCollections,
+  descendantIdsOf,
   type TreeNode,
 } from './read';
 export {

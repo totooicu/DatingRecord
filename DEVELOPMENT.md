@@ -534,6 +534,12 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
   同一行不重叠）。跨周事件每周各画一段、首尾相接；跨月事件只画本月部分，被裁的端点显示
   ◀/▶ 延续箭头。点条 → 与点格子相同，回时间线只看那天。条内显示集合图标（复用
   `CollectionIconView`）+ 标题，超长省略。
+- **筛选（人物 / 事件集）**：月卡片上方两枚胶囊按钮，点开是多选弹窗（手机 390px 放不下内联多选）。
+  `CalendarFilter { personIds, collectionIds }` 在 `Calendar` 层持有，切月份不丢；
+  组内 OR、组间 AND；事件集筛选走闭包表 `descendantIdsOf()`，选父集合自动含全部子孙。
+  `collectDaySummaries(filter)` / `collectSpanBars(month, filter)` 共用 `makeMatcher()`——
+  判定放在日期展开之前，被过滤的事件既不计数也不出图标、不出横条；空数组 = 不筛选。
+  筛选只影响显示，不改数据，也不影响「N 天有记录」之外的时间线内容。
 - **导航**：手机端底部 5 个 tab（人物 / 事件集 / 时间线 / **日历** / 设置），
   桌面顶栏 5 个页签；日历排在时间线和设置之间，正好居中。
 - 回归脚本的坑：`.cal-cell` 的底色要用 `getComputedStyle().backgroundColor` 断言

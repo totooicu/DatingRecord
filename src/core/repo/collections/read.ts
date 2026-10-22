@@ -94,6 +94,25 @@ export function getBreadcrumb(id: string): Collection[] {
   return rows.map((r) => getCollection(r.ancestor_id)).filter((c): c is Collection => !!c);
 }
 
+/**
+ * 给定若干集合，返回它们**连同全部子孙**的 id 集合（闭包表一次查询）。
+ *
+ * 日历/时间线的「按事件集筛选」要含嵌套层级：选了「旅行」，
+ * 「旅行 / 日本」下的事件也该出现，否则层级越深越筛不出东西。
+ */
+export function descendantIdsOf(ids: string[]): Set<string> {
+  const out = new Set(ids);
+  if (ids.length === 0) return out;
+  const marks = ids.map(() => '?').join(',');
+  for (const row of queryAll<{ descendant_id: string }>(
+    `SELECT DISTINCT descendant_id FROM collection_closure WHERE ancestor_id IN (${marks})`,
+    ids,
+  )) {
+    out.add(row.descendant_id);
+  }
+  return out;
+}
+
 export function listChildren(parentId: string): Collection[] {
   return queryAll<CollectionRow>(
     `SELECT * FROM collections WHERE parent_id = ? AND deleted_at IS NULL

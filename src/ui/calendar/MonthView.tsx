@@ -19,6 +19,8 @@ import {
   shiftMonth,
   todayKey,
   WEEKDAY_LABELS,
+  EMPTY_CALENDAR_FILTER,
+  type CalendarFilter,
   type DayCell,
   type DaySummary,
   type MonthRef,
@@ -30,15 +32,21 @@ import { CollectionIconView } from '../collections/CollectionIcon';
 /** 一格最多摆几个图标；再多的用 +N 收口，免得格子被撑爆 */
 const MAX_ICONS = 3;
 
-export function MonthView({ onPickDay }: { onPickDay: (key: string) => void }) {
+export function MonthView({
+  onPickDay,
+  filter = EMPTY_CALENDAR_FILTER,
+}: {
+  onPickDay: (key: string) => void;
+  filter?: CalendarFilter;
+}) {
   const v = useVersion();
   const today = todayKey();
   const [month, setMonth] = useState<MonthRef>(() => monthOf(new Date()));
 
   const grid = useMemo(() => buildMonthGrid(month, today), [month, today]);
   // v 触发重算：刚记完一件事，日历要立刻反应过来
-  const summaries = useMemo(() => collectDaySummaries(), [v]);
-  const spanBars = useMemo(() => collectSpanBars(month), [month, v]);
+  const summaries = useMemo(() => collectDaySummaries(filter), [v, filter]);
+  const spanBars = useMemo(() => collectSpanBars(month, filter), [month, v, filter]);
 
   const weeks = useMemo(() => {
     const out: DayCell[][] = [];
