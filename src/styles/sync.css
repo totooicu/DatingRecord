@@ -1,0 +1,73 @@
+/* 坚果云备份：设置页里的同步卡片 */
+
+.sync-advanced {
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.sync-advanced > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sync-advanced[open] > summary {
+  margin-bottom: 8px;
+}
+
+.sync-ok,
+.sync-err {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.sync-ok {
+  background: #eaf7ee;
+  color: #1f6b3a;
+}
+
+.sync-err {
+  background: #fdecec;
+  color: #a52121;
+}
+
+.sync-result {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--side);
+}
+
+.sync-result > p {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+}
+
+.sync-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sync-table td {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.sync-table td:first-child {
+  color: var(--muted);
+  width: 44%;
+}
+
+.sync-table td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

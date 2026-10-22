@@ -12,6 +12,7 @@
 
 export type SettingsKey =
   | 'backup'
+  | 'sync'
   | 'security'
   | 'people'
   | 'data'
@@ -32,6 +33,7 @@ export interface SettingsEntry {
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'backup', title: '备份与恢复', hint: '导入 / 导出 .drp.json', group: 'general' },
+  { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'security', title: '隐私与安全', hint: '应用锁、本地库加密、隐私模式', group: 'security' },
   { key: 'people', title: '人物与属性', hint: '属性字典、属性模板、重复合并', group: 'people' },
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除', group: 'people' },

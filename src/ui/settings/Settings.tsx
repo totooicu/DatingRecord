@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupSection } from './BackupSection';
+import { SyncSection } from './SyncSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
@@ -40,6 +41,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         </button>
 
         {active === 'backup' && <BackupSection />}
+
+        {active === 'sync' && <SyncSection />}
 
         {active === 'security' && <SecuritySection />}
 

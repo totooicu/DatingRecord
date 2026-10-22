@@ -1,6 +1,6 @@
 // 导出：把整库打包成一个 .drp.json（纯文本、可 diff、可进 git）
 
-import { queryAll, getDeviceId, getMeta } from '../db';
+import { queryAll, getDeviceId, getMeta, setMeta } from '../db';
 import { newId } from '../id';
 import { getBlob, blobToBase64 } from '../db/blob';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
@@ -15,7 +15,13 @@ import {
   type Row,
 } from './mappers';
 
-async function exportAttachments(): Promise<Attachment[]> {
+function ensureLibraryId(): string {
+  const id = newId('lib');
+  setMeta('library_id', id);
+  return id;
+}
+
+export async function exportAttachments(): Promise<Attachment[]> {
   const rows = queryAll<Row>('SELECT * FROM attachments');
   const out: Attachment[] = [];
   for (const r of rows) {
@@ -40,7 +46,8 @@ export async function buildLibrary(opts: { includeAttachments?: boolean } = {}):
   return {
     schemaVersion: SCHEMA_VERSION,
     meta: {
-      id: getMeta('library_id') ?? newId('lib'),
+      // 库 id 要落库：每次导出临时 newId 的话，同步时同一份数据会算出不同哈希
+      id: getMeta('library_id') ?? ensureLibraryId(),
       name: getMeta('library_name') ?? '我的记录',
       exportedAt: new Date().toISOString(),
       app: 'DatingRecord/0.1.0',

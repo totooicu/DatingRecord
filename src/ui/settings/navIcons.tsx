@@ -40,6 +40,15 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M9.4 12h5.2" />
         </>,
       );
+    // 坚果云备份：云 + 上下箭头
+    case 'sync':
+      return wrap(
+        <>
+          <path d="M7.4 17.6h9.3a3.3 3.3 0 0 0 .4-6.6 4.9 4.9 0 0 0-9.4-1.2 3.9 3.9 0 0 0-.3 7.8" />
+          <path d="M12 9.6v6.2" />
+          <path d="M9.9 11.6 12 9.5l2.1 2.1" />
+        </>,
+      );
     // 隐私与安全（分组）：盾牌
     case 'security':
       return wrap(
