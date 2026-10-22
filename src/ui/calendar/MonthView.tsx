@@ -123,6 +123,28 @@ function buildWeeks(months: MonthRef[], today: DayKey): WeekRow[] {
   return weeks;
 }
 
+/** 跳过去之后让那一格闪一下，用户才知道落点在哪 */
+function flashDay(el: HTMLElement): void {
+  el.classList.remove('cal-cell-flash');
+  // 读一次布局强制重排，否则连续点同一个目标时动画不会重播
+  void el.offsetWidth;
+  el.classList.add('cal-cell-flash');
+  window.setTimeout(() => el.classList.remove('cal-cell-flash'), 1200);
+}
+
+/**
+ * 把某一天滚到滚动容器正中。
+ * 日期格都带 data-day="YYYY-MM-DD"，直接查 DOM 就能定位，
+ * 不用再去算它属于第几周第几列。找不到（那一月还没渲染）返回 false。
+ */
+function centerDay(cont: HTMLElement, key: DayKey): boolean {
+  const el = cont.querySelector<HTMLElement>(`[data-day="${key}"]`);
+  if (!el) return false;
+  cont.scrollTop = el.offsetTop - (cont.clientHeight - el.clientHeight) / 2;
+  flashDay(el);
+  return true;
+}
+
 export function MonthView({
   onPickDay,
   filter = EMPTY_CALENDAR_FILTER,
@@ -190,6 +212,43 @@ export function MonthView({
     }
   };
 
+  /**
+   * 定位到具体的某一天（快速跳到有事件的日子时用）。
+   * 目标月份已经在窗口里就立刻滚；还没加载就先把窗口挪过去，
+   * 由 useLayoutEffect 在窗口扩展后补一次定位。
+   */
+  const scrollToDay = (key: DayKey) => {
+    setFocusedDay(key);
+    pendingScrollDay.current = key;
+    const m = monthOfKey(key);
+    const present = months.some((x) => x.year === m.year && x.month === m.month);
+    if (!present) {
+      setMonths((ms) =>
+        ms.some((x) => x.year === m.year && x.month === m.month) ? ms : buildWindow(m),
+      );
+      return;
+    }
+    requestAnimationFrame(() => {
+      const c = scrollRef.current;
+      if (c && centerDay(c, key)) pendingScrollDay.current = null;
+    });
+  };
+
+  /** 全部有事件的日子里，往前 / 往后各推一格；没有就按兵不动 */
+  const gotoPrevDay = () => {
+    for (let i = eventDays.length - 1; i >= 0; i -= 1) {
+      if (eventDays[i] < focusedDay) {
+        scrollToDay(eventDays[i]);
+        return;
+      }
+    }
+  };
+
+  const gotoNextDay = () => {
+    const next = eventDays.find((k) => k > focusedDay);
+    if (next) scrollToDay(next);
+  };
+
   // 周渲染后，处理「顶部续接」的滚动补偿 + 居中跳转
   useLayoutEffect(() => {
     const cont = scrollRef.current;
@@ -202,6 +261,10 @@ export function MonthView({
     if (pendingScroll.current) {
       const target = months.find((x) => monthKey(x) === pendingScroll.current);
       if (target && centerMonth(cont, target)) pendingScroll.current = null;
+    }
+    // 跳到具体某一天：窗口刚扩展完、DOM 里才有那一天
+    if (pendingScrollDay.current && centerDay(cont, pendingScrollDay.current)) {
+      pendingScrollDay.current = null;
     }
   }, [months]);
 
@@ -302,6 +365,19 @@ export function MonthView({
     return n;
   };
 
+  // 快速跳转的可用状态：一条事件都没有时四个按钮全灰；
+  // 已经站在最早 / 最晚那天时，对应的「上一日 / 下一日」也灰掉，点了不会有反应。
+  const firstEventDay = eventDays.length > 0 ? eventDays[0] : null;
+  const lastEventDay = eventDays.length > 0 ? eventDays[eventDays.length - 1] : null;
+  const hasPrevDay = eventDays.some((k) => k < focusedDay);
+  const hasNextDay = eventDays.some((k) => k > focusedDay);
+
+  // 点某一天：除了回时间线，也把它记成「上一日 / 下一日」的锚点
+  const handlePick = (key: DayKey) => {
+    setFocusedDay(key);
+    onPickDay(key);
+  };
+
   // 取某周涉及的两个月份的横条（跨月周会把两端月份各裁一段，拼起来正好覆盖整周）
   const barsForWeek = (w: WeekRow): SpanBar[] => {
     const ka = monthKey(monthOfKey(w.cells[0].key));
@@ -336,6 +412,42 @@ export function MonthView({
         </div>
       </div>
 
+      {/* 四个快速定位：不用在空日子里翻来翻去，直接落到有事件的那天 */}
+      <div className="cal-jump">
+        <button
+          className="cal-jump-btn"
+          disabled={!firstEventDay}
+          onClick={() => firstEventDay && scrollToDay(firstEventDay)}
+          title="跳到最早有记录的那一天"
+        >
+          最早
+        </button>
+        <button
+          className="cal-jump-btn"
+          disabled={!hasPrevDay}
+          onClick={gotoPrevDay}
+          title="跳到前一日有记录的日子"
+        >
+          上一日
+        </button>
+        <button
+          className="cal-jump-btn"
+          disabled={!hasNextDay}
+          onClick={gotoNextDay}
+          title="跳到下一日有记录的日子"
+        >
+          下一日
+        </button>
+        <button
+          className="cal-jump-btn"
+          disabled={!lastEventDay}
+          onClick={() => lastEventDay && scrollToDay(lastEventDay)}
+          title="跳到最晚有记录的那一天"
+        >
+          最晚
+        </button>
+      </div>
+
       <div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="cal-weekdays" aria-hidden>
           {WEEKDAY_LABELS.map((w) => (
@@ -361,14 +473,14 @@ export function MonthView({
                   key={cell.key}
                   cell={cell}
                   hasEvents={summaries.has(cell.key)}
-                  onPick={() => onPickDay(cell.key)}
+                  onPick={() => handlePick(cell.key)}
                 />
               ))}
               {weekSegments(w.cells, barsForWeek(w)).map((seg) => (
                 <SpanBarView
                   key={`${seg.bar.eventId}-${seg.key}`}
                   seg={seg}
-                  onPick={() => onPickDay(seg.key)}
+                  onPick={() => handlePick(seg.key)}
                 />
               ))}
             </div>
@@ -444,6 +556,10 @@ function DayCellView({
   // 窗口内部的跨月周（如 28 29 30 | 1 2 3 4）里两个月的日期都是 inMonth，正常显示，
   // 所以月初直接接在月末后面，中间没有任何断点。
   const cls = cell.inMonth ? `cal-cell cal-${cell.phase}` : 'cal-cell cal-out';
+  // 每月 1 号顺手把月份标在日期前面（7.1 / 12.1）：
+  // 月份部分压到极小、只占约一个正常数字的宽度，日期数字本身保持原大小，
+  // 这样连续周流里就有了月份标尺，又不会把窄格子撑爆。
+  const monthTag = cell.day === 1 ? Number(cell.key.slice(5, 7)) : null;
   return (
     <button
       type="button"
@@ -452,7 +568,10 @@ function DayCellView({
       title={cell.key}
       data-day={cell.key}
     >
-      <span className="cal-date">{cell.day}</span>
+      <span className="cal-date">
+        {monthTag !== null && <span className="cal-mtag">{monthTag}.</span>}
+        {cell.day}
+      </span>
       {hasEvents && <span className="cal-dot" />}
     </button>
   );
