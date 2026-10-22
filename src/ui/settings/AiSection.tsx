@@ -7,7 +7,7 @@
 // 服务商可自己选：硅基流动 / OpenAI 兼容（第三方端点）/ 本地 Ollama。已知服务商
 // 的根地址自动填好（硅基流动固定、Ollama / OpenAI 兼容可改）。
 // 密钥按服务商各存一份（meta ai.key.<provider>），多条别名共用，不进备份。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Section } from './Section';
 import { bump } from '../../store';
 import {
@@ -16,6 +16,7 @@ import {
   createModel,
   deleteModel,
   getApiKey,
+  listApiKeyProviders,
   listModels,
   listRemoteModels,
   providerOf,
@@ -482,49 +483,71 @@ function ModelEditor({
   );
 }
 
-// 需要密钥的服务商（模块级常量：AI_PROVIDERS 本身不变）。
+// 需要密钥的「已知」服务商（下拉里的快捷项）。用户也能在密钥区自己填
+// 任意服务商名（如 DeepSeek、Moonshot），所以这里只是「建议项」，不是写死的限制。
 const KEY_PROVIDERS = AI_PROVIDERS.filter((p) => p.needsKey);
+const CUSTOM = '__custom__';
+
+const isKnownProv = (key: string) => AI_PROVIDERS.some((p) => p.key === key);
+
+interface KRow {
+  id: string;
+  prov: string; // 已知服务商 key，或自定义名称
+  custom: boolean; // 当前是否处于「自定义名称」编辑态
+  key: string; // 密钥草稿
+  orig: string; // 上次落盘时的服务商（空 = 还没存过）
+}
+
+function buildRows(): KRow[] {
+  const list = listApiKeyProviders();
+  const rows: KRow[] = list.map((pk) => ({
+    id: `k_${pk}`,
+    prov: pk,
+    custom: !isKnownProv(pk),
+    key: getApiKey(pk),
+    orig: pk,
+  }));
+  rows.push({ id: '__add__', prov: '', custom: false, key: '', orig: '' });
+  return rows;
+}
 
 function KeySection({ onSaved }: { onSaved: () => void }) {
-  // 每个服务商密钥输入框的本地草稿（键入即落盘，自动保存）
-  const [vals, setVals] = useState<Record<string, string>>(() => {
-    const o: Record<string, string> = {};
-    for (const p of KEY_PROVIDERS) o[p.key] = getApiKey(p.key);
-    return o;
-  });
-  // 末行「新增」草稿：选中的服务商（空 = 还没选）+ 待填的密钥
-  const [addProv, setAddProv] = useState<AiProvider | ''>('');
-  const [addKey, setAddKey] = useState('');
-
-  // 已存密钥的服务商、以及还能新增的服务商——都直接读 meta，渲染即最新
-  const entries = KEY_PROVIDERS.filter((p) => getApiKey(p.key)).map((p) => p.key);
-  const addable = KEY_PROVIDERS.filter((p) => !getApiKey(p.key));
-
-  // 现有密钥：键入只改草稿，失焦才落盘（防止打字途中被清空而整行消失）
-  const onEditChange = (p: AiProvider, v: string) => {
-    setVals((s) => ({ ...s, [p]: v }));
-  };
-  const commitEdit = (p: AiProvider) => {
-    setApiKey(p, vals[p] ?? ''); // 失焦落盘；清空即删除该密钥
+  const [rows, setRows] = useState<KRow[]>(buildRows);
+  const rowsRef = useRef(rows);
+  const sync = (next: KRow[]) => {
+    rowsRef.current = next;
+    setRows(next);
   };
 
-  const onDelete = (p: AiProvider) => {
-    setApiKey(p, '');
-    setVals((s) => ({ ...s, [p]: '' }));
-  };
+  const updateRow = (id: string, patch: Partial<KRow>) =>
+    sync(rowsRef.current.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  // 末行新增：选服务商 + 填密钥，失焦或回车即自动保存
-  const onAddChange = (v: string) => setAddKey(v);
-  const commitAdd = () => {
-    if (addProv && addKey.trim()) {
-      setApiKey(addProv, addKey); // 自动保存
-      setVals((s) => ({ ...s, [addProv]: addKey }));
-      setAddKey('');
-      onSaved(); // 「已保存密钥」反馈
-      const next = KEY_PROVIDERS.find((p) => !getApiKey(p.key));
-      setAddProv(next ? next.key : '');
+  // 把某行的服务商 + 密钥落盘（失焦 / 回车 / 切换服务商时触发）。
+  // 服务商变了会先把旧服务商的密钥删掉再写新的，避免残留。
+  const commit = (id: string, overrides: Partial<KRow> = {}) => {
+    const r = rowsRef.current.find((x) => x.id === id);
+    if (!r) return;
+    const m = { ...r, ...overrides };
+    const finalProv = m.custom ? m.prov.trim() : m.prov;
+    if (finalProv === '') {
+      if (m.orig) setApiKey(m.orig, '');
+      sync(buildRows());
+      onSaved();
+      return;
     }
+    if (m.orig && m.orig !== finalProv) setApiKey(m.orig, '');
+    setApiKey(finalProv, m.key);
+    onSaved();
+    sync(buildRows()); // 重新从 meta 读，保证不重不漏
   };
+
+  const onDelete = (r: KRow) => {
+    if (r.orig) setApiKey(r.orig, '');
+    sync(buildRows());
+    onSaved();
+  };
+
+  const hasAny = rows.some((r) => r.orig);
 
   return (
     <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
@@ -535,62 +558,84 @@ function KeySection({ onSaved }: { onSaved: () => void }) {
           <span className="key-head-action">操作</span>
         </div>
 
-        {entries.length === 0 && addable.length === 0 && (
+        {!hasAny && (
           <div className="key-empty muted small">还没有任何密钥。</div>
         )}
 
-        {entries.map((pk) => {
-          const p = providerOf(pk);
-          return (
-            <div className="key-row" key={p.key}>
-              <span className="key-prov-name">{p.label}</span>
-              <input
-                type="password"
-                className="key-input"
-                value={vals[p.key] ?? ''}
-                placeholder="sk-..."
-                onChange={(e) => onEditChange(p.key, e.target.value)}
-                onBlur={() => commitEdit(p.key)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-              />
-              <button className="btn btn-sm btn-danger" onClick={() => onDelete(p.key)}>
-                删除
-              </button>
-            </div>
-          );
-        })}
+        {rows.map((r) => (
+          <div className="key-row" key={r.id}>
+            {/* 服务商列：已知项用下拉，另有「自定义…」可自由输入任意名称 */}
+            {!r.custom ? (
+              <select
+                className="key-prov-select"
+                value={r.prov}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === CUSTOM) {
+                    updateRow(r.id, { custom: true, prov: '' });
+                  } else if (r.orig) {
+                    // 已有密钥的行：选了已知服务商，立即把密钥迁过去（删旧写新）
+                    commit(r.id, { prov: v, custom: false });
+                  } else {
+                    // 新增行：先只记下来，等填完密钥失焦再落盘
+                    updateRow(r.id, { prov: v, custom: false });
+                  }
+                }}
+              >
+                <option value="">选择服务商…</option>
+                {KEY_PROVIDERS.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+                <option value={CUSTOM}>＋ 自定义服务商…</option>
+              </select>
+            ) : (
+              <span className="key-prov-custom">
+                <input
+                  type="text"
+                  className="key-prov-input"
+                  value={r.prov}
+                  placeholder="输入服务商名称，如 DeepSeek"
+                  onChange={(e) => updateRow(r.id, { prov: e.target.value })}
+                  onBlur={() => commit(r.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && commit(r.id)}
+                />
+                <button
+                  className="btn btn-sm"
+                  title="改回下拉选择"
+                  onClick={() => updateRow(r.id, { custom: false, prov: '' })}
+                >
+                  ↩ 选已知
+                </button>
+              </span>
+            )}
 
-        {/* 末行：空白新增行，选服务商 + 填密钥即自动保存 */}
-        {addable.length > 0 && (
-          <div className="key-row key-row-add">
-            <select
-              className="key-prov-select"
-              value={addProv}
-              onChange={(e) => setAddProv(e.target.value as AiProvider)}
-            >
-              <option value="">选择服务商…</option>
-              {addable.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+            {/* 密钥列：失焦 / 回车落盘；清空即删除该服务商密钥 */}
             <input
               type="password"
               className="key-input"
-              value={addKey}
-              placeholder="填密钥，自动保存"
-              onChange={(e) => onAddChange(e.target.value)}
-              onBlur={commitAdd}
-              onKeyDown={(e) => e.key === 'Enter' && commitAdd()}
+              value={r.key}
+              placeholder="sk-..."
+              onChange={(e) => updateRow(r.id, { key: e.target.value })}
+              onBlur={() => commit(r.id)}
+              onKeyDown={(e) => e.key === 'Enter' && commit(r.id)}
             />
-            <span className="muted small key-add-hint">填完自动保存</span>
+
+            {/* 操作列 */}
+            {r.orig ? (
+              <button className="btn btn-sm btn-danger" onClick={() => onDelete(r)}>
+                删除
+              </button>
+            ) : (
+              <span className="muted small key-add-hint">填完自动保存</span>
+            )}
           </div>
-        )}
+        ))}
       </div>
-      {entries.length === 0 && (
+      {!hasAny && (
         <p className="muted small">
-          还没存任何密钥。末行选一个服务商、填上密钥即可，自动保存；之后也能随时改或删除。
+          末行选一个服务商（或点「自定义服务商…」自己填）、再填密钥即可，失焦自动保存；已有项也能随时改服务商或删除。
         </p>
       )}
     </Section>

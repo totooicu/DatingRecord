@@ -191,19 +191,32 @@ export function deleteModel(id: string): void {
 
 // ---------------- 密钥 ----------------
 
-const keyOf = (p: AiProvider) => `ai.key.${p}`;
+// 服务商不一定限定在硅基流动 / OpenAI / Ollama 三个枚举：用户也能在密钥区
+// 自己填任意服务商名（如 DeepSeek、Moonshot）。所以这里接受任意字符串，
+// 存储键统一为 ai.key.<服务商名>。
+const keyOf = (p: string) => `ai.key.${p}`;
 
-export function getApiKey(p: AiProvider): string {
+export function getApiKey(p: string): string {
   return getMeta(keyOf(p)) ?? '';
 }
 
-export function setApiKey(p: AiProvider, key: string): void {
+export function setApiKey(p: string, key: string): void {
   setMeta(keyOf(p), key.trim());
 }
 
 /** 密钥是否已配置（只回布尔，不回内容） */
-export function hasApiKey(p: AiProvider): boolean {
+export function hasApiKey(p: string): boolean {
   return !!getApiKey(p);
+}
+
+/** 当前已存了密钥的所有服务商名（已知枚举 + 用户自定义），值非空才计入 */
+export function listApiKeyProviders(): string[] {
+  const rows = queryAll<{ key: string; value: string }>(
+    "SELECT key, value FROM meta WHERE key LIKE 'ai.key.%'",
+  );
+  return rows
+    .filter((r) => r.value && r.value.trim())
+    .map((r) => r.key.slice('ai.key.'.length));
 }
 
 /** 打码展示：sk-abcd…wxyz */

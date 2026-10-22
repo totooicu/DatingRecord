@@ -113,7 +113,7 @@
 .key-head,
 .key-row {
   display: grid;
-  grid-template-columns: 170px 1fr 72px;
+  grid-template-columns: 210px 1fr 72px;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -134,10 +134,23 @@
   border-top: 1px solid var(--border);
 }
 
-.key-prov-name {
-  font-weight: 600;
-  font-size: 14px;
+.key-prov-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+}
+
+.key-prov-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.key-prov-custom .btn {
+  width: auto;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .key-prov-select {
