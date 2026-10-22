@@ -22,6 +22,9 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* 禁止浏览器在页面顶部下拉时触发原生「下拉刷新」手势，
+     否则在日历等可滚动区域下拉容易误刷整页 */
+  overscroll-behavior-y: none;
 }
 
 body {

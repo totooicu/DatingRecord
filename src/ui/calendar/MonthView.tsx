@@ -73,7 +73,6 @@ export function MonthView({
   const [months, setMonths] = useState<MonthRef[]>(() => buildWindow(current));
   const [center, setCenter] = useState<MonthRef>(current);
   const [picker, setPicker] = useState<'month' | 'year' | null>(null);
-  const [refreshAsk, setRefreshAsk] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -91,8 +90,25 @@ export function MonthView({
 
   // 让某个月滚动到容器正中（跳转换月 / 回今天 / 初始定位都用它）
   const scrollToMonth = (m: MonthRef) => {
-    pendingScroll.current = monthKey(m);
-    setMonths((ms) => (ms.some((x) => x.year === m.year && x.month === m.month) ? ms : buildWindow(m)));
+    const key = monthKey(m);
+    pendingScroll.current = key;
+    const cont = scrollRef.current;
+    const el = blockRefs.current.get(key);
+    if (cont && el) {
+      // 目标已在列表里（最常见：回今天）时，setMonths 会拿回同一引用，
+      // React 直接跳过重渲染，useLayoutEffect 不会跑 —— 这里直接定位。
+      requestAnimationFrame(() => {
+        const c = scrollRef.current;
+        const e = blockRefs.current.get(key);
+        if (c && e) {
+          c.scrollTop = e.offsetTop - (c.clientHeight - e.clientHeight) / 2;
+          pendingScroll.current = null;
+        }
+      });
+    } else {
+      // 目标还没加载：交给 useLayoutEffect 在列表扩展后定位
+      setMonths((ms) => (ms.some((x) => x.year === m.year && x.month === m.month) ? ms : buildWindow(m)));
+    }
   };
 
   // 月份块渲染后，处理「顶部续接」的滚动补偿 + 居中跳转
@@ -228,9 +244,6 @@ export function MonthView({
               回今天
             </button>
           )}
-          <button className="btn btn-sm" onClick={() => setRefreshAsk(true)} title="刷新会重新加载页面">
-            刷新
-          </button>
         </div>
       </div>
 
@@ -304,34 +317,6 @@ export function MonthView({
           </div>
         </Modal>
       )}
-
-      {refreshAsk && (
-        <Modal
-          title="刷新页面？"
-          onClose={() => setRefreshAsk(false)}
-          footer={
-            <>
-              <button className="btn btn-ghost" onClick={() => setRefreshAsk(false)}>
-                取消
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  setRefreshAsk(false);
-                  location.reload();
-                }}
-              >
-                确定刷新
-              </button>
-            </>
-          }
-        >
-          <p>
-            刷新会重新加载页面，内存里的会话密钥和未保存的临时状态都会丢失（已写入数据库的内容不受影响）。
-          </p>
-          <p className="muted small">如果只想看最新数据，直接上下滚动日历即可，无需刷新。</p>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -396,10 +381,15 @@ function DayCellView({
   hasEvents: boolean;
   onPick: () => void;
 }) {
+  // 非本月：留空白占位（保持 7 列对齐），不显示邻居月份的数字，也不响应点击。
+  // 这样「跨月那一周」就不会被拆成两半、分别塞进两个月份块里。
+  if (!cell.inMonth) {
+    return <div className="cal-cell cal-out" aria-hidden />;
+  }
   return (
     <button
       type="button"
-      className={`cal-cell cal-${cell.phase}${cell.inMonth ? '' : ' cal-out'}`}
+      className={`cal-cell cal-${cell.phase}`}
       onClick={onPick}
       title={cell.key}
       data-day={cell.key}
