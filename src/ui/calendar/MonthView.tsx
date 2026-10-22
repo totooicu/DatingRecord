@@ -143,8 +143,14 @@ export function MonthView({
   const pendingScroll = useRef<string | null>(monthKey(current));
   const pendingPrepend = useRef(0);
   const prevHeight = useRef(0);
+  /** 待定位到的「具体某一天」：月份还没加载时先记住，等窗口扩展后再滚 */
+  const pendingScrollDay = useRef<DayKey | null>(null);
+  /** 当前所在（或上次跳转到的）有事件日子，作为「上一日 / 下一日」的锚点 */
+  const [focusedDay, setFocusedDay] = useState<DayKey>(today);
 
   const summaries = useMemo(() => collectDaySummaries(filter), [v, filter]);
+  // 全部有事件的日子（全局、不限于当前窗口），按日键升序排好，供快速跳转
+  const eventDays = useMemo(() => Array.from(summaries.keys()).sort(), [summaries]);
   const monthCounts = useMemo(() => collectMonthCounts(filter), [v, filter]);
   const barsByMonth = useMemo(() => {
     const map = new Map<string, SpanBar[]>();
