@@ -3,6 +3,7 @@ import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupSection } from './BackupSection';
 import { SyncSection } from './SyncSection';
+import { AiSection } from './AiSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
@@ -43,6 +44,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'backup' && <BackupSection />}
 
         {active === 'sync' && <SyncSection />}
+
+        {active === 'ai' && <AiSection />}
 
         {active === 'security' && <SecuritySection />}
 

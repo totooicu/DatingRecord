@@ -145,6 +145,25 @@ CREATE TABLE IF NOT EXISTS attachments (
 --   hash_shared 1 = 与别的行同 hash 但内容不同（用户确认过碰撞），参与查重时要排除
 -- 这里不给老库加列——ALTER 放在 migrate 里做，建表语句只管新库。
 
+-- AI 模型（schema v6 新增，见 F-AI01）：
+--   别名 alias 是调用时选的那个名字（「便宜的好模型」比 gpt-4o-mini 好记），
+--   同一个模型可以起多个别名指向不同参数的调用。
+--   api_key 不在这张表里：凭据只进 meta（前缀 ai.key.），不进备份、不同步。
+CREATE TABLE IF NOT EXISTS ai_models (
+  id TEXT PRIMARY KEY,
+  alias TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'siliconflow',
+  base_url TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  temperature REAL NOT NULL DEFAULT 0.7,
+  max_tokens INTEGER NOT NULL DEFAULT 1024,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+  created_at TEXT, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_alias ON ai_models(alias);
+
 CREATE TABLE IF NOT EXISTS oplog (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   hlc TEXT NOT NULL,

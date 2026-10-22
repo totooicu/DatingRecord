@@ -12,6 +12,7 @@ import {
   rowToMember,
   rowToAttachment,
   rowToTemplate,
+  rowToAiModel,
   type Row,
 } from './mappers';
 
@@ -69,6 +70,9 @@ export async function buildLibrary(opts: { includeAttachments?: boolean } = {}):
     members,
     attachments,
     templates,
+    aiModels: queryAll<Row>('SELECT * FROM ai_models WHERE deleted_at IS NULL ORDER BY created_at ASC').map(
+      rowToAiModel,
+    ),
   };
 }
 

@@ -16,7 +16,7 @@ import { hlcCompare, hlcNow, hlcReceive } from '../time';
 import { putBlob, base64ToBlob } from '../db/blob';
 import { ensureClosure } from '../repo/collections';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
-import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow } from './mappers';
+import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow } from './mappers';
 import { exportToFile } from './export';
 
 export interface ImportResult {
@@ -64,7 +64,7 @@ export async function importLibrary(
     throw new Error(`文件版本 ${version} 高于当前支持的 ${SCHEMA_VERSION}，请升级软件`);
   }
 
-  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0 };
+  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0 };
   const importedAttachments: Attachment[] = [];
   let skipped = 0;
   let backupName: string | undefined;
@@ -92,6 +92,7 @@ export async function importLibrary(
         'attribute_defs',
         // 之前的清空列表漏了 attachments，替换导入会留下上一份库的附件
         'attachments',
+        'ai_models',
       ]) {
         run(`DELETE FROM ${t}`);
       }
@@ -163,6 +164,10 @@ export async function importLibrary(
         templateToRow(t),
       );
       ok ? counts.templates++ : skipped++;
+    }
+    for (const m of lib.aiModels ?? []) {
+      const ok = upsertByHlc('ai_models', 'id', m.id, m.hlc ?? null, aiModelToRow(m));
+      ok ? counts.aiModels++ : skipped++;
     }
     for (const a of lib.attachments ?? []) {
       run('INSERT OR IGNORE INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared, is_private) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [

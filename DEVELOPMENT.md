@@ -520,6 +520,77 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 
 ---
 
+## 2.5c 同步与 AI
+
+### F-S01 坚果云增量备份 — P1
+
+**为什么不是「上传整份 .drp.json」**：一次改动哪怕只改一个字，整份 JSON 的字节都会挪位，
+网盘只能整份重传。坚果云按流量计费，这条直接决定同步一次花多少上行。
+
+**分片 + 内容寻址**：快照切成 64KB 定长片，文件名 = `sha256(片).slice(0,32)`。
+内容没变 → 名字没变 → 云端已有 → 跳过。改一行字通常只让 1 个分片换名字。
+
+| 文件 | 职责 |
+|---|---|
+| `core/sync/sha256.ts` | 纯 JS 增量 SHA-256。`crypto.subtle` 是一次性的、且纯 http 局域网下不可用 |
+| `core/sync/chunk.ts` | `CHUNK_SIZE = 64KB`、`hashChunks`、`digestOf`（整库摘要） |
+| `core/sync/manifest.ts` | 远端清单结构 + `knownHashes` / `missingChunks` |
+| `core/sync/snapshot.ts` | 快照生成 + **稳定序列化** |
+| `core/sync/webdav.ts` | MKCOL / PROPFIND / PUT / GET / DELETE + Basic 认证 |
+| `core/sync/mergeRows.ts` | 远端快照 → 本地（按 hlc 合并，与 `importLibrary` 同一套规则） |
+| `core/sync/engine.ts` | 三方比对 + 只传变化分片 |
+
+**三方比对**（baseline = 上次同步成功时的 digest）：
+
+| local vs baseline | remote vs baseline | 动作 |
+|---|---|---|
+| 相同 | 相同 | noop，一个字节都不传 |
+| 相同 | 不同 | 只下载 |
+| 不同 | 相同 | 只上传 |
+| 不同 | 不同 | 先合并再上传（`action: 'both'`） |
+
+**稳定序列化是这套方案的前提**。踩过的两个坑：
+
+1. `buildLibrary()` 里 `meta.exportedAt` 每次都是新时间 —— 数据一字未改，分片哈希全变，
+   增量直接退化成整库重传。所以 `stableJson()` 删掉 `meta.exportedAt`。
+2. `meta.id` 原来是 `getMeta('library_id') ?? newId('lib')`，而**没有任何地方写入 `library_id`**，
+   于是每次导出都生成新 id。已修为首次生成即落库。
+
+`stableJson()` 同时把键按字母序排（对象字面量的 key 顺序会随代码改动漂移），
+并剔除顶层 `meta` 里的 `id / deviceId / exportedAt` —— 它们属于「这份备份是谁导的」，
+不是数据内容。
+
+**其它约定**：
+- 凭据（`nutstore.*`、`ai.key.*`、`lock.*`、`enc.*`）由 `SECRET_META_PREFIXES` 在生成快照时剔除，
+  云端永远拿不到密钥；`containsSecret()` 是给回归脚本做自检用的。
+- 附件二进制**不进**日常同步（`kind: 'lite'`）。它天生内容寻址、不会变，塞进来只会让首次同步
+  推几十 MB，后续每次本地白算哈希。
+- 远端快照只留最近 10 份，`pruneSnapshots()` 按文件名排序淘汰。
+- **坚果云不返回 CORS 头**，网页直连必被浏览器拦。所以 `DavConfig.base` 可配置，
+  测试时用本地转发代理（`proxy.mjs`）绕过。
+
+**回归**：`t-sync.mjs`（拦截 `dav.jianguoyun.com`，内存里跑真 WebDAV）20 项；
+`t-sync-real.mjs`（真坚果云 + 转发代理）6 项；`t-sync-secret.mjs` 验证密钥不进云端。
+
+### F-AI01 AI 模型别名 — P1
+
+- 一行 = 一个「别名 → 怎么调」：`alias / provider / baseUrl / model / temperature / maxTokens`。
+  同一个模型可起多个别名配不同温度（「快速」0.2 / 「发散」1.0）。
+- 只依赖两个端点 `/v1/models` 与 `/v1/chat/completions` —— 硅基流动、OpenAI、DeepSeek、
+  Ollama、自建网关全覆盖，一套代码。Ollama 原生 `/api/tags` 返回 `models[].name`，`listRemoteModels`
+  两种形状都兜。
+- 密钥按 **provider** 存一份（`meta['ai.key.<provider>']`），多条别名共用；
+  存 `ai_models` 表里的只有「怎么调」，所以配置能随备份/同步走而密钥留在本机。
+- 别名唯一性在写入时校验（`assertAlias`），合并时也校验：本地已被别的 id 占了同名别名就跳过，
+  避免同步出两个「便宜好用的」。
+- `deleteModel()` 删掉默认模型时会顺手把下一个顶为默认，「默认模型」不会变成空指针。
+- schema v6 新增 `ai_models` 表；新老库都走 `CREATE TABLE IF NOT EXISTS`，幂等。
+
+**回归**：`t-ai.mjs`（真硅基流动）14 项 —— 读到 98 个模型、真实调用 250ms 返回、别名唯一性、
+设为默认、删除、刷新后仍在、密钥打码显示。
+
+---
+
 ## 2.6 导入导出
 
 ### F-I01 `.drp` 导出 — P0
@@ -638,8 +709,8 @@ git status                                # 确认工作区干净
 | 2 | 主存储方案 | 架构篇 §7 | ✅ 已定：SQLite + JSON 列 |
 | 3 | 事件集嵌套模型 | 架构篇 §5 | ✅ 已定：MVP 单父树 + 闭包表 |
 | 4 | 属性历史是否支持 | 架构篇 §3 | ✅ 已定：支持（P1） |
-| 5 | AI 模型走本地还是云端 | AI 篇 §6 | ⏳ 待定 |
+| 5 | AI 模型走本地还是云端 | AI 篇 §6 | ✅ 已定：浏览器直连各家 /v1（密钥只存本机） |
 | 6 | AI 产出自动改写 or 逐条确认 | AI 篇 §6 | ⏳ 待定（建议：低风险自动，高风险确认） |
 | 7 | 跨端技术栈（TS 核心 / Flutter / Rust） | 存储同步篇 §11 | ⏳ 待定 |
-| 8 | 同步载体（对象存储 / WebDAV / 网盘） | 存储同步篇 §11 | ⏳ 待定 |
+| 8 | 同步载体（对象存储 / WebDAV / 网盘） | 存储同步篇 §11 | ✅ 已定：坚果云 WebDAV + 内容寻址分片（见 F-S01） |
 | 9 | Git 远程仓库地址与认证 | — | ✅ 已配置：`origin → git@github.com:totooicu/DatingRecord.git`（SSH 已实测可用；HTTPS 亦可用） |

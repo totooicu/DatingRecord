@@ -84,6 +84,24 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 5;
   }
+  if (v < 6) {
+    // AI 模型（v6）：新表，幂等。凭据不放这里（见 meta ai.key.）
+    d.run(`CREATE TABLE IF NOT EXISTS ai_models (
+      id TEXT PRIMARY KEY,
+      alias TEXT NOT NULL DEFAULT '',
+      provider TEXT NOT NULL DEFAULT 'siliconflow',
+      base_url TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      temperature REAL NOT NULL DEFAULT 0.7,
+      max_tokens INTEGER NOT NULL DEFAULT 1024,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+      created_at TEXT, updated_at TEXT
+    )`);
+    d.run(`CREATE INDEX IF NOT EXISTS idx_ai_alias ON ai_models(alias)`);
+    v = 6;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

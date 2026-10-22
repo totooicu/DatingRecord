@@ -12,6 +12,12 @@ import type { LibraryFile } from '../types';
 /** 不该进备份的 meta 键：凭据、设备私有状态 */
 export const SECRET_META_PREFIXES = ['ai.key.', 'nutstore.', 'lock.', 'enc.'];
 
+/** 快照里是否混进了不该带出去的凭据（同步前自检用） */
+export function containsSecret(obj: unknown): boolean {
+  const s = JSON.stringify(obj);
+  return SECRET_META_PREFIXES.some((p) => s.includes(`"${p}`));
+}
+
 export function strippedLibrary(lib: LibraryFile): LibraryFile {
   return {
     ...lib,

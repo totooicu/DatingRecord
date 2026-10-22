@@ -1,0 +1,132 @@
+// 和 OpenAI 兼容接口打交道的那一层：列模型、测连通、发一次对话。
+//
+// 只依赖 /v1/models 与 /v1/chat/completions 两个端点——硅基流动、DeepSeek、
+// Moonshot、Ollama、各家网关都实现了这两个，所以一套代码能覆盖全部。
+import { getApiKey } from './models';
+import { providerOf, type AiMessage, type AiModel, type AiProvider, type AiReply } from './types';
+
+export interface ListModelsOpts {
+  provider: AiProvider;
+  /** 覆盖默认根地址 */
+  baseUrl?: string;
+  /** 覆盖已存的密钥（表单里刚填还没保存时用） */
+  apiKey?: string;
+}
+
+function rootOf(provider: AiProvider, baseUrl?: string): string {
+  const url = (baseUrl ?? '').trim() || providerOf(provider).baseUrl;
+  return url.replace(/\/+$/, '');
+}
+
+function headersFor(o: ListModelsOpts): Record<string, string> {
+  const key = (o.apiKey ?? getApiKey(o.provider)).trim();
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key) h.Authorization = `Bearer ${key}`;
+  return h;
+}
+
+async function call(url: string, init: RequestInit, what: string): Promise<unknown> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    // 浏览器把 CORS / 断网 / 混合内容都归成 TypeError，只能给一句合并的提示
+    throw new Error(`${what}失败：连不上服务。检查网络，或该服务是否允许浏览器跨域访问。`);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text.slice(0, 200);
+    try {
+      const j = JSON.parse(text) as { message?: string; error?: { message?: string } };
+      detail = j.error?.message ?? j.message ?? detail;
+    } catch {
+      /* 非 JSON 就原文截断 */
+    }
+    if (res.status === 401) throw new Error(`${what}失败：密钥不对或已失效`);
+    if (res.status === 404) throw new Error(`${what}失败：地址不对（${url}）`);
+    if (res.status === 429) throw new Error(`${what}失败：额度或频率用尽`);
+    throw new Error(`${what}失败（${res.status}）：${detail}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${what}失败：返回的不是 JSON`);
+  }
+}
+
+/** 拉服务商的模型列表 */
+export async function listRemoteModels(o: ListModelsOpts): Promise<string[]> {
+  const data = (await call(
+    `${rootOf(o.provider, o.baseUrl)}/models`,
+    { method: 'GET', headers: headersFor(o) },
+    '读取模型列表',
+  )) as { data?: { id?: string }[]; models?: { name?: string }[] };
+
+  // OpenAI 风格是 data[].id；Ollama 原生 /api/tags 是 models[].name，这里都兜住
+  const ids = (data.data ?? []).map((m) => m.id ?? '').filter(Boolean);
+  if (ids.length) return ids.sort();
+  return (data.models ?? []).map((m) => m.name ?? '').filter(Boolean).sort();
+}
+
+export interface ChatOpts {
+  messages: AiMessage[];
+  temperature?: number;
+  maxTokens?: number;
+  /** 覆盖密钥（表单测试用） */
+  apiKey?: string;
+  /** 生成长度上限；默认取模型的 maxTokens */
+  signal?: AbortSignal;
+}
+
+/** 用某个别名（模型）发一次对话 */
+export async function chat(m: AiModel, o: ChatOpts): Promise<AiReply> {
+  const t0 = Date.now();
+  const body = {
+    model: m.model,
+    messages: o.messages,
+    temperature: o.temperature ?? m.temperature,
+    max_tokens: o.maxTokens ?? m.maxTokens,
+    stream: false,
+  };
+  const data = (await call(
+    `${rootOf(m.provider, m.baseUrl)}/chat/completions`,
+    {
+      method: 'POST',
+      headers: headersFor({ provider: m.provider, apiKey: o.apiKey }),
+      body: JSON.stringify(body),
+      signal: o.signal,
+    },
+    '调用模型',
+  )) as {
+    model?: string;
+    choices?: { message?: { content?: string; reasoning_content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+
+  const msg = data.choices?.[0]?.message;
+  if (!msg) throw new Error('模型没有返回内容');
+  return {
+    content: msg.content ?? '',
+    reasoning: msg.reasoning_content || undefined,
+    model: data.model ?? m.model,
+    usage: data.usage
+      ? { prompt: data.usage.prompt_tokens ?? 0, completion: data.usage.completion_tokens ?? 0 }
+      : undefined,
+    ms: Date.now() - t0,
+  };
+}
+
+/** 测连通：问一句最短的话，能拿回内容就算通 */
+export async function testModel(
+  m: Pick<AiModel, 'provider' | 'baseUrl' | 'model'>,
+  apiKey?: string,
+): Promise<AiReply> {
+  return chat(
+    {
+      ...(m as AiModel),
+      temperature: 0,
+      maxTokens: 16,
+    },
+    { messages: [{ role: 'user', content: '只回复两个字：收到' }], temperature: 0, maxTokens: 16, apiKey },
+  );
+}

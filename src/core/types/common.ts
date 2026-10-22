@@ -1,6 +1,7 @@
 // 附件、操作日志、库交换格式
 
 import type { AttributeDef, AttrHistoryEntry, AttrTemplate } from './attribute';
+import type { AiModel } from '../ai/types';
 import type { Person } from './person';
 import type { DREvent } from './event';
 import type { Collection, Member } from './collection';
@@ -52,6 +53,8 @@ export interface LibraryFile {
   attachments?: Attachment[];
   /** 属性模板（v3 新增）；老备份没有这个字段，导入时按空处理 */
   templates?: AttrTemplate[];
+  /** AI 模型配置（v6 新增）；不含密钥，密钥永远只在本机 meta */
+  aiModels?: AiModel[];
 }
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;

@@ -7,7 +7,7 @@ import { queryOne, run, getDeviceId } from '../db';
 import { newId } from '../id';
 import { hlcReceive, hlcCompare, hlcNow } from '../time';
 import type { LibraryFile } from '../types';
-import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow } from '../io/mappers';
+import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow } from '../io/mappers';
 
 export interface MergeCounts {
   defs: number;
@@ -17,12 +17,13 @@ export interface MergeCounts {
   members: number;
   attachments: number;
   templates: number;
+  aiModels: number;
   history: number;
   skipped: number;
 }
 
 function emptyCounts(): MergeCounts {
-  return { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, history: 0, skipped: 0 };
+  return { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0, history: 0, skipped: 0 };
 }
 
 /**
@@ -116,6 +117,20 @@ export function mergeRows(lib: LibraryFile, counts: MergeCounts = emptyCounts())
   for (const t of lib.templates ?? []) {
     upsertByHlc('attribute_templates', 'id', t.id, t.hlc ?? null, templateToRow(t))
       ? counts.templates++
+      : counts.skipped++;
+  }
+  for (const m of lib.aiModels ?? []) {
+    // 别名唯一：本地已被别的 id 占了这个别名就跳过，避免合并出两个「便宜好用的」
+    const taken = queryOne<{ id: string }>(
+      'SELECT id FROM ai_models WHERE alias = ? AND deleted_at IS NULL',
+      [m.alias],
+    );
+    if (taken && taken.id !== m.id) {
+      counts.skipped++;
+      continue;
+    }
+    upsertByHlc('ai_models', 'id', m.id, m.hlc ?? null, aiModelToRow(m))
+      ? counts.aiModels++
       : counts.skipped++;
   }
   for (const a of lib.attachments ?? []) {
