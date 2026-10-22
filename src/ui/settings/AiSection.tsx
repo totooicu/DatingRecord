@@ -7,7 +7,7 @@
 // 服务商可自己选：硅基流动 / OpenAI 兼容（第三方端点）/ 本地 Ollama。已知服务商
 // 的根地址自动填好（硅基流动固定、Ollama / OpenAI 兼容可改）。
 // 密钥按服务商各存一份（meta ai.key.<provider>），多条别名共用，不进备份。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Section } from './Section';
 import { bump } from '../../store';
 import {
@@ -18,7 +18,6 @@ import {
   getApiKey,
   listModels,
   listRemoteModels,
-  maskKey,
   providerOf,
   setApiKey,
   testModel,
@@ -91,8 +90,6 @@ export function AiSection() {
     setApiKey(p, key);
     bump();
   };
-
-  const activeProvider: AiProvider = draft?.provider ?? models[0]?.provider ?? 'siliconflow';
 
   return (
     <>
@@ -188,7 +185,7 @@ export function AiSection() {
         />
       )}
 
-      <KeySection models={models} activeProvider={activeProvider} saveKey={saveKey} onSaved={() => setMsg('已保存密钥')} />
+      <KeySection onSaved={() => setMsg('已保存密钥')} />
     </>
   );
 }
@@ -485,36 +482,49 @@ function ModelEditor({
   );
 }
 
-function KeySection({
-  models,
-  activeProvider,
-  saveKey,
-  onSaved,
-}: {
-  models: AiModel[];
-  activeProvider: AiProvider;
-  saveKey: (p: AiProvider, k: string) => void;
-  onSaved: () => void;
-}) {
-  const used = useMemo(() => {
-    const set = new Set(models.map((m) => m.provider));
-    return AI_PROVIDERS.filter((p) => p.needsKey && (set.has(p.key) || p.key === activeProvider));
-  }, [models, activeProvider]);
+// 需要密钥的服务商（模块级常量：AI_PROVIDERS 本身不变）。
+const KEY_PROVIDERS = AI_PROVIDERS.filter((p) => p.needsKey);
+
+function KeySection({ onSaved }: { onSaved: () => void }) {
+  // 每个服务商密钥输入框的本地草稿（键入即落盘，自动保存）
   const [vals, setVals] = useState<Record<string, string>>(() => {
     const o: Record<string, string> = {};
-    for (const p of AI_PROVIDERS) o[p.key] = getApiKey(p.key);
+    for (const p of KEY_PROVIDERS) o[p.key] = getApiKey(p.key);
     return o;
   });
+  // 末行「新增」草稿：选中的服务商（空 = 还没选）+ 待填的密钥
+  const [addProv, setAddProv] = useState<AiProvider | ''>('');
+  const [addKey, setAddKey] = useState('');
 
-  if (used.length === 0) {
-    return (
-      <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
-        <p className="muted small">
-          当前选择的服务商（{providerOf(activeProvider).label}）不需要密钥。要存密钥，先选硅基流动 / OpenAI 兼容。
-        </p>
-      </Section>
-    );
-  }
+  // 已存密钥的服务商、以及还能新增的服务商——都直接读 meta，渲染即最新
+  const entries = KEY_PROVIDERS.filter((p) => getApiKey(p.key)).map((p) => p.key);
+  const addable = KEY_PROVIDERS.filter((p) => !getApiKey(p.key));
+
+  // 现有密钥：键入只改草稿，失焦才落盘（防止打字途中被清空而整行消失）
+  const onEditChange = (p: AiProvider, v: string) => {
+    setVals((s) => ({ ...s, [p]: v }));
+  };
+  const commitEdit = (p: AiProvider) => {
+    setApiKey(p, vals[p] ?? ''); // 失焦落盘；清空即删除该密钥
+  };
+
+  const onDelete = (p: AiProvider) => {
+    setApiKey(p, '');
+    setVals((s) => ({ ...s, [p]: '' }));
+  };
+
+  // 末行新增：选服务商 + 填密钥，失焦或回车即自动保存
+  const onAddChange = (v: string) => setAddKey(v);
+  const commitAdd = () => {
+    if (addProv && addKey.trim()) {
+      setApiKey(addProv, addKey); // 自动保存
+      setVals((s) => ({ ...s, [addProv]: addKey }));
+      setAddKey('');
+      onSaved(); // 「已保存密钥」反馈
+      const next = KEY_PROVIDERS.find((p) => !getApiKey(p.key));
+      setAddProv(next ? next.key : '');
+    }
+  };
 
   return (
     <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
@@ -522,33 +532,67 @@ function KeySection({
         <div className="key-head">
           <span>服务商</span>
           <span>密钥（API Key）</span>
+          <span className="key-head-action">操作</span>
         </div>
-        {used.map((p) => (
-          <div className="key-row" key={p.key}>
-            <div className="key-prov">
+
+        {entries.length === 0 && addable.length === 0 && (
+          <div className="key-empty muted small">还没有任何密钥。</div>
+        )}
+
+        {entries.map((pk) => {
+          const p = providerOf(pk);
+          return (
+            <div className="key-row" key={p.key}>
               <span className="key-prov-name">{p.label}</span>
-              <span className="muted small">{vals[p.key] ? `已存：${maskKey(vals[p.key])}` : '未设置'}</span>
-            </div>
-            <div className="key-input-wrap">
               <input
                 type="password"
+                className="key-input"
                 value={vals[p.key] ?? ''}
                 placeholder="sk-..."
-                onChange={(e) => setVals({ ...vals, [p.key]: e.target.value })}
+                onChange={(e) => onEditChange(p.key, e.target.value)}
+                onBlur={() => commitEdit(p.key)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
               />
-              <button
-                className="btn"
-                onClick={() => {
-                  saveKey(p.key, vals[p.key] ?? '');
-                  onSaved();
-                }}
-              >
-                保存
+              <button className="btn btn-sm btn-danger" onClick={() => onDelete(p.key)}>
+                删除
               </button>
             </div>
+          );
+        })}
+
+        {/* 末行：空白新增行，选服务商 + 填密钥即自动保存 */}
+        {addable.length > 0 && (
+          <div className="key-row key-row-add">
+            <select
+              className="key-prov-select"
+              value={addProv}
+              onChange={(e) => setAddProv(e.target.value as AiProvider)}
+            >
+              <option value="">选择服务商…</option>
+              {addable.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="password"
+              className="key-input"
+              value={addKey}
+              placeholder="填密钥，自动保存"
+              onChange={(e) => onAddChange(e.target.value)}
+              onBlur={commitAdd}
+              onKeyDown={(e) => e.key === 'Enter' && commitAdd()}
+            />
+            <span className="muted small key-add-hint">填完自动保存</span>
           </div>
-        ))}
+        )}
       </div>
+      {entries.length === 0 && (
+        <p className="muted small">
+          还没存任何密钥。末行选一个服务商、填上密钥即可，自动保存；之后也能随时改或删除。
+        </p>
+      )}
     </Section>
   );
 }

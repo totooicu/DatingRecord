@@ -101,7 +101,7 @@
   font-weight: 600;
 }
 
-/* 密钥表：每行 = 服务商 | 密钥 两列 */
+/* 密钥表：每行 = 服务商 | 密钥 | 操作 三列 */
 .key-table {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -113,7 +113,7 @@
 .key-head,
 .key-row {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: 170px 1fr 72px;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -126,31 +126,41 @@
   border-bottom: 1px solid var(--border);
 }
 
-.key-row + .key-row {
-  border-top: 1px solid var(--border);
+.key-head-action {
+  text-align: center;
 }
 
-.key-prov {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+.key-row + .key-row {
+  border-top: 1px solid var(--border);
 }
 
 .key-prov-name {
   font-weight: 600;
   font-size: 14px;
-}
-
-.key-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.key-input-wrap input {
-  flex: 1;
   min-width: 0;
+}
+
+.key-prov-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.key-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.key-row .btn {
+  width: 100%;
+}
+
+.key-row-add .key-add-hint {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.key-empty {
+  padding: 12px;
 }
 
 @media (max-width: 480px) {
@@ -160,5 +170,9 @@
   .key-row {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+  .key-head-action,
+  .key-row-add .key-add-hint {
+    display: none;
   }
 }
