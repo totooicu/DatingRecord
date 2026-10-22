@@ -6,6 +6,7 @@ import { orderKeyBetween } from '../../order';
 import type { Collection } from '../../types';
 import { getCollection } from './read';
 import { isSmart } from './smart';
+import { isPrivacyMode } from '../../../privacy';
 
 // ---------------- 成员 ----------------
 
@@ -17,8 +18,15 @@ export interface MemberItem {
 }
 
 export function listMembers(collectionId: string): MemberItem[] {
+  // 隐私模式下，私有事件成员也要从列表里摘掉（集合本身没被藏，但它挂的私有事件要藏）
+  const privacyClause = isPrivacyMode()
+    ? "AND (cm.member_type <> 'event' OR NOT EXISTS (SELECT 1 FROM events e WHERE e.id = cm.member_id AND e.is_private = 1 AND e.deleted_at IS NULL))"
+    : '';
   return queryAll<{ member_type: string; member_id: string; order_key: string; note: string }>(
-    'SELECT member_type, member_id, order_key, note FROM collection_members WHERE collection_id = ? AND deleted_at IS NULL ORDER BY order_key',
+    `SELECT cm.member_type AS member_type, cm.member_id AS member_id, cm.order_key AS order_key, cm.note AS note
+     FROM collection_members cm
+     WHERE cm.collection_id = ? AND cm.deleted_at IS NULL ${privacyClause}
+     ORDER BY cm.order_key`,
     [collectionId],
   ).map((r) => ({
     memberType: r.member_type as MemberItem['memberType'],

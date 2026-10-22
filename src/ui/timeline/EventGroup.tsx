@@ -25,7 +25,10 @@ export function MonthGroup({
                 {formatCompact(e.startTs, e.time.allDay === true || e.time.precision === 'day')}
                 {e.time.kind === 'fuzzy' && ' ~'}
               </span>
-              <span className="event-title">{e.title}</span>
+              <span className="event-title">
+                {e.title}
+                {e.isPrivate && <span className="privacy-badge">隐私</span>}
+              </span>
               <span className="event-people">{e.participants.map((p) => nameOf(p.personId)).join('、')}</span>
               <span className="event-meta">
                 {e.metrics.rating ? '★'.repeat(e.metrics.rating) : ''}

@@ -9,6 +9,7 @@ import { CollectionDetail, CollectionTree } from './collections';
 import { PageHead } from './common';
 import { getPerson } from '../core/repo/persons';
 import { getCollection } from '../core/repo/collections';
+import { hides } from '../privacy';
 
 interface PaneProps {
   /** 手机端是否处于详情页 */
@@ -38,14 +39,17 @@ export function PersonsPane({
   onKeyword: (k: string) => void;
 }) {
   const showId = detailMode ? detailId : selectedId;
-  const title = showId ? getPerson(showId)?.displayName ?? '人物' : '人物';
+  const person = showId ? getPerson(showId) : null;
+  // 隐私模式下，标了隐私的选中项当作「没选中」——否则详情页会把它亮出来
+  const personHidden = !!person && hides(person);
+  const title = personHidden ? '人物' : (person?.displayName ?? '人物');
   return (
     <>
       <div className="pane pane-list" ref={listRef}>
         <PersonList selectedId={selectedId} onSelect={onSelect} keyword={keyword} onKeyword={onKeyword} />
       </div>
       <div className="pane pane-detail">
-        {showId ? (
+        {showId && person && !personHidden ? (
           <>
             <PageHead title={title} onBack={detailMode ? onBack : undefined} />
             <PersonDetail id={showId} onArchived={onArchived} />
@@ -63,14 +67,17 @@ export function PersonsPane({
 
 export function CollectionsPane({ detailMode, detailId, selectedId, onSelect, onBack, listRef }: PaneProps) {
   const showId = detailMode ? detailId : selectedId;
-  const title = showId ? getCollection(showId)?.name ?? '事件集' : '事件集';
+  const coll = showId ? getCollection(showId) : null;
+  // 隐私模式下，标了隐私的选中项当作「没选中」
+  const collHidden = !!coll && hides(coll);
+  const title = collHidden ? '事件集' : (coll?.name ?? '事件集');
   return (
     <>
       <div className="pane pane-list" ref={listRef}>
         <CollectionTree selectedId={selectedId} onSelect={onSelect} />
       </div>
       <div className="pane pane-detail">
-        {showId ? (
+        {showId && coll && !collHidden ? (
           <>
             <PageHead title={title} onBack={detailMode ? onBack : undefined} />
             <CollectionDetail id={showId} />

@@ -29,6 +29,7 @@ export {
   restoreCollection,
   moveCollection,
   deleteCollection,
+  setCollectionPrivate,
 } from './write';
 export {
   listMembers,

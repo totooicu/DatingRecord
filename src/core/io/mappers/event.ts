@@ -35,6 +35,7 @@ export function rowToEvent(r: Row): DREvent {
     deletedAt: r.deleted_at ?? null,
     createdAt: r.created_at ?? '',
     updatedAt: r.updated_at ?? '',
+    isPrivate: !!r.is_private,
   };
 }
 
@@ -59,5 +60,6 @@ export function eventToRow(e: DREvent): Row {
     deleted_at: e.deletedAt ?? null,
     created_at: e.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    is_private: e.isPrivate ? 1 : 0,
   };
 }

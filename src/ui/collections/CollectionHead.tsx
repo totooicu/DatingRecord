@@ -1,6 +1,6 @@
 // 事件集详情头：面包屑 + 改名/描述 + 状态 + 移动 + 删除
-import { deleteCollection, updateCollection } from '../../core/repo/collections';
-import { ConfirmButton } from '../common';
+import { deleteCollection, updateCollection, setCollectionPrivate } from '../../core/repo/collections';
+import { ConfirmButton, PrivacyButton } from '../common';
 import { bump } from '../../store';
 import type { Collection } from '../../core/types';
 
@@ -57,6 +57,13 @@ export function CollectionHead({
           <button className="btn" onClick={onMove}>
             移动
           </button>
+          <PrivacyButton
+            active={collection.isPrivate}
+            onToggle={() => {
+              setCollectionPrivate(collection.id, !collection.isPrivate);
+              bump();
+            }}
+          />
           {!collection.isRoot && (
             <ConfirmButton
               text="删除"

@@ -26,6 +26,7 @@ export function rowToCollection(r: Row): Collection {
     deletedAt: r.deleted_at ?? null,
     createdAt: r.created_at ?? '',
     updatedAt: r.updated_at ?? '',
+    isPrivate: !!r.is_private,
   };
 }
 
@@ -50,6 +51,7 @@ export function collectionToRow(c: Collection): Row {
     deleted_at: c.deletedAt ?? null,
     created_at: c.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    is_private: c.isPrivate ? 1 : 0,
   };
 }
 

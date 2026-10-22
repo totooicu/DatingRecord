@@ -143,6 +143,37 @@ export function ConfirmButton({
 }
 
 /**
+ * 隐私开关按钮：人物 / 事件集 / 事件 / 文件复用。
+ * 只管「当前这条是否标了隐私」，不关心隐私模式开没开——模式是另一回事。
+ * 点它切换 isPrivate 标记；开启隐私模式后，标了的条目会从所有列表消失。
+ */
+export function PrivacyButton({
+  active,
+  onToggle,
+  label = '隐私',
+}: {
+  active: boolean;
+  onToggle: () => void;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={active ? 'btn btn-privacy' : 'btn'}
+      title={active ? '已设为隐私（隐私模式下隐藏）' : '设为隐私（隐私模式下隐藏）'}
+      aria-pressed={active}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      {label}
+      {active ? '·开' : ''}
+    </button>
+  );
+}
+
+/**
  * 详情页顶部条：手机端显示返回按钮（页面栈），宽屏由 CSS 隐藏返回键。
  * 宽屏下标题可隐藏，因为左侧列表已经表明了当前项。
  */

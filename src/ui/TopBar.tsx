@@ -2,6 +2,7 @@
 // 只在宽屏显示（CSS 控制），手机端由底部 TabBar 承担导航。
 
 import { TABS, type TabKey } from './icons';
+import { usePrivacyMode, setPrivacyMode } from '../privacy';
 
 export function TopBar({
   section,
@@ -16,6 +17,7 @@ export function TopBar({
   onKeyword: (k: string) => void;
   onNew: () => void;
 }) {
+  const privacy = usePrivacyMode();
   return (
     <header className="topbar">
       <div className="brand">
@@ -34,6 +36,14 @@ export function TopBar({
         ))}
       </div>
       <div className="topbar-right">
+        <button
+          className={privacy ? 'btn btn-privacy' : 'btn'}
+          title={privacy ? '隐私模式：已隐藏标记为隐私的内容' : '隐私模式：开启后隐藏标记为隐私的内容'}
+          aria-pressed={privacy}
+          onClick={() => setPrivacyMode(!privacy)}
+        >
+          隐私模式{privacy ? '·开' : ''}
+        </button>
         <input
           className="search"
           type="search"

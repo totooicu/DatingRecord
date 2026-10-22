@@ -18,6 +18,8 @@ export interface Attachment {
   createdAt: string;
   /** 1 = 与别的文件同 hash 但内容不同（用户确认过碰撞） */
   hashShared?: boolean;
+  /** 隐私：开启隐私模式后默认隐藏 */
+  isPrivate?: boolean;
 }
 
 export interface OplogEntry {
@@ -52,4 +54,4 @@ export interface LibraryFile {
   templates?: AttrTemplate[];
 }
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;

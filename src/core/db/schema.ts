@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS persons (
   attrs_json TEXT NOT NULL DEFAULT '{}',
   notes TEXT NOT NULL DEFAULT '',
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
-  created_at TEXT, updated_at TEXT
+  created_at TEXT, updated_at TEXT,
+  is_private INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_persons_status ON persons(status);
 
@@ -64,7 +65,8 @@ CREATE TABLE IF NOT EXISTS events (
   related_json TEXT NOT NULL DEFAULT '[]',
   primary_collection_id TEXT,
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
-  created_at TEXT, updated_at TEXT
+  created_at TEXT, updated_at TEXT,
+  is_private INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_ts);
 CREATE INDEX IF NOT EXISTS idx_events_deleted ON events(deleted_at);
@@ -93,7 +95,8 @@ CREATE TABLE IF NOT EXISTS collections (
   time_range_auto INTEGER NOT NULL DEFAULT 1,
   time_range_start TEXT, time_range_end TEXT,
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
-  created_at TEXT, updated_at TEXT
+  created_at TEXT, updated_at TEXT,
+  is_private INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id);
 
@@ -133,7 +136,8 @@ CREATE TABLE IF NOT EXISTS attachments (
   data TEXT NOT NULL DEFAULT '',
   size INTEGER NOT NULL DEFAULT 0,
   taken_at TEXT,
-  created_at TEXT
+  created_at TEXT,
+  is_private INTEGER NOT NULL DEFAULT 0
 );
 -- 内容寻址（schema v2 新增，见 db/migrate.ts）：
 --   stored_id   正文引用里用的名字（hash 名），如 A.jpg / A_1.jpg

@@ -5,6 +5,7 @@ import { queryAll, queryOne, run, transact, appendOplog, getDeviceId } from '../
 import { hlcNow } from '../../time';
 import type { Person } from '../../types';
 import { personFromRow, type PersonRow } from './rows';
+import { isPrivacyMode } from '../../../privacy';
 
 // ---------------- 人物 ----------------
 
@@ -23,6 +24,7 @@ export function listPersons(opts: { includeArchived?: boolean; keyword?: string 
   const where: string[] = ['p.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (!opts.includeArchived) where.push("p.status = 'active'");
+  if (isPrivacyMode()) where.push('p.is_private = 0');
   if (opts.keyword) {
     where.push('(p.display_name LIKE ? OR p.aliases_json LIKE ? OR p.tags_json LIKE ?)');
     const kw = `%${opts.keyword}%`;
@@ -53,7 +55,8 @@ export interface ArchivedPerson extends PersonWithStats {
 export function listArchivedPersons(): ArchivedPerson[] {
   const rows = queryAll<PersonRow>(
     `SELECT * FROM persons p
-     WHERE p.deleted_at IS NOT NULL OR p.status <> 'active'
+     WHERE (p.deleted_at IS NOT NULL OR p.status <> 'active')
+       ${isPrivacyMode() ? "AND p.is_private = 0" : ''}
      ORDER BY p.updated_at DESC`,
   );
   return rows.map((r) => {
@@ -105,7 +108,8 @@ export function statsOf(personId: string): PersonStats {
             AVG(json_extract(e.metrics_json, '$.rating')) AS rating
      FROM events e
      JOIN event_participants p ON p.event_id = e.id
-     WHERE p.person_id = ? AND e.deleted_at IS NULL`,
+     WHERE p.person_id = ? AND e.deleted_at IS NULL
+       ${isPrivacyMode() ? 'AND e.is_private = 0' : ''}`,
     [personId],
   );
   return {

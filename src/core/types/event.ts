@@ -43,4 +43,6 @@ export interface DREvent {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 隐私：开启隐私模式后默认隐藏 */
+  isPrivate: boolean;
 }

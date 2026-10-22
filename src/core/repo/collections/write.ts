@@ -89,6 +89,20 @@ export function updateCollection(
   });
 }
 
+/** 标记 / 取消隐私（隐私模式下的隐藏开关）。单独一个函数，避免污染 updateCollection 的字段清单 */
+export function setCollectionPrivate(id: string, on: boolean): void {
+  const now = new Date().toISOString();
+  transact(() => {
+    run('UPDATE collections SET is_private = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+      on ? 1 : 0,
+      hlcNow(getDeviceId()),
+      now,
+      id,
+    ]);
+    appendOplog('collection', id, 'update', { isPrivate: on });
+  });
+}
+
 /** 从归档恢复：status 回到「进行中」，成员关系本来就没动过 */
 export function restoreCollection(id: string): void {
   updateCollection(id, { status: 'ongoing' });

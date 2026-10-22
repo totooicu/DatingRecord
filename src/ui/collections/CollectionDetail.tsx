@@ -13,6 +13,7 @@ import { getEvent } from '../../core/repo/events';
 import { EventForm } from '../event';
 import { Empty } from '../common';
 import { useVersion, bump } from '../../store';
+import { hides } from '../../privacy';
 import { CollectionHead } from './CollectionHead';
 import { CollectionStats } from './CollectionStats';
 import { MemberList, ChildList } from './MemberList';
@@ -69,6 +70,8 @@ export function CollectionDetail({ id }: { id: string }) {
   }, [msg]);
 
   if (!collection) return <Empty text="事件集不存在或已删除" />;
+  // 隐私模式 + 标了隐私：详情也藏起来，不能从详情页漏出
+  if (hides(collection)) return <Empty text="该事件集已设为隐私，隐私模式下不显示" />;
 
   return (
     <div className="detail">

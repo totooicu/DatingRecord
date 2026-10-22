@@ -11,6 +11,7 @@
 // 上传判重、迁移、合并的逻辑都在 core/files/ 下，这里只负责读写库。
 
 import { queryAll, queryOne, run, transact, appendOplog } from '../db';
+import { isPrivacyMode } from '../../privacy';
 import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
 import { FILE_REF_PREFIX } from '../markdown';
@@ -27,6 +28,8 @@ export interface StoredFile {
   /** 同 hash 但内容不同（用户确认碰撞） */
   hashShared: boolean;
   createdAt: string;
+  /** 隐私：开启隐私模式后默认隐藏 */
+  isPrivate: boolean;
 }
 
 interface FileRow {
@@ -38,6 +41,7 @@ interface FileRow {
   sha256: string;
   hash_shared: number | null;
   created_at: string;
+  is_private: number;
 }
 
 function fromRow(r: FileRow): StoredFile {
@@ -51,18 +55,21 @@ function fromRow(r: FileRow): StoredFile {
     sha256: r.sha256 ?? '',
     hashShared: Number(r.hash_shared ?? 0) === 1,
     createdAt: r.created_at ?? '',
+    isPrivate: Number(r.is_private ?? 0) === 1,
   };
 }
 
 export function listFiles(): StoredFile[] {
   return queryAll<FileRow>(
-    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments ORDER BY created_at DESC',
+    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
+       ${isPrivacyMode() ? "WHERE is_private = 0" : ''}
+     ORDER BY created_at DESC`,
   ).map(fromRow);
 }
 
 export function getFile(id: string): StoredFile | null {
   const r = queryOne<FileRow>(
-    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments WHERE id = ?',
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments WHERE id = ?',
     [id],
   );
   return r ? fromRow(r) : null;
@@ -118,7 +125,7 @@ export function setFileHash(id: string, sha256: string): void {
 export function filesByHash(sha256: string): StoredFile[] {
   if (!sha256) return [];
   return queryAll<FileRow>(
-    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments
+    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
      WHERE sha256 = ? AND hash_shared = 0 ORDER BY created_at ASC`,
     [sha256],
   ).map(fromRow);
@@ -135,12 +142,12 @@ export function fileByStoredId(key: string): StoredFile | null {
   if (!k) return null;
   const r =
     queryOne<FileRow>(
-      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments
+      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
        WHERE stored_id = ? ORDER BY created_at ASC LIMIT 1`,
       [k],
     ) ??
     queryOne<FileRow>(
-      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments
+      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
        WHERE id = ? LIMIT 1`,
       [k],
     );
@@ -160,7 +167,7 @@ export function resolveFileIds(keys: string[]): Record<string, string> {
 /** 所有引用名占用情况（挑新名字时用） */
 export function nameSlots(excludeId?: string): { storedId: string; hashShared: boolean; id: string }[] {
   return queryAll<FileRow>(
-    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at FROM attachments',
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments',
   )
     .map(fromRow)
     .filter((f) => f.id !== excludeId)
@@ -225,6 +232,7 @@ export function eventsReferencingFile(file: StoredFile | string): FileRefEvent[]
   return queryAll<{ id: string; title: string; start_ts: number | null; created_at: string }>(
     `SELECT id, title, start_ts, created_at FROM events
      WHERE deleted_at IS NULL AND (${where})
+       ${isPrivacyMode() ? 'AND is_private = 0' : ''}
      ORDER BY COALESCE(start_ts, 0) DESC, created_at DESC`,
     keys.map((k) => `%${FILE_REF_PREFIX}${k}%`),
   ).map((r) => ({
@@ -243,6 +251,14 @@ export function countRefs(file: StoredFile | string): number {
 /** 渲染用：拿到可放进 <img src> 的 objectURL */
 export function urlForFile(id: string): Promise<string | null> {
   return objectUrlFor(id);
+}
+
+/** 标记 / 取消隐私（隐私模式下的隐藏开关）。单独一个函数，避免污染其它写操作 */
+export function setFilePrivate(id: string, on: boolean): void {
+  transact(() => {
+    run('UPDATE attachments SET is_private = ? WHERE id = ?', [on ? 1 : 0, id]);
+    appendOplog('attachment', id, 'update', { isPrivate: on });
+  });
 }
 
 /**

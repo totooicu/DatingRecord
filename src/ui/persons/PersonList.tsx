@@ -138,7 +138,10 @@ export function PersonList({
         >
           <Avatar name={p.displayName} avatar={p.avatar} />
           <span className="list-item-main">
-            <span className="list-item-title">{p.displayName}</span>
+            <span className="list-item-title">
+              {p.displayName}
+              {p.isPrivate && <span className="privacy-badge">隐私</span>}
+            </span>
             <span className="list-item-sub">
               {p.stats.eventCount} 次事件
               {p.stats.lastMeetTs ? ` · ${relativeDays(new Date(p.stats.lastMeetTs).toISOString())}` : ''}

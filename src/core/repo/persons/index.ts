@@ -16,7 +16,7 @@ export {
   type PersonWithStats,
   type ArchivedPerson,
 } from './read';
-export { createPerson, updatePerson, deletePerson, hardDeletePerson } from './write';
+export { createPerson, updatePerson, deletePerson, hardDeletePerson, setPersonPrivate } from './write';
 export {
   findDuplicatePersons,
   previewMerge,

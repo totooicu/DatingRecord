@@ -3,8 +3,8 @@
 //   第二行起 文件名：单独成行，长名字按需换行，绝不截断
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
-import { countRefs, personsUsingFile, renameFile } from '../../core/repo/files';
-import { ConfirmButton } from '../common';
+import { countRefs, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
+import { ConfirmButton, PrivacyButton } from '../common';
 import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
 import { CheckIcon, EyeIcon, IconButton, LinkIcon, PencilIcon, TrashIcon } from './rowIcons';
@@ -108,6 +108,7 @@ export function FileRow({
       <div className="file-main">
         <div className="file-row-top">
           <span className="file-type">{kindLabel(kind)}</span>
+          {file.isPrivate && <span className="privacy-badge">隐私</span>}
 
           {!batch && (
             <span className="file-actions">
@@ -131,6 +132,13 @@ export function FileRow({
               <IconButton label="复制引用" onClick={() => onCopy(file)}>
                 <LinkIcon />
               </IconButton>
+              <PrivacyButton
+                active={file.isPrivate}
+                onToggle={() => {
+                  setFilePrivate(file.id, !file.isPrivate);
+                  bump();
+                }}
+              />
               <ConfirmButton
                 compact
                 text="删除"

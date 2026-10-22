@@ -116,6 +116,29 @@
   font-size: 11px;
 }
 
+.tree-private {
+  font-style: normal;
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+/* 隐私徽标：列表/详情里标了隐私的条目上显示（仅在非隐私模式下可见，提示用户） */
+.privacy-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
 .rule-summary {
   margin: 0 0 8px;
 }

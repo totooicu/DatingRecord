@@ -14,6 +14,7 @@ import { listPersons } from '../core/repo/persons';
 import { useVersion, bump } from '../store';
 import { getEvent } from '../core/repo/events';
 import { setEventOpener } from './openEvent';
+import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
 import type { TabKey } from './icons';
 
@@ -30,6 +31,7 @@ type View =
 
 export default function App() {
   const v = useVersion();
+  const privacy = usePrivacyMode();
   const [view, setView] = useState<View>({ k: 'list', s: 'persons' });
   const [personId, setPersonId] = useState<string | null>(null);
   const [collectionId, setCollectionId] = useState<string | null>(null);
@@ -51,7 +53,9 @@ export default function App() {
   // 文件库里点「引用它的事件」→ 切到时间线并打开那条事件
   useEffect(() => {
     setEventOpener((id) => {
-      if (!getEvent(id)) return;
+      const e = getEvent(id);
+      // 隐私模式下，标了隐私的事件不在时间线里，文件库跳转也不该把它亮出来
+      if (!e || hides(e)) return;
       setView({ k: 'timeline' });
       setJumpEventId(id);
     });
@@ -140,7 +144,7 @@ export default function App() {
   const fabCollectionId = view.k === 'detail' && view.s === 'collections' ? view.id : undefined;
 
   return (
-    <div className={`app at-${view.k}`} data-section={section}>
+    <div className={`app at-${view.k}${privacy ? ' privacy-on' : ''}`} data-section={section}>
       <TopBar
         section={section}
         onTab={gotoTab}

@@ -47,6 +47,18 @@
   color: var(--muted);
 }
 
+/* 隐私开关：开=实心强调色，关=普通描边按钮 */
+.btn-privacy {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.btn-privacy:hover {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
 .btn-sm {
   padding: 4px 10px;
   font-size: 12px;

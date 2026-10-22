@@ -107,3 +107,30 @@
     display: none;
   }
 }
+
+/* ---------- 隐私模式开关卡（设置正文顶部，始终可见） ---------- */
+.privacy-mode-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.privacy-mode-card.privacy-mode-on {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--panel));
+}
+
+.privacy-mode-text strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.privacy-mode-text .muted {
+  margin: 0;
+}

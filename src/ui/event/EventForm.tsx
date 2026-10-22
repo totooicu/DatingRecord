@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createEvent, deleteEvent, listEvents, updateEvent } from '../../core/repo/events';
+import { createEvent, deleteEvent, listEvents, setEventPrivate, updateEvent } from '../../core/repo/events';
 import { listPersons } from '../../core/repo/persons';
 import {
   addMember,
@@ -9,8 +9,9 @@ import {
   type TreeNode,
 } from '../../core/repo/collections';
 import type { Collection, DREvent } from '../../core/types';
-import { ConfirmButton, Modal } from '../common';
+import { ConfirmButton, Modal, PrivacyButton } from '../common';
 import { bump } from '../../store';
+import { hides } from '../../privacy';
 import { EventFields } from './EventFields';
 import { draftToPayload, initialDraft, type EventDraft } from './draft';
 
@@ -39,23 +40,44 @@ export function EventForm({
   const [d, setD] = useState<EventDraft>(() =>
     initialDraft(event, defaultPersonId, defaultCollectionId, existingCols),
   );
+  const [priv, setPriv] = useState<boolean>(!!event?.isPrivate);
   const patch = (p: Partial<EventDraft>) => setD((s) => ({ ...s, ...p }));
 
   const save = () => {
     const payload = draftToPayload(d);
+    let savedId: string;
     if (event) {
       updateEvent(event.id, payload);
+      savedId = event.id;
       const before = new Set(existingCols);
       const after = new Set(d.cols);
       for (const id of after) if (!before.has(id)) addMember(id, 'event', event.id);
       for (const id of before) if (!after.has(id)) removeMember(id, 'event', event.id);
     } else {
       const created = createEvent(payload);
+      savedId = created.id;
       for (const id of d.cols) addMember(id, 'event', created.id);
     }
+    // 隐私标记与正文/集合是两条独立的写，单独落库，不混进 updateEvent
+    setEventPrivate(savedId, priv);
     bump();
     onClose();
   };
+
+  // 隐私模式 + 标了隐私：直接打开的编辑框也藏起来（文件库跳转等入口会先被拦截，
+  // 这里再兜一层，免得任何直达路径把隐藏事件亮出来）
+  if (event && hides(event)) {
+    return (
+      <Modal title="事件" onClose={onClose}>
+        <p className="muted">该事件已设为隐私，隐私模式下不显示。</p>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -85,6 +107,11 @@ export function EventForm({
         </>
       }
     >
+      <div className="privacy-form-row">
+        <span className="field-label">隐私</span>
+        <PrivacyButton active={priv} onToggle={() => setPriv((v) => !v)} />
+        <span className="muted small">开启隐私模式后，此事件将隐藏</span>
+      </div>
       <EventFields
         d={d}
         patch={patch}

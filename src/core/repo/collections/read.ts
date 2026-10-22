@@ -4,6 +4,7 @@ import { queryAll, queryOne } from '../../db';
 import type { Collection } from '../../types';
 import { collectionFromRow, type CollectionRow } from './rows';
 import { isSmart, listSmartEvents } from './smart';
+import { isPrivacyMode } from '../../../privacy';
 
 // ---------------- 查询 ----------------
 
@@ -31,10 +32,16 @@ export function getTree(): TreeNode | null {
   const rows = queryAll<CollectionRow>(
     'SELECT * FROM collections WHERE deleted_at IS NULL ORDER BY order_key',
   );
-  const all = rows.map(collectionFromRow);
+  // 隐私模式下把私有集合整棵摘掉（含其子孙——它们同样被 filter 掉了）
+  const all = rows.map(collectionFromRow).filter((c) => !c.isPrivate || !isPrivacyMode());
   const counts = new Map<string, number>();
   for (const row of queryAll<{ collection_id: string; c: number }>(
-    "SELECT collection_id, COUNT(*) AS c FROM collection_members WHERE member_type = 'event' AND deleted_at IS NULL GROUP BY collection_id",
+    `SELECT m.collection_id AS collection_id, COUNT(*) AS c
+     FROM collection_members m
+     JOIN events e ON e.id = m.member_id AND e.deleted_at IS NULL
+       ${isPrivacyMode() ? 'AND e.is_private = 0' : ''}
+     WHERE m.member_type = 'event' AND m.deleted_at IS NULL
+     GROUP BY m.collection_id`,
   )) {
     counts.set(row.collection_id, row.c);
   }
@@ -47,6 +54,7 @@ export function getTree(): TreeNode | null {
      JOIN collection_members m ON m.collection_id = cl.descendant_id
      JOIN events e ON e.id = m.member_id
      WHERE m.member_type = 'event' AND m.deleted_at IS NULL AND e.deleted_at IS NULL
+       ${isPrivacyMode() ? 'AND e.is_private = 0' : ''}
      GROUP BY cl.ancestor_id`,
   )) {
     totals.set(row.ancestor_id, row.c);
@@ -68,7 +76,9 @@ export function getTree(): TreeNode | null {
 /** 归档的事件集：只改了 status，成员与事件都还在，可原样恢复 */
 export function listArchivedCollections(): Collection[] {
   return queryAll<CollectionRow>(
-    `SELECT * FROM collections WHERE deleted_at IS NULL AND status = 'archived' ORDER BY updated_at DESC`,
+    `SELECT * FROM collections WHERE deleted_at IS NULL AND status = 'archived'
+       ${isPrivacyMode() ? 'AND is_private = 0' : ''}
+     ORDER BY updated_at DESC`,
   ).map(collectionFromRow);
 }
 
@@ -82,7 +92,9 @@ export function getBreadcrumb(id: string): Collection[] {
 
 export function listChildren(parentId: string): Collection[] {
   return queryAll<CollectionRow>(
-    'SELECT * FROM collections WHERE parent_id = ? AND deleted_at IS NULL ORDER BY order_key',
+    `SELECT * FROM collections WHERE parent_id = ? AND deleted_at IS NULL
+       ${isPrivacyMode() ? 'AND is_private = 0' : ''}
+     ORDER BY order_key`,
     [parentId],
   ).map(collectionFromRow);
 }

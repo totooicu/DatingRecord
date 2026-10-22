@@ -66,6 +66,20 @@ export function updatePerson(
   });
 }
 
+/** 标记 / 取消隐私（隐私模式下的隐藏开关）。单独一个函数，避免污染 updatePerson 的字段清单 */
+export function setPersonPrivate(id: string, on: boolean): void {
+  const now = new Date().toISOString();
+  transact(() => {
+    run('UPDATE persons SET is_private = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+      on ? 1 : 0,
+      hlcNow(getDeviceId()),
+      now,
+      id,
+    ]);
+    appendOplog('person', id, 'update', { isPrivate: on });
+  });
+}
+
 /** 软删除（墓碑）：不做物理删除，否则同步时会把数据推回来 */
 export function deletePerson(id: string): void {
   const now = new Date().toISOString();

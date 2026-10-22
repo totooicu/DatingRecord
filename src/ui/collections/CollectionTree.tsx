@@ -52,6 +52,7 @@ export function CollectionTree({
           <button className="tree-name" onClick={() => onSelect(node.id)}>
             {node.name}
             {node.kind === 'smart' && <em className="tree-smart" title="智能集合：成员由规则实时算出">⚡</em>}
+            {node.isPrivate && <em className="tree-private" title="隐私：开启隐私模式后隐藏">隐私</em>}
             {node.totalEventCount > 0 && <em>{node.totalEventCount}</em>}
           </button>
         </div>

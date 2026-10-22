@@ -18,6 +18,8 @@ export interface Person {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 隐私：开启隐私模式后默认隐藏，不出现在任何列表/详情里 */
+  isPrivate: boolean;
 }
 
 export type ParticipantRole = 'primary' | 'companion' | 'thirdParty' | 'self';

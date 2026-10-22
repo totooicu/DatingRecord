@@ -3,6 +3,7 @@
 import { queryAll, queryOne } from '../../db';
 import type { DREvent } from '../../types';
 import { eventFromRow, participantsOf, type EventRow } from './rows';
+import { isPrivacyMode } from '../../../privacy';
 
 export interface EventFilter {
   personId?: string;
@@ -21,6 +22,7 @@ export function listEvents(filter: EventFilter = {}): DREvent[] {
   const params: unknown[] = [];
 
   if (!filter.includeDeleted) where.push('e.deleted_at IS NULL');
+  if (isPrivacyMode()) where.push('e.is_private = 0');
   if (filter.personId) {
     where.push('EXISTS (SELECT 1 FROM event_participants p WHERE p.event_id = e.id AND p.person_id = ?)');
     params.push(filter.personId);
@@ -97,7 +99,8 @@ export function globalStats(): {
     `SELECT COUNT(*) AS c,
             COALESCE(SUM(json_extract(metrics_json,'$.cost')),0) AS cost,
             AVG(json_extract(metrics_json,'$.rating')) AS rating
-     FROM events WHERE deleted_at IS NULL`,
+     FROM events WHERE deleted_at IS NULL
+       ${isPrivacyMode() ? 'AND is_private = 0' : ''}`,
   );
   const p = queryOne<{ c: number | null; a: number | null }>(
     `SELECT COALESCE(SUM(CASE WHEN deleted_at IS NULL AND status = 'active' THEN 1 ELSE 0 END), 0) AS c,

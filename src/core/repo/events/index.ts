@@ -17,6 +17,7 @@ export {
   deleteEvent,
   restoreEvent,
   purgeEvent,
+  setEventPrivate,
   type EventInput,
 } from './write';
 export { RELATION_LABELS, RELATION_TYPES, normalizeRelated, stripRefsTo, incomingRefs } from './related';

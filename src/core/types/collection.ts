@@ -38,6 +38,8 @@ export interface Collection {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 隐私：开启隐私模式后默认隐藏 */
+  isPrivate: boolean;
 }
 
 export interface Member {

@@ -93,3 +93,13 @@
   font-weight: 600;
   letter-spacing: 0.5px;
 }
+
+/* 事件表单里的隐私开关行 */
+.privacy-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}

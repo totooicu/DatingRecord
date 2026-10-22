@@ -15,5 +15,6 @@ export function rowToAttachment(r: Row): Attachment {
     takenAt: r.taken_at ?? null,
     createdAt: r.created_at ?? '',
     hashShared: Number(r.hash_shared ?? 0) === 1,
+    isPrivate: Number(r.is_private ?? 0) === 1,
   };
 }

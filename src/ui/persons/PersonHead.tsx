@@ -1,7 +1,7 @@
 // 详情头：头像 + 改名 + 标签 + 归档按钮
 import { useState } from 'react';
-import { updatePerson, listPersons, deletePerson } from '../../core/repo/persons';
-import { TagInput } from '../common';
+import { updatePerson, listPersons, deletePerson, setPersonPrivate } from '../../core/repo/persons';
+import { TagInput, PrivacyButton } from '../common';
 import { Avatar } from './Avatar';
 import { AvatarPicker } from './AvatarPicker';
 import { bump } from '../../store';
@@ -71,6 +71,13 @@ export function PersonHead({
               <button className="btn btn-primary" onClick={onNewEvent}>
                 记一件事
               </button>
+              <PrivacyButton
+                active={person.isPrivate}
+                onToggle={() => {
+                  setPersonPrivate(person.id, !person.isPrivate);
+                  bump();
+                }}
+              />
               <button className="btn" onClick={() => setConfirming(true)}>
                 归档
               </button>

@@ -67,6 +67,16 @@ export function runMigrations(d: Database, current: number): string {
     )`);
     v = 3;
   }
+  if (v < 4) {
+    // 隐私标记（v4）：四个实体各加一列；老库逐列补，幂等。
+    // 隐私是「查看偏好」之外的数据属性，必须落库、随备份走，不能只存前端。
+    for (const table of ['persons', 'collections', 'events', 'attachments']) {
+      if (!hasColumn(d, table, 'is_private')) {
+        d.run(`ALTER TABLE ${table} ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0`);
+      }
+    }
+    v = 4;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

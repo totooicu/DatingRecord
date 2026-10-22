@@ -22,6 +22,7 @@ export function rowToPerson(r: Row): Person {
     deletedAt: r.deleted_at ?? null,
     createdAt: r.created_at ?? '',
     updatedAt: r.updated_at ?? '',
+    isPrivate: !!r.is_private,
   };
 }
 
@@ -42,5 +43,6 @@ export function personToRow(p: Person): Row {
     deleted_at: p.deletedAt ?? null,
     created_at: p.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    is_private: p.isPrivate ? 1 : 0,
   };
 }

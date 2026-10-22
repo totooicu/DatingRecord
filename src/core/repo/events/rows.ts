@@ -24,6 +24,7 @@ export interface EventRow {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  is_private: number;
 }
 
 export function safeParse<T>(text: string, fallback: T): T {
@@ -56,6 +57,7 @@ export function eventFromRow(r: EventRow, participants: Participant[]): DREvent 
     deletedAt: r.deleted_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    isPrivate: !!r.is_private,
   };
 }
 
