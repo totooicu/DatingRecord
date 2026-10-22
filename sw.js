@@ -1,7 +1,10 @@
 // Service Worker：只缓存静态资源，让应用可以离线打开、可「添加到主屏幕」。
 // 注意：用户的数据存在 IndexedDB 里，SW 完全不碰，也不会上传任何东西。
 
-const CACHE = 'dating-record-v3';
+// 占位符：构建时由 scripts/bust-sw.mjs 替换成带构建时间戳的缓存名。
+// 这样每次重新构建都会生成不同的 sw.js 内容，浏览器才会重新安装 SW、
+// 丢弃旧缓存 —— 否则旧 SW 会一直用 13:36 那版预缓存的页面，表现为「改了却不生效」。
+const CACHE = 'dating-record-2026-10-22T06-49-19-481Z';
 
 // 构建后带 hash 的资源走运行时缓存；这里先预缓存固定入口与体积较大的 wasm
 const PRECACHE = [
@@ -46,7 +49,7 @@ self.addEventListener('fetch', (event) => {
   // 而它引用的带 hash 资源早已被新版本清掉 —— 表现为「改了却没生效」甚至白屏。
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res && res.status === 200) {
             const copy = res.clone();
