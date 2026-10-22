@@ -111,11 +111,34 @@ export function buildMonthGrid(m: MonthRef, today: DayKey = todayKey()): DayCell
 export const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
 /**
+ * 逐日推进的日键列表（含两端）。
+ *
+ * 用本地零点构造 Date 再 +1 天，跨月/跨年由 Date 自己进位；
+ * 绝不能拿 ISO 字符串切——东八区晚上 8 点后 toISOString() 会穿越到第二天。
+ * 防御：异常超长区间（导入的脏数据）最多展开约 10 年，避免把页面卡死。
+ */
+export function dayKeysBetween(from: DayKey, to: DayKey): DayKey[] {
+  const [y, m, d] = from.split('-').map(Number);
+  const cursor = new Date(y, m - 1, d);
+  const out: DayKey[] = [];
+  for (let i = 0; i < 3660; i += 1) {
+    const key = dayKeyOf(cursor);
+    if (key > to) break;
+    out.push(key);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
+/**
  * 把事件摊平成「日键 → 摘要」。
  *
  * 一条事件可能挂在多个集合里；同一天同一个集合只算一次图标。
  * 事件没挂集合时，用它的主集合（primaryCollectionId）兜底——否则
  * 手动建的集合还没来得及加成员，日历上就一片空白，看着像坏了。
+ *
+ * 区间事件**逐日展开**：1→3 号的事，1、2、3 每格都要有标记，
+ * 否则中间日期看起来像「那天没事」。
  */
 export function collectDaySummaries(): Map<DayKey, DaySummary> {
   const out = new Map<DayKey, DaySummary>();
@@ -129,23 +152,106 @@ export function collectDaySummaries(): Map<DayKey, DaySummary> {
   };
 
   for (const e of listEvents({})) {
-    const key = dayKeyOfTs(e.startTs);
-    if (!key) continue;
-    let cell = out.get(key);
-    if (!cell) {
-      cell = { count: 0, collections: [] };
-      out.set(key, cell);
-    }
-    cell.count += 1;
+    const startKey = dayKeyOfTs(e.startTs);
+    if (!startKey) continue;
 
+    // endTs 缺失 / 非法 / 早于 start → 退化为单日，避免负循环
+    let endKey = dayKeyOfTs(e.endTs);
+    if (!endKey || endKey < startKey) endKey = startKey;
+
+    // 集合信息与日期无关，先算好，逐日循环里直接复用
     const ids = collectionsOfEvent(e.id).map((c) => c.id);
     if (ids.length === 0 && e.primaryCollectionId) ids.push(e.primaryCollectionId);
 
-    for (const id of ids) {
-      if (cell.collections.some((c) => c.id === id)) continue;
-      const c = infoOf(id);
-      if (c) cell.collections.push({ id, name: c.name, icon: c.icon });
+    for (const key of dayKeysBetween(startKey, endKey)) {
+      let cell = out.get(key);
+      if (!cell) {
+        cell = { count: 0, collections: [] };
+        out.set(key, cell);
+      }
+      cell.count += 1;
+      for (const id of ids) {
+        if (cell.collections.some((c) => c.id === id)) continue;
+        const c = infoOf(id);
+        if (c) cell.collections.push({ id, name: c.name, icon: c.icon });
+      }
     }
   }
   return out;
+}
+
+/** 跨多天的事件条（月视图里横跨多格的视觉条；单日事件不画条，用格子里的图标） */
+export interface SpanBar {
+  eventId: string;
+  title: string;
+  /** 月内裁剪后的起止日键：跨月事件只画本月部分 */
+  startKey: DayKey;
+  endKey: DayKey;
+  /** 起点/终点被月边界裁掉（渲染时画延续箭头） */
+  clippedStart: boolean;
+  clippedEnd: boolean;
+  /** 取第一个集合的图标，条内小图标复用 CollectionIconView */
+  icon: CollectionIcon | null;
+  /** 第几行；同一行内的条互不重叠 */
+  lane: number;
+}
+
+/**
+ * 收集与指定月份相交的跨天事件，裁剪到月内并分配行号。
+ *
+ * 贪心策略：先按开始日排序，同一天开始的先排长的——
+ * 长条可选的空白最少，先给它定行，后面的短条更容易塞进空隙。
+ */
+export function collectSpanBars(m: MonthRef): SpanBar[] {
+  const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
+  const monthStart = dayKeyOf(new Date(m.year, m.month, 1));
+  const monthEnd = dayKeyOf(new Date(m.year, m.month, daysInMonth));
+  const bars: SpanBar[] = [];
+
+  for (const e of listEvents({})) {
+    const sKey = dayKeyOfTs(e.startTs);
+    if (!sKey) continue;
+    let eKey = dayKeyOfTs(e.endTs);
+    if (!eKey || eKey < sKey) eKey = sKey;
+    if (sKey === eKey) continue; // 单日事件留在格子里，不画条
+    if (eKey < monthStart || sKey > monthEnd) continue; // 与本月不相交
+
+    const clippedStart = sKey < monthStart;
+    const clippedEnd = eKey > monthEnd;
+
+    // 图标与 DaySummary 同源：先看关联集合，没挂就用主集合兜底
+    let icon: CollectionIcon | null = null;
+    const cols = collectionsOfEvent(e.id);
+    const firstId = cols[0]?.id ?? e.primaryCollectionId;
+    if (firstId) icon = getCollection(firstId)?.icon ?? null;
+
+    bars.push({
+      eventId: e.id,
+      title: e.title,
+      startKey: clippedStart ? monthStart : sKey,
+      endKey: clippedEnd ? monthEnd : eKey,
+      clippedStart,
+      clippedEnd,
+      icon,
+      lane: 0,
+    });
+  }
+
+  bars.sort((a, b) =>
+    a.startKey === b.startKey ? (a.endKey > b.endKey ? -1 : 1) : a.startKey < b.startKey ? -1 : 1,
+  );
+
+  // laneEnds[i] = 第 i 行目前占用到的最后一天；早于本条的 startKey 才能共用一行
+  const laneEnds: DayKey[] = [];
+  for (const b of bars) {
+    let lane = laneEnds.findIndex((end) => end < b.startKey);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(b.endKey);
+    } else {
+      laneEnds[lane] = b.endKey;
+    }
+    b.lane = lane;
+  }
+  return bars;
 }

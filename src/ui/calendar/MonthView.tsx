@@ -5,9 +5,25 @@
 //   今天 —— 黄底，一眼定位
 //   将来 —— 白底
 //
+// 跨天事件（区间 1→3 号）额外画一条横跨多格的色条，落在所在周的日期格子下方；
+// 单日事件不画条，仍用格子里的图标表达，避免小屏上条和图标互相挤。
+//
 // 点某一天 → 回时间线并按那天过滤（见 MonthView 的 onPickDay 回调）。
 import { useMemo, useState } from 'react';
-import { buildMonthGrid, collectDaySummaries, monthOf, monthLabel, shiftMonth, todayKey, WEEKDAY_LABELS, type DayCell, type MonthRef } from '../../core/calendar';
+import {
+  buildMonthGrid,
+  collectDaySummaries,
+  collectSpanBars,
+  monthOf,
+  monthLabel,
+  shiftMonth,
+  todayKey,
+  WEEKDAY_LABELS,
+  type DayCell,
+  type DaySummary,
+  type MonthRef,
+  type SpanBar,
+} from '../../core/calendar';
 import { useVersion } from '../../store';
 import { CollectionIconView } from '../collections/CollectionIcon';
 
@@ -22,6 +38,13 @@ export function MonthView({ onPickDay }: { onPickDay: (key: string) => void }) {
   const grid = useMemo(() => buildMonthGrid(month, today), [month, today]);
   // v 触发重算：刚记完一件事，日历要立刻反应过来
   const summaries = useMemo(() => collectDaySummaries(), [v]);
+  const spanBars = useMemo(() => collectSpanBars(month), [month, v]);
+
+  const weeks = useMemo(() => {
+    const out: DayCell[][] = [];
+    for (let i = 0; i < grid.length; i += 7) out.push(grid.slice(i, i + 7));
+    return out;
+  }, [grid]);
 
   const monthCellCount = grid.filter((c) => c.inMonth && summaries.has(c.key)).length;
   const isThisMonth = month.year === Number(today.slice(0, 4)) && month.month === Number(today.slice(5, 7)) - 1;
@@ -53,13 +76,25 @@ export function MonthView({ onPickDay }: { onPickDay: (key: string) => void }) {
       </div>
 
       <div className="cal-grid" role="grid">
-        {grid.map((cell) => (
-          <DayCellView
-            key={cell.key}
-            cell={cell}
-            summary={summaries.get(cell.key)}
-            onPick={() => onPickDay(cell.key)}
-          />
+        {weeks.map((week) => (
+          <div className="cal-week" key={week[0].key}>
+            {week.map((cell) => (
+              <DayCellView
+                key={cell.key}
+                cell={cell}
+                summary={summaries.get(cell.key)}
+                onPick={() => onPickDay(cell.key)}
+              />
+            ))}
+            {weekSegments(week, spanBars).map((seg, idx) => (
+              <SpanBarView
+                key={`${seg.bar.eventId}-${week[0].key}`}
+                seg={seg}
+                row={idx + 2}
+                onPick={() => onPickDay(seg.key)}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </div>
@@ -72,7 +107,7 @@ function DayCellView({
   onPick,
 }: {
   cell: DayCell;
-  summary?: { count: number; collections: { id: string; name: string; icon: import('../../core/types').CollectionIcon | null }[] };
+  summary?: DaySummary;
   onPick: () => void;
 }) {
   const icons = summary?.collections.slice(0, MAX_ICONS) ?? [];
@@ -94,6 +129,60 @@ function DayCellView({
         ))}
         {more > 0 && <span className="cal-more">+{more}</span>}
       </span>
+    </button>
+  );
+}
+
+interface WeekSegment {
+  bar: SpanBar;
+  /** 在本周的列（0–6） */
+  colStart: number;
+  colEnd: number;
+  /** 段首那天的日键，点击条就跳这一天 */
+  key: string;
+  clippedStart: boolean;
+  clippedEnd: boolean;
+}
+
+/** 把跨天条裁进某一周：跨周的事件每周各画一段，段与段首尾相接 */
+function weekSegments(week: DayCell[], bars: SpanBar[]): WeekSegment[] {
+  const wkStart = week[0].key;
+  const wkEnd = week[6].key;
+  const segs: WeekSegment[] = [];
+  for (const bar of bars) {
+    if (bar.endKey < wkStart || bar.startKey > wkEnd) continue;
+    const keyStart = bar.startKey < wkStart ? wkStart : bar.startKey;
+    const keyEnd = bar.endKey > wkEnd ? wkEnd : bar.endKey;
+    const colStart = week.findIndex((c) => c.key === keyStart);
+    const colEnd = week.findIndex((c) => c.key === keyEnd);
+    if (colStart < 0 || colEnd < 0) continue;
+    segs.push({
+      bar,
+      colStart,
+      colEnd,
+      key: keyStart,
+      clippedStart: bar.clippedStart || bar.startKey < wkStart,
+      clippedEnd: bar.clippedEnd || bar.endKey > wkEnd,
+    });
+  }
+  // 行号是全局分配的，周内按行号排；同一行的按列序兜底
+  return segs.sort((a, b) => a.bar.lane - b.bar.lane || a.colStart - b.colStart);
+}
+
+function SpanBarView({ seg, row, onPick }: { seg: WeekSegment; row: number; onPick: () => void }) {
+  const { bar } = seg;
+  return (
+    <button
+      type="button"
+      className="cal-span"
+      style={{ gridRow: row, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}` }}
+      onClick={onPick}
+      title={`${bar.title}（${bar.startKey} → ${bar.endKey}）`}
+    >
+      {seg.clippedStart && <span className="cal-span-clip">◀</span>}
+      {bar.icon && <CollectionIconView icon={bar.icon} size="sm" fallback={bar.title} />}
+      <span className="cal-span-title">{bar.title}</span>
+      {seg.clippedEnd && <span className="cal-span-clip">▶</span>}
     </button>
   );
 }
