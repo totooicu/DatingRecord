@@ -17,7 +17,6 @@ import { putBlob, base64ToBlob } from '../db/blob';
 import { ensureClosure } from '../repo/collections';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
 import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow } from './mappers';
-import { exportToFile } from './export';
 
 export interface ImportResult {
   mode: 'merge' | 'replace';
@@ -70,8 +69,9 @@ export async function importLibrary(
   let backupName: string | undefined;
 
   if (mode === 'replace') {
-    // 危险操作：替换前自动导出一份备份
-    backupName = await exportToFile({ includeAttachments: true });
+    // 危险操作：替换前自动导出一份备份（zip 归档，体积比内联 JSON 小得多）
+    const { exportArchiveToFile } = await import('./archive');
+    backupName = await exportArchiveToFile({ includeAttachments: true });
   }
 
   // 整次导入只记一步撤销：中间几百次 upsert 不该占满撤销栈

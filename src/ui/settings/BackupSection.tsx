@@ -1,6 +1,8 @@
-// 导入 / 导出：单文件 .drp.json，纯文本可 diff
+// 导入 / 导出：默认导出 .drp.zip（library.json + 附件原文件 + manifest），
+// 也保留 .drp.json（纯文本可 diff）。导入两种格式都认。
 import { useRef, useState } from 'react';
-import { exportToFile, importLibrary } from '../../core/io';
+import { exportToFile, importFromFile } from '../../core/io';
+import { exportArchiveToFile } from '../../core/io';
 import { getMeta } from '../../core/db';
 import { Section, fmtMeta } from './Section';
 import { bump } from '../../store';
@@ -9,6 +11,7 @@ export function BackupSection() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [withAttachments, setWithAttachments] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,8 +19,7 @@ export function BackupSection() {
     setError(null);
     setResult(null);
     try {
-      const text = await file.text();
-      const r = await importLibrary(text, importMode);
+      const r = await importFromFile(file, importMode);
       bump();
       setResult(
         `导入完成（${r.mode === 'merge' ? '合并' : '替换'}）：` +
@@ -30,10 +32,23 @@ export function BackupSection() {
     }
   };
 
+  /** 导出期间锁按钮：大库打包要几秒，连点会重复下载 */
+  const runExport = async (fn: () => Promise<string>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Section
       title="数据备份（导入 / 导出）"
-      desc="导出为单文件 .drp.json：纯文本、可 diff、可放进 git 做版本管理。建议定期导出到网盘。"
+      desc="默认导出 .drp.zip：库数据 + 附件原文件打包，比内联 JSON 小得多，方便传网盘/同步。也保留纯文本 JSON（可 diff、可进 git）。"
     >
       <div className="row-actions">
         <label className="checkbox">
@@ -42,10 +57,22 @@ export function BackupSection() {
             checked={withAttachments}
             onChange={(e) => setWithAttachments(e.target.checked)}
           />
-          包含附件（图片等，会让文件变大）
+          包含附件（原文件打包进压缩包）
         </label>
-        <button className="btn btn-primary" onClick={() => void exportToFile({ includeAttachments: withAttachments })}>
-          导出备份文件
+        <button
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() => void runExport(() => exportArchiveToFile({ includeAttachments: withAttachments }))}
+        >
+          {busy ? '打包中…' : '导出备份（.zip）'}
+        </button>
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={() => void runExport(() => exportToFile({ includeAttachments: withAttachments }))}
+          title="纯文本、可 diff；附件会以 base64 内联，文件较大"
+        >
+          导出 JSON
         </button>
       </div>
 
@@ -60,7 +87,7 @@ export function BackupSection() {
         <input
           ref={fileRef}
           type="file"
-          accept=".json,.drp.json,application/json"
+          accept=".zip,.drp.zip,.json,.drp.json,application/zip,application/json"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0];

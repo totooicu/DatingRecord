@@ -33,13 +33,25 @@ export async function exportAttachments(): Promise<Attachment[]> {
   return out;
 }
 
-export async function buildLibrary(opts: { includeAttachments?: boolean } = {}): Promise<LibraryFile> {
+/** 只取附件元数据（不含 base64）：.drp.zip 里二进制单独成文件，JSON 里不需要 data */
+export function listAttachments(): Attachment[] {
+  return queryAll<Row>('SELECT * FROM attachments').map((r) => rowToAttachment(r));
+}
+
+export async function buildLibrary(
+  opts: { includeAttachments?: boolean | 'meta' } = {},
+): Promise<LibraryFile> {
   const defs = queryAll<Record<string, never>>('SELECT * FROM attribute_defs').map(rowToDef);
   const persons = queryAll<Record<string, never>>('SELECT * FROM persons').map(rowToPerson);
   const events = queryAll<Record<string, never>>('SELECT * FROM events').map(rowToEvent);
   const collections = queryAll<Record<string, never>>('SELECT * FROM collections').map(rowToCollection);
   const members = queryAll<Record<string, never>>('SELECT * FROM collection_members').map(rowToMember);
-  const attachments = opts.includeAttachments ? await exportAttachments() : [];
+  const attachments =
+    opts.includeAttachments === 'meta'
+      ? listAttachments()
+      : opts.includeAttachments
+        ? await exportAttachments()
+        : [];
   const templates = queryAll<Row>(
     'SELECT * FROM attribute_templates WHERE deleted_at IS NULL ORDER BY created_at ASC',
   ).map(rowToTemplate);

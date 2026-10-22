@@ -638,18 +638,22 @@ AI 服务商能连，是因为它们**主动返回** `Access-Control-Allow-Origi
 ### F-I01 `.drp` 导出 — P0
 
 ```
-library.drp/
-├── library.json       # 全部结构化数据（含 schemaVersion）
-├── attachments/       # 按 sha256 命名
-└── manifest.json      # 版本、时间、附件清单、校验和
+dating-record-YYYYMMDDHHmm.drp.zip/
+├── library.json       # 全部结构化数据（含 schemaVersion）；附件只留元数据，不含 base64
+├── attachments/       # 附件原文件二进制，按内容寻址的 storedId 命名
+└── manifest.json      # 格式版本（drp/1）、导出时间、附件清单（id → 包内路径）
 ```
 
-边界：敏感字段**默认不导出**或按开关脱敏；导出前校验 JSON 可序列化。
+默认导出 zip：附件以原文件存放（不再 base64 +33%），JSON 文本压缩，体积显著小于内联 JSON，
+方便传网盘/同步。附件二进制本身不二次压缩（图片/视频已压缩，store 即可）。
+**仍保留 `.drp.json` 导出**（纯文本、可 diff、可进 git），设置页有独立按钮。
+边界：敏感字段**默认不导出**或按开关脱敏；导出前校验 JSON 可序列化；元数据在但二进制丢失的附件跳过，不阻断备份。
 
 ### F-I02 `.drp` 导入 — P0
 
+- **两种载体都认**：`.drp.zip`（走 manifest 找附件）与旧的 `.drp.json`（附件 base64 内联），按 zip 魔数自动识别；
 - 校验 `schemaVersion`，自动跑迁移链；
-- 三种模式：**合并到现有库 / 覆盖 / 新建库**；
+- 两种模式：**合并到现有库 / 替换**（替换前自动导出一份 zip 备份）；
 - 冲突策略：同 ID 且 `hlc` 更新 → 覆盖，否则保留并提示。
 
 ### F-I03 往返测试 — P0

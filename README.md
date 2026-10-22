@@ -50,10 +50,12 @@ src/
 
 ## 数据备份说明
 
-- 导出文件名：`dating-record-YYYYMMDDHHmm.drp.json`
-- 内容：`schemaVersion` + 属性字典 + 人物 + 事件（含参与者）+ 事件集（含嵌套关系）+ 成员 + 附件
-- 纯文本、可 diff，可以放进 git 做版本管理
-- 导入合并逻辑：同 ID 时比较 `hlc`，本地更新则跳过（不会用旧备份覆盖新数据）
+- 默认导出文件名：`dating-record-YYYYMMDDHHmm.drp.zip`
+- 压缩包内容：`library.json`（结构化数据）+ `attachments/`（附件原文件）+ `manifest.json`（版本与附件清单）
+  附件不再 base64 内联，体积比单个 JSON 小得多，方便传网盘/同步
+- 也保留 `.drp.json` 导出：纯文本、可 diff，可以放进 git 做版本管理（附件会 base64 内联，文件较大）
+- 导入两种格式都支持：`.drp.zip` 与旧的 `.drp.json`
+- 导入合并逻辑：同 ID 时比较 `hlc`，本地更新则跳过（不会用旧备份覆盖新数据）；替换导入会先自动导出一份 zip 备份
 
 ## 坚果云增量备份
 
