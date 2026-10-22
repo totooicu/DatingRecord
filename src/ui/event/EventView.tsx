@@ -5,6 +5,7 @@
 // 人物/标签/事件集用只读 chip，正文才用完整宽度渲染 Markdown。
 //
 // 编辑仍然走 EventFields —— 浏览态只是同一份数据的另一种排版。
+import type { ReactNode } from 'react';
 import { EVENT_KINDS, RELATION_LABELS } from '../../core/repo/events';
 import { formatTime } from '../../core/time';
 import { MarkdownView } from '../markdown';
@@ -16,12 +17,15 @@ export function EventView({
   flat,
   collectionIds,
   candidates,
+  body,
 }: {
   event: DREvent;
   persons: { id: string; displayName: string }[];
   flat: { c: Collection; depth: number }[];
   collectionIds: string[];
   candidates: { id: string; title: string }[];
+  /** 正文区替换内容：聊天形式用它换成对话流，其余元数据照旧 */
+  body?: ReactNode;
 }) {
   const personName = new Map(persons.map((p) => [p.id, p.displayName]));
   const collectionName = new Map(flat.map(({ c }) => [c.id, c.name]));
@@ -132,11 +136,12 @@ export function EventView({
       )}
 
       <div className="ev-view-body">
-        {event.content.trim() ? (
-          <MarkdownView source={event.content} />
-        ) : (
-          <p className="muted">还没有正文。</p>
-        )}
+        {body ??
+          (event.content.trim() ? (
+            <MarkdownView source={event.content} />
+          ) : (
+            <p className="muted">还没有正文。</p>
+          ))}
       </div>
     </div>
   );

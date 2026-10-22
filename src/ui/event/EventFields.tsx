@@ -61,6 +61,18 @@ export function EventFields({
         </select>
       </Field>
 
+      {/* 呈现形态与「类型」是两件事：类型是这场事是什么（约会/吃饭），
+          形态是它怎么显示（正文/聊天）。一场约会同样可以贴一段聊天记录。 */}
+      <Field label="呈现形态">
+        <select
+          value={d.viewMode}
+          onChange={(e) => patch({ viewMode: e.target.value as 'doc' | 'chat' })}
+        >
+          <option value="doc">正文</option>
+          <option value="chat">聊天</option>
+        </select>
+      </Field>
+
       <Field label="时间类型">
         <select value={d.timeKind} onChange={(e) => patch({ timeKind: e.target.value as TimeKind })}>
           {TIME_KINDS.map((t) => (

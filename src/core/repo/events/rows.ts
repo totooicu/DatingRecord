@@ -18,6 +18,7 @@ export interface EventRow {
   media_json: string;
   related_json: string;
   primary_collection_id: string | null;
+  view_mode?: string;
   device_id: string;
   rev: number;
   hlc: string;
@@ -51,6 +52,7 @@ export function eventFromRow(r: EventRow, participants: Participant[]): DREvent 
     metrics: safeParse<EventMetrics>(r.metrics_json, {}),
     relatedEvents: safeParse<RelatedEvent[]>(r.related_json, []),
     primaryCollectionId: r.primary_collection_id,
+    viewMode: r.view_mode === 'chat' ? 'chat' : 'doc',
     deviceId: r.device_id,
     rev: r.rev,
     hlc: r.hlc,

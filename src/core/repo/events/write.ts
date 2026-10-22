@@ -8,6 +8,7 @@ import type { TimeSpec } from '../../time';
 import { getEvent } from './read';
 import { normalizeRelated, stripRefsTo } from './related';
 import { sweepEventFiles } from '../fileGc';
+import { deleteMessagesOfEvent, restoreMessagesOfEvent } from '../chat';
 
 export interface EventInput {
   title: string;
@@ -21,6 +22,8 @@ export interface EventInput {
   media?: string[];
   relatedEvents?: RelatedEvent[];
   primaryCollectionId?: string | null;
+  /** 呈现形态：doc = 普通正文，chat = 聊天形式 */
+  viewMode?: 'doc' | 'chat';
 }
 
 export function createEvent(input: EventInput): DREvent {
@@ -34,8 +37,8 @@ export function createEvent(input: EventInput): DREvent {
     run(
       `INSERT INTO events
        (id,title,kind,start_ts,end_ts,time_json,place_json,content,tags_json,metrics_json,media_json,
-        related_json,primary_collection_id,device_id,rev,hlc,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        related_json,primary_collection_id,view_mode,device_id,rev,hlc,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         input.title,
@@ -50,6 +53,7 @@ export function createEvent(input: EventInput): DREvent {
         JSON.stringify(input.media ?? []),
         JSON.stringify(normalizeRelated(input.relatedEvents, id)),
         input.primaryCollectionId ?? null,
+        input.viewMode ?? 'doc',
         getDeviceId(),
         1,
         hlc,
@@ -77,7 +81,7 @@ export function updateEvent(id: string, input: Partial<EventInput>): void {
     const time = input.time ?? e.time;
     run(
       `UPDATE events SET title=?, kind=?, start_ts=?, end_ts=?, time_json=?, place_json=?, content=?,
-       tags_json=?, metrics_json=?, media_json=?, related_json=?, primary_collection_id=?, rev=rev+1, hlc=?, updated_at=?
+       tags_json=?, metrics_json=?, media_json=?, related_json=?, primary_collection_id=?, view_mode=?, rev=rev+1, hlc=?, updated_at=?
        WHERE id=?`,
       [
         input.title ?? e.title,
@@ -92,6 +96,7 @@ export function updateEvent(id: string, input: Partial<EventInput>): void {
         JSON.stringify(input.media ?? e.media),
         JSON.stringify(normalizeRelated(input.relatedEvents ?? e.relatedEvents, id)),
         input.primaryCollectionId ?? e.primaryCollectionId,
+        input.viewMode ?? e.viewMode ?? 'doc',
         hlc,
         now,
         id,
@@ -140,6 +145,8 @@ export function deleteEvent(id: string): void {
       id,
     ]);
     appendOplog('event', id, 'delete', { id });
+    // 消息跟着事件一起进回收站：它们是事件的从属数据，单独留在库里会变成孤儿
+    deleteMessagesOfEvent(id);
   });
 }
 
@@ -151,6 +158,7 @@ export function restoreEvent(id: string): void {
       id,
     ]);
     appendOplog('event', id, 'update', { restored: true });
+    restoreMessagesOfEvent(id);
   });
 }
 

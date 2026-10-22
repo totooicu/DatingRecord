@@ -117,6 +117,27 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 8;
   }
+  if (v < 9) {
+    // 聊天形式（v9）：消息独立成表 + 事件选择呈现形态。
+    // 两个都幂等：新库在建表语句里已有，老库靠这里补。
+    d.run(`CREATE TABLE IF NOT EXISTS event_messages (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      order_key TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'msg',
+      person_id TEXT,
+      side TEXT NOT NULL DEFAULT 'left',
+      body TEXT NOT NULL DEFAULT '',
+      ts INTEGER,
+      device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+      created_at TEXT, updated_at TEXT
+    )`);
+    d.run(`CREATE INDEX IF NOT EXISTS idx_msg_event ON event_messages(event_id, order_key)`);
+    if (!hasColumn(d, 'events', 'view_mode')) {
+      d.run(`ALTER TABLE events ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'doc'`);
+    }
+    v = 9;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

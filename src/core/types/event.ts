@@ -37,6 +37,8 @@ export interface DREvent {
   metrics: EventMetrics;
   relatedEvents: RelatedEvent[];
   primaryCollectionId: string | null;
+  /** 呈现形态：doc = 普通正文，chat = 聊天形式。与 kind（语义类型）互不干扰 */
+  viewMode: 'doc' | 'chat';
   deviceId: string;
   rev: number;
   hlc: string;
@@ -45,4 +47,31 @@ export interface DREvent {
   updatedAt: string;
   /** 隐私：开启隐私模式后默认隐藏 */
   isPrivate: boolean;
+}
+
+/**
+ * 聊天形式里的一条：消息气泡或旁白。
+ *
+ * type='msg'    —— 头像 + 用户名 + 正文，头像在左或右
+ * type='divider'—— 旁白：占一行、无头像，可写时间也可随意写别的
+ *
+ * ts 可空是刻意的：这是事后补记工具，不是 IM。默认只关心顺序，
+ * 需要时才用旁白把时间显式插进来，绝不逼用户为每句话编一个精确时间。
+ */
+export interface ChatMessage {
+  id: string;
+  eventId: string;
+  /** 分数排序键，见 core/order.ts */
+  orderKey: string;
+  type: 'msg' | 'divider';
+  personId: string | null;
+  side: 'left' | 'right';
+  body: string;
+  ts: number | null;
+  deviceId: string;
+  rev: number;
+  hlc: string;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

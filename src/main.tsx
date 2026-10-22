@@ -10,10 +10,30 @@ import './styles.css';
 const el = document.getElementById('root')!;
 const boot = document.getElementById('boot');
 const bootTip = document.getElementById('boot-tip');
+const bootPct = document.getElementById('boot-pct');
+const bootBar = document.getElementById('boot-progress');
+const bootFill = document.getElementById('boot-fill');
 
-/** 更新首屏加载态文案（启动画面直接写在 index.html 里，JS 到达前就可见） */
-function setTip(msg: string): void {
-  if (bootTip) bootTip.textContent = msg;
+/**
+ * 更新首屏加载态（启动画面直接写在 index.html 里，JS 到达前就可见）。
+ *
+ * `ratio` 为 null 表示这一阶段量不出进度，条子切成来回扫的不确定态——
+ * 与其显示一个不动的 0%，不如明确告诉用户「在动，只是说不准多久」。
+ */
+let slowHint = false;
+let lastTip: { msg: string; ratio: number | null } = { msg: '正在启动…', ratio: null };
+
+function setTip(msg: string, ratio: number | null = null): void {
+  lastTip = { msg, ratio };
+  paintBoot();
+}
+
+function paintBoot(): void {
+  const { msg, ratio } = lastTip;
+  if (bootTip) bootTip.textContent = slowHint ? `${msg} · 网络较慢，稍等` : msg;
+  if (bootPct) bootPct.textContent = ratio === null ? '' : `${Math.round(ratio * 100)}%`;
+  if (bootBar) bootBar.classList.toggle('is-unknown', ratio === null);
+  if (bootFill) bootFill.style.width = ratio === null ? '' : `${Math.round(ratio * 100)}%`;
 }
 
 /** 收起启动画面；出错时把它替换成可读的错误卡片，绝不留下白屏 */
@@ -50,9 +70,11 @@ function registerServiceWorker(): void {
   });
 }
 
-// 慢网提示：8 秒还没起来说明引擎还没下完，给个说法而不是无声转圈
+// 慢网提示：8 秒还没起来说明引擎还没下完。
+// 只补一句后缀、不动进度——进度是从实际字节数算出来的，比拍脑袋的文案可信
 const slowTimer = window.setTimeout(() => {
-  setTip('网络较慢，正在下载数据库引擎（约 700KB）…');
+  slowHint = true;
+  paintBoot();
 }, 8000);
 
 // 硬超时：90 秒仍未就绪就当作失败，给出可点重试的错误页。

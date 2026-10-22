@@ -65,12 +65,37 @@ CREATE TABLE IF NOT EXISTS events (
   media_json TEXT NOT NULL DEFAULT '[]',
   related_json TEXT NOT NULL DEFAULT '[]',
   primary_collection_id TEXT,
+  /* 呈现形态：doc = 普通正文，chat = 聊天形式。与 kind（语义类型）互不干扰 */
+  view_mode TEXT NOT NULL DEFAULT 'doc',
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
   created_at TEXT, updated_at TEXT,
   is_private INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_ts);
 CREATE INDEX IF NOT EXISTS idx_events_deleted ON events(deleted_at);
+
+/* 聊天形式的消息（v9）。
+   一条消息不是一个能独立被引用的实体——它不被别的事件关联、也不单独进时间线，
+   所以归在事件下面，但独立成表：这样插入/删除/改单条都能独立同步与撤销，
+   不用每次动一条就整段重写事件的 JSON。 */
+CREATE TABLE IF NOT EXISTS event_messages (
+  id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  /* 分数排序键：两端并发插入不会撞车，见 core/order.ts */
+  order_key TEXT NOT NULL,
+  /* msg = 消息气泡，divider = 旁白（无头像、占一行） */
+  type TEXT NOT NULL DEFAULT 'msg',
+  /* 可空：旁白没有头像；消息未指派人物时也没有 */
+  person_id TEXT,
+  /* 头像在左还是在右；默认按参与者 role='self' 推，可手动翻转 */
+  side TEXT NOT NULL DEFAULT 'left',
+  body TEXT NOT NULL DEFAULT '',
+  /* 可空：只有旁白或确实需要时才填，不强制——随手记录不该被逼着填时间 */
+  ts INTEGER,
+  device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+  created_at TEXT, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_msg_event ON event_messages(event_id, order_key);
 
 CREATE TABLE IF NOT EXISTS event_participants (
   event_id TEXT NOT NULL,

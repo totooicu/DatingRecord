@@ -20,6 +20,8 @@ export interface EventDraft {
   participantIds: string[];
   cols: string[];
   relatedEvents: RelatedEvent[];
+  /** 呈现形态：doc = 普通正文，chat = 聊天形式 */
+  viewMode: 'doc' | 'chat';
 }
 
 export function initialDraft(
@@ -47,6 +49,7 @@ export function initialDraft(
       event?.participants.map((p) => p.personId) ?? (defaultPersonId ? [defaultPersonId] : []),
     cols: existingCols.length ? existingCols : defaultCollectionId ? [defaultCollectionId] : [],
     relatedEvents: event?.relatedEvents ?? [],
+    viewMode: event?.viewMode ?? 'doc',
   };
 }
 
@@ -66,6 +69,7 @@ export interface EventPayload {
     intimacyDelta?: number;
   };
   relatedEvents: RelatedEvent[];
+  viewMode: 'doc' | 'chat';
 }
 
 export function draftToPayload(d: EventDraft): EventPayload {
@@ -91,5 +95,6 @@ export function draftToPayload(d: EventDraft): EventPayload {
       intimacyDelta: d.intimacyDelta === '' ? undefined : Number(d.intimacyDelta),
     },
     relatedEvents: d.relatedEvents,
+    viewMode: d.viewMode,
   };
 }

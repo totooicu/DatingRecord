@@ -16,7 +16,15 @@ import { hlcCompare, hlcNow, hlcReceive } from '../time';
 import { putBlob, base64ToBlob } from '../db/blob';
 import { normalizeCollectionTree } from '../repo/collections';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
-import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow } from './mappers';
+import {
+  defToRow,
+  personToRow,
+  eventToRow,
+  collectionToRow,
+  templateToRow,
+  aiModelToRow,
+  messageToRow,
+} from './mappers';
 
 export interface ImportResult {
   mode: 'merge' | 'replace';
@@ -63,7 +71,7 @@ export async function importLibrary(
     throw new Error(`文件版本 ${version} 高于当前支持的 ${SCHEMA_VERSION}，请升级软件`);
   }
 
-  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0 };
+  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0, messages: 0 };
   const importedAttachments: Attachment[] = [];
   let skipped = 0;
   let backupName: string | undefined;
@@ -87,6 +95,7 @@ export async function importLibrary(
         'collections',
         'event_participants',
         'events',
+        'event_messages',
         'person_attr_history',
         'persons',
         'attribute_defs',
@@ -123,6 +132,12 @@ export async function importLibrary(
         skipped++;
       }
       hlcReceive(e.hlc);
+    }
+    // 聊天消息：每条独立比较 hlc，比整段替换事件内 JSON 精细得多
+    for (const m of lib.messages ?? []) {
+      const ok = upsertByHlc('event_messages', 'id', m.id, m.hlc ?? null, messageToRow(m));
+      ok ? counts.messages++ : skipped++;
+      hlcReceive(m.hlc ?? '');
     }
     for (const h of lib.attrHistory ?? []) {
       run(

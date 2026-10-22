@@ -7,7 +7,7 @@ import { queryOne, run, getDeviceId } from '../db';
 import { newId } from '../id';
 import { hlcReceive, hlcCompare, hlcNow } from '../time';
 import type { LibraryFile } from '../types';
-import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow } from '../io/mappers';
+import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow, messageToRow } from '../io/mappers';
 
 export interface MergeCounts {
   defs: number;
@@ -19,11 +19,12 @@ export interface MergeCounts {
   templates: number;
   aiModels: number;
   history: number;
+  messages: number;
   skipped: number;
 }
 
 function emptyCounts(): MergeCounts {
-  return { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0, history: 0, skipped: 0 };
+  return { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0, history: 0, messages: 0, skipped: 0 };
 }
 
 /**
@@ -83,6 +84,13 @@ export function mergeRows(lib: LibraryFile, counts: MergeCounts = emptyCounts())
       counts.skipped++;
     }
     hlcReceive(e.hlc);
+  }
+  // 聊天消息逐条合并：一端加了一句、另一端改了另一句，两边都留下
+  for (const m of lib.messages ?? []) {
+    upsertByHlc('event_messages', 'id', m.id, m.hlc ?? null, messageToRow(m))
+      ? counts.messages++
+      : counts.skipped++;
+    hlcReceive(m.hlc ?? '');
   }
   for (const h of lib.attrHistory ?? []) {
     run(

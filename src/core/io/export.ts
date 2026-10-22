@@ -13,6 +13,7 @@ import {
   rowToAttachment,
   rowToTemplate,
   rowToAiModel,
+  rowToMessage,
   type Row,
 } from './mappers';
 
@@ -85,6 +86,9 @@ export async function buildLibrary(
     aiModels: queryAll<Row>('SELECT * FROM ai_models WHERE deleted_at IS NULL ORDER BY created_at ASC').map(
       rowToAiModel,
     ),
+    messages: queryAll<Row>(
+      'SELECT * FROM event_messages WHERE deleted_at IS NULL ORDER BY event_id ASC, order_key ASC',
+    ).map(rowToMessage),
   };
 }
 

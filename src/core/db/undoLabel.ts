@@ -13,6 +13,7 @@ const ENTITY_NAME: Record<string, string> = {
   attribute_def: '属性',
   template: '属性模板',
   collection_member: '事件集成员',
+  event_message: '消息',
   file: '文件',
   setting: '设置',
 };

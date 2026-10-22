@@ -3,7 +3,7 @@
 import type { AttributeDef, AttrHistoryEntry, AttrTemplate } from './attribute';
 import type { AiModel } from '../ai/types';
 import type { Person } from './person';
-import type { DREvent } from './event';
+import type { DREvent, ChatMessage } from './event';
 import type { Collection, Member } from './collection';
 
 export interface Attachment {
@@ -55,6 +55,8 @@ export interface LibraryFile {
   templates?: AttrTemplate[];
   /** AI 模型配置（v6 新增）；不含密钥，密钥永远只在本机 meta */
   aiModels?: AiModel[];
+  /** 聊天消息（v9 新增）；老备份没有这个字段，导入时按空处理 */
+  messages?: ChatMessage[];
 }
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;

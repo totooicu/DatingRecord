@@ -14,6 +14,7 @@ import { bump } from '../../store';
 import { hides } from '../../privacy';
 import { EventFields } from './EventFields';
 import { EventView } from './EventView';
+import { ChatView } from './ChatView';
 import { draftToPayload, initialDraft, type EventDraft } from './draft';
 
 export function EventForm({
@@ -131,6 +132,7 @@ export function EventForm({
           flat={flat}
           collectionIds={existingCols}
           candidates={candidates}
+          body={event.viewMode === 'chat' ? <ChatView event={event} /> : undefined}
         />
       ) : (
         <>
@@ -147,6 +149,16 @@ export function EventForm({
             eventId={event?.id}
             candidates={candidates}
           />
+          {/* 聊天形式在编辑态也直接可编：点气泡改内容，不用先切回浏览态。
+              新建事件还没有 id，消息无处可挂，保存后再记。 */}
+          {d.viewMode === 'chat' &&
+            (event ? (
+              <ChatView event={event} />
+            ) : (
+              <p className="muted small chat-new-hint">
+                保存之后就能开始记聊天内容了。
+              </p>
+            ))}
         </>
       )}
     </Modal>
