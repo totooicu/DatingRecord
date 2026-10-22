@@ -1,11 +1,12 @@
 // 内联 SVG 图标：不依赖 emoji 字体，各平台渲染一致，且能跟随 currentColor 变色
 
-export type TabKey = 'persons' | 'collections' | 'timeline' | 'settings';
+export type TabKey = 'persons' | 'collections' | 'timeline' | 'calendar' | 'settings';
 
 export const TABS: { key: TabKey; label: string }[] = [
   { key: 'persons', label: '人物' },
   { key: 'collections', label: '事件集' },
   { key: 'timeline', label: '时间线' },
+  { key: 'calendar', label: '日历' },
   { key: 'settings', label: '设置' },
 ];
 
@@ -40,6 +41,18 @@ export function TabIcon({ k }: { k: TabKey }) {
         <svg {...COMMON}>
           <circle cx="12" cy="12" r="8.4" />
           <path d="M12 7.6V12l3 1.8" />
+        </svg>
+      );
+    case 'calendar':
+      return (
+        <svg {...COMMON}>
+          <rect x="3.5" y="5" width="17" height="15.5" rx="2.4" />
+          <path d="M3.5 9.8h17" />
+          <path d="M8 3.4v3.2M16 3.4v3.2" />
+          {/* 一个「有记录」的小点，跟日历格子里的样子呼应 */}
+          <circle cx="8.2" cy="13.4" r="1.1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="13.4" r="1.1" fill="currentColor" stroke="none" />
+          <circle cx="15.8" cy="13.4" r="1.1" fill="currentColor" stroke="none" />
         </svg>
       );
     case 'settings':

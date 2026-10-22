@@ -234,7 +234,11 @@
 }
 
 .coll-icon-fallback {
-  opacity: 0.65;
+  /* 没设图标：用主色系的浅色底，别跟宿主底色（尤其日历的白格）糊成一片 */
+  background: #fde8ef;
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+  color: var(--primary);
+  opacity: 1;
 }
 
 /* ---------- 图标选择器（F-C08） ---------- */

@@ -8,6 +8,7 @@ import { Welcome } from './Welcome';
 import { TopBar } from './TopBar';
 import { UndoSnackbar } from './undo/UndoSnackbar';
 import { TabBar } from './TabBar';
+import { Calendar } from './calendar';
 import { hasAnyPerson } from '../core/seed';
 import { getRoot } from '../core/repo/collections';
 import { listPersons } from '../core/repo/persons';
@@ -27,6 +28,7 @@ type View =
   | { k: 'list'; s: 'persons' | 'collections' }
   | { k: 'detail'; s: 'persons' | 'collections'; id: string }
   | { k: 'timeline' }
+  | { k: 'calendar' }
   | { k: 'settings' };
 
 export default function App() {
@@ -83,14 +85,25 @@ export default function App() {
     }
   }, [v, personId, collectionId]);
 
-  const section: TabKey = view.k === 'timeline' || view.k === 'settings' ? view.k : view.s;
+  const section: TabKey =
+    view.k === 'timeline' || view.k === 'settings' || view.k === 'calendar' ? view.k : view.s;
 
   const gotoTab = (key: TabKey) => {
     setKeyword('');
     if (key === 'timeline') setView({ k: 'timeline' });
+    else if (key === 'calendar') setView({ k: 'calendar' });
     else if (key === 'settings') setView({ k: 'settings' });
     else setView({ k: 'list', s: key });
   };
+
+  /** 日历点某一天 → 时间线只看那一天（清掉其它筛选，避免两个条件互相打架） */
+  const pickDay = useCallback((key: string) => {
+    const from = new Date(`${key}T00:00:00`).getTime();
+    const to = from + 86400000 - 1;
+    setKeyword('');
+    setFilter({ ...defaultFilter, fromTs: from, toTs: to, dayLabel: key });
+    setView({ k: 'timeline' });
+  }, []);
 
   /** 进入详情前记住列表滚动位置，返回时还原 */
   const openDetail = useCallback((s: 'persons' | 'collections', id: string) => {
@@ -180,7 +193,14 @@ export default function App() {
               keyword={keyword}
               openId={jumpEventId}
               onOpened={() => setJumpEventId(null)}
+              onClearDay={() => setFilter(defaultFilter)}
             />
+          </div>
+        )}
+        {view.k === 'calendar' && (
+          <div className="pane pane-solo">
+            <PageHead title="日历" />
+            <Calendar onPickDay={pickDay} />
           </div>
         )}
         {view.k === 'settings' && (

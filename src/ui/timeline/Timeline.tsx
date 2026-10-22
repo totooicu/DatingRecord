@@ -15,12 +15,15 @@ export function Timeline({
   keyword,
   openId,
   onOpened,
+  onClearDay,
 }: {
   filter: TimelineFilter;
   keyword: string;
   /** 外部要求打开的某条事件（文件库的引用列表点进来的） */
   openId?: string | null;
   onOpened?: () => void;
+  /** 清掉日历带进来的「只看某一天」 */
+  onClearDay?: () => void;
 }) {
   const v = useVersion();
   // 参与者名字：隐私模式下，标了隐私的人物显示成「（隐私）」而不是真名——
@@ -34,7 +37,8 @@ export function Timeline({
   };
 
   const events = useMemo<DREvent[]>(() => {
-    const from = filter.withinDays ? Date.now() - Number(filter.withinDays) * 86400000 : undefined;
+    // 日历给的精确区间优先；否则退回「最近 N 天」的粗筛
+    const from = filter.fromTs ?? (filter.withinDays ? Date.now() - Number(filter.withinDays) * 86400000 : undefined);
     return listEvents({
       keyword: keyword || filter.keyword || undefined,
       personId: filter.personId || undefined,
@@ -42,6 +46,7 @@ export function Timeline({
       tag: filter.tag || undefined,
       minRating: filter.minRating ? Number(filter.minRating) : undefined,
       fromTs: from,
+      toTs: filter.toTs,
       collectionId: filter.collectionId || undefined,
     });
   }, [v, filter, keyword]);
@@ -67,8 +72,14 @@ export function Timeline({
       <div className="timeline-head">
         <h3>
           时间线 <span className="muted">{events.length} 条</span>
+          {filter.dayLabel && <span className="tl-daychip">只看 {filter.dayLabel}</span>}
         </h3>
         <div>
+          {filter.dayLabel && (
+            <button className="btn btn-sm" onClick={() => onClearDay?.()}>
+              取消日期
+            </button>
+          )}
           <button className="btn btn-sm" onClick={() => setTrashOpen(true)}>
             回收站
           </button>

@@ -20,7 +20,7 @@ export type IconSize = 'sm' | 'md' | 'lg';
 /** 没设图标时的默认底色（和集合树里的中性灰一致） */
 const DEFAULT_BG = 'var(--panel)';
 const DEFAULT_FG = 'var(--muted)';
-
+/** 回退态的底色交给 CSS 的 .coll-icon-fallback（浅粉 + 主色字），这里不再覆盖 */
 /** 单/双文字的取字规则：去掉首尾空白，双字母按「字符」而不是 UTF-16 码元切 */
 export function iconChars(icon: CollectionIcon): string {
   const raw = (icon.text ?? '').replace(/\s+/g, ' ').trim();
@@ -71,9 +71,10 @@ export function CollectionIconView({
   };
 
   if (!icon) {
-    // 没图标：给一个浅底的首字，比空白格子好认，也不至于抢眼
+    // 没图标：给一个浅色首字，比空白格子好认。
+    // 不传 style —— 让 CSS 的 .coll-icon-fallback 决定颜色，否则行内样式会盖掉它。
     return (
-      <span className={`${cls} coll-icon-fallback`} style={style} title={title} aria-hidden>
+      <span className={`${cls} coll-icon-fallback`} title={title} aria-hidden>
         {(fallback ?? '').slice(0, 1)}
       </span>
     );
