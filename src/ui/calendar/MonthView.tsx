@@ -1,16 +1,26 @@
-// 月视图日历：一格一天，日期下面滚动展示当天的事件（事件集图标 + 事件名）。
+// 月视图日历：连续竖向滚动的多个月份，当前月初始居中，上下滑可看其它月份。
 //
 // 配色只有三种状态，用户不用记任何图例：
 //   过去 —— 灰底，读作「已经发生」
 //   今天 —— 黄底，一眼定位
 //   将来 —— 白底
 //
-// 跨天事件（区间 1→3 号）额外画一条横跨多格的色条，落在所在周的日期格子下方；
-// 单日事件不画条，在格子里用「图标 + 标题」滚动展示。
+// 事件一律画成「横条」：
+//   · 跨天事件跨几列就占几列（起点/终点被月边界裁掉时画 ◀▶ 延续箭头）；
+//   · 单日事件只占一格（与日期框同宽、留背景），外观与跨天条一致，复用同一套框架；
+//   · 横条内容超宽时自动跑马灯滚动。
+// 日期框本身只显示日期数字 + 有记录时的小红点，不放事件内容。
 //
-// 切换月份：在日历上上下滑动，或点标题里的年 / 月打开选择器直接跳转。
-// 点某一天 → 回时间线并按那天过滤（见 MonthView 的 onPickDay 回调）。
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+// 切换月份：直接上下滚动即可（原生滚动，无限延伸）；
+// 点标题里的年 / 月打开选择器可跳转到任意月份并居中；点某一天回时间线按那天过滤。
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   buildMonthGrid,
   collectDaySummaries,
@@ -24,7 +34,6 @@ import {
   EMPTY_CALENDAR_FILTER,
   type CalendarFilter,
   type DayCell,
-  type DayEvent,
   type DaySummary,
   type MonthRef,
   type SpanBar,
@@ -33,8 +42,22 @@ import { useVersion } from '../../store';
 import { Modal } from '../common';
 import { CollectionIconView } from '../collections/CollectionIcon';
 
-/** 竖向滑动多少像素算一次翻月 */
-const SWIPE_THRESHOLD = 56;
+/** 初始窗口：当前月上下各留几个月的余量，滚动时再按需扩展 */
+const WINDOW = 3;
+/** 触发加载相邻月份的滚动边距（px） */
+const EDGE = 320;
+/** 每次触边预加载的月份数 */
+const PREPEND = 3;
+const APPEND = 3;
+/** 滚动能到达的最早 / 最晚月份，避免无限增长 */
+const FLOOR_YEAR = 1990;
+const CEIL_YEAR = 2100;
+
+function buildWindow(center: MonthRef): MonthRef[] {
+  const out: MonthRef[] = [];
+  for (let i = -WINDOW; i <= WINDOW; i += 1) out.push(shiftMonth(center, i));
+  return out;
+}
 
 export function MonthView({
   onPickDay,
@@ -45,80 +68,128 @@ export function MonthView({
 }) {
   const v = useVersion();
   const today = todayKey();
-  const [month, setMonth] = useState<MonthRef>(() => monthOf(new Date()));
+  // 当前真实月份：整次会话固定在打开时，跨零点也不跳变
+  const current = useMemo(() => monthOf(new Date()), []);
+  const [months, setMonths] = useState<MonthRef[]>(() => buildWindow(current));
+  const [center, setCenter] = useState<MonthRef>(current);
   const [picker, setPicker] = useState<'month' | 'year' | null>(null);
-  const calRef = useRef<HTMLDivElement>(null);
+  const [refreshAsk, setRefreshAsk] = useState(false);
 
-  const grid = useMemo(() => buildMonthGrid(month, today), [month, today]);
-  // v 触发重算：刚记完一件事，日历要立刻反应过来
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const pendingScroll = useRef<string | null>(monthKey(current));
+  const pendingPrepend = useRef(0);
+  const prevHeight = useRef(0);
+
   const summaries = useMemo(() => collectDaySummaries(filter), [v, filter]);
   const monthCounts = useMemo(() => collectMonthCounts(filter), [v, filter]);
-  const spanBars = useMemo(() => collectSpanBars(month, filter), [month, v, filter]);
+  const barsByMonth = useMemo(() => {
+    const map = new Map<string, SpanBar[]>();
+    for (const m of months) map.set(monthKey(m), collectSpanBars(m, filter));
+    return map;
+  }, [months, v, filter]);
 
-  const weeks = useMemo(() => {
-    const out: DayCell[][] = [];
-    for (let i = 0; i < grid.length; i += 7) out.push(grid.slice(i, i + 7));
-    return out;
-  }, [grid]);
+  // 让某个月滚动到容器正中（跳转换月 / 回今天 / 初始定位都用它）
+  const scrollToMonth = (m: MonthRef) => {
+    pendingScroll.current = monthKey(m);
+    setMonths((ms) => (ms.some((x) => x.year === m.year && x.month === m.month) ? ms : buildWindow(m)));
+  };
 
-  const monthCellCount = grid.filter((c) => c.inMonth && summaries.has(c.key)).length;
-  const monthCount = monthCounts.get(monthKey(month)) ?? 0;
-  const isThisMonth = month.year === Number(today.slice(0, 4)) && month.month === Number(today.slice(5, 7)) - 1;
+  // 月份块渲染后，处理「顶部续接」的滚动补偿 + 居中跳转
+  useLayoutEffect(() => {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    if (pendingPrepend.current > 0) {
+      const delta = cont.scrollHeight - prevHeight.current;
+      cont.scrollTop += delta;
+      pendingPrepend.current = 0;
+    }
+    if (pendingScroll.current) {
+      const el = blockRefs.current.get(pendingScroll.current);
+      if (el) {
+        cont.scrollTop = el.offsetTop - (cont.clientHeight - el.clientHeight) / 2;
+        pendingScroll.current = null;
+      }
+    }
+  }, [months]);
 
-  // 上下滑动翻月：手势里一旦确认是纵向，就把页面滚动让给日历，
-  // 否则手机上一滑先滚页面，月份根本切不动。
+  const registerRef = (key: string) => (el: HTMLDivElement | null) => {
+    if (el) blockRefs.current.set(key, el);
+    else blockRefs.current.delete(key);
+  };
+
+  // 找出最靠近视口垂直中线的月份，用它驱动顶部标题
+  const recalcCenter = () => {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const cY = cont.getBoundingClientRect().top + cont.clientHeight / 2;
+    let best: MonthRef | null = null;
+    let bestD = Infinity;
+    for (const m of months) {
+      const el = blockRefs.current.get(monthKey(m));
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const d = Math.abs(r.top + r.height / 2 - cY);
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
+    }
+    const b = best as MonthRef | null;
+    if (b) setCenter((prev) => (b.year !== prev.year || b.month !== prev.month ? b : prev));
+  };
+
+  const onScroll = () => {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const top = cont.scrollTop;
+    const bottom = cont.scrollHeight - cont.scrollTop - cont.clientHeight;
+
+    // 1) 触边续接相邻月份
+    if (top < EDGE) {
+      const head = months[0];
+      if (!(head.year <= FLOOR_YEAR && head.month === 0)) {
+        const prev: MonthRef[] = [];
+        for (let i = PREPEND; i >= 1; i -= 1) prev.push(shiftMonth(head, -i));
+        prevHeight.current = cont.scrollHeight;
+        pendingPrepend.current = prev.length;
+        setMonths((ms) => [...prev, ...ms]);
+      }
+    } else if (bottom < EDGE) {
+      const tail = months[months.length - 1];
+      if (!(tail.year >= CEIL_YEAR && tail.month === 11)) {
+        const add: MonthRef[] = [];
+        for (let i = 1; i <= APPEND; i += 1) add.push(shiftMonth(tail, i));
+        setMonths((ms) => [...ms, ...add]);
+      }
+    }
+
+    // 2) 跟踪居中月份（驱动标题）
+    recalcCenter();
+  };
+
+  // 窗口尺寸 / 屏幕旋转后重新判定居中月份，避免标题与实际显示不符
   useEffect(() => {
-    const el = calRef.current;
-    if (!el) return;
-    let y0: number | null = null;
-    let x0 = 0;
-
-    const onStart = (e: TouchEvent) => {
-      // 选择月份的弹层里有自己的滚动/点击，别把它当成翻月手势
-      if ((e.target as Element | null)?.closest?.('.modal')) {
-        y0 = null;
-        return;
-      }
-      if (e.touches.length !== 1) {
-        y0 = null;
-        return;
-      }
-      y0 = e.touches[0].clientY;
-      x0 = e.touches[0].clientX;
-    };
-    const onMove = (e: TouchEvent) => {
-      if (y0 === null) return;
-      const dy = e.touches[0].clientY - y0;
-      const dx = e.touches[0].clientX - x0;
-      if (Math.abs(dy) <= 10 || Math.abs(dy) <= Math.abs(dx) * 1.2) return;
-      e.preventDefault();
-      if (Math.abs(dy) >= SWIPE_THRESHOLD) {
-        y0 = null;
-        // 手指往上推 = 看下个月，和刷列表的方向一致
-        setMonth((m) => shiftMonth(m, dy < 0 ? 1 : -1));
-      }
-    };
-    const onEnd = () => {
-      y0 = null;
-    };
-
-    el.addEventListener('touchstart', onStart, { passive: true });
-    el.addEventListener('touchmove', onMove, { passive: false });
-    el.addEventListener('touchend', onEnd);
-    el.addEventListener('touchcancel', onEnd);
+    const onResize = () => recalcCenter();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
     return () => {
-      el.removeEventListener('touchstart', onStart);
-      el.removeEventListener('touchmove', onMove);
-      el.removeEventListener('touchend', onEnd);
-      el.removeEventListener('touchcancel', onEnd);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
     };
-  }, []);
+    // recalcCenter 依赖 months，月份列表变化时重新绑定即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [months]);
 
-  // 年份列表覆盖「有记录的年份」，并在当前年 / 正在看的年两边各留 5 年，
-  // 让人能翻到没有记录的年份（计划将来、回看旧年份都用得上）
+  const centerGrid = useMemo(() => buildMonthGrid(center, today), [center, today]);
+  const centerMonthCount = monthCounts.get(monthKey(center)) ?? 0;
+  const centerCellCount = centerGrid.filter((c) => c.inMonth && summaries.has(c.key)).length;
+  const isCurrentCentered = center.year === current.year && center.month === current.month;
+
+  // 年份列表覆盖「有记录的年份」，并在当前年 / 正在看的年两边各留 5 年
   const years = useMemo(() => {
-    let min = Math.min(month.year, Number(today.slice(0, 4))) - 5;
-    let max = Math.max(month.year, Number(today.slice(0, 4))) + 5;
+    let min = Math.min(center.year, Number(today.slice(0, 4))) - 5;
+    let max = Math.max(center.year, Number(today.slice(0, 4))) + 5;
     for (const key of monthCounts.keys()) {
       const y = Number(key.slice(0, 4));
       if (y < min) min = y;
@@ -127,7 +198,7 @@ export function MonthView({
     const out: number[] = [];
     for (let y = min; y <= max; y += 1) out.push(y);
     return out;
-  }, [monthCounts, month.year, today]);
+  }, [monthCounts, center.year, today]);
 
   const countOfYear = (year: number) => {
     let n = 0;
@@ -136,74 +207,73 @@ export function MonthView({
   };
 
   return (
-    <div className="cal" ref={calRef}>
+    <div className="cal">
       <div className="cal-head">
         <div className="cal-title">
           <div className="cal-title-row">
             <button className="cal-title-btn" onClick={() => setPicker('year')} title="选择年份">
-              {month.year} 年
+              {center.year} 年
             </button>
             <button className="cal-title-btn" onClick={() => setPicker('month')} title="选择月份">
-              {month.month + 1} 月
+              {center.month + 1} 月
             </button>
           </div>
           <span className="muted small">
-            {monthCount} 件事 · {monthCellCount} 天有记录
+            {centerMonthCount} 件事 · {centerCellCount} 天有记录
           </span>
         </div>
-        {!isThisMonth && (
-          <button className="btn btn-sm" onClick={() => setMonth(monthOf(new Date()))}>
-            回今天
+        <div className="cal-head-actions">
+          {!isCurrentCentered && (
+            <button className="btn btn-sm" onClick={() => scrollToMonth(current)}>
+              回今天
+            </button>
+          )}
+          <button className="btn btn-sm" onClick={() => setRefreshAsk(true)} title="刷新会重新加载页面">
+            刷新
           </button>
-        )}
+        </div>
       </div>
 
-      <div className="cal-weekdays" aria-hidden>
-        {WEEKDAY_LABELS.map((w) => (
-          <span key={w}>{w}</span>
-        ))}
-      </div>
+      <div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
+        <div className="cal-weekdays" aria-hidden>
+          {WEEKDAY_LABELS.map((w) => (
+            <span key={w}>{w}</span>
+          ))}
+        </div>
 
-      <div className="cal-grid" role="grid">
-        {weeks.map((week) => (
-          <div className="cal-week" key={week[0].key}>
-            {week.map((cell) => (
-              <DayCellView
-                key={cell.key}
-                cell={cell}
-                summary={summaries.get(cell.key)}
-                onPick={() => onPickDay(cell.key)}
-              />
-            ))}
-            {weekSegments(week, spanBars).map((seg, idx) => (
-              <SpanBarView
-                key={`${seg.bar.eventId}-${week[0].key}`}
-                seg={seg}
-                row={idx + 2}
-                onPick={() => onPickDay(seg.key)}
-              />
-            ))}
-          </div>
+        {months.map((m) => (
+          <MonthBlock
+            key={monthKey(m)}
+            month={m}
+            today={today}
+            summaries={summaries}
+            bars={barsByMonth.get(monthKey(m)) ?? []}
+            registerRef={registerRef(monthKey(m))}
+            onPickDay={onPickDay}
+          />
         ))}
       </div>
 
       {picker === 'month' && (
-        <Modal title={`${month.year} 年，选择月份`} onClose={() => setPicker(null)}>
+        <Modal
+          title={`${center.year} 年，选择月份`}
+          onClose={() => setPicker(null)}
+        >
           <div className="cal-pick-grid">
-            {Array.from({ length: 12 }, (_, m) => {
-              const key = monthKey({ year: month.year, month: m });
+            {Array.from({ length: 12 }, (_, mm) => {
+              const key = monthKey({ year: center.year, month: mm });
               const count = monthCounts.get(key) ?? 0;
-              const on = m === month.month;
+              const on = mm === center.month;
               return (
                 <button
                   key={key}
                   className={on ? 'cal-pick cal-pick-on' : 'cal-pick'}
                   onClick={() => {
-                    setMonth({ year: month.year, month: m });
+                    scrollToMonth({ year: center.year, month: mm });
                     setPicker(null);
                   }}
                 >
-                  <strong>{m + 1} 月</strong>
+                  <strong>{mm + 1} 月</strong>
                   <span>{count > 0 ? `${count} 件` : '没有记录'}</span>
                 </button>
               );
@@ -220,9 +290,9 @@ export function MonthView({
               return (
                 <button
                   key={y}
-                  className={y === month.year ? 'cal-year-row cal-year-row-on' : 'cal-year-row'}
+                  className={y === center.year ? 'cal-year-row cal-year-row-on' : 'cal-year-row'}
                   onClick={() => {
-                    setMonth({ year: y, month: month.month });
+                    scrollToMonth({ year: y, month: center.month });
                     setPicker(null);
                   }}
                 >
@@ -234,41 +304,117 @@ export function MonthView({
           </div>
         </Modal>
       )}
+
+      {refreshAsk && (
+        <Modal
+          title="刷新页面？"
+          onClose={() => setRefreshAsk(false)}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setRefreshAsk(false)}>
+                取消
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setRefreshAsk(false);
+                  location.reload();
+                }}
+              >
+                确定刷新
+              </button>
+            </>
+          }
+        >
+          <p>
+            刷新会重新加载页面，内存里的会话密钥和未保存的临时状态都会丢失（已写入数据库的内容不受影响）。
+          </p>
+          <p className="muted small">如果只想看最新数据，直接上下滚动日历即可，无需刷新。</p>
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function MonthBlock({
+  month,
+  today,
+  summaries,
+  bars,
+  registerRef,
+  onPickDay,
+}: {
+  month: MonthRef;
+  today: string;
+  summaries: Map<string, DaySummary>;
+  bars: SpanBar[];
+  registerRef: (el: HTMLDivElement | null) => void;
+  onPickDay: (key: string) => void;
+}) {
+  const grid = useMemo(() => buildMonthGrid(month, today), [month, today]);
+  const weeks = useMemo(() => {
+    const out: DayCell[][] = [];
+    for (let i = 0; i < grid.length; i += 7) out.push(grid.slice(i, i + 7));
+    return out;
+  }, [grid]);
+
+  return (
+    <section className="cal-block" ref={registerRef}>
+      <div className="cal-block-head">
+        <span className="cal-block-title">
+          {month.month === 0 ? `${month.year} 年 ` : ''}
+          {month.month + 1} 月
+        </span>
+      </div>
+      <div className="cal-grid" role="grid">
+        {weeks.map((week) => (
+          <div className="cal-week" key={week[0].key}>
+            {week.map((cell) => (
+              <DayCellView
+                key={cell.key}
+                cell={cell}
+                hasEvents={summaries.has(cell.key)}
+                onPick={() => onPickDay(cell.key)}
+              />
+            ))}
+            {weekSegments(week, bars).map((seg) => (
+              <SpanBarView key={`${seg.bar.eventId}-${week[0].key}`} seg={seg} onPick={() => onPickDay(seg.key)} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
 function DayCellView({
   cell,
-  summary,
+  hasEvents,
   onPick,
 }: {
   cell: DayCell;
-  summary?: DaySummary;
+  hasEvents: boolean;
   onPick: () => void;
 }) {
-  const count = summary?.count ?? 0;
-  const title = summary ? `${cell.key}　${count} 件事` : cell.key;
-
   return (
     <button
       type="button"
       className={`cal-cell cal-${cell.phase}${cell.inMonth ? '' : ' cal-out'}`}
       onClick={onPick}
-      title={title}
+      title={cell.key}
       data-day={cell.key}
     >
       <span className="cal-date">{cell.day}</span>
-      {summary && summary.events.length > 0 && <DayTicker events={summary.events} />}
+      {hasEvents && <span className="cal-dot" />}
     </button>
   );
 }
 
 /**
- * 格子里的「图标 + 事件名」：
- * 放得下就静止，放不下就复制一份、向左匀速滚动，鼠标/手指不用悬停也能读完。
+ * 横条里的「图标 + 标题」：放得下就静止，放不下就复制一份向左匀速滚动。
+ * 单日 / 跨日事件都用它，外观统一。
  */
-function DayTicker({ events }: { events: DayEvent[] }) {
+function Marquee({ children }: { children: ReactNode }) {
   const boxRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLSpanElement>(null);
   const [running, setRunning] = useState(false);
@@ -284,25 +430,14 @@ function DayTicker({ events }: { events: DayEvent[] }) {
       const content = running ? track.scrollWidth / 2 : track.scrollWidth;
       const over = content > box.clientWidth + 1;
       setRunning(over);
-      if (over) setDuration(Math.max(5, Math.round(content / 12)));
+      if (over) setDuration(Math.max(4, Math.round(content / 14)));
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(box);
     ro.observe(track);
     return () => ro.disconnect();
-  }, [events, running]);
-
-  const copy = (n: number) => (
-    <span className="cal-ticker-copy" key={n}>
-      {events.map((ev) => (
-        <span className="cal-ev" key={ev.id}>
-          <CollectionIconView icon={ev.icon} size="sm" fallback={ev.title} />
-          <span className="cal-ev-title">{ev.title}</span>
-        </span>
-      ))}
-    </span>
-  );
+  }, [running]);
 
   return (
     <span className={running ? 'cal-events cal-events-run' : 'cal-events'} ref={boxRef}>
@@ -311,10 +446,19 @@ function DayTicker({ events }: { events: DayEvent[] }) {
         ref={trackRef}
         style={running ? { animationDuration: `${duration}s` } : undefined}
       >
-        {copy(0)}
-        {running && copy(1)}
+        <span className="cal-ticker-copy">{children}</span>
+        {running && <span className="cal-ticker-copy">{children}</span>}
       </span>
     </span>
+  );
+}
+
+function BarLabel({ bar }: { bar: SpanBar }) {
+  return (
+    <Marquee>
+      {bar.icon && <CollectionIconView icon={bar.icon} size="sm" fallback={bar.title} />}
+      <span className="cal-ev-title">{bar.title}</span>
+    </Marquee>
   );
 }
 
@@ -350,23 +494,23 @@ function weekSegments(week: DayCell[], bars: SpanBar[]): WeekSegment[] {
       clippedEnd: bar.clippedEnd || bar.endKey > wkEnd,
     });
   }
-  // 行号是全局分配的，周内按行号排；同一行的按列序兜底
+  // 行号由 lane 决定，跨周的条能停在同一行；同 lane 的按列序兜底
   return segs.sort((a, b) => a.bar.lane - b.bar.lane || a.colStart - b.colStart);
 }
 
-function SpanBarView({ seg, row, onPick }: { seg: WeekSegment; row: number; onPick: () => void }) {
+function SpanBarView({ seg, onPick }: { seg: WeekSegment; onPick: () => void }) {
   const { bar } = seg;
+  const range = bar.startKey === bar.endKey ? bar.startKey : `${bar.startKey} → ${bar.endKey}`;
   return (
     <button
       type="button"
       className="cal-span"
-      style={{ gridRow: row, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}` }}
+      style={{ gridRow: bar.lane + 2, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}` }}
       onClick={onPick}
-      title={`${bar.title}（${bar.startKey} → ${bar.endKey}）`}
+      title={`${bar.title}（${range}）`}
     >
       {seg.clippedStart && <span className="cal-span-clip">◀</span>}
-      {bar.icon && <CollectionIconView icon={bar.icon} size="sm" fallback={bar.title} />}
-      <span className="cal-span-title">{bar.title}</span>
+      <BarLabel bar={bar} />
       {seg.clippedEnd && <span className="cal-span-clip">▶</span>}
     </button>
   );

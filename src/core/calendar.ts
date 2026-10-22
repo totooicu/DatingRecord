@@ -249,11 +249,17 @@ export function collectDaySummaries(
   return out;
 }
 
-/** 跨多天的事件条（月视图里横跨多格的视觉条；单日事件不画条，用格子里的图标） */
+/**
+ * 事件条：月视图里横跨若干日期格的视觉条。
+ *
+ * 单日事件（startKey === endKey）也走这套框架，只是只占一格——
+ * 这样单日 / 跨日事件外观统一，渲染层不用两套逻辑。
+ * 条内内容超宽时由前端做跑马灯滚动。
+ */
 export interface SpanBar {
   eventId: string;
   title: string;
-  /** 月内裁剪后的起止日键：跨月事件只画本月部分 */
+  /** 月内裁剪后的起止日键：跨月事件只画本月部分；单日事件起止相同 */
   startKey: DayKey;
   endKey: DayKey;
   /** 起点/终点被月边界裁掉（渲染时画延续箭头） */
@@ -286,7 +292,7 @@ export function collectSpanBars(
     if (!sKey) continue;
     let eKey = dayKeyOfTs(e.endTs);
     if (!eKey || eKey < sKey) eKey = sKey;
-    if (sKey === eKey) continue; // 单日事件留在格子里，不画条
+    // 单日事件也走 SpanBar 框架（占一格），不再单独在格子里渲染
     if (eKey < monthStart || sKey > monthEnd) continue; // 与本月不相交
 
     const clippedStart = sKey < monthStart;

@@ -17,8 +17,10 @@ export function Calendar({ onPickDay }: { onPickDay: (key: string) => void }) {
       <CalendarFilters filter={filter} onChange={setFilter} />
       <MonthView filter={filter} onPickDay={onPickDay} />
       <p className="muted small cal-tip">
-        点任意一格，回时间线看那一天的事。上下滑动日历切换月份，点标题里的年 / 月可以直接跳转。
-        灰底是过去、黄底是今天、白底是将来；筛选只影响日历上的标记，不会改动任何数据。
+        上下滚动日历可连续翻看各个月份，当前月默认居中；点标题里的年 / 月可直接跳到任意月份。
+        事件都画成横条：跨天事件跨几格占几格，单日事件占一格（与日期框同宽）。
+        点任意一格或任意一条横条，回时间线看那一天的事。灰底是过去、黄底是今天、白底是将来；
+        筛选只影响日历上的标记，不会改动任何数据。
       </p>
     </div>
   );

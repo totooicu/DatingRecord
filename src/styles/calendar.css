@@ -63,15 +63,63 @@
   line-height: 1;
 }
 
+.cal-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .cal-weekdays,
 .cal-grid {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+/* 星期行在连续滚动时吸顶，方便随时对照列 */
 .cal-weekdays {
   display: grid;
   gap: 4px;
-  margin-bottom: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  padding-bottom: 4px;
+}
+
+/* 连续滚动容器：承载多个月份块，当前月初始居中 */
+.cal-scroll {
+  max-height: 64vh;
+  min-height: 340px;
+  overflow-y: auto;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+/* 每个月份块：紧凑的月份标签 + 网格；块之间用细分隔线。
+   月份名在顶部标题里也有（实时指示居中月份），这里只做滚动时的
+   边界标尺，所以刻意用更小、更淡的「10 月」而不是重复完整标题 */
+.cal-block {
+  padding: 8px 0 6px;
+}
+
+.cal-block:first-of-type {
+  padding-top: 2px;
+}
+
+.cal-block + .cal-block {
+  border-top: 1px solid var(--border);
+}
+
+.cal-block-head {
+  padding: 2px 2px 6px;
+}
+
+.cal-block-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
 }
 
 .cal-weekdays span {
@@ -104,8 +152,9 @@
 .cal-cell {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   min-height: 36px;
   padding: 3px 1px;
   border: none;
@@ -147,6 +196,15 @@
   line-height: 1.1;
   text-align: center;
   color: var(--fg, #2b2b2b);
+}
+
+/* 有记录的日期：数字下方的极小圆点，仅作标记，不放事件内容 */
+.cal-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.7;
 }
 
 /* ---------- 日期格里的「图标 + 事件名」滚动条 ----------
@@ -226,7 +284,7 @@
   align-items: center;
   gap: 3px;
   min-width: 0;
-  height: 17px;
+  height: 18px;
   padding: 0 5px;
   border: none;
   border-radius: 5px;
@@ -237,6 +295,13 @@
   text-align: left;
   cursor: pointer;
   overflow: hidden;
+}
+
+/* 横条里的跑马灯：占满剩余宽度，内容超宽时由 Marquee 组件复制滚动 */
+.cal-span .cal-events {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
 }
 
 .cal-span:active {
