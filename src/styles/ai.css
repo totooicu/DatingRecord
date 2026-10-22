@@ -101,91 +101,67 @@
   font-weight: 600;
 }
 
-/* 密钥表：每行 = 服务商 | 密钥 | 操作 三列 */
-.key-table {
+/* 密钥卡片：每张 = 第一行服务商 + 第二行密钥/复制/删除 */
+.key-cards {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.key-card {
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
-  margin-top: 8px;
-  background: var(--panel);
-}
-
-.key-head,
-.key-row {
-  display: grid;
-  grid-template-columns: 210px 1fr 72px;
-  gap: 12px;
-  align-items: center;
   padding: 10px 12px;
-}
-
-.key-head {
-  font-size: 12px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--muted) 8%, var(--panel));
-  border-bottom: 1px solid var(--border);
-}
-
-.key-head-action {
-  text-align: center;
-}
-
-.key-row + .key-row {
-  border-top: 1px solid var(--border);
-}
-
-.key-prov-custom {
+  background: var(--panel);
   display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .key-prov-input {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-}
-
-.key-prov-custom .btn {
-  width: auto;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-.key-prov-select {
   width: 100%;
   min-width: 0;
+}
+
+.key-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .key-input {
-  width: 100%;
+  flex: 1;
   min-width: 0;
 }
 
-.key-row .btn {
-  width: 100%;
+.key-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
-.key-row-add .key-add-hint {
-  text-align: center;
+.key-actions .btn {
+  width: auto;
+  white-space: nowrap;
+}
+
+.key-add-hint {
   white-space: nowrap;
 }
 
 .key-empty {
   padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
 }
 
 @media (max-width: 480px) {
-  .key-head {
-    display: none;
+  .key-row2 {
+    flex-wrap: wrap;
   }
-  .key-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-  .key-head-action,
-  .key-row-add .key-add-hint {
-    display: none;
+  .key-input {
+    flex: 1 1 100%;
+    order: -1;
   }
 }
