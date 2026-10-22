@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { createCollection, getTree, type TreeNode } from '../../core/repo/collections';
 import { useVersion, bump } from '../../store';
 import { CollectionIconView } from './CollectionIcon';
@@ -6,9 +6,12 @@ import { CollectionIconView } from './CollectionIcon';
 export function CollectionTree({
   selectedId,
   onSelect,
+  children,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** 挂在标题栏右侧的额外操作（如「导入分享」） */
+  children?: ReactNode;
 }) {
   const v = useVersion();
   const tree = useMemo(() => getTree(), [v]);
@@ -67,9 +70,12 @@ export function CollectionTree({
     <div className="pane-body">
       <div className="pane-head">
         <strong>事件集</strong>
-        <button className="icon-btn" onClick={() => setCreating(true)} title="新建事件集">
-          ＋
-        </button>
+        <span className="pane-head-actions">
+          {children}
+          <button className="icon-btn" onClick={() => setCreating(true)} title="新建事件集">
+            ＋
+          </button>
+        </span>
       </div>
       {creating && (
         <div className="inline-create">

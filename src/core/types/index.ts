@@ -6,3 +6,4 @@ export * from './person';
 export * from './event';
 export * from './collection';
 export * from './common';
+export * from './share';

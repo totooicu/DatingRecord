@@ -5,7 +5,7 @@
 
 import type { RefObject } from 'react';
 import { PersonDetail, PersonList } from './persons';
-import { CollectionDetail, CollectionTree } from './collections';
+import { CollectionDetail, CollectionTree, ShareImportButton } from './collections';
 import { PageHead } from './common';
 import { getPerson } from '../core/repo/persons';
 import { getCollection } from '../core/repo/collections';
@@ -74,7 +74,9 @@ export function CollectionsPane({ detailMode, detailId, selectedId, onSelect, on
   return (
     <>
       <div className="pane pane-list" ref={listRef}>
-        <CollectionTree selectedId={selectedId} onSelect={onSelect} />
+        <CollectionTree selectedId={selectedId} onSelect={onSelect}>
+          <ShareImportButton />
+        </CollectionTree>
       </div>
       <div className="pane pane-detail">
         {showId && coll && !collHidden ? (

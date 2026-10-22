@@ -12,4 +12,14 @@ export {
   libraryTextFromArchive,
 } from './archive';
 export { importLibrary, type ImportResult } from './import';
+export {
+  NEW_PERSON,
+  applyShare,
+  buildShare,
+  exportShareFile,
+  parseShare,
+  planShare,
+  type SharePersonRow,
+  type SharePlan,
+} from './share';
 export { clearAllData, dbSizeBytes } from './maintenance';

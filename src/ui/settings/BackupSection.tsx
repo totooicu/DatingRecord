@@ -5,6 +5,7 @@ import { exportToFile, importFromFile } from '../../core/io';
 import { exportArchiveToFile } from '../../core/io';
 import { getMeta } from '../../core/db';
 import { Section, fmtMeta } from './Section';
+import { ShareImportButton } from '../collections';
 import { bump } from '../../store';
 
 export function BackupSection() {
@@ -99,6 +100,15 @@ export function BackupSection() {
 
       {result && <div className="alert alert-ok">{result}</div>}
       {error && <div className="alert alert-err">{error}</div>}
+
+      {/* 分享是另一条路：只带一个事件集，导入前先预览、确认人物怎么关联 */}
+      <div className="row-actions share-entry">
+        <span className="muted small">
+          收到别人的 .drshare.json？可以先预览里面有什么、人物怎么关联，确认后再导入。
+        </span>
+        <ShareImportButton text="导入事件集分享" />
+      </div>
+
       <p className="muted small">
         上次导入：{fmtMeta(getMeta('last_import_at'))}　·　上次打开：{fmtMeta(getMeta('last_opened_at'))}
       </p>

@@ -6,7 +6,9 @@ import {
   setCollectionPrivate,
   setCollectionIcon,
 } from '../../core/repo/collections';
+import { exportShareFile } from '../../core/io';
 import { ConfirmButton, PrivacyButton } from '../common';
+import { showToast } from '../toast';
 import { bump } from '../../store';
 import type { Collection } from '../../core/types';
 import { CollectionIconView } from './CollectionIcon';
@@ -24,6 +26,7 @@ export function CollectionHead({
   onError: (msg: string) => void;
 }) {
   const [iconOpen, setIconOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   return (
     <>
@@ -75,6 +78,26 @@ export function CollectionHead({
           </select>
           <button className="btn" onClick={onMove}>
             移动
+          </button>
+          {/* 分享只带走这一个事件集（含子事件集）以及它真正用到的人物、聊天、附件，
+              不是整库备份——所以放在详情页而不是设置里 */}
+          <button
+            className="btn"
+            disabled={sharing}
+            title="生成 .drshare.json：只含这个事件集，可发给别人预览或导入"
+            onClick={async () => {
+              setSharing(true);
+              try {
+                const name = await exportShareFile(collection.id);
+                showToast(`已生成分享文件：${name}`);
+              } catch (e) {
+                onError(e instanceof Error ? e.message : String(e));
+              } finally {
+                setSharing(false);
+              }
+            }}
+          >
+            {sharing ? '生成中…' : '分享'}
           </button>
           <PrivacyButton
             active={collection.isPrivate}

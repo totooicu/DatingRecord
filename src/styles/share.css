@@ -1,0 +1,149 @@
+/* 事件集分享：预览 / 人物关联 */
+
+.share-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.share-pick p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.share-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.share-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfaf8;
+}
+
+.share-summary em {
+  font-style: normal;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.share-block h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.share-block p {
+  margin: 6px 0 0;
+  line-height: 1.7;
+}
+
+/* 事件集结构：扁平列出，根那个加粗，层级一眼能认 */
+.share-tree {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.share-tree-row {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.share-tree-root {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  background: #fff7f9;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.share-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.share-event-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.share-event-row:nth-child(odd) {
+  background: #fbfaf8;
+}
+
+/* 人物关联表：左「分享里的人」右「落到本库谁身上」 */
+.share-map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-map-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.share-map-from {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.share-map-from strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.share-map-arrow {
+  color: var(--muted);
+  flex: none;
+}
+
+.share-map-row select {
+  flex: 1;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.share-entry {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  align-items: center;
+}
+
+.share-entry span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 事件集列表标题栏：＋ 与「导入分享」并排 */
+.pane-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
