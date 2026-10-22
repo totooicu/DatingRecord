@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS persons (
   kind TEXT NOT NULL DEFAULT 'person',
   status TEXT NOT NULL DEFAULT 'active',
   avatar TEXT,
+  icon_json TEXT,
   tags_json TEXT NOT NULL DEFAULT '[]',
   attrs_json TEXT NOT NULL DEFAULT '{}',
   notes TEXT NOT NULL DEFAULT '',

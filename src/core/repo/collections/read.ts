@@ -9,7 +9,11 @@ import { isPrivacyMode } from '../../../privacy';
 // ---------------- 查询 ----------------
 
 export function getRoot(): Collection | null {
-  const row = queryOne<CollectionRow>('SELECT * FROM collections WHERE is_root = 1 LIMIT 1');
+  // 多个根（合并导入别的库时会带进来第二棵根）时固定取最早创建的那棵，
+  // 否则 LIMIT 1 没有 ORDER BY，取哪棵由 SQLite 心情决定，树会时有时无。
+  const row = queryOne<CollectionRow>(
+    'SELECT * FROM collections WHERE is_root = 1 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1',
+  );
   return row ? collectionFromRow(row) : null;
 }
 

@@ -26,6 +26,7 @@ export interface PersonRow {
   kind: string;
   status: string;
   avatar: string | null;
+  icon_json: string | null;
   tags_json: string;
   attrs_json: string;
   notes: string;
@@ -72,6 +73,7 @@ export function personFromRow(r: PersonRow): Person {
     kind: r.kind as Person['kind'],
     status: r.status as Person['status'],
     avatar: r.avatar,
+    icon: safeParse<Person['icon']>(r.icon_json ?? 'null', null),
     tags: safeParse<string[]>(r.tags_json, []),
     attrs: safeParse<Record<string, AttributeValue>>(r.attrs_json, {}),
     notes: r.notes,

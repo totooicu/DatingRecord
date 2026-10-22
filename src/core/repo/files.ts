@@ -194,10 +194,10 @@ export async function deleteFile(id: string): Promise<void> {
  * 所以两个名字都要匹配（用 / 分隔的正则串做不到，直接两次 LIKE 拼起来）。
  */
 /**
- * 头像引用：把该文件设为头像的人物。
+ * 头像 / 图标引用：把该文件设为头像或人物图标的人物。
  *
- * 注意 persons.avatar 存的是 `file:<文件id>`（见 AvatarPicker.pick），
- * 不是引用名。所以这里按 id 匹配，同时兼容极少数只存裸 id 的老数据。
+ * 注意 persons.avatar 存的是 `file:<文件id>`，不是引用名；新的人物图标
+ * 存在 icon_json.fileId。两处都要算，否则文件管理会漏报、孤儿回收会误删。
  */
 export interface FileRefPerson {
   id: string;
@@ -209,9 +209,10 @@ export function personsUsingFile(file: StoredFile | string): FileRefPerson[] {
   if (!id) return [];
   return queryAll<{ id: string; display_name: string }>(
     `SELECT id, display_name FROM persons
-     WHERE deleted_at IS NULL AND (avatar = ? OR avatar = ?)
+     WHERE deleted_at IS NULL
+       AND (avatar = ? OR avatar = ? OR json_extract(icon_json, '$.fileId') = ?)
      ORDER BY display_name ASC`,
-    [`file:${id}`, id],
+    [`file:${id}`, id, id],
   ).map((r) => ({ id: r.id, displayName: r.display_name || '（未命名）' }));
 }
 

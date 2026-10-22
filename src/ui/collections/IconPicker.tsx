@@ -10,11 +10,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { uploadFileQuiet } from '../../core/files';
 import { listFiles, urlForFile, type StoredFile } from '../../core/repo/files';
-import { setCollectionIcon } from '../../core/repo/collections';
 import { ConfirmButton, Modal } from '../common';
 import { useVersion, bump } from '../../store';
 import { getSmallLimit } from '../filePrefs';
-import type { Collection, CollectionIcon, CollectionIconType } from '../../core/types';
+import type { CollectionIcon, CollectionIconType } from '../../core/types';
 import { CollectionIconView, iconChars } from './CollectionIcon';
 
 /** 前景色板：字色以深浅为主，能压在任意底色上 */
@@ -41,9 +40,33 @@ const TABS: { type: CollectionIconType; label: string }[] = [
   { type: 'image', label: '图片' },
 ];
 
-export function IconPicker({ collection, onClose }: { collection: Collection; onClose: () => void }) {
+/**
+ * 通用图标选择器。
+ *
+ * 事件集与人物共用同一套图标（F-C08 / F-P07）：调用方只负责把当前图标
+ * 传进来、在 onSave 里落库。新增实体（例如以后的分组）也能直接复用。
+ */
+export function IconPicker({
+  icon,
+  title = '事件集图标',
+  fallback = '',
+  fileHint = '文件会出现在「设置 → 文件」里，可作为事件集图标被引用',
+  /** 老字段（如人物头像）的清除入口：没设图标、但老数据还有显示内容时才会出现 */
+  legacyClear,
+  onSave,
+  onClose,
+}: {
+  icon: CollectionIcon | null;
+  title?: string;
+  /** 无文字图标时的预览回退文字（一般是实体名字） */
+  fallback?: string;
+  fileHint?: string;
+  legacyClear?: { label: string; onClear: () => void };
+  onSave: (icon: CollectionIcon | null) => void;
+  onClose: () => void;
+}) {
   const v = useVersion();
-  const cur = collection.icon;
+  const cur = icon;
   const [type, setType] = useState<CollectionIconType>(cur?.type ?? 'text');
   const [text, setText] = useState(cur?.text ?? '');
   const [fileId, setFileId] = useState<string | undefined>(cur?.fileId);
@@ -99,14 +122,14 @@ export function IconPicker({ collection, onClose }: { collection: Collection; on
     if ((type === 'svg' || type === 'image') && fileId && !fileExists(fileId)) {
       return setErr('这张图已经不在文件库里了，请重新上传');
     }
-    setCollectionIcon(collection.id, draft);
+    onSave(draft);
     bump();
     onClose();
   };
 
   return (
     <Modal
-      title="事件集图标"
+      title={title}
       onClose={onClose}
       footer={
         <>
@@ -116,11 +139,22 @@ export function IconPicker({ collection, onClose }: { collection: Collection; on
               danger
               confirmText="恢复默认外观？"
               onConfirm={() => {
-                setCollectionIcon(collection.id, null);
+                onSave(null);
                 bump();
                 onClose();
               }}
             />
+          )}
+          {!cur && legacyClear && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                legacyClear.onClear();
+                onClose();
+              }}
+            >
+              {legacyClear.label}
+            </button>
           )}
           <button className="btn" onClick={onClose}>
             取消
@@ -134,13 +168,11 @@ export function IconPicker({ collection, onClose }: { collection: Collection; on
       <div className="icon-picker">
         {/* 预览：三种尺寸，顺便让人看清在树里/日历里/头部是什么样 */}
         <div className="icon-preview">
-          <CollectionIconView icon={draft} size="lg" fallback={collection.name} />
-          <CollectionIconView icon={draft} size="md" fallback={collection.name} />
-          <CollectionIconView icon={draft} size="sm" fallback={collection.name} />
+          <CollectionIconView icon={draft} size="lg" fallback={fallback} />
+          <CollectionIconView icon={draft} size="md" fallback={fallback} />
+          <CollectionIconView icon={draft} size="sm" fallback={fallback} />
           <span className="muted small">
-            {draft && (draft.type === 'svg' || draft.type === 'image')
-              ? '文件会出现在「设置 → 文件」里，可作为事件集图标被引用'
-              : '大小三档自动适配列表、日历与详情页'}
+            {draft && (draft.type === 'svg' || draft.type === 'image') ? fileHint : '大小三档自动适配列表、日历与详情页'}
           </span>
         </div>
 

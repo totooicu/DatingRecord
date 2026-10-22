@@ -30,6 +30,8 @@ export function hasRef(md: string, name: string): boolean {
 export interface RewriteReport {
   events: number;
   avatars: number;
+  /** 被改写的图标（人物 + 事件集）数量 */
+  icons: number;
 }
 
 export interface RefTarget {
@@ -49,7 +51,7 @@ export interface RefTarget {
  */
 export function rewriteRefs(pairs: RefTarget[]): RewriteReport {
   const live = pairs.filter((p) => p.from && p.to && p.from !== p.to);
-  if (live.length === 0) return { events: 0, avatars: 0 };
+  if (live.length === 0) return { events: 0, avatars: 0, icons: 0 };
 
   const rows = queryAll<{ id: string; content: string }>(
     'SELECT id, content FROM events WHERE deleted_at IS NULL',
@@ -57,9 +59,17 @@ export function rewriteRefs(pairs: RefTarget[]): RewriteReport {
   const persons = queryAll<{ id: string; avatar: string | null }>(
     'SELECT id, avatar FROM persons WHERE avatar IS NOT NULL',
   );
+  // 图标（人物 / 事件集）存的是 attachments.id，不跟着改就会指向马上被删掉的源文件
+  const personIcons = queryAll<{ id: string; icon_json: string }>(
+    'SELECT id, icon_json FROM persons WHERE icon_json IS NOT NULL',
+  );
+  const collectionIcons = queryAll<{ id: string; icon_json: string }>(
+    'SELECT id, icon_json FROM collections WHERE icon_json IS NOT NULL',
+  );
 
   let events = 0;
   let avatars = 0;
+  let icons = 0;
   const now = new Date().toISOString();
   transact(() => {
     for (const r of rows) {
@@ -88,8 +98,50 @@ export function rewriteRefs(pairs: RefTarget[]): RewriteReport {
       appendOplog('person', p.id, 'update', { reason: 'avatar-rewrite' });
       avatars++;
     }
+    for (const row of personIcons) {
+      const next = rewriteIconJson(row.icon_json, live);
+      if (!next) continue;
+      run('UPDATE persons SET icon_json = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+        next,
+        hlcNow(getDeviceId()),
+        now,
+        row.id,
+      ]);
+      appendOplog('person', row.id, 'update', { reason: 'icon-rewrite' });
+      icons++;
+    }
+    for (const row of collectionIcons) {
+      const next = rewriteIconJson(row.icon_json, live);
+      if (!next) continue;
+      run('UPDATE collections SET icon_json = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
+        next,
+        hlcNow(getDeviceId()),
+        now,
+        row.id,
+      ]);
+      appendOplog('collection', row.id, 'update', { reason: 'icon-rewrite' });
+      icons++;
+    }
   });
-  return { events, avatars };
+  return { events, avatars, icons };
+}
+
+/** 图标 JSON 里的 fileId 换成合并后的目标 id；没变化返回 null */
+function rewriteIconJson(json: string, pairs: RefTarget[]): string | null {
+  let icon: { fileId?: string } | null = null;
+  try {
+    icon = JSON.parse(json) as { fileId?: string };
+  } catch {
+    return null;
+  }
+  if (!icon?.fileId) return null;
+  for (const p of pairs) {
+    if (p.id && (icon.fileId === p.id || icon.fileId === p.from)) {
+      if (icon.fileId === p.id) return null;
+      return JSON.stringify({ ...icon, fileId: p.id });
+    }
+  }
+  return null;
 }
 
 /**

@@ -91,6 +91,21 @@
   opacity: 0.85;
 }
 
+/* 自定义图标头像：内容复用事件集图标（coll-icon），外形仍保持圆形头像 */
+.avatar-icon {
+  background: transparent;
+}
+
+.avatar-icon .coll-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.avatar-icon.avatar-lg .coll-icon {
+  font-size: 26px;
+}
+
 .inline-create {
   display: flex;
   gap: 6px;

@@ -109,6 +109,14 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 7;
   }
+  if (v < 8) {
+    // 人物图标（v8）：与事件集图标共用一套 CollectionIcon（单文字/双字母/SVG/图片 + 配色）。
+    // avatars 老字段保留，作为没设图标时的回退，不迁移不覆盖。
+    if (!hasColumn(d, 'persons', 'icon_json')) {
+      d.run(`ALTER TABLE persons ADD COLUMN icon_json TEXT`);
+    }
+    v = 8;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

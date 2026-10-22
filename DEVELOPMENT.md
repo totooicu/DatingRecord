@@ -298,6 +298,18 @@ interface SqlDriver {
 - 归档：软删除，列表默认隐藏，可恢复；
 - 合并：选择重复人物 → 预览 → 合并属性（冲突字段逐个人工选择）+ 转移事件参与者引用。
 
+### F-P09 人物图标 — P1
+
+- `persons.icon_json`（schema v8，老库 `hasColumn()` 幂等补列）存与事件集同款的 `CollectionIcon`
+  （`text` / `alpha` / `svg` / `image` + `fg` / `bg`）。**同一个 `IconPicker` 组件复用**，
+  只通过 `onSave` 决定落到哪个实体上。
+- **显示优先级**：自定义图标 → 老头像 `avatar`（`file:<id>`）→ 姓名首字。
+  `Avatar` 组件把图标交给 `CollectionIconView` 渲染，外形仍保持圆形头像。
+- **写入口 `setPersonIcon()`**：与 `setCollectionIcon()` 同构，幂等、单独 oplog，`null` 恢复默认。
+- **文件引用一视同仁**：`personsUsingFile()` 同时匹配 `avatar` 与 `icon_json.fileId`；
+  `fileStillReferenced()` 把人物图标算作引用；文件合并/改名时 `rewriteRefs()` 会改写
+  人物图标与事件集图标里的 `fileId`，否则源文件一删图标就失效。
+
 ---
 
 ## 2.3 事件模块
@@ -339,7 +351,8 @@ interface SqlDriver {
 - 正文：Markdown，支持图片内联；
 - 附件：存 `attachments` 表，**内容寻址（sha256 命名）**，天然去重；
 - **边界**：删除事件不清空附件（引用计数归零才清理）；附件丢失时 UI 显示占位符而非崩溃。
-- **做法**：一条文件引用的「主」只有三处——事件正文里的 `file:<storedId>`、事件的 `media_json`、人物头像（`persons.avatar`）。
+- **做法**：一条文件引用的「主」有四处——事件正文里的 `file:<storedId>`、事件的 `media_json`、
+  人物头像 / 人物图标（`persons.avatar` / `persons.icon_json`）、事件集图标（`collections.icon_json`）。
   引用计数归零的自动回收**只发生在彻底删除事件**（`purgeEvent` → `sweepEventFiles`，见 `core/repo/fileGc.ts`）：
   软删除不回收（回收站里的事件随时可能恢复，恢复了引用又回来了）；
   编辑正文丢引用也不自动删——IndexedDB 里的二进制删了就真没了，整库快照式撤销只覆盖 SQLite 那一份、救不回 blob，

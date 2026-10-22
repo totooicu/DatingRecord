@@ -1,9 +1,15 @@
 // 详情头：头像 + 改名 + 标签 + 归档按钮
 import { useState } from 'react';
-import { updatePerson, listPersons, deletePerson, setPersonPrivate } from '../../core/repo/persons';
+import {
+  updatePerson,
+  listPersons,
+  deletePerson,
+  setPersonPrivate,
+  setPersonIcon,
+} from '../../core/repo/persons';
 import { TagInput, PrivacyButton } from '../common';
 import { Avatar } from './Avatar';
-import { AvatarPicker } from './AvatarPicker';
+import { IconPicker } from '../collections/IconPicker';
 import { bump } from '../../store';
 import type { Person } from '../../core/types';
 
@@ -19,7 +25,7 @@ export function PersonHead({
   // 归档二次确认就地替换按钮：记一件事 → 确认，归档 → 取消。
   // 不额外展开一块文案，头部布局在确认前后保持不变。
   const [confirming, setConfirming] = useState(false);
-  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [iconOpen, setIconOpen] = useState(false);
 
   const archive = () => {
     deletePerson(person.id);
@@ -36,8 +42,9 @@ export function PersonHead({
         <Avatar
           name={person.displayName}
           avatar={person.avatar}
+          icon={person.icon}
           size="lg"
-          onClick={() => setAvatarOpen(true)}
+          onClick={() => setIconOpen(true)}
           className="avatar-head"
         />
         <div className="detail-head-main">
@@ -86,11 +93,28 @@ export function PersonHead({
         </div>
       </div>
 
-      {avatarOpen && (
-        <AvatarPicker
-          personId={person.id}
-          currentAvatar={person.avatar}
-          onClose={() => setAvatarOpen(false)}
+      {iconOpen && (
+        <IconPicker
+          icon={person.icon ?? null}
+          title="人物图标"
+          fallback={person.displayName}
+          fileHint="文件会出现在「设置 → 文件」里，可作为人物图标被引用"
+          legacyClear={
+            person.avatar
+              ? {
+                  label: '移除旧头像',
+                  onClear: () => {
+                    updatePerson(person.id, { avatar: null });
+                    bump();
+                  },
+                }
+              : undefined
+          }
+          onSave={(icon) => {
+            setPersonIcon(person.id, icon);
+            bump();
+          }}
+          onClose={() => setIconOpen(false)}
         />
       )}
     </>

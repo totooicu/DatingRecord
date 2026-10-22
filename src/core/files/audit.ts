@@ -44,17 +44,18 @@ export interface AuditResult {
 }
 
 /**
- * 有多少人物把这些文件设成了头像。
+ * 有多少人物把这些文件设成了头像或人物图标。
  *
- * 头像字段存的是 `file:<文件id>`，所以参数要带上前缀再查——
- * 直接拿裸 id 匹配会永远得到 0。
+ * 头像字段存的是 `file:<文件id>`，所以参数要带上前缀再查；
+ * 人物图标存的是 icon_json.fileId，按裸 id 匹配。
  */
 function avatarCountOf(ids: string[]): number {
   if (ids.length === 0) return 0;
   const marks = ids.map(() => '?').join(',');
   const rows = queryAll<{ c: number | null }>(
-    `SELECT COUNT(*) AS c FROM persons WHERE avatar IN (${marks})`,
-    ids.map((id) => `file:${id}`),
+    `SELECT COUNT(*) AS c FROM persons
+     WHERE avatar IN (${marks}) OR json_extract(icon_json, '$.fileId') IN (${marks})`,
+    [...ids.map((id) => `file:${id}`), ...ids],
   );
   return Number(rows[0]?.c ?? 0);
 }

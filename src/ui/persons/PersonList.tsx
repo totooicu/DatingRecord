@@ -136,7 +136,7 @@ export function PersonList({
           className={p.id === selectedId ? 'list-item list-item-on' : 'list-item'}
           onClick={() => onSelect(p.id)}
         >
-          <Avatar name={p.displayName} avatar={p.avatar} />
+          <Avatar name={p.displayName} avatar={p.avatar} icon={p.icon} />
           <span className="list-item-main">
             <span className="list-item-title">
               {p.displayName}

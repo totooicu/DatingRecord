@@ -49,6 +49,14 @@ export function fileStillReferenced(file: StoredFile): boolean {
   );
   if (Number(avatar?.c ?? 0) > 0) return true;
 
+  // 人物图标：与头像同理，换图标不该把图片连坐删掉
+  const personIcon = queryOne<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM persons
+     WHERE deleted_at IS NULL AND json_extract(icon_json, '$.fileId') = ?`,
+    [file.id],
+  );
+  if (Number(personIcon?.c ?? 0) > 0) return true;
+
   // 事件集图标：换个图标、删个集合，都不该把图片连坐删掉
   const icon = queryOne<{ c: number }>(
     `SELECT COUNT(*) AS c FROM collections

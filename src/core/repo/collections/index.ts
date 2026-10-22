@@ -4,7 +4,7 @@
 
 export { collectionFromRow, type CollectionRow } from './rows';
 export { flattenTree, type FlatNode } from './flatten';
-export { rebuildClosure, ensureClosure } from './closure';
+export { rebuildClosure, ensureClosure, normalizeCollectionTree } from './closure';
 export {
   getRoot,
   getCollection,

@@ -1,6 +1,11 @@
 // 事件集详情头：面包屑 + 图标 + 改名/描述 + 状态 + 移动 + 删除
 import { useState } from 'react';
-import { deleteCollection, updateCollection, setCollectionPrivate } from '../../core/repo/collections';
+import {
+  deleteCollection,
+  updateCollection,
+  setCollectionPrivate,
+  setCollectionIcon,
+} from '../../core/repo/collections';
 import { ConfirmButton, PrivacyButton } from '../common';
 import { bump } from '../../store';
 import type { Collection } from '../../core/types';
@@ -93,7 +98,17 @@ export function CollectionHead({
         </div>
       </div>
 
-      {iconOpen && <IconPicker collection={collection} onClose={() => setIconOpen(false)} />}
+      {iconOpen && (
+        <IconPicker
+          icon={collection.icon}
+          fallback={collection.name}
+          onSave={(icon) => {
+            setCollectionIcon(collection.id, icon);
+            bump();
+          }}
+          onClose={() => setIconOpen(false)}
+        />
+      )}
     </>
   );
 }

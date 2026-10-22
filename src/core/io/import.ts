@@ -14,7 +14,7 @@ import {
 import { newId } from '../id';
 import { hlcCompare, hlcNow, hlcReceive } from '../time';
 import { putBlob, base64ToBlob } from '../db/blob';
-import { ensureClosure } from '../repo/collections';
+import { normalizeCollectionTree } from '../repo/collections';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
 import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow } from './mappers';
 
@@ -198,7 +198,9 @@ export async function importLibrary(
     counts.attachments++;
   }
 
-  ensureClosure();
+  // 合并导入会把备份自己的根集合一起带进来，两棵根会让 getTree 只显示一棵；
+  // normalizeCollectionTree 把多余的根并回主根并收编游离集合（replace 模式也走这里，幂等）。
+  normalizeCollectionTree();
   setMeta('last_import_at', new Date().toISOString());
   await persist();
   return { mode, counts, skipped, backupName };

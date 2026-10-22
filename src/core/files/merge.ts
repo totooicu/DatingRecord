@@ -49,16 +49,17 @@ function countRefOccurrences(md: string, name: string): number {
 }
 
 /**
- * 源文件里有几个人物头像。
+ * 源文件里有几个人物头像 / 图标。
  *
- * 头像字段是 `file:<文件id>`，参数必须带前缀，否则永远查不到人。
+ * 头像字段是 `file:<文件id>`，参数必须带前缀；人物图标存 icon_json.fileId。
  */
 function avatarTargets(ids: string[]): number {
   if (ids.length === 0) return 0;
   const marks = ids.map(() => '?').join(',');
   const rows = queryAll<{ c: number | null }>(
-    `SELECT COUNT(*) AS c FROM persons WHERE avatar IN (${marks})`,
-    ids.map((id) => `file:${id}`),
+    `SELECT COUNT(*) AS c FROM persons
+     WHERE avatar IN (${marks}) OR json_extract(icon_json, '$.fileId') IN (${marks})`,
+    [...ids.map((id) => `file:${id}`), ...ids],
   );
   return Number(rows[0]?.c ?? 0);
 }
