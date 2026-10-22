@@ -8,6 +8,7 @@
 // 点气泡进入选中态，底部浮出六个操作：改 / 删 / 上下插消息 / 上下插旁白。
 // 点头像弹出：人物资料（悬浮卡）/ 换个人 / 新建人物。
 import { useEffect, useMemo, useRef, useState } from 'react';
+
 import {
   appendMessage,
   deleteMessage,
@@ -24,6 +25,29 @@ import { Avatar } from '../persons/Avatar';
 import { Modal } from '../common';
 import type { ChatMessage, DREvent, Person } from '../../core/types';
 
+/** 时间输入框（datetime-local）用的本地时间字符串 */
+function toLocalInput(ts: number | null): string {
+  if (ts == null) return '';
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(
+    d.getMinutes(),
+  )}`;
+}
+
+function fromLocalInput(s: string): number | null {
+  if (!s) return null;
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/** 旁白上显示的时间：群里那种「10/22 23:40」，不写年份 */
+function tsLabel(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function ChatView({ event }: { event: DREvent }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(() => listMessages(event.id));
   const [sel, setSel] = useState<string | null>(null);
@@ -31,8 +55,17 @@ export function ChatView({ event }: { event: DREvent }) {
   const [editing, setEditing] = useState<string | null>(null);
   /** 编辑缓冲：消息用 md，旁白用单行 */
   const [buf, setBuf] = useState('');
+  /** 旁白正在编辑的时间；手敲太累，所以单独给一个时间选择器 */
+  const [editTs, setEditTs] = useState<number | null>(null);
   /** 头像菜单挂在哪条消息上 */
   const [menuOn, setMenuOn] = useState<string | null>(null);
+  /** 就地编辑区：长内容要能滚到眼前，不然写着写着就看不见了 */
+  const editRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    editRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [editing]);
 
   // 人物列表要能刷新：新建人物后得立刻取到它，否则刚指派完还显示「未指派」
   const [persons, setPersons] = useState<Person[]>(() => listPersons({ includeArchived: true }));
@@ -67,6 +100,13 @@ export function ChatView({ event }: { event: DREvent }) {
     setSel(created.id);
     setEditing(created.id);
     setBuf('');
+    setEditTs(null);
+  };
+
+  const closeEdit = () => {
+    setEditing(null);
+    setBuf('');
+    setEditTs(null);
   };
 
   const commitEdit = (id: string) => {
@@ -77,13 +117,32 @@ export function ChatView({ event }: { event: DREvent }) {
     } else {
       updateMessage(id, { body: text });
     }
-    setEditing(null);
-    setBuf('');
+    closeEdit();
+    refresh();
+  };
+
+  /** 旁白：时间和文字分开存，时间那格空着就是「不写时间」 */
+  const commitDivider = (id: string) => {
+    const text = buf.trim();
+    if (!text && editTs == null) {
+      deleteMessage(id);
+    } else {
+      updateMessage(id, { body: text, ts: editTs });
+    }
+    closeEdit();
+    refresh();
+  };
+
+  /** 取消编辑：新建出来但什么都没写的空壳要撤掉，不留垃圾行 */
+  const cancelEdit = (m: ChatMessage) => {
+    closeEdit();
+    if (!m.body && m.ts == null) deleteMessage(m.id);
     refresh();
   };
 
   const startEdit = (m: ChatMessage) => {
     setBuf(m.body);
+    setEditTs(m.ts);
     setEditing(m.id);
   };
 
@@ -114,31 +173,57 @@ export function ChatView({ event }: { event: DREvent }) {
             return (
               <div
                 key={m.id}
-                className={sel === m.id ? 'chat-divider chat-divider-on' : 'chat-divider'}
+                className={[
+                  'chat-divider',
+                  sel === m.id ? 'chat-divider-on' : '',
+                  editing === m.id ? 'chat-divider-editing' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 onClick={(e) => {
                   e.stopPropagation();
                   setSel(sel === m.id ? null : m.id);
                 }}
               >
                 {editing === m.id ? (
-                  <input
-                    className="input chat-divider-input"
-                    autoFocus
-                    value={buf}
-                    placeholder="时间或说明，例如：10/22 21:30 —— 三天后"
-                    onChange={(e) => setBuf(e.target.value)}
-                    onBlur={() => commitEdit(m.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitEdit(m.id);
-                      if (e.key === 'Escape') {
-                        setEditing(null);
-                        if (!m.body) deleteMessage(m.id);
-                        refresh();
-                      }
-                    }}
-                  />
+                  <div className="chat-divider-edit" ref={editRef} onClick={(e) => e.stopPropagation()}>
+                    {/* 时间单独一格：手敲「10/22 23:40」既慢又容易格式不统一 */}
+                    <input
+                      type="datetime-local"
+                      className="input chat-divider-time"
+                      value={toLocalInput(editTs)}
+                      onChange={(e) => setEditTs(fromLocalInput(e.target.value))}
+                      aria-label="旁白时间"
+                    />
+                    <input
+                      className="input chat-divider-input"
+                      autoFocus
+                      value={buf}
+                      placeholder="说明，可留空，例如：三天后她才回"
+                      onChange={(e) => setBuf(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitDivider(m.id);
+                        if (e.key === 'Escape') cancelEdit(m);
+                      }}
+                    />
+                    <div className="chat-divider-edit-foot">
+                      <button className="btn btn-sm" onClick={() => cancelEdit(m)}>
+                        取消
+                      </button>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => commitDivider(m.id)}
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  m.body || <span className="muted">（空旁白）</span>
+                  <>
+                    {m.ts != null && <em className="chat-divider-ts">{tsLabel(m.ts)}</em>}
+                    {m.body}
+                    {m.ts == null && !m.body && <span className="muted">（空旁白）</span>}
+                  </>
                 )}
               </div>
             );
@@ -151,9 +236,15 @@ export function ChatView({ event }: { event: DREvent }) {
           return (
             <div
               key={m.id}
-              className={`chat-row ${right ? 'chat-row-right' : 'chat-row-left'}${
-                sel === m.id ? ' chat-row-on' : ''
-              }`}
+              className={[
+                'chat-row',
+                right ? 'chat-row-right' : 'chat-row-left',
+                sel === m.id ? 'chat-row-on' : '',
+                // 编辑时把气泡的宽度限制放开：气泡宽是给「看」的，写的时候要宽
+                editing === m.id ? 'chat-row-editing' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
             >
               <div className="chat-avatar-wrap">
                 <Avatar
@@ -178,17 +269,11 @@ export function ChatView({ event }: { event: DREvent }) {
               <div className="chat-main">
                 <div className="chat-name">{name}</div>
                 {editing === m.id ? (
-                  <div className="chat-edit" onClick={(e) => e.stopPropagation()}>
-                    <MarkdownEditor value={buf} onChange={setBuf} autoFocus rows={3} />
+                  <div className="chat-edit" ref={editRef} onClick={(e) => e.stopPropagation()}>
+                    {/* 高度跟着内容长：固定三行时写长消息要不停往回滚，很别扭 */}
+                    <MarkdownEditor value={buf} onChange={setBuf} autoFocus rows={6} autoGrow />
                     <div className="chat-edit-foot">
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => {
-                          setEditing(null);
-                          if (!m.body) deleteMessage(m.id);
-                          refresh();
-                        }}
-                      >
+                      <button className="btn btn-sm" onClick={() => cancelEdit(m)}>
                         取消
                       </button>
                       <button className="btn btn-sm btn-primary" onClick={() => commitEdit(m.id)}>

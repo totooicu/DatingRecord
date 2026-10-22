@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { uploadFileQuiet } from '../../core/files';
 import { getSmallLimit } from '../filePrefs';
@@ -20,12 +20,15 @@ export function MarkdownEditor({
   placeholder = '记录发生了什么…支持 Markdown，可插图',
   rows = 6,
   autoFocus = false,
+  autoGrow = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   rows?: number;
   autoFocus?: boolean;
+  /** 高度跟着内容长，不出现内部滚动条（聊天里就地改一句话时很需要） */
+  autoGrow?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -44,6 +47,15 @@ export function MarkdownEditor({
     el.focus();
     onChange(out.text);
   };
+
+  // 先归零再按内容撑开，删字时才会跟着缩回去
+  useLayoutEffect(() => {
+    if (!autoGrow) return;
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, autoGrow]);
 
   const pick = async (list: FileList | null) => {
     if (!list || list.length === 0) return;

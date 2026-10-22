@@ -44,6 +44,11 @@
   border-radius: 10px;
 }
 
+/* 编辑时放开气泡宽度限制：78% 是给「看」的，写的时候嫌窄 */
+.chat-row-editing .chat-main {
+  max-width: 100%;
+}
+
 .chat-avatar-wrap {
   position: relative;
   flex: none;
@@ -115,17 +120,56 @@
   color: var(--primary);
 }
 
+/* 编辑中的旁白不再居中收窄，要给时间选择器腾地方 */
+.chat-divider-editing {
+  align-self: stretch;
+  max-width: none;
+  text-align: left;
+  cursor: default;
+  background: #f3efe9;
+}
+
+.chat-divider-ts {
+  font-style: normal;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-divider-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.chat-divider-time {
+  width: 190px;
+  max-width: 70vw;
+  font-size: 12px;
+}
+
 .chat-divider-input {
   width: 260px;
-  max-width: 60vw;
+  max-width: 70vw;
   font-size: 12px;
-  text-align: center;
+}
+
+.chat-divider-edit-foot {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 /* ---------- 就地编辑 ---------- */
 .chat-edit {
   width: 100%;
-  min-width: 260px;
+  min-width: min(320px, 78vw);
+}
+
+/* 编辑框内的文本域：至少六行的高度，且不再出现内部滚动条 */
+.chat-edit .md-editor textarea {
+  min-height: 132px;
+  max-height: 46vh;
 }
 
 .chat-edit-foot {

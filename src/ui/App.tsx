@@ -7,6 +7,7 @@ import { PersonsPane, CollectionsPane } from './Panes';
 import { Welcome } from './Welcome';
 import { TopBar } from './TopBar';
 import { UndoSnackbar } from './undo/UndoSnackbar';
+import { ToastHost } from './toast';
 import { TabBar } from './TabBar';
 import { Calendar } from './calendar';
 import { hasAnyPerson } from '../core/seed';
@@ -215,6 +216,7 @@ export default function App() {
       <TabBar section={section} onTab={gotoTab} />
 
       <UndoSnackbar />
+      <ToastHost />
 
       {/* 设置页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
       {modalCount === 0 && section !== 'settings' && (

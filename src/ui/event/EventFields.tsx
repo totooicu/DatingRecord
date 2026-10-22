@@ -200,11 +200,19 @@ export function EventFields({
         />
       </Field>
 
-      <div className="span-2">
-        <Field label="正文">
-          <MarkdownEditor value={d.content} onChange={(content) => patch({ content })} rows={6} />
-        </Field>
-      </div>
+      {/* 聊天形式下正文没有出场位置：内容全在消息里，再摆一个大编辑器
+          只会让人分不清「该往哪儿写」。正文不清空，切回「正文」形态还在。 */}
+      {d.viewMode === 'chat' ? (
+        <p className="muted small span-2">
+          已切换为聊天形式，正文不再显示。原有正文会保留，切回「正文」即可继续编辑。
+        </p>
+      ) : (
+        <div className="span-2">
+          <Field label="正文">
+            <MarkdownEditor value={d.content} onChange={(content) => patch({ content })} rows={6} />
+          </Field>
+        </div>
+      )}
     </div>
   );
 }
