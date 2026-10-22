@@ -155,14 +155,13 @@ export function EventFields({
 
       <Field label="所属事件集">
         <div className="chip-group">
-          {flat.map(({ c, depth }) => (
+          {flat.map(({ c }) => (
             <button
               key={c.id}
               type="button"
               className={d.cols.includes(c.id) ? 'chip chip-on' : 'chip'}
-              // 层级只靠左内边距表达：加 └ 之类的符号会多出一段固定宽度的空当，
-              // 文字左边看起来空了一大块
-              style={depth > 0 ? { paddingLeft: 11 + depth * 9 } : undefined}
+              // 不做层级缩进：多出来的左内边距在 chip 里就是一块空白，
+              // 层级信息交给「事件集」页的树形结构，这里保持选项排布均匀
               onClick={() => patch({ cols: toggle(d.cols, c.id) })}
             >
               {c.name}

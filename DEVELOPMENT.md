@@ -379,8 +379,8 @@ interface SqlDriver {
 - **做法**：模式是 `EventForm` 内的局部 `mode` state，不落库；浏览态复用 `formatTime` 等已有格式化函数，不新增数据路径。
 - **布局约束**：事件弹窗在 390px 宽度下不得横向溢出——`.md-toolbar` 改为 `flex-wrap` 两行、
   `.form-grid > *` 与 `.md-editor` 加 `min-width: 0`（grid 子项默认 `min-width:auto` 会被不换行的工具栏撑宽）；
-  事件集 chip 的层级缩进只用 `paddingLeft`（`11 + depth * 9`），不加 `└` 之类符号——
-  符号自身占宽再加 `gap`，文字左边会凭空多出一段空当。
+  事件集 chip 不做层级缩进、也不加 `└` 之类符号——缩进在 chip 内表现为一块左空白，
+  符号自身还要再占宽，选项排布保持均匀，层级由「事件集」页的树形结构承担。
 
 ### F-E08 事件关联 — P2
 
