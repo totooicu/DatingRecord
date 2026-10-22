@@ -4,9 +4,9 @@
 // "Qwen/Qwen2.5-72B-Instruct" 这种长串；同一个模型也能起两个别名
 // （「快速」temperature 0.2 / 「发散」temperature 1.0）。
 //
-// 服务商可自己选：硅基流动 / OpenAI 兼容 / 本地 Ollama / 自定义。已知服务商
-// 的根地址自动填好、不给你改；只有「自定义」才让你填根地址。
-// 密钥按当前所选服务商存一份（meta ai.key.<provider>），多条别名共用，不进备份。
+// 服务商可自己选：硅基流动 / OpenAI 兼容（第三方端点）/ 本地 Ollama。已知服务商
+// 的根地址自动填好（硅基流动固定、Ollama / OpenAI 兼容可改）。
+// 密钥按服务商各存一份（meta ai.key.<provider>），多条别名共用，不进备份。
 import { useEffect, useMemo, useState } from 'react';
 import { Section } from './Section';
 import { bump } from '../../store';
@@ -510,7 +510,7 @@ function KeySection({
     return (
       <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
         <p className="muted small">
-          当前选择的服务商（{providerOf(activeProvider).label}）不需要密钥。要存密钥，先选硅基流动 / OpenAI 兼容 / 自定义。
+          当前选择的服务商（{providerOf(activeProvider).label}）不需要密钥。要存密钥，先选硅基流动 / OpenAI 兼容。
         </p>
       </Section>
     );
@@ -518,31 +518,37 @@ function KeySection({
 
   return (
     <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
-      {used.map((p) => (
-        <label className="field" key={p.key}>
-          <span className="field-label">
-            {p.label}
-            {vals[p.key] ? `（已存：${maskKey(vals[p.key])}）` : '（未设置）'}
-          </span>
-          <div className="row-actions">
-            <input
-              type="password"
-              value={vals[p.key] ?? ''}
-              placeholder="sk-..."
-              onChange={(e) => setVals({ ...vals, [p.key]: e.target.value })}
-            />
-            <button
-              className="btn"
-              onClick={() => {
-                saveKey(p.key, vals[p.key] ?? '');
-                onSaved();
-              }}
-            >
-              保存
-            </button>
+      <div className="key-table">
+        <div className="key-head">
+          <span>服务商</span>
+          <span>密钥（API Key）</span>
+        </div>
+        {used.map((p) => (
+          <div className="key-row" key={p.key}>
+            <div className="key-prov">
+              <span className="key-prov-name">{p.label}</span>
+              <span className="muted small">{vals[p.key] ? `已存：${maskKey(vals[p.key])}` : '未设置'}</span>
+            </div>
+            <div className="key-input-wrap">
+              <input
+                type="password"
+                value={vals[p.key] ?? ''}
+                placeholder="sk-..."
+                onChange={(e) => setVals({ ...vals, [p.key]: e.target.value })}
+              />
+              <button
+                className="btn"
+                onClick={() => {
+                  saveKey(p.key, vals[p.key] ?? '');
+                  onSaved();
+                }}
+              >
+                保存
+              </button>
+            </div>
           </div>
-        </label>
-      ))}
+        ))}
+      </div>
     </Section>
   );
 }
