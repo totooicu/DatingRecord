@@ -66,3 +66,37 @@
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
+
+/* 能力标签（多模态） */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--panel);
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.chip input {
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.chip-on {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--panel));
+  color: var(--primary);
+  font-weight: 600;
+}

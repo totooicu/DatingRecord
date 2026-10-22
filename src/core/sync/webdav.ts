@@ -61,8 +61,13 @@ async function request(
       body: body ?? null,
     });
   } catch {
-    // fetch 只在网络层失败时抛 TypeError（DNS / 断网 / 被跨域拦），401 不会走到这里
-    throw new DavError('连不上坚果云：可能是网络不通，或浏览器拦了跨域请求（见设置里的「服务地址」）', 0);
+    // fetch 只在网络层失败时抛 TypeError（DNS / 断网 / 被跨域拦），401 不会走到这里。
+    // 注意：硅基流动等 AI 服务商主动返回 CORS 头所以浏览器放行；坚果云 WebDAV 默认不返回，
+    // 浏览器在发送前就拦截，表现为同一个 TypeError。详见设置里「高级 → 服务地址」。
+    throw new DavError(
+      '连不上坚果云：网络不通，或浏览器拦了跨域请求（坚果云 WebDAV 默认不返回 CORS 头）。可在「高级 → 服务地址」填一个转发到 dav.jianguoyun.com 的反向代理。',
+      0,
+    );
   }
   if (res.status === 401 || res.status === 403) {
     throw new DavError('账号或应用密码不对（密码要用坚果云「应用密码」，不是登录密码）', res.status);

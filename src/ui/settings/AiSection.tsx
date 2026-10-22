@@ -1,14 +1,17 @@
-// AI 模型管理：别名 → 服务商 + 模型名 + 参数。
+// AI 模型管理：别名 → 服务商 + 模型名 + 参数 + 能力。
 //
 // 一个模型配一条「别名」，以后调用 AI 能力时选别名，不用记
 // "Qwen/Qwen2.5-72B-Instruct" 这种长串；同一个模型也能起两个别名
 // （「快速」temperature 0.2 / 「发散」temperature 1.0）。
 //
-// 密钥按服务商存一份（meta ai.key.<provider>），多条别名共用，不进备份。
+// 服务商可自己选：硅基流动 / OpenAI 兼容 / 本地 Ollama / 自定义。已知服务商
+// 的根地址自动填好、不给你改；只有「自定义」才让你填根地址。
+// 密钥按当前所选服务商存一份（meta ai.key.<provider>），多条别名共用，不进备份。
 import { useEffect, useMemo, useState } from 'react';
 import { Section } from './Section';
 import { bump } from '../../store';
 import {
+  AI_CAPABILITIES,
   AI_PROVIDERS,
   createModel,
   deleteModel,
@@ -20,6 +23,7 @@ import {
   setApiKey,
   testModel,
   updateModel,
+  type AiCapability,
   type AiModel,
   type AiProvider,
 } from '../../core/ai';
@@ -33,6 +37,7 @@ interface Draft {
   note: string;
   temperature: string;
   maxTokens: string;
+  capabilities: AiCapability[];
   isDefault: boolean;
 }
 
@@ -45,6 +50,7 @@ const EMPTY: Draft = {
   note: '',
   temperature: '0.7',
   maxTokens: '1024',
+  capabilities: ['text'],
   isDefault: false,
 };
 
@@ -58,8 +64,13 @@ function draftOf(m: AiModel): Draft {
     note: m.note,
     temperature: String(m.temperature),
     maxTokens: String(m.maxTokens),
+    capabilities: m.capabilities.length ? m.capabilities : ['text'],
     isDefault: m.isDefault,
   };
+}
+
+function capLabels(caps: AiCapability[]): string {
+  return caps.map((c) => AI_CAPABILITIES.find((x) => x.key === c)?.label ?? c).join('·') || '无标注';
 }
 
 export function AiSection() {
@@ -68,12 +79,10 @@ export function AiSection() {
   const [remote, setRemote] = useState<string[]>([]);
   const [busy, setBusy] = useState<'' | 'list' | 'test' | 'save'>('');
   const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
   const reload = () => setModels(listModels());
   const reset = () => {
     setMsg(null);
-    setErr(null);
     setRemote([]);
   };
 
@@ -81,6 +90,8 @@ export function AiSection() {
     setApiKey(p, key);
     bump();
   };
+
+  const activeProvider: AiProvider = draft?.provider ?? models[0]?.provider ?? 'siliconflow';
 
   return (
     <>
@@ -93,6 +104,7 @@ export function AiSection() {
             className="btn btn-primary"
             onClick={() => {
               reset();
+              setRemote([]);
               setDraft({ ...EMPTY, isDefault: models.length === 0 });
             }}
           >
@@ -102,10 +114,9 @@ export function AiSection() {
         </div>
 
         {msg && <p className="sync-ok">{msg}</p>}
-        {err && <p className="sync-err">{err}</p>}
 
         {models.length === 0 ? (
-          <p className="muted small">还没有模型。点「添加模型」，填服务商、模型名和一个好记的别名。</p>
+          <p className="muted small">还没有模型。点「添加模型」，选服务商、填模型名和一个好记的别名。</p>
         ) : (
           <ul className="ai-list">
             {models.map((m) => (
@@ -118,7 +129,7 @@ export function AiSection() {
                   </span>
                 </div>
                 <div className="ai-row-meta muted small">
-                  temperature {m.temperature} · 上限 {m.maxTokens} tokens
+                  能力 {capLabels(m.capabilities)} · temperature {m.temperature} · 上限 {m.maxTokens} tokens
                   {m.note ? ` · ${m.note}` : ''}
                 </div>
                 <div className="row-actions">
@@ -126,6 +137,7 @@ export function AiSection() {
                     className="btn"
                     onClick={() => {
                       reset();
+                      setRemote([]);
                       setDraft(draftOf(m));
                     }}
                   >
@@ -167,8 +179,6 @@ export function AiSection() {
           setRemote={setRemote}
           busy={busy}
           setBusy={setBusy}
-          onMsg={setMsg}
-          onErr={setErr}
           saveKey={saveKey}
           onSaved={() => {
             reload();
@@ -177,7 +187,7 @@ export function AiSection() {
         />
       )}
 
-      <KeySection models={models} saveKey={saveKey} />
+      <KeySection models={models} activeProvider={activeProvider} saveKey={saveKey} onSaved={() => setMsg('已保存密钥')} />
     </>
   );
 }
@@ -189,8 +199,6 @@ function ModelEditor({
   setRemote,
   busy,
   setBusy,
-  onMsg,
-  onErr,
   saveKey,
   onSaved,
 }: {
@@ -200,13 +208,13 @@ function ModelEditor({
   setRemote: (v: string[]) => void;
   busy: string;
   setBusy: (b: '' | 'list' | 'test' | 'save') => void;
-  onMsg: (s: string | null) => void;
-  onErr: (s: string | null) => void;
   saveKey: (p: AiProvider, k: string) => void;
   onSaved: () => void;
 }) {
   const [keyInput, setKeyInput] = useState(() => getApiKey(draft.provider));
+  const [fb, setFb] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const prov = providerOf(draft.provider);
+  const isCustom = draft.provider === 'custom';
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
 
   useEffect(() => {
@@ -215,19 +223,21 @@ function ModelEditor({
 
   const doList = async () => {
     setBusy('list');
-    onErr(null);
-    onMsg(null);
+    setFb(null);
     try {
       saveKey(draft.provider, keyInput);
       const ids = await listRemoteModels({
         provider: draft.provider,
-        baseUrl: draft.baseUrl,
+        baseUrl: isCustom ? draft.baseUrl : undefined,
         apiKey: keyInput,
       });
       setRemote(ids);
-      onMsg(`读到 ${ids.length} 个模型，可直接从下拉里选`);
+      setFb({
+        kind: 'ok',
+        text: ids.length ? `读到 ${ids.length} 个模型，可直接从下拉里选` : '连上了，但这个服务商没返回模型列表（可能该账号下暂无可用模型）',
+      });
     } catch (e) {
-      onErr(e instanceof Error ? e.message : String(e));
+      setFb({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy('');
     }
@@ -235,17 +245,16 @@ function ModelEditor({
 
   const doTest = async () => {
     setBusy('test');
-    onErr(null);
-    onMsg(null);
+    setFb(null);
     try {
       saveKey(draft.provider, keyInput);
       const r = await testModel(
-        { provider: draft.provider, baseUrl: draft.baseUrl, model: draft.model },
+        { provider: draft.provider, baseUrl: isCustom ? draft.baseUrl : '', model: draft.model },
         keyInput,
       );
-      onMsg(`连通成功（${r.ms} ms）：${r.content.slice(0, 40) || '(空回复)'}`);
+      setFb({ kind: 'ok', text: `连通成功（${r.ms} ms）：${r.content.slice(0, 40) || '(空回复)'}` });
     } catch (e) {
-      onErr(e instanceof Error ? e.message : String(e));
+      setFb({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy('');
     }
@@ -253,32 +262,36 @@ function ModelEditor({
 
   const doSave = () => {
     setBusy('save');
-    onErr(null);
+    setFb(null);
     try {
       const input = {
         alias: draft.alias,
         provider: draft.provider,
-        baseUrl: draft.baseUrl.trim(),
+        baseUrl: isCustom ? draft.baseUrl.trim() : '',
         model: draft.model.trim(),
         note: draft.note.trim(),
         temperature: clampNum(draft.temperature, 0, 2, 0.7),
         maxTokens: Math.round(clampNum(draft.maxTokens, 16, 32000, 1024)),
+        capabilities: draft.capabilities,
         isDefault: draft.isDefault,
       };
-      if (!input.model) throw new Error('模型名不能为空（可点「读取模型列表」选）');
+      if (!input.model) throw new Error('模型名不能为空（可点「读取模型列表」选，或手动填）');
       saveKey(draft.provider, keyInput);
       if (draft.id) updateModel(draft.id, input);
       else createModel(input);
       bump();
       onSaved();
     } catch (e) {
-      onErr(e instanceof Error ? e.message : String(e));
+      setFb({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
+      // 必须复位：成功分支里 onSaved() 会卸载本编辑器，但父级 busy 仍要清掉，
+      // 否则下次再打开编辑器时会继承 'save' 而让所有按钮变成禁用态。
       setBusy('');
     }
   };
 
   const options = remote;
+  const resolvedBase = isCustom ? draft.baseUrl || '(需填写)' : prov.baseUrl;
 
   return (
     <Section title={draft.id ? '编辑模型' : '添加模型'} desc="别名是这个模型在你嘴里的名字，调用时选它。">
@@ -315,14 +328,18 @@ function ModelEditor({
         </label>
       )}
 
-      <label className="field">
-        <span className="field-label">API 根地址（留空用默认 {prov.baseUrl || '需填'}）</span>
-        <input
-          value={draft.baseUrl}
-          placeholder={prov.baseUrl}
-          onChange={(e) => patch({ baseUrl: e.target.value })}
-        />
-      </label>
+      {isCustom ? (
+        <label className="field">
+          <span className="field-label">API 根地址</span>
+          <input
+            value={draft.baseUrl}
+            placeholder="https://your-endpoint/v1"
+            onChange={(e) => patch({ baseUrl: e.target.value })}
+          />
+        </label>
+      ) : (
+        <p className="muted small">API 根地址：{resolvedBase}（{prov.label} 默认，自动使用，无需填写）</p>
+      )}
 
       <label className="field">
         <span className="field-label">模型名</span>
@@ -355,6 +372,34 @@ function ModelEditor({
         >
           {busy === 'test' ? '测试中…' : '测试这个模型'}
         </button>
+      </div>
+      {fb && (
+        <p className={fb.kind === 'ok' ? 'sync-ok' : 'sync-err'}>{fb.text}</p>
+      )}
+
+      <div className="field">
+        <span className="field-label">能力（这个模型能处理什么）</span>
+        <div className="chip-row">
+          {AI_CAPABILITIES.map((c) => {
+            const on = draft.capabilities.includes(c.key);
+            return (
+              <label key={c.key} className={`chip ${on ? 'chip-on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? [...draft.capabilities, c.key]
+                      : draft.capabilities.filter((x) => x !== c.key);
+                    patch({ capabilities: next });
+                  }}
+                />
+                {c.label}
+              </label>
+            );
+          })}
+        </div>
+        <p className="muted small">不同功能会按能力挑模型（例如看图要「图片」、转写要「音频」）。可多选。</p>
       </div>
 
       <label className="field">
@@ -411,22 +456,34 @@ function ModelEditor({
 
 function KeySection({
   models,
+  activeProvider,
   saveKey,
+  onSaved,
 }: {
   models: AiModel[];
+  activeProvider: AiProvider;
   saveKey: (p: AiProvider, k: string) => void;
+  onSaved: () => void;
 }) {
   const used = useMemo(() => {
     const set = new Set(models.map((m) => m.provider));
-    if (set.size === 0) ['siliconflow'].forEach((p) => set.add(p as AiProvider));
-    return AI_PROVIDERS.filter((p) => p.needsKey && (set.has(p.key) || p.key === 'siliconflow'));
-  }, [models]);
+    return AI_PROVIDERS.filter((p) => p.needsKey && (set.has(p.key) || p.key === activeProvider));
+  }, [models, activeProvider]);
   const [vals, setVals] = useState<Record<string, string>>(() => {
     const o: Record<string, string> = {};
     for (const p of AI_PROVIDERS) o[p.key] = getApiKey(p.key);
     return o;
   });
-  const [msg, setMsg] = useState('');
+
+  if (used.length === 0) {
+    return (
+      <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
+        <p className="muted small">
+          当前选择的服务商（{providerOf(activeProvider).label}）不需要密钥。要存密钥，先选硅基流动 / OpenAI 兼容 / 自定义。
+        </p>
+      </Section>
+    );
+  }
 
   return (
     <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
@@ -447,7 +504,7 @@ function KeySection({
               className="btn"
               onClick={() => {
                 saveKey(p.key, vals[p.key] ?? '');
-                setMsg(`已保存 ${p.label} 的密钥`);
+                onSaved();
               }}
             >
               保存
@@ -455,7 +512,6 @@ function KeySection({
           </div>
         </label>
       ))}
-      {msg && <p className="sync-ok">{msg}</p>}
     </Section>
   );
 }

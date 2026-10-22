@@ -5,10 +5,19 @@
 
 import { getDeviceId } from '../../db';
 import { hlcNow } from '../../time';
-import type { AiModel, AiProvider } from '../../ai/types';
+import type { AiCapability, AiModel, AiProvider } from '../../ai/types';
 import type { Row } from './types';
 
+const ALL_CAPS: AiCapability[] = ['text', 'image', 'video', 'audio', 'file'];
+
 export function rowToAiModel(r: Row): AiModel {
+  const raw = (r.capabilities as string) ?? '';
+  const caps = raw
+    ? raw
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x): x is AiCapability => (ALL_CAPS as string[]).includes(x))
+    : [];
   return {
     id: r.id as string,
     alias: (r.alias as string) ?? '',
@@ -18,6 +27,7 @@ export function rowToAiModel(r: Row): AiModel {
     note: (r.note as string) ?? '',
     temperature: Number(r.temperature ?? 0.7),
     maxTokens: Number(r.max_tokens ?? 1024),
+    capabilities: caps,
     isDefault: !!r.is_default,
     deviceId: (r.device_id as string) ?? '',
     rev: Number(r.rev ?? 1),
@@ -38,6 +48,7 @@ export function aiModelToRow(m: AiModel): Record<string, unknown> {
     note: m.note ?? '',
     temperature: m.temperature,
     max_tokens: m.maxTokens,
+    capabilities: (m.capabilities ?? []).join(','),
     is_default: m.isDefault ? 1 : 0,
     device_id: m.deviceId || getDeviceId(),
     rev: m.rev || 1,

@@ -7,7 +7,9 @@
 import { queryAll, queryOne, run, getMeta, setMeta, getDeviceId } from '../db';
 import { newId } from '../id';
 import { hlcNow } from '../time';
-import type { AiModel, AiProvider } from './types';
+import type { AiCapability, AiModel, AiProvider } from './types';
+
+const ALL_CAPS: AiCapability[] = ['text', 'image', 'video', 'audio', 'file'];
 
 interface Row {
   id: string;
@@ -18,6 +20,7 @@ interface Row {
   note: string;
   temperature: number;
   max_tokens: number;
+  capabilities: string;
   is_default: number;
   device_id: string;
   rev: number;
@@ -25,6 +28,15 @@ interface Row {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function parseCaps(s: unknown): AiCapability[] {
+  const raw = (s as string) ?? '';
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x): x is AiCapability => (ALL_CAPS as string[]).includes(x));
 }
 
 function rowToModel(r: Row): AiModel {
@@ -37,6 +49,7 @@ function rowToModel(r: Row): AiModel {
     note: r.note ?? '',
     temperature: Number(r.temperature ?? 0.7),
     maxTokens: Number(r.max_tokens ?? 1024),
+    capabilities: parseCaps(r.capabilities),
     isDefault: !!r.is_default,
     deviceId: r.device_id ?? '',
     rev: r.rev ?? 1,
@@ -72,11 +85,13 @@ export function getDefaultModel(): AiModel | null {
 export interface ModelInput {
   alias: string;
   provider: AiProvider;
+  /** 自定义服务商时的根地址；已知服务商留空，客户端自动补默认 */
   baseUrl?: string;
   model: string;
   note?: string;
   temperature?: number;
   maxTokens?: number;
+  capabilities?: AiCapability[];
   isDefault?: boolean;
 }
 
@@ -97,10 +112,11 @@ export function createModel(input: ModelInput): AiModel {
   const now = new Date().toISOString();
   const id = newId('ai');
   if (input.isDefault) clearDefault();
+  const caps = (input.capabilities ?? []).join(',');
   run(
     `INSERT INTO ai_models
-     (id,alias,provider,base_url,model,note,temperature,max_tokens,is_default,device_id,rev,hlc,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     (id,alias,provider,base_url,model,note,temperature,max_tokens,capabilities,is_default,device_id,rev,hlc,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       id,
       alias,
@@ -110,6 +126,7 @@ export function createModel(input: ModelInput): AiModel {
       input.note ?? '',
       input.temperature ?? 0.7,
       input.maxTokens ?? 1024,
+      caps,
       input.isDefault ? 1 : 0,
       getDeviceId(),
       1,
@@ -132,11 +149,12 @@ export function updateModel(id: string, patch: Partial<ModelInput>): AiModel {
     note: patch.note ?? cur.note,
     temperature: patch.temperature ?? cur.temperature,
     maxTokens: patch.maxTokens ?? cur.maxTokens,
+    capabilities: patch.capabilities ?? cur.capabilities,
     isDefault: patch.isDefault ?? cur.isDefault,
   };
   if (next.isDefault && !cur.isDefault) clearDefault();
   run(
-    `UPDATE ai_models SET alias=?, provider=?, base_url=?, model=?, note=?, temperature=?, max_tokens=?,
+    `UPDATE ai_models SET alias=?, provider=?, base_url=?, model=?, note=?, temperature=?, max_tokens=?, capabilities=?,
        is_default=?, rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
     [
       next.alias,
@@ -146,6 +164,7 @@ export function updateModel(id: string, patch: Partial<ModelInput>): AiModel {
       next.note,
       next.temperature,
       next.maxTokens,
+      next.capabilities.join(','),
       next.isDefault ? 1 : 0,
       hlcNow(getDeviceId()),
       new Date().toISOString(),

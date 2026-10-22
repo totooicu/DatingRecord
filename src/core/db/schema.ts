@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS ai_models (
   note TEXT NOT NULL DEFAULT '',
   temperature REAL NOT NULL DEFAULT 0.7,
   max_tokens INTEGER NOT NULL DEFAULT 1024,
+  capabilities TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
   created_at TEXT, updated_at TEXT

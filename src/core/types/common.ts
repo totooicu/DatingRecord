@@ -57,4 +57,4 @@ export interface LibraryFile {
   aiModels?: AiModel[];
 }
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;

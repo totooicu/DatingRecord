@@ -102,6 +102,13 @@ export function runMigrations(d: Database, current: number): string {
     d.run(`CREATE INDEX IF NOT EXISTS idx_ai_alias ON ai_models(alias)`);
     v = 6;
   }
+  if (v < 7) {
+    // AI 模型能力标签（v7）：给模型标注能处理的多模态，老库幂等补列。
+    if (!hasColumn(d, 'ai_models', 'capabilities')) {
+      d.run(`ALTER TABLE ai_models ADD COLUMN capabilities TEXT NOT NULL DEFAULT ''`);
+    }
+    v = 7;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

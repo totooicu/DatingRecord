@@ -47,19 +47,32 @@ export function providerOf(key: string): AiProviderMeta {
   return AI_PROVIDERS.find((p) => p.key === key) ?? AI_PROVIDERS[0];
 }
 
+/** 模型能干的事：不同功能按需挑有对应能力的模型 */
+export type AiCapability = 'text' | 'image' | 'video' | 'audio' | 'file';
+
+export const AI_CAPABILITIES: { key: AiCapability; label: string }[] = [
+  { key: 'text', label: '文本' },
+  { key: 'image', label: '图片' },
+  { key: 'video', label: '视频' },
+  { key: 'audio', label: '音频' },
+  { key: 'file', label: '文件' },
+];
+
 /** 一条「可以按别名调用」的模型配置 */
 export interface AiModel {
   id: string;
   /** 别名：调用时选的就是它 */
   alias: string;
   provider: AiProvider;
-  /** 覆盖该 provider 的默认根地址；空则用默认 */
+  /** 自定义服务商时填的根地址；已知服务商留空，用该服务商默认值 */
   baseUrl: string;
   /** 服务商标的模型名，如 Qwen/Qwen2.5-7B-Instruct */
   model: string;
   note: string;
   temperature: number;
   maxTokens: number;
+  /** 能力标签：文本 / 图片 / 视频 / 音频 / 文件 */
+  capabilities: AiCapability[];
   isDefault: boolean;
   deviceId: string;
   rev: number;

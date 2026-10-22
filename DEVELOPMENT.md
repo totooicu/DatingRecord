@@ -574,20 +574,30 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 
 ### F-AI01 AI 模型别名 — P1
 
-- 一行 = 一个「别名 → 怎么调」：`alias / provider / baseUrl / model / temperature / maxTokens`。
+- 一行 = 一个「别名 → 怎么调」：`alias / provider / baseUrl / model / temperature / maxTokens / capabilities`。
   同一个模型可起多个别名配不同温度（「快速」0.2 / 「发散」1.0）。
+- 服务商可自己选：硅基流动 / OpenAI 兼容 / 本地 Ollama / 自定义。**已知服务商的根地址自动填好、
+  不让你改**（只有「自定义」才出现「API 根地址」输入框），省得抄错；自定义时存用户填的地址。
+- 密钥框跟随当前所选服务商出现（硅基流动 / OpenAI / 自定义需要，本地 Ollama 不需要），
+  密钥按 **provider** 存一份（`meta['ai.key.<provider>']`），多条别名共用；
+  存 `ai_models` 表里的只有「怎么调」，所以配置能随备份/同步走而密钥留在本机。
+- 「密钥」区是**按需出现**的：只展示「被某个模型用到」或「当前正在编辑的服务商」的密钥框，
+  不会一上来列一堆用不上的。
+- 能力标签 `capabilities`（文本 / 图片 / 视频 / 音频 / 文件）记在 `ai_models` 表里，
+  不同功能按能力挑模型（看图要「图片」、转写要「音频」）。API 不返回可靠的能力字段，
+  所以由用户勾选；落库为逗号分隔字符串，随备份/同步走。
 - 只依赖两个端点 `/v1/models` 与 `/v1/chat/completions` —— 硅基流动、OpenAI、DeepSeek、
   Ollama、自建网关全覆盖，一套代码。Ollama 原生 `/api/tags` 返回 `models[].name`，`listRemoteModels`
   两种形状都兜。
-- 密钥按 **provider** 存一份（`meta['ai.key.<provider>']`），多条别名共用；
-  存 `ai_models` 表里的只有「怎么调」，所以配置能随备份/同步走而密钥留在本机。
+- 「读取模型列表」「测试这个模型」的反馈**直接显示在按钮下方**（同区块内），不再飘到页面顶上；
+  成功/失败都给明确文案（失败会区分 401 密钥失效 / 404 地址错 / 429 限流 / 网络或被跨域拦）。
 - 别名唯一性在写入时校验（`assertAlias`），合并时也校验：本地已被别的 id 占了同名别名就跳过，
   避免同步出两个「便宜好用的」。
 - `deleteModel()` 删掉默认模型时会顺手把下一个顶为默认，「默认模型」不会变成空指针。
-- schema v6 新增 `ai_models` 表；新老库都走 `CREATE TABLE IF NOT EXISTS`，幂等。
+- schema v7：在 v6 的 `ai_models` 表上 `ALTER` 加 `capabilities` 列（幂等）；`CREATE TABLE` 也带上该列。
 
-**回归**：`t-ai.mjs`（真硅基流动）14 项 —— 读到 98 个模型、真实调用 250ms 返回、别名唯一性、
-设为默认、删除、刷新后仍在、密钥打码显示。
+**回归**：`t-ai.mjs`（真硅基流动）14 项 ；`t-ai2.mjs` 13 项（地址自动填充/隐藏、能力勾选与持久、
+读取成功与失败反馈、刷新后仍在、密钥区按需出现）。
 
 ---
 
