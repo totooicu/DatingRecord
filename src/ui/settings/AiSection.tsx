@@ -26,6 +26,7 @@ import {
   type AiCapability,
   type AiModel,
   type AiProvider,
+  type RemoteModel,
 } from '../../core/ai';
 
 interface Draft {
@@ -58,7 +59,7 @@ function draftOf(m: AiModel): Draft {
   return {
     id: m.id,
     alias: m.alias,
-    provider: m.provider,
+    provider: m.provider === 'custom' ? 'openai' : m.provider,
     baseUrl: m.baseUrl,
     model: m.model,
     note: m.note,
@@ -76,7 +77,7 @@ function capLabels(caps: AiCapability[]): string {
 export function AiSection() {
   const [models, setModels] = useState<AiModel[]>(() => listModels());
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [remote, setRemote] = useState<string[]>([]);
+  const [remote, setRemote] = useState<RemoteModel[]>([]);
   const [busy, setBusy] = useState<'' | 'list' | 'test' | 'save'>('');
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -204,8 +205,8 @@ function ModelEditor({
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
-  remote: string[];
-  setRemote: (v: string[]) => void;
+  remote: RemoteModel[];
+  setRemote: (v: RemoteModel[]) => void;
   busy: string;
   setBusy: (b: '' | 'list' | 'test' | 'save') => void;
   saveKey: (p: AiProvider, k: string) => void;
@@ -214,7 +215,7 @@ function ModelEditor({
   const [keyInput, setKeyInput] = useState(() => getApiKey(draft.provider));
   const [fb, setFb] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const prov = providerOf(draft.provider);
-  const isCustom = draft.provider === 'custom';
+  const showBase = prov.baseEditable;
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
 
   useEffect(() => {
@@ -226,15 +227,20 @@ function ModelEditor({
     setFb(null);
     try {
       saveKey(draft.provider, keyInput);
-      const ids = await listRemoteModels({
+      const list = await listRemoteModels({
         provider: draft.provider,
-        baseUrl: isCustom ? draft.baseUrl : undefined,
+        baseUrl: showBase ? draft.baseUrl : undefined,
         apiKey: keyInput,
       });
-      setRemote(ids);
+      setRemote(list);
+      const withCaps = list.filter((r) => r.capabilities.length > 0).length;
       setFb({
         kind: 'ok',
-        text: ids.length ? `读到 ${ids.length} 个模型，可直接从下拉里选` : '连上了，但这个服务商没返回模型列表（可能该账号下暂无可用模型）',
+        text: list.length
+          ? withCaps
+            ? `读到 ${list.length} 个模型，其中 ${withCaps} 个已自动识别能力，从下拉里选即可`
+            : `读到 ${list.length} 个模型，从下拉里选。该服务不返回能力信息，可手动勾选`
+          : '连上了，但这个服务商没返回模型列表（可能该账号下暂无可用模型）',
       });
     } catch (e) {
       setFb({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -249,7 +255,7 @@ function ModelEditor({
     try {
       saveKey(draft.provider, keyInput);
       const r = await testModel(
-        { provider: draft.provider, baseUrl: isCustom ? draft.baseUrl : '', model: draft.model },
+        { provider: draft.provider, baseUrl: showBase ? draft.baseUrl : '', model: draft.model },
         keyInput,
       );
       setFb({ kind: 'ok', text: `连通成功（${r.ms} ms）：${r.content.slice(0, 40) || '(空回复)'}` });
@@ -267,7 +273,7 @@ function ModelEditor({
       const input = {
         alias: draft.alias,
         provider: draft.provider,
-        baseUrl: isCustom ? draft.baseUrl.trim() : '',
+        baseUrl: showBase ? draft.baseUrl.trim() : '',
         model: draft.model.trim(),
         note: draft.note.trim(),
         temperature: clampNum(draft.temperature, 0, 2, 0.7),
@@ -291,7 +297,8 @@ function ModelEditor({
   };
 
   const options = remote;
-  const resolvedBase = isCustom ? draft.baseUrl || '(需填写)' : prov.baseUrl;
+  // 选中的模型若带回能力，展示一下，让用户知道已自动识别
+  const picked = remote.find((r) => r.id === draft.model);
 
   return (
     <Section title={draft.id ? '编辑模型' : '添加模型'} desc="别名是这个模型在你嘴里的名字，调用时选它。">
@@ -306,7 +313,18 @@ function ModelEditor({
 
       <label className="field">
         <span className="field-label">服务商</span>
-        <select value={draft.provider} onChange={(e) => patch({ provider: e.target.value as AiProvider })}>
+        <select
+          value={draft.provider}
+          onChange={(e) => {
+            const p = e.target.value as AiProvider;
+            const meta = providerOf(p);
+            // 切换服务商时，根地址重置为该服务商的默认值（硅基流动固定、其余各自默认，用户可再改）
+            patch({
+              provider: p,
+              baseUrl: meta.baseEditable ? meta.baseUrl : '',
+            });
+          }}
+        >
           {AI_PROVIDERS.map((p) => (
             <option key={p.key} value={p.key}>
               {p.label}
@@ -328,27 +346,37 @@ function ModelEditor({
         </label>
       )}
 
-      {isCustom ? (
+      {showBase ? (
         <label className="field">
           <span className="field-label">API 根地址</span>
           <input
             value={draft.baseUrl}
-            placeholder="https://your-endpoint/v1"
+            placeholder={prov.baseUrl}
             onChange={(e) => patch({ baseUrl: e.target.value })}
           />
+          <span className="muted small">默认 {prov.baseUrl}（如用 DeepSeek / Moonshot / 自建网关，改成对应地址）</span>
         </label>
       ) : (
-        <p className="muted small">API 根地址：{resolvedBase}（{prov.label} 默认，自动使用，无需填写）</p>
+        <p className="muted small">API 根地址：{prov.baseUrl}（{prov.label} 固定，自动使用，无需填写）</p>
       )}
 
       <label className="field">
         <span className="field-label">模型名</span>
         {options.length > 0 ? (
-          <select value={draft.model} onChange={(e) => patch({ model: e.target.value })}>
+          <select
+            value={draft.model}
+            onChange={(e) => {
+              const id = e.target.value;
+              const rm = remote.find((r) => r.id === id);
+              // 选中带能力的模型时，自动把能力填上；没带能力的（通用 OpenAI 兼容）保留手选
+              patch(rm && rm.capabilities.length ? { model: id, capabilities: rm.capabilities } : { model: id });
+            }}
+          >
             <option value="">（请选择）</option>
-            {options.map((id) => (
-              <option key={id} value={id}>
-                {id}
+            {options.map((rm) => (
+              <option key={rm.id} value={rm.id}>
+                {rm.id}
+                {rm.capabilities.length ? ` · ${capLabels(rm.capabilities)}` : ''}
               </option>
             ))}
           </select>
@@ -360,6 +388,9 @@ function ModelEditor({
           />
         )}
       </label>
+      {picked && picked.capabilities.length > 0 && (
+        <p className="muted small">该模型已自动识别能力：{capLabels(picked.capabilities)}（可手动增减）</p>
+      )}
 
       <div className="row-actions">
         <button className="btn" disabled={busy !== ''} onClick={() => void doList()}>

@@ -3,7 +3,15 @@
 // 只依赖 /v1/models 与 /v1/chat/completions 两个端点——硅基流动、DeepSeek、
 // Moonshot、Ollama、各家网关都实现了这两个，所以一套代码能覆盖全部。
 import { getApiKey } from './models';
-import { providerOf, type AiMessage, type AiModel, type AiProvider, type AiReply } from './types';
+import {
+  normalizeCaps,
+  providerOf,
+  type AiCapability,
+  type AiMessage,
+  type AiModel,
+  type AiProvider,
+  type AiReply,
+} from './types';
 
 export interface ListModelsOpts {
   provider: AiProvider;
@@ -54,18 +62,37 @@ async function call(url: string, init: RequestInit, what: string): Promise<unkno
   }
 }
 
-/** 拉服务商的模型列表 */
-export async function listRemoteModels(o: ListModelsOpts): Promise<string[]> {
+/** 远端模型，连同它自带的能力（若服务商返回了） */
+export interface RemoteModel {
+  id: string;
+  /** 硅基流动会返回；通用 OpenAI 兼容接口不返回，留空，由用户手动勾选 */
+  capabilities: AiCapability[];
+}
+
+/** 拉服务商的模型列表（含硅基流动返回的模型能力） */
+export async function listRemoteModels(o: ListModelsOpts): Promise<RemoteModel[]> {
   const data = (await call(
     `${rootOf(o.provider, o.baseUrl)}/models`,
     { method: 'GET', headers: headersFor(o) },
     '读取模型列表',
-  )) as { data?: { id?: string }[]; models?: { name?: string }[] };
+  )) as {
+    data?: { id?: string; model?: string; name?: string; capabilities?: unknown }[];
+    models?: { name?: string; id?: string }[];
+  };
 
-  // OpenAI 风格是 data[].id；Ollama 原生 /api/tags 是 models[].name，这里都兜住
-  const ids = (data.data ?? []).map((m) => m.id ?? '').filter(Boolean);
-  if (ids.length) return ids.sort();
-  return (data.models ?? []).map((m) => m.name ?? '').filter(Boolean).sort();
+  // OpenAI 风格是 data[].id，硅基流动的同款还会带 capabilities；Ollama 是 models[].name
+  const fromData = (data.data ?? [])
+    .map((m) => ({
+      id: (m.id ?? m.model ?? m.name ?? '').trim(),
+      capabilities: normalizeCaps(m.capabilities),
+    }))
+    .filter((r) => r.id);
+  if (fromData.length) return fromData.sort((a, b) => a.id.localeCompare(b.id));
+
+  return (data.models ?? [])
+    .map((m) => ({ id: (m.name ?? m.id ?? '').trim(), capabilities: [] as AiCapability[] }))
+    .filter((r) => r.id)
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export interface ChatOpts {

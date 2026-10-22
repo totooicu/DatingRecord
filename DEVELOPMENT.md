@@ -569,6 +569,23 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 - **坚果云不返回 CORS 头**，网页直连必被浏览器拦。所以 `DavConfig.base` 可配置，
   测试时用本地转发代理（`proxy.mjs`）绕过。
 
+#### F-S01b 跨域代理（tools/nutstore-proxy）
+
+浏览器直连 `dav.jianguoyun.com` 会被同源策略在发请求前拦掉（报 `Failed to fetch`）。
+AI 服务商能连，是因为它们**主动返回** `Access-Control-Allow-Origin`——纯属服务端配置差异，
+客户端代码无法绕过。
+
+代理做的事：把请求原样转发给坚果云，再**自己补上 CORS 头**。仓库 `tools/nutstore-proxy/` 提供两份零依赖脚本：
+
+| 文件 | 部署目标 | 说明 |
+|---|---|---|
+| `worker.js` + `wrangler.toml` | Cloudflare Workers（免费） | `wrangler deploy` 即得 `*.workers.dev` 地址，App 里填 `https://<名>.workers.dev/dav` |
+| `server.mjs` | 本地 / 自有服务器（Node） | `node server.mjs`，填 `http://<机器IP>:8787/dav` |
+
+> **关于「放 GitHub 上」**：GitHub Pages 是纯静态托管，没有服务端逻辑，没法给请求加 CORS 头，
+> 因此它本身当不了代理。脚本可以放在 GitHub 仓库里管理，但运行时要部署到 Cloudflare Workers
+> 或一台能跑 Node 的小机器。代理不存账号密码，Basic Auth 头由浏览器带来、原样转发。
+
 **回归**：`t-sync.mjs`（拦截 `dav.jianguoyun.com`，内存里跑真 WebDAV）20 项；
 `t-sync-real.mjs`（真坚果云 + 转发代理）6 项；`t-sync-secret.mjs` 验证密钥不进云端。
 
@@ -576,19 +593,26 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 
 - 一行 = 一个「别名 → 怎么调」：`alias / provider / baseUrl / model / temperature / maxTokens / capabilities`。
   同一个模型可起多个别名配不同温度（「快速」0.2 / 「发散」1.0）。
-- 服务商可自己选：硅基流动 / OpenAI 兼容 / 本地 Ollama / 自定义。**已知服务商的根地址自动填好、
-  不让你改**（只有「自定义」才出现「API 根地址」输入框），省得抄错；自定义时存用户填的地址。
-- 密钥框跟随当前所选服务商出现（硅基流动 / OpenAI / 自定义需要，本地 Ollama 不需要），
+- 服务商三个：**硅基流动**（根地址固定，UI 不出现「API 根地址」框）/ **OpenAI 兼容·第三方端点**
+  （DeepSeek、Moonshot、OpenRouter、自建网关都填这里，出现可编辑的根地址框、默认 `api.openai.com/v1`）/
+  **本地 Ollama**（默认 `localhost:11434/v1`，可改成远程/隧道）。
+  早期版本把「OpenAI 兼容」和「自定义」拆成两项，实测二者等价（都是填一个 `/v1` 根地址），已合并；
+  历史数据 `provider='custom'` 在 `providerOf` / `rowToModel` 里映射成 `openai`，无需迁移。
+- 切换服务商时，根地址**重置为该服务商的默认值**（硅基流动则为空）——避免从上一家带出错误地址。
+- 密钥框跟随当前所选服务商出现（硅基流动 / OpenAI 兼容需要，本地 Ollama 不需要），
   密钥按 **provider** 存一份（`meta['ai.key.<provider>']`），多条别名共用；
   存 `ai_models` 表里的只有「怎么调」，所以配置能随备份/同步走而密钥留在本机。
 - 「密钥」区是**按需出现**的：只展示「被某个模型用到」或「当前正在编辑的服务商」的密钥框，
   不会一上来列一堆用不上的。
 - 能力标签 `capabilities`（文本 / 图片 / 视频 / 音频 / 文件）记在 `ai_models` 表里，
-  不同功能按能力挑模型（看图要「图片」、转写要「音频」）。API 不返回可靠的能力字段，
-  所以由用户勾选；落库为逗号分隔字符串，随备份/同步走。
+  不同功能按能力挑模型（看图要「图片」、转写要「音频」）。
+  **关于「读取列表时自动带出能力」**：标准 `/v1/models` 接口（硅基流动、OpenAI、DeepSeek、Moonshot…）
+  只回 `{id, object, created, owned_by}`，**没有能力字段**——这点已用真实 SiliconFlow 返回验证过，
+  所以能力只能手动勾选。代码里 `normalizeCaps()` 仍会解析任何返回 `capabilities` 的服务商
+  （如 OpenRouter 的 `vision`/`speech` 别名已映射），命中即自动预填，否则提示手动勾选。
 - 只依赖两个端点 `/v1/models` 与 `/v1/chat/completions` —— 硅基流动、OpenAI、DeepSeek、
-  Ollama、自建网关全覆盖，一套代码。Ollama 原生 `/api/tags` 返回 `models[].name`，`listRemoteModels`
-  两种形状都兜。
+  Ollama、自建网关全覆盖，一套代码。Ollama 的 `/v1/models` 也是 OpenAI 风格 `data[].id`，
+  `listRemoteModels` 两种形状（OpenAI 风格 `data[]` / Ollama 原生 `models[]`）都兜。
 - 「读取模型列表」「测试这个模型」的反馈**直接显示在按钮下方**（同区块内），不再飘到页面顶上；
   成功/失败都给明确文案（失败会区分 401 密钥失效 / 404 地址错 / 429 限流 / 网络或被跨域拦）。
 - 别名唯一性在写入时校验（`assertAlias`），合并时也校验：本地已被别的 id 占了同名别名就跳过，

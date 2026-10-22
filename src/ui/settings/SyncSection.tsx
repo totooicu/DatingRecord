@@ -125,8 +125,9 @@ export function SyncSection() {
           />
         </label>
         <p className="muted small">
-          默认直连 {DEFAULT_DAV_BASE}。坚果云不返回跨域许可，若浏览器拦下请求，
-          填一个转发到该地址的反向代理（例如 <code>https://your-proxy/dav</code>）。
+          默认直连 {DEFAULT_DAV_BASE}。坚果云不返回跨域许可，浏览器会拦下请求，
+          这时填一个转发到该地址的反向代理（例如 <code>https://你的反代/dav</code>）。
+          仓库 <code>tools/nutstore-proxy/</code> 里有 Cloudflare Worker 与本地 Node 两份现成脚本，几分钟就能部署。
         </p>
       </details>
 

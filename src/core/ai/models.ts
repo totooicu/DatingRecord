@@ -43,7 +43,7 @@ function rowToModel(r: Row): AiModel {
   return {
     id: r.id,
     alias: r.alias,
-    provider: (r.provider as AiProvider) ?? 'siliconflow',
+    provider: (r.provider === 'custom' ? 'openai' : (r.provider as AiProvider)) ?? 'siliconflow',
     baseUrl: r.base_url ?? '',
     model: r.model,
     note: r.note ?? '',

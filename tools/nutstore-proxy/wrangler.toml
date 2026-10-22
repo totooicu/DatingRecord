@@ -1,0 +1,8 @@
+name = "nutstore-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+# 如果你有自己绑定的域名，取消注释并填上：
+# routes = [
+#   { pattern = "nutstore.your-domain.com", custom_domain = true }
+# ]
