@@ -1,7 +1,7 @@
 // 人物写入：新建、更新、归档、恢复、彻底删除。
 // 软删除是铁律——物理删除会让将来的同步把数据又推回来。
 
-import { run, transact, appendOplog, getDeviceId } from '../../db';
+import { run, queryOne, transact, appendOplog, getDeviceId } from '../../db';
 import { newId } from '../../id';
 import { hlcNow } from '../../time';
 import type { AttributeValue, Person } from '../../types';
@@ -69,6 +69,10 @@ export function updatePerson(
 /** 标记 / 取消隐私（隐私模式下的隐藏开关）。单独一个函数，避免污染 updatePerson 的字段清单 */
 export function setPersonPrivate(id: string, on: boolean): void {
   const now = new Date().toISOString();
+  // 值没变就别写（幂等）：否则重复点一下按钮也会多一条 oplog，
+  // 撤销提示条里冒出一条什么都没改的「修改…」
+  const cur = queryOne<{ is_private: number | null }>('SELECT is_private FROM persons WHERE id = ?', [id]);
+  if (!cur || Number(cur.is_private ?? 0) === (on ? 1 : 0)) return;
   transact(() => {
     run('UPDATE persons SET is_private = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?', [
       on ? 1 : 0,

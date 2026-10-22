@@ -26,7 +26,9 @@
 }
 
 .settings-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
@@ -34,6 +36,82 @@
   border-radius: var(--radius);
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+
+/* 图标：浅色底方块，选中时跟着强调色走 */
+.settings-nav-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+}
+
+.settings-nav-item-on .settings-nav-icon {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+
+.settings-nav-text {
+  min-width: 0;
+}
+
+/* 分组标题：一条细分隔线 + 小标题，把六条入口划成四段 */
+.settings-nav-group + .settings-nav-group {
+  margin-top: 14px;
+}
+
+.settings-nav-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+.settings-nav-group-title svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+}
+
+/* 子页顶部的一段总述 */
+.settings-intro {
+  margin-bottom: 12px;
+}
+
+.settings-intro p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* 卡片标题右侧的状态药丸（如「已开启」） */
+.pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pill-on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* 卡片标题是 13px 灰字，合并后一页里卡片变多，缩一点间距免得像长表格 */
+.settings-body .card-title {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* 选中态沿用列表那套「整块浅底 + 左侧色条」，手机上比细边框好认 */

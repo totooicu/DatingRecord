@@ -255,6 +255,9 @@ export function urlForFile(id: string): Promise<string | null> {
 
 /** 标记 / 取消隐私（隐私模式下的隐藏开关）。单独一个函数，避免污染其它写操作 */
 export function setFilePrivate(id: string, on: boolean): void {
+  // 值没变就别写（幂等）：重复点一下不该多一条撤销记录
+  const cur = queryOne<{ is_private: number | null }>('SELECT is_private FROM attachments WHERE id = ?', [id]);
+  if (!cur || Number(cur.is_private ?? 0) === (on ? 1 : 0)) return;
   transact(() => {
     run('UPDATE attachments SET is_private = ? WHERE id = ?', [on ? 1 : 0, id]);
     appendOplog('attachment', id, 'update', { isPrivate: on });

@@ -417,6 +417,43 @@ interface SqlDriver {
 
 - 软删除；**只解绑成员关联，绝不级联删除事件**（这是最容易出事的地方）。
 
+### F-S01 隐私模式 — P1
+
+- 人物 / 事件集 / 事件 / 文件四类实体各带一个 `is_private`（schema v4），
+  标记入口分别是详情页顶栏按钮、事件表单里的开关、文件行的图标按钮。
+- **隐私模式**是查看偏好（`localStorage: dr.privacy.mode`），开启后所有标了隐私的条目
+  从列表、详情、统计里消失；参与者列表里的人名脱敏为「（隐私）」。
+- **实现要点**：过滤发生在**仓储读取层**（`listPersons` / `listEvents` / `getTree` / `listMembers` /
+  `listFiles` / `statsOf` / `globalStats` 在 `isPrivacyMode()` 时补一条 `is_private = 0`），
+  不是在各组件里各判一次——这样新增查询自动继承，不会漏。切换模式必须 `bump()`，
+  否则列表 memo 在旧版本号上，藏起来的东西会「藏在缓存里」。
+- **边界**：`Panes` 把「私有 + 隐私模式」的选中项当**未选中**处理，所以详情区直接退回空态，
+  比在详情内部报「已隐藏」更彻底；`PersonDetail` / `CollectionDetail` / `EventForm` 内还有一层兜底守卫。
+  `setXPrivate` 一律**幂等**（值没变就不写 oplog），否则新建事件收尾时那次无害调用会
+  让提示条从「新建事件」变成「修改事件」，撤销还得按两次。
+- **未做**：生物识别解锁（WebAuthn，对纯本地库意义有限）。
+
+### F-S02 设置目录的组织方式 — P1
+
+- **两态 + 分组**：手机端目录页 / 子页二选一（`data-sub` 驱动 CSS），宽屏左目录右内容。
+  目录按 `SETTINGS_ENTRIES[].group` 分成 **通用 / 安全 / 人物 / 数据** 四段，
+  每段有小标题 + 图标，每条入口有 20px 线性 SVG 图标（`navIcons.tsx`，不用 emoji——
+  部分安卓会把 emoji 渲染成空心方块，也没法跟随 `currentColor`）。
+- **按「做一件事」合并入口**（合并只动「进哪一页」，页内仍是独立卡片）：
+  | 合并后 | 原来分散的入口 |
+  |---|---|
+  | 隐私与安全 | 应用锁 · 本地库加密 · 隐私模式 |
+  | 人物与属性 | 属性字典 · 属性模板 · 重复人物 |
+  | 数据与统计 | 库概览 · 示例数据与重置 |
+- **目录即状态**：「隐私与安全」那条的说明文字不给固定文案，而是现算
+  `锁开/关 · 加密开/关 · 隐私模式开/关`——不进去也知道开没开。
+- **旧 key 兼容**：`LEGACY_KEYS` 把 `lock` / `enc` → `security`、`templates` → `attrs`、
+  `overview` / `sample` → `data`，`Settings` 的 `initial` 走 `resolveSettingsKey()`。
+- **回归脚本的坑**：合并后同一页里会出现两套 `.lock-form` / `.lock-err` / `.card`，
+  旧脚本里所有裸选择器都会撞上 strict mode。定位卡片要用
+  `page.locator('.card').filter({ has: page.locator('.card-title', { hasText: /^标题$/ }) })`
+  ——`hasText` 会**回溯到共同祖先**，两张卡都会被选中。
+
 ---
 
 ## 2.5 检索
