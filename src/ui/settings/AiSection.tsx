@@ -536,6 +536,9 @@ function KeySection({ onSaved }: { onSaved: () => void }) {
 
   const [confirming, setConfirming] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const toggleReveal = (id: string) =>
+    setRevealed((s) => ({ ...s, [id]: !s[id] }));
 
   const doDelete = (r: KRow) => {
     if (r.orig) setApiKey(r.orig, '');
@@ -576,10 +579,19 @@ function KeySection({ onSaved }: { onSaved: () => void }) {
               onKeyDown={(e) => e.key === 'Enter' && commit(r.id)}
             />
 
-            {/* 第二行：密钥 + 复制 + 删除 */}
+            {/* 第二行：显示切换 + 密钥 + 复制 + 删除 */}
             <div className="key-row2">
+              <button
+                type="button"
+                className="btn btn-sm key-reveal"
+                title={revealed[r.id] ? '隐藏密钥' : '显示密钥'}
+                aria-label={revealed[r.id] ? '隐藏密钥' : '显示密钥'}
+                onClick={() => toggleReveal(r.id)}
+              >
+                {revealed[r.id] ? '🙈' : '👁'}
+              </button>
               <input
-                type="password"
+                type={revealed[r.id] ? 'text' : 'password'}
                 className="key-input"
                 value={r.key}
                 placeholder="sk-..."
