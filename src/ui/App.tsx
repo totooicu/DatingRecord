@@ -194,6 +194,7 @@ export default function App() {
               openId={jumpEventId}
               onOpened={() => setJumpEventId(null)}
               onClearDay={() => setFilter(defaultFilter)}
+              onBackToCalendar={() => setView({ k: 'calendar' })}
             />
           </div>
         )}

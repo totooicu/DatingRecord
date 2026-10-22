@@ -56,10 +56,32 @@ const APPEND = 3;
 const FLOOR_YEAR = 1990;
 const CEIL_YEAR = 2100;
 
+/**
+ * 离开日历页时记下的视图状态。
+ *
+ * 切到时间线时日历组件会整个卸载，内部状态全丢——翻到 8 月点某一天进去看时间线，
+ * 再点「日历」页签就被重置回今天，之前翻的位置全白费。
+ * 所以把「月份窗口 / 居中月份 / 定位锚点 / 滚动位置」存在模块级变量里，
+ * 下次挂载时原样还原（只在该标签页会话内保留，刷新页面才算真正重置）。
+ */
+interface CalendarViewState {
+  months: MonthRef[];
+  center: MonthRef;
+  focusedDay: DayKey;
+  scrollTop: number;
+}
+let savedView: CalendarViewState | null = null;
+
 function buildWindow(center: MonthRef): MonthRef[] {
   const out: MonthRef[] = [];
   for (let i = -WINDOW; i <= WINDOW; i += 1) out.push(shiftMonth(center, i));
   return out;
+}
+
+/** 把新月份并入已有列表，同月的重复项直接丢掉（防重入的第二遍落空） */
+function mergeMonths(add: MonthRef[], base: MonthRef[]): MonthRef[] {
+  const have = new Set(base.map(monthKey));
+  return [...add.filter((m) => !have.has(monthKey(m))), ...base];
 }
 
 /** 日键 +N 天（本地零点推进，避开 toISOString 的时区穿越） */
@@ -156,19 +178,24 @@ export function MonthView({
   const today = todayKey();
   // 当前真实月份：整次会话固定在打开时，跨零点也不跳变
   const current = useMemo(() => monthOf(new Date()), []);
-  const [months, setMonths] = useState<MonthRef[]>(() => buildWindow(current));
-  const [center, setCenter] = useState<MonthRef>(current);
+  // 有上次的痕迹就接着上次的看，没有才从当前月开始
+  const [months, setMonths] = useState<MonthRef[]>(() => savedView?.months ?? buildWindow(current));
+  const [center, setCenter] = useState<MonthRef>(() => savedView?.center ?? current);
   const [picker, setPicker] = useState<'month' | 'year' | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const pendingScroll = useRef<string | null>(monthKey(current));
+  const pendingScroll = useRef<string | null>(savedView ? null : monthKey(current));
+  /** 上次离开时的滚动位置，挂载后原样还原 */
+  const pendingScrollTop = useRef<number | null>(savedView ? savedView.scrollTop : null);
   const pendingPrepend = useRef(0);
   const prevHeight = useRef(0);
+  /** 触边续接的进行中标记，防止一次滚动重复追加 */
+  const edgeLoading = useRef(false);
   /** 待定位到的「具体某一天」：月份还没加载时先记住，等窗口扩展后再滚 */
   const pendingScrollDay = useRef<DayKey | null>(null);
   /** 当前所在（或上次跳转到的）有事件日子，作为「上一日 / 下一日」的锚点 */
-  const [focusedDay, setFocusedDay] = useState<DayKey>(today);
+  const [focusedDay, setFocusedDay] = useState<DayKey>(() => savedView?.focusedDay ?? today);
 
   const summaries = useMemo(() => collectDaySummaries(filter), [v, filter]);
   // 全部有事件的日子（全局、不限于当前窗口），按日键升序排好，供快速跳转
@@ -252,11 +279,20 @@ export function MonthView({
   // 周渲染后，处理「顶部续接」的滚动补偿 + 居中跳转
   useLayoutEffect(() => {
     const cont = scrollRef.current;
+    // 新月份已经渲染完，放开闸门；这一步必须在读取 scrollHeight 之前，
+    // 否则紧接着的 scroll 事件会被挡住、续接卡住
+    edgeLoading.current = false;
     if (!cont) return;
     if (pendingPrepend.current > 0) {
       const delta = cont.scrollHeight - prevHeight.current;
       cont.scrollTop += delta;
       pendingPrepend.current = 0;
+    }
+    // 回到日历页：先把滚动位置还原到上次离开的地方（此时已有上次的月份窗口，
+    // 内容高度一致，scrollTop 才落得准）；没有历史时才走下面的居中逻辑。
+    if (pendingScrollTop.current !== null) {
+      cont.scrollTop = pendingScrollTop.current;
+      pendingScrollTop.current = null;
     }
     if (pendingScroll.current) {
       const target = months.find((x) => monthKey(x) === pendingScroll.current);
@@ -294,33 +330,58 @@ export function MonthView({
     if (b) setCenter((prev) => (b.year !== prev.year || b.month !== prev.month ? b : prev));
   };
 
+  /** 把当前视图状态记下来，下次进日历页照着还原 */
+  const persistView = (focus?: DayKey) => {
+    savedView = {
+      months,
+      center,
+      focusedDay: focus ?? focusedDay,
+      scrollTop: scrollRef.current?.scrollTop ?? 0,
+    };
+  };
+
+  // 月份窗口 / 居中月份 / 定位锚点变了就同步一次
+  useEffect(() => {
+    persistView();
+    // persistView 每次渲染都是新的，不进依赖，否则会无限循环
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [months, center, focusedDay]);
+
   const onScroll = () => {
     const cont = scrollRef.current;
     if (!cont) return;
     const top = cont.scrollTop;
     const bottom = cont.scrollHeight - cont.scrollTop - cont.clientHeight;
 
-    // 1) 触边续接相邻月份
-    if (top < EDGE) {
+    // 1) 触边续接相邻月份。
+    // edgeLoading 是防重入的闸门：一次滚动会连发好几个 scroll 事件，
+    // 而 setMonths 提交前 months 还是旧值——没有它就会连续追加两遍，
+    // 于是「补偿量」被算两次、内容却只长了一次，画面直接漂走（8 月漂到 11 月）。
+    if (top < EDGE && !edgeLoading.current) {
       const head = months[0];
       if (!(head.year <= FLOOR_YEAR && head.month === 0)) {
         const prev: MonthRef[] = [];
         for (let i = PREPEND; i >= 1; i -= 1) prev.push(shiftMonth(head, -i));
+        edgeLoading.current = true;
         prevHeight.current = cont.scrollHeight;
         pendingPrepend.current = prev.length;
-        setMonths((ms) => [...prev, ...ms]);
+        setMonths((ms) => mergeMonths(prev, ms));
       }
-    } else if (bottom < EDGE) {
+    } else if (bottom < EDGE && !edgeLoading.current) {
       const tail = months[months.length - 1];
       if (!(tail.year >= CEIL_YEAR && tail.month === 11)) {
         const add: MonthRef[] = [];
         for (let i = 1; i <= APPEND; i += 1) add.push(shiftMonth(tail, i));
-        setMonths((ms) => [...ms, ...add]);
+        edgeLoading.current = true;
+        setMonths((ms) => mergeMonths(ms, add));
       }
     }
 
     // 2) 跟踪居中月份（驱动标题）
     recalcCenter();
+
+    // 3) 记住滚动位置：离开日历页再回来要落在同一处
+    persistView();
   };
 
   // 窗口尺寸 / 屏幕旋转后重新判定居中月份，避免标题与实际显示不符
@@ -372,9 +433,12 @@ export function MonthView({
   const hasPrevDay = eventDays.some((k) => k < focusedDay);
   const hasNextDay = eventDays.some((k) => k > focusedDay);
 
-  // 点某一天：除了回时间线，也把它记成「上一日 / 下一日」的锚点
+  // 点某一天：除了回时间线，也把它记成「上一日 / 下一日」的锚点。
+  // 这里必须同步存一份——onPickDay 会立刻切走页面、组件随即卸载，
+  // 上面那个 effect 根本来不及带着新的 focusedDay 跑一遍。
   const handlePick = (key: DayKey) => {
     setFocusedDay(key);
+    persistView(key);
     onPickDay(key);
   };
 

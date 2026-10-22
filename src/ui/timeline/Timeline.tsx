@@ -16,6 +16,7 @@ export function Timeline({
   openId,
   onOpened,
   onClearDay,
+  onBackToCalendar,
 }: {
   filter: TimelineFilter;
   keyword: string;
@@ -24,6 +25,8 @@ export function Timeline({
   onOpened?: () => void;
   /** 清掉日历带进来的「只看某一天」 */
   onClearDay?: () => void;
+  /** 回到日历（日历会停在上次看的那一天，不会跳回今天） */
+  onBackToCalendar?: () => void;
 }) {
   const v = useVersion();
   // 参与者名字：隐私模式下，标了隐私的人物显示成「（隐私）」而不是真名——
@@ -75,6 +78,15 @@ export function Timeline({
           {filter.dayLabel && <span className="tl-daychip">只看 {filter.dayLabel}</span>}
         </h3>
         <div>
+          {filter.dayLabel && (
+            <button
+              className="btn btn-sm"
+              onClick={() => onBackToCalendar?.()}
+              title="回到日历里那一天"
+            >
+              回到日历
+            </button>
+          )}
           {filter.dayLabel && (
             <button className="btn btn-sm" onClick={() => onClearDay?.()}>
               取消日期
