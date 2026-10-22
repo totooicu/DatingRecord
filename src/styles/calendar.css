@@ -32,6 +32,30 @@
   font-size: 15px;
 }
 
+/* 年 / 月拆成两个按钮：点哪个就打开哪个选择器 */
+.cal-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.cal-title-btn {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.cal-title-btn:hover {
+  color: var(--primary);
+  background: #fde8ef;
+}
+
 .cal-head .icon-btn {
   width: 32px;
   height: 32px;
@@ -80,10 +104,10 @@
 .cal-cell {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-height: 56px;
-  padding: 4px 2px;
+  align-items: stretch;
+  gap: 1px;
+  min-height: 36px;
+  padding: 3px 1px;
   border: none;
   border-radius: 9px;
   background: #fff;
@@ -121,45 +145,77 @@
   font-size: 12px;
   font-weight: 600;
   line-height: 1.1;
+  text-align: center;
   color: var(--fg, #2b2b2b);
+}
+
+/* ---------- 日期格里的「图标 + 事件名」滚动条 ----------
+   放得下就静止；放不下时复制一份，向左匀速滚动。
+   高度只占一行，所以整个日期格比原来的图标堆叠矮一截。 */
+.cal-events {
+  display: block;
+  width: 100%;
+  min-height: 12px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.cal-ticker {
+  display: inline-flex;
+  vertical-align: top;
+  max-width: none;
+}
+
+.cal-ticker-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+}
+
+.cal-ev {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.cal-ev .coll-icon-sm {
+  width: 12px;
+  height: 12px;
+  font-size: 8px;
+  border-radius: 3px;
+}
+
+.cal-ev-title {
+  font-size: 9px;
+  line-height: 1.1;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.cal-events-run .cal-ticker {
+  animation: cal-marquee linear infinite;
+}
+
+@keyframes cal-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-events-run .cal-ticker {
+    animation: none;
+  }
 }
 
 .cal-past .cal-date,
 .cal-out .cal-date {
   color: var(--muted);
-}
-
-.cal-icons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  min-height: 20px;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-
-/* 格子里的小图标再小一号：44px 宽的格子塞 3 个 22px 会挤爆 */
-.cal-icons .coll-icon-sm {
-  width: 17px;
-  height: 17px;
-  font-size: 10px;
-  border-radius: 4px;
-}
-
-.cal-icons .coll-icon-alpha.coll-icon-sm {
-  font-size: 8px;
-  letter-spacing: -0.4px;
-}
-
-.cal-icons .coll-icon-svg {
-  padding: 1px;
-}
-
-.cal-more {
-  font-size: 9px;
-  color: var(--muted);
-  line-height: 1;
 }
 
 /* ---------- 跨天事件条 ----------
@@ -226,17 +282,98 @@
   vertical-align: middle;
 }
 
-/* 宽屏：格子高一点，图标给到正常尺寸 */
+/* 宽屏：格子略高一点，滚动条给到正常可读的字号 */
 @media (min-width: 1024px) {
   .cal-cell {
-    min-height: 74px;
+    min-height: 46px;
+    padding: 4px 2px;
   }
 
-  .cal-icons .coll-icon-sm {
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
+  .cal-ev-title {
+    font-size: 10px;
   }
+
+  .cal-ev .coll-icon-sm {
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+  }
+}
+
+/* ---------- 年 / 月选择器 ---------- */
+.cal-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cal-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.cal-pick strong {
+  font-size: 14px;
+}
+
+.cal-pick span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cal-pick-on {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  background: #fde8ef;
+}
+
+.cal-pick-on strong,
+.cal-pick-on span {
+  color: var(--primary);
+}
+
+.cal-year-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+
+.cal-year-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cal-year-row span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cal-year-row-on {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  background: #fde8ef;
+}
+
+.cal-year-row-on strong,
+.cal-year-row-on span {
+  color: var(--primary);
 }
 
 /* ---------- 日历筛选（人物 / 事件集多选） ----------

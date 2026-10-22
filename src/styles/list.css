@@ -248,13 +248,8 @@
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
-.coll-icon-fallback {
-  /* 没设图标：用主色系的浅色底，别跟宿主底色（尤其日历的白格）糊成一片 */
-  background: #fde8ef;
-  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
-  color: var(--primary);
-  opacity: 1;
-}
+/* 没设图标时的默认外观由 CollectionIconView 生成（文字颜色头像），
+   不再用固定粉底，颜色按名字散列决定 */
 
 /* ---------- 图标选择器（F-C08） ---------- */
 .icon-picker {

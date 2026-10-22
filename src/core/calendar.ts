@@ -73,12 +73,22 @@ function makeMatcher(filter: CalendarFilter): {
   };
 }
 
+/** 某一天里的一条事件（日历格子里滚动的「图标 + 事件名」） */
+export interface DayEvent {
+  id: string;
+  title: string;
+  /** 所属事件集的图标；没有集合时为空 */
+  icon: CollectionIcon | null;
+}
+
 /** 某一天的内容摘要 */
 export interface DaySummary {
   /** 当天事件数（含时间未知但 day_key 对得上的） */
   count: number;
   /** 出现的集合，按事件数从多到少 */
   collections: DayCollection[];
+  /** 当天开始并结束的事件；跨天事件由日历下方的横条表达，不在这里重复 */
+  events: DayEvent[];
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -118,6 +128,11 @@ export function shiftMonth(m: MonthRef, delta: number): MonthRef {
 
 export function monthLabel(m: MonthRef): string {
   return `${m.year} 年 ${m.month + 1} 月`;
+}
+
+/** 月份的稳定键：'YYYY-MM'，给月份选择器的计数用 */
+export function monthKey(m: MonthRef): string {
+  return `${m.year}-${pad2(m.month + 1)}`;
 }
 
 /**
@@ -210,13 +225,20 @@ export function collectDaySummaries(
     // 筛选在展开日期之前做：被过滤掉的事件既不计数也不出图标
     if (!match(e, ids)) continue;
 
+    // 单日事件才进格子里的滚动文字；跨天事件已经有一条横跨多格的条，
+    // 再在每一天重复一遍标题只会让格子更乱
+    const singleDay = startKey === endKey;
+    const firstId = ids[0] ?? e.primaryCollectionId;
+    const icon = singleDay && firstId ? (infoOf(firstId)?.icon ?? null) : null;
+
     for (const key of dayKeysBetween(startKey, endKey)) {
       let cell = out.get(key);
       if (!cell) {
-        cell = { count: 0, collections: [] };
+        cell = { count: 0, collections: [], events: [] };
         out.set(key, cell);
       }
       cell.count += 1;
+      if (singleDay) cell.events.push({ id: e.id, title: e.title, icon });
       for (const id of ids) {
         if (cell.collections.some((c) => c.id === id)) continue;
         const c = infoOf(id);
@@ -307,4 +329,47 @@ export function collectSpanBars(
     b.lane = lane;
   }
   return bars;
+}
+
+/**
+ * 每个月的事件数：键是 'YYYY-MM'。
+ *
+ * 跨月事件在它覆盖到的每个月各记一次——九月底到十月初的旅行，
+ * 说「十月有 0 件事」显然不对。一次遍历最多展开约 200 年，
+ * 防御导入数据里离谱的时间区间。
+ */
+export function collectMonthCounts(
+  filter: CalendarFilter = EMPTY_CALENDAR_FILTER,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const { match } = makeMatcher(filter);
+
+  for (const e of listEvents({})) {
+    const sKey = dayKeyOfTs(e.startTs);
+    if (!sKey) continue;
+    let eKey = dayKeyOfTs(e.endTs);
+    if (!eKey || eKey < sKey) eKey = sKey;
+
+    const ids = collectionsOfEvent(e.id).map((c) => c.id);
+    if (ids.length === 0 && e.primaryCollectionId) ids.push(e.primaryCollectionId);
+    if (!match(e, ids)) continue;
+
+    const [sy, sm] = sKey.split('-').map(Number);
+    const [ey, em] = eKey.split('-').map(Number);
+    const endIdx = ey * 12 + em - 1;
+    let y = sy;
+    let m = sm - 1;
+    for (let i = 0; i < 2400; i += 1) {
+      const idx = y * 12 + m;
+      if (idx > endIdx) break;
+      const key = `${y}-${pad2(m + 1)}`;
+      out.set(key, (out.get(key) ?? 0) + 1);
+      m += 1;
+      if (m === 12) {
+        m = 0;
+        y += 1;
+      }
+    }
+  }
+  return out;
 }

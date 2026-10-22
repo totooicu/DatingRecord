@@ -20,7 +20,33 @@ export type IconSize = 'sm' | 'md' | 'lg';
 /** 没设图标时的默认底色（和集合树里的中性灰一致） */
 const DEFAULT_BG = 'var(--panel)';
 const DEFAULT_FG = 'var(--muted)';
-/** 回退态的底色交给 CSS 的 .coll-icon-fallback（浅粉 + 主色字），这里不再覆盖 */
+
+/**
+ * 默认的文字头像配色：按名字散列取一组，同一个人 / 事件集每次都是同一个颜色。
+ * 底色都是浅色，前景用同色系的深色，保证在列表和日历里都看得清。
+ */
+const DEFAULT_PALETTE: { fg: string; bg: string }[] = [
+  { fg: '#c2255c', bg: '#fde8ef' },
+  { fg: '#e8590c', bg: '#fff4e6' },
+  { fg: '#2f9e44', bg: '#ebfbee' },
+  { fg: '#1971c2', bg: '#e7f5ff' },
+  { fg: '#7048e8', bg: '#f3f0ff' },
+  { fg: '#a33c52', bg: '#f7f0ee' },
+];
+
+function hashText(s: string): number {
+  let h = 0;
+  for (const ch of s) h = (h * 31 + (ch.codePointAt(0) ?? 0)) | 0;
+  return Math.abs(h);
+}
+
+/** 没设图标时的默认「文字颜色头像」：首字 + 按名字散列的配色 */
+export function defaultTextIcon(name: string): CollectionIcon {
+  const trimmed = name.trim();
+  const p = DEFAULT_PALETTE[hashText(trimmed) % DEFAULT_PALETTE.length];
+  return { type: 'text', text: Array.from(trimmed)[0] ?? '?', fg: p.fg, bg: p.bg };
+}
+
 /** 单/双文字的取字规则：去掉首尾空白，双字母按「字符」而不是 UTF-16 码元切 */
 export function iconChars(icon: CollectionIcon): string {
   const raw = (icon.text ?? '').replace(/\s+/g, ' ').trim();
@@ -71,11 +97,17 @@ export function CollectionIconView({
   };
 
   if (!icon) {
-    // 没图标：给一个浅色首字，比空白格子好认。
-    // 不传 style —— 让 CSS 的 .coll-icon-fallback 决定颜色，否则行内样式会盖掉它。
+    // 没设图标：默认就是一个「文字颜色头像」——名字首字 + 按名字散列的配色。
+    // 这样人物和事件集在没设图标时外观一致，也不会出现灰色空格子。
+    const auto = defaultTextIcon(fallback ?? '');
     return (
-      <span className={`${cls} coll-icon-fallback`} title={title} aria-hidden>
-        {(fallback ?? '').slice(0, 1)}
+      <span
+        className={`${cls} coll-icon-text`}
+        style={{ background: auto.bg, color: auto.fg }}
+        title={title}
+        aria-hidden
+      >
+        {auto.text}
       </span>
     );
   }

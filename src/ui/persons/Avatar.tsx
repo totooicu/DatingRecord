@@ -61,9 +61,10 @@ export function Avatar({ name, avatar, icon, size = 'sm', className = '', onClic
     );
   }
 
+  // 默认外观与事件集一致：文字颜色头像（首字 + 按名字散列的配色），只是外形保持圆形
   return (
-    <span className={`avatar ${sizeClass} ${clickable} ${className}`} {...handlers}>
-      {name.slice(0, 1)}
+    <span className={`avatar avatar-icon ${sizeClass} ${clickable} ${className}`} {...handlers}>
+      <CollectionIconView icon={null} size={size === 'lg' ? 'lg' : 'sm'} fallback={name} />
     </span>
   );
 }
