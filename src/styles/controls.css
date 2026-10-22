@@ -139,6 +139,12 @@
   grid-column: 1 / -1;
 }
 
+/* 同理：grid 项默认 min-width:auto，内部有长内容（工具栏、长文件名）时
+   会反过来把轨道撑宽。压成 0 让滚动/换行在内部发生。 */
+.form-grid > * {
+  min-width: 0;
+}
+
 .field {
   display: flex;
   flex-direction: column;

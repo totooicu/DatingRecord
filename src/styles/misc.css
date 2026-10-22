@@ -5,7 +5,14 @@
   gap: 6px;
 }
 
+.chip-branch {
+  color: var(--muted);
+  font-size: 11px;
+  margin-right: 3px;
+}
+
 .chip {
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: 4px;

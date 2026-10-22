@@ -3,6 +3,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* grid 子元素的自动最小尺寸是 min-content；不压成 0，长工具栏/长链接
+     会把整列撑出弹窗宽度，表现为整页可以左右拖动 */
+  min-width: 0;
 }
 .md-editor-head {
   display: flex;
@@ -26,12 +29,13 @@
   border-color: var(--primary);
   color: #fff;
 }
-/* 手机上按钮横向滚动，换行会把工具栏顶成三行 */
+/* 工具栏换行成两行：横向滚动会把内容撑得比屏幕还宽（grid 的最小尺寸
+   按 min-content 算，整条工具栏的 max-content 宽度会把弹窗顶爆） */
 .md-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  min-width: 0;
 }
 .md-tool {
   flex: none;

@@ -158,3 +158,107 @@
   padding: 8px 14px 4px;
   font-weight: 600;
 }
+
+/* ---------- 事件浏览态（只读） ----------
+   事实类字段走会换行的小流，不再一人一行；人物/标签/事件集用只读 chip，
+   只有正文用满宽。 */
+.ev-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ev-view-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ev-view-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.ev-view-private {
+  flex: none;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fde8ef;
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.ev-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ev-fact {
+  display: inline-flex;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ev-fact em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ev-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.ev-line-label {
+  flex: none;
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ev-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ev-chip {
+  max-width: 100%;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #f2efe9;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ev-chip-tag {
+  background: #eef6f0;
+}
+
+.ev-chip-kind {
+  margin-right: 4px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--primary);
+}
+
+.ev-view-body {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px dashed #efece7;
+  min-width: 0;
+}

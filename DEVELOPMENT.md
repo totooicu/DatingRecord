@@ -370,6 +370,17 @@ interface SqlDriver {
 - 删除 = 软删除（`deleted_at`），进回收站，可恢复；
 - 编辑后 `rev +1`、更新 `hlc`、写 oplog。
 
+### F-E07a 浏览态与编辑态 — P1
+
+- 打开已有事件默认进入**浏览态**（`EventView`）：标题 + 隐私标记，时间/类型/地点/评分/花费/心情/亲密度
+  收成一行紧凑小字；人物、事件集、标签、关联各占一行 chip；正文用 `MarkdownView` 渲染，没有正文时显示占位。
+- 浏览态底部只有「删除 / 关闭 / 编辑」，点「编辑」切到编辑态；新建事件直接进入编辑态。
+- 编辑态保留 `MarkdownEditor` 的「编辑 / 预览」切换，正文可以在不离开表单的情况下预览。
+- **做法**：模式是 `EventForm` 内的局部 `mode` state，不落库；浏览态复用 `formatTime` 等已有格式化函数，不新增数据路径。
+- **布局约束**：事件弹窗在 390px 宽度下不得横向溢出——`.md-toolbar` 改为 `flex-wrap` 两行、
+  `.form-grid > *` 与 `.md-editor` 加 `min-width: 0`（grid 子项默认 `min-width:auto` 会被不换行的工具栏撑宽）；
+  事件集 chip 的层级缩进用 `paddingLeft` + `└` 前缀，而非全角空格。
+
 ### F-E08 事件关联 — P2
 
 - `followedBy` / `causedBy` / `sameDay` 轻量有向边，详情页展示上下游。

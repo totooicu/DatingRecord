@@ -13,6 +13,7 @@ import { ConfirmButton, Modal, PrivacyButton } from '../common';
 import { bump } from '../../store';
 import { hides } from '../../privacy';
 import { EventFields } from './EventFields';
+import { EventView } from './EventView';
 import { draftToPayload, initialDraft, type EventDraft } from './draft';
 
 export function EventForm({
@@ -40,6 +41,9 @@ export function EventForm({
   const [d, setD] = useState<EventDraft>(() =>
     initialDraft(event, defaultPersonId, defaultCollectionId, existingCols),
   );
+  // 打开已有事件先给浏览态：读的人不需要一屏输入框；点「编辑」才进表单。
+  // 新建没有可读的旧数据，直接进编辑态。
+  const [mode, setMode] = useState<'view' | 'edit'>(event ? 'view' : 'edit');
   const [priv, setPriv] = useState<boolean>(!!event?.isPrivate);
   const patch = (p: Partial<EventDraft>) => setD((s) => ({ ...s, ...p }));
 
@@ -82,7 +86,7 @@ export function EventForm({
   return (
     <Modal
       wide
-      title={event ? '编辑事件' : '新建事件'}
+      title={!event ? '新建事件' : mode === 'view' ? '事件' : '编辑事件'}
       onClose={onClose}
       footer={
         <>
@@ -98,28 +102,53 @@ export function EventForm({
               }}
             />
           )}
-          <button className="btn btn-ghost" onClick={onClose}>
-            取消
-          </button>
-          <button className="btn btn-primary" onClick={save}>
-            保存
-          </button>
+          {event && mode === 'view' ? (
+            <>
+              <button className="btn btn-ghost" onClick={onClose}>
+                关闭
+              </button>
+              <button className="btn btn-primary" onClick={() => setMode('edit')}>
+                编辑
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-ghost" onClick={onClose}>
+                取消
+              </button>
+              <button className="btn btn-primary" onClick={save}>
+                保存
+              </button>
+            </>
+          )}
         </>
       }
     >
-      <div className="privacy-form-row">
-        <span className="field-label">隐私</span>
-        <PrivacyButton active={priv} onToggle={() => setPriv((v) => !v)} />
-        <span className="muted small">开启隐私模式后，此事件将隐藏</span>
-      </div>
-      <EventFields
-        d={d}
-        patch={patch}
-        persons={persons}
-        flat={flat}
-        eventId={event?.id}
-        candidates={candidates}
-      />
+      {event && mode === 'view' ? (
+        <EventView
+          event={event}
+          persons={persons}
+          flat={flat}
+          collectionIds={existingCols}
+          candidates={candidates}
+        />
+      ) : (
+        <>
+          <div className="privacy-form-row">
+            <span className="field-label">隐私</span>
+            <PrivacyButton active={priv} onToggle={() => setPriv((v) => !v)} />
+            <span className="muted small">开启隐私模式后，此事件将隐藏</span>
+          </div>
+          <EventFields
+            d={d}
+            patch={patch}
+            persons={persons}
+            flat={flat}
+            eventId={event?.id}
+            candidates={candidates}
+          />
+        </>
+      )}
     </Modal>
   );
 }
