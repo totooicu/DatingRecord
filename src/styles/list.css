@@ -24,6 +24,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  /* 和 .page-head 对齐：详情页、设置子页都是 44px，主页不能矮一截 */
+  height: 44px;
   padding: 10px 12px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -57,10 +60,12 @@
   }
 }
 
-/* 手机上顶栏是隐藏的，这里就是页面最顶，需要自己让开状态栏 */
-@media (max-width: 1023px) {
+/* 只有装成独立应用时才真的顶到屏幕边缘，需要让开状态栏。
+   普通浏览器标签页里地址栏已经让过位置，部分浏览器仍会误报 safe-area，
+   再补一次就会在「最新版本」上方留出一大块空白。 */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
   .pane-build-time {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+    padding-top: calc(10px + min(env(safe-area-inset-top, 0px), 48px));
   }
 }
 

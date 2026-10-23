@@ -7,8 +7,9 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  /* 标题改成绝对定位后不再撑高，这里把高度固定回原来的两行内边距 + 行高 */
-  min-height: 44px;
+  /* 固定 44px：返回键用负外边距抵消，不再把详情页顶得比主页高出一截 */
+  box-sizing: border-box;
+  height: 44px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
@@ -43,7 +44,8 @@
   flex-shrink: 0;
   width: 44px;
   height: 44px;
-  margin-left: -8px;
+  /* 44×44 的点击区保留，但上下各拉回 10px，不参与撑高顶部条 */
+  margin: -10px 0 -10px -8px;
   border: none;
   background: transparent;
   font-size: 30px;
