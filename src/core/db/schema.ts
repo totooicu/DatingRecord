@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS event_messages (
   body TEXT NOT NULL DEFAULT '',
   /* 可空：只有旁白或确实需要时才填，不强制——随手记录不该被逼着填时间 */
   ts INTEGER,
+  /* 回复（引用）了哪条消息；可空。旁白不能被回复，所以只有 type='msg' 会有值 */
+  reply_to TEXT,
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
   created_at TEXT, updated_at TEXT
 );

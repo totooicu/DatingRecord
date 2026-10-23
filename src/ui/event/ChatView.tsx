@@ -5,21 +5,26 @@
 //   · 需要节奏时插一条「旁白」——占一行、无头像，可写时间也可随便写；
 //   · 旁白一出现，画面自然就是群聊里那种时间分隔的样子。
 //
-// 点气泡进入选中态，底部浮出六个操作：改 / 删 / 上下插消息 / 上下插旁白。
+// 点气泡进入选中态，底部浮出一组操作：回复 / 修改 / 上下移 / 上下插消息 /
+// 上下插旁白 / 删除。
+// 回复是「引用」：气泡顶上挂一条被引用的原文摘要，点它能跳过去。
+// 移动是「与相邻一条交换 order_key」：一次撤销就是一步。
 // 点头像弹出：人物资料（悬浮卡）/ 换个人 / 新建人物。
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   appendMessage,
   deleteMessage,
+  getMessageAny,
   insertMessageAt,
   listMessages,
+  moveMessage,
   updateMessage,
 } from '../../core/repo/chat';
 import { listPersons } from '../../core/repo/persons';
 import { createPerson } from '../../core/repo/persons/write';
 import { listEvents } from '../../core/repo/events';
-import { bump } from '../../store';
+import { bump, useVersion } from '../../store';
 import { MarkdownEditor, MarkdownView } from '../markdown';
 import { Avatar } from '../persons/Avatar';
 import { Modal } from '../common';
@@ -48,6 +53,19 @@ function tsLabel(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** 引用摘要用的纯文本：把 md 的记号抹掉，压成一行 */
+function plainText(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_~#>]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const SUMMARY_LEN = 40;
+
 export function ChatView({ event }: { event: DREvent }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(() => listMessages(event.id));
   const [sel, setSel] = useState<string | null>(null);
@@ -59,6 +77,8 @@ export function ChatView({ event }: { event: DREvent }) {
   const [editTs, setEditTs] = useState<number | null>(null);
   /** 头像菜单挂在哪条消息上 */
   const [menuOn, setMenuOn] = useState<string | null>(null);
+  /** 刚跳转过去的那条：亮一下，让眼睛知道落到哪儿了 */
+  const [flash, setFlash] = useState<string | null>(null);
   /** 就地编辑区：长内容要能滚到眼前，不然写着写着就看不见了 */
   const editRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +86,15 @@ export function ChatView({ event }: { event: DREvent }) {
     if (!editing) return;
     editRef.current?.scrollIntoView({ block: 'nearest' });
   }, [editing]);
+
+  // 撤销 / 重做 / 导入 / 同步都是「把整个库实例换掉」，本组件却把消息读成了
+  // 本地 state——不跟着版本号重读的话，撤销完画面还停在旧顺序上，
+  // 用户会以为撤销没生效，接着再点一次就把更早的状态翻出来了。
+  const version = useVersion();
+  useEffect(() => {
+    setMsgs(listMessages(event.id));
+    setPersons(listPersons({ includeArchived: true }));
+  }, [version, event.id]);
 
   // 人物列表要能刷新：新建人物后得立刻取到它，否则刚指派完还显示「未指派」
   const [persons, setPersons] = useState<Person[]>(() => listPersons({ includeArchived: true }));
@@ -90,12 +119,56 @@ export function ChatView({ event }: { event: DREvent }) {
   const sideFor = (personId: string | null) =>
     personId && personId === selfId ? 'right' : 'left';
 
+  /** 引用块要显示的内容。原消息被删了也得说一声，否则读者不知道指向谁 */
+  const byId = useMemo(() => new Map(msgs.map((m) => [m.id, m])), [msgs]);
+  const replyInfoOf = (m: ChatMessage): { id: string; name: string; text: string } | null => {
+    if (!m.replyToId) return null;
+    const t = byId.get(m.replyToId) ?? getMessageAny(m.replyToId);
+    // getMessageAny 不排除已删除的——软删的引用要显示成「原消息已删除」
+    if (!t || t.deletedAt) return null;
+    const p = t.personId ? personOf.get(t.personId) : undefined;
+    const text = plainText(t.body);
+    return {
+      id: t.id,
+      name: p?.displayName ?? '未指派',
+      text: text.length > SUMMARY_LEN ? `${text.slice(0, SUMMARY_LEN)}…` : text || '（空消息）',
+    };
+  };
+
+  /** 跳到被引用的那条：滚到视野中间 + 亮一下 + 选中 */
+  const jumpTo = (id: string) => {
+    const el = document.querySelector(`[data-msg-id="${id}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setSel(id);
+    setFlash(id);
+    window.setTimeout(() => setFlash((cur) => (cur === id ? null : cur)), 1200);
+  };
+
   /** 新增一条并立刻进入编辑；不写东西就取消的话不留空壳 */
   const addAt = (anchorId: string | null, where: 'above' | 'below', type: 'msg' | 'divider') => {
     const anchor = anchorId ? msgs.find((m) => m.id === anchorId) ?? null : null;
     const created = anchor
       ? insertMessageAt(event.id, anchor, where, { type, side: 'left' })
       : appendMessage(event.id, { type, side: 'left' });
+    refresh();
+    setSel(created.id);
+    setEditing(created.id);
+    setBuf('');
+    setEditTs(null);
+  };
+
+  /**
+   * 回复：紧挨着被回复的那条下面插一条新的，带上引用关系并进入编辑。
+   *
+   * 一步到位而不是「先标记回复目标、再自己选位置插」——后者有两次点击、
+   * 还容易插到别的位置上去，反而不顺手。
+   */
+  const startReply = (m: ChatMessage) => {
+    const created = insertMessageAt(event.id, m, 'below', {
+      type: 'msg',
+      side: 'left',
+      replyToId: m.id,
+    });
     refresh();
     setSel(created.id);
     setEditing(created.id);
@@ -157,7 +230,15 @@ export function ChatView({ event }: { event: DREvent }) {
     refresh();
   };
 
+  /** 上移 / 下移：与相邻一条交换 order_key，撤销一步到位 */
+  const move = (m: ChatMessage, dir: -1 | 1) => {
+    if (!moveMessage(m.id, dir)) return;
+    refresh();
+  };
+
   const selected = sel ? msgs.find((m) => m.id === sel) ?? null : null;
+  /** 选中条在列表里的位置——决定「上移/下移」能不能点 */
+  const selIdx = selected ? msgs.findIndex((m) => m.id === selected.id) : -1;
 
   return (
     <div className="chat">
@@ -173,10 +254,12 @@ export function ChatView({ event }: { event: DREvent }) {
             return (
               <div
                 key={m.id}
+                data-msg-id={m.id}
                 className={[
                   'chat-divider',
                   sel === m.id ? 'chat-divider-on' : '',
                   editing === m.id ? 'chat-divider-editing' : '',
+                  flash === m.id ? 'chat-flash' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -236,12 +319,14 @@ export function ChatView({ event }: { event: DREvent }) {
           return (
             <div
               key={m.id}
+              data-msg-id={m.id}
               className={[
                 'chat-row',
                 right ? 'chat-row-right' : 'chat-row-left',
                 sel === m.id ? 'chat-row-on' : '',
                 // 编辑时把气泡的宽度限制放开：气泡宽是给「看」的，写的时候要宽
                 editing === m.id ? 'chat-row-editing' : '',
+                flash === m.id ? 'chat-flash' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -270,6 +355,27 @@ export function ChatView({ event }: { event: DREvent }) {
                 <div className="chat-name">{name}</div>
                 {editing === m.id ? (
                   <div className="chat-edit" ref={editRef} onClick={(e) => e.stopPropagation()}>
+                    {/* 正在回复谁：挂在编辑器顶上，✕ 只摘掉引用、不删这条 */}
+                    {(() => {
+                      const q = replyInfoOf(m);
+                      if (!q) return null;
+                      return (
+                        <div className="chat-quote-bar">
+                          <span className="chat-quote-bar-name">回复 {q.name}</span>
+                          <span className="chat-quote-bar-text">{q.text}</span>
+                          <button
+                            className="chat-quote-bar-x"
+                            title="去掉这条引用"
+                            onClick={() => {
+                              updateMessage(m.id, { replyToId: null });
+                              refresh();
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })()}
                     {/* 高度跟着内容长：固定三行时写长消息要不停往回滚，很别扭 */}
                     <MarkdownEditor value={buf} onChange={setBuf} autoFocus rows={6} autoGrow />
                     <div className="chat-edit-foot">
@@ -289,6 +395,24 @@ export function ChatView({ event }: { event: DREvent }) {
                       setSel(sel === m.id ? null : m.id);
                     }}
                   >
+                    {m.replyToId &&
+                      (() => {
+                        const q = replyInfoOf(m);
+                        return (
+                          <div
+                            className={q ? 'chat-quote' : 'chat-quote chat-quote-gone'}
+                            onClick={(e) => {
+                              // 原消息没了就只是个提示，别再拦点击
+                              if (!q) return;
+                              e.stopPropagation();
+                              jumpTo(q.id);
+                            }}
+                          >
+                            <span className="chat-quote-name">{q ? q.name : '原消息已删除'}</span>
+                            {q && <span className="chat-quote-text">{q.text}</span>}
+                          </div>
+                        );
+                      })()}
                     {m.body.trim() ? (
                       <MarkdownView source={m.body} />
                     ) : (
@@ -321,24 +445,54 @@ export function ChatView({ event }: { event: DREvent }) {
         )}
       </div>
 
-      {/* 选中后浮出的六个操作 */}
+      {/* 选中后浮出的操作，按「怎么处置这一条」分组 */}
       {selected && (
         <div className="chat-actions">
+          {selected.type === 'msg' && (
+            <button className="btn btn-sm btn-primary" onClick={() => startReply(selected)}>
+              ↩ 回复
+            </button>
+          )}
           <button className="btn btn-sm" onClick={() => startEdit(selected)}>
             修改
           </button>
+
+          <span className="chat-actions-sep" />
+
+          <button
+            className="btn btn-sm"
+            disabled={selIdx <= 0}
+            onClick={() => move(selected, -1)}
+            title="与上一条交换位置（旁白也算一条）"
+          >
+            ↑ 上移
+          </button>
+          <button
+            className="btn btn-sm"
+            disabled={selIdx < 0 || selIdx >= msgs.length - 1}
+            onClick={() => move(selected, 1)}
+            title="与下一条交换位置（旁白也算一条）"
+          >
+            ↓ 下移
+          </button>
+
+          <span className="chat-actions-sep" />
+
           <button className="btn btn-sm" onClick={() => addAt(selected.id, 'above', 'msg')}>
-            ↑ 消息
+            上插消息
           </button>
           <button className="btn btn-sm" onClick={() => addAt(selected.id, 'below', 'msg')}>
-            ↓ 消息
+            下插消息
           </button>
           <button className="btn btn-sm" onClick={() => addAt(selected.id, 'above', 'divider')}>
-            ↑ 旁白
+            上插旁白
           </button>
           <button className="btn btn-sm" onClick={() => addAt(selected.id, 'below', 'divider')}>
-            ↓ 旁白
+            下插旁白
           </button>
+
+          <span className="chat-actions-sep" />
+
           <button className="btn btn-sm btn-danger" onClick={() => remove(selected.id)}>
             删除
           </button>

@@ -212,3 +212,30 @@
 .privacy-mode-text .muted {
   margin: 0;
 }
+
+/* ---------- 功能体验：内嵌的独立工具页 ---------- */
+/* 工具是另一份 HTML，有自己的 body 边距和字号；这里只负责把它的容器
+   撑开、别让它把设置页的卡片撑爆。 */
+.lab-frame {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+/* 高度给足：工具里上下有两块画布 + 结果网格，太矮就得在 iframe 里滚个不停 */
+.lab-frame-el {
+  display: block;
+  width: 100%;
+  height: 78vh;
+  min-height: 520px;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .lab-frame-el {
+    height: 70vh;
+    min-height: 420px;
+  }
+}

@@ -138,6 +138,14 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 9;
   }
+  if (v < 10) {
+    // 消息回复（v10）：reply_to 指向被回复的那条消息。只加列、不动数据，
+    // 老消息的 reply_to 自然是 NULL——没有引用关系。
+    if (!hasColumn(d, 'event_messages', 'reply_to')) {
+      d.run(`ALTER TABLE event_messages ADD COLUMN reply_to TEXT`);
+    }
+    v = 10;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

@@ -153,6 +153,16 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M8.4 19.4v-5.2M12.4 19.4V9.4M16.4 19.4v-7.2" />
         </>,
       );
+    // 功能体验：图片框 + 齿轮
+    case 'lab':
+      return wrap(
+        <>
+          <rect x="3.4" y="4.6" width="13.6" height="11.2" rx="1.8" />
+          <path d="M3.4 15.4h13.6" />
+          <circle cx="9" cy="8.4" r="1.8" />
+          <path d="M17.6 8.6v3.2M15.9 10.2h3.4" />
+        </>,
+      );
     // 库概览：仪表盘
     case 'overview':
       return wrap(

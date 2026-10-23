@@ -16,6 +16,8 @@ const PRECACHE = [
   './icon-maskable-512.png',
   './icon.svg',
   './sql-wasm.wasm',
+  // 「功能体验」页里的边缘分割工具：一个独立静态页，跟应用一起离线可用
+  './edge-split.html',
 ];
 
 self.addEventListener('install', (event) => {

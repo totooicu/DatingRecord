@@ -5,7 +5,7 @@
 //
 // 每条改动都单独写一条 oplog（entity='event_message'），
 // 这样撤销能精确到「刚删的那句话」，而不是把整场对话回滚。
-import { queryAll, queryOne, run, getDeviceId } from '../db';
+import { queryAll, queryOne, run, getDeviceId, bulkAction } from '../db';
 import { appendOplog } from '../db/oplog';
 import { newId } from '../id';
 import { hlcNow } from '../time';
@@ -31,6 +31,7 @@ export function listMessages(eventId: string): ChatMessage[] {
     side: r.side === 'right' ? 'right' : 'left',
     body: (r.body as string) ?? '',
     ts: (r.ts as number | null) ?? null,
+    replyToId: (r.reply_to as string | null) ?? null,
     deviceId: (r.device_id as string) ?? '',
     rev: (r.rev as number) ?? 1,
     hlc: (r.hlc as string) ?? '',
@@ -47,6 +48,34 @@ export function getMessage(id: string): ChatMessage | null {
   return listMessages(r.event_id as string).find((m) => m.id === id) ?? null;
 }
 
+/**
+ * 取一条的原始行——**不排除已删除的**。
+ *
+ * 回复的引用块要用它：被回复的消息删掉之后，气泡上还得显示得出
+ * 「原消息已删除」，否则读者看到一个说不清指向哪里的引用条。
+ */
+export function getMessageAny(id: string): ChatMessage | null {
+  const r = queryOne<Record<string, never>>('SELECT * FROM event_messages WHERE id = ?', [id]);
+  if (!r) return null;
+  return {
+    id: r.id as string,
+    eventId: r.event_id as string,
+    orderKey: r.order_key as string,
+    type: r.type === 'divider' ? 'divider' : 'msg',
+    personId: (r.person_id as string | null) ?? null,
+    side: r.side === 'right' ? 'right' : 'left',
+    body: (r.body as string) ?? '',
+    ts: (r.ts as number | null) ?? null,
+    replyToId: (r.reply_to as string | null) ?? null,
+    deviceId: (r.device_id as string) ?? '',
+    rev: (r.rev as number) ?? 1,
+    hlc: (r.hlc as string) ?? '',
+    deletedAt: (r.deleted_at as string | null) ?? null,
+    createdAt: (r.created_at as string) ?? '',
+    updatedAt: (r.updated_at as string) ?? '',
+  };
+}
+
 function insert(initial: Partial<ChatMessage> & { eventId: string; type: ChatMessage['type'] }): ChatMessage {
   const m: ChatMessage = {
     id: newId('msg'),
@@ -57,6 +86,7 @@ function insert(initial: Partial<ChatMessage> & { eventId: string; type: ChatMes
     side: initial.side ?? 'left',
     body: initial.body ?? '',
     ts: initial.ts ?? null,
+    replyToId: initial.replyToId ?? null,
     deviceId: getDeviceId(),
     rev: 1,
     hlc: hlcNow(getDeviceId()),
@@ -69,11 +99,11 @@ function insert(initial: Partial<ChatMessage> & { eventId: string; type: ChatMes
   };
   run(
     `INSERT INTO event_messages
-       (id, event_id, order_key, type, person_id, side, body, ts,
+       (id, event_id, order_key, type, person_id, side, body, ts, reply_to,
         device_id, rev, hlc, deleted_at, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      m.id, m.eventId, m.orderKey, m.type, m.personId, m.side, m.body, m.ts,
+      m.id, m.eventId, m.orderKey, m.type, m.personId, m.side, m.body, m.ts, m.replyToId,
       m.deviceId, m.rev, m.hlc, m.deletedAt, m.createdAt, m.updatedAt,
     ],
   );
@@ -139,6 +169,7 @@ export function updateMessage(id: string, patch: Partial<ChatMessage>): void {
   if (patch.personId !== undefined) put('person_id', patch.personId);
   if (patch.side !== undefined) put('side', patch.side);
   if (patch.ts !== undefined) put('ts', patch.ts);
+  if (patch.replyToId !== undefined) put('reply_to', patch.replyToId);
   if (patch.type !== undefined) put('type', patch.type);
   if (patch.orderKey !== undefined) put('order_key', patch.orderKey);
   put('updated_at', now());
@@ -150,6 +181,51 @@ export function updateMessage(id: string, patch: Partial<ChatMessage>): void {
     title: (patch.body ?? cur.body).slice(0, 20),
     prev: { body: cur.body, hlc: cur.hlc },
   });
+}
+
+/**
+ * 上移 / 下移一条消息：与相邻的一条**交换 order_key**。
+ *
+ * 只改两行、其他消息一行不动——order_key 是分数排序键，换过来换过去
+ * 都不破坏「键之间还有空隙」这个前提，不需要全表重排索引。
+ *
+ * 用 bulkAction 把两次 UPDATE 包成一步：否则撤销一次只退回半段交换，
+ * 用户得连点两次撤销，很莫名其妙。
+ */
+export function moveMessage(id: string, dir: -1 | 1): boolean {
+  const cur = queryOne<{ event_id: string }>(
+    'SELECT event_id FROM event_messages WHERE id = ?',
+    [id],
+  );
+  if (!cur) return false;
+  const all = listMessages(cur.event_id);
+  const idx = all.findIndex((m) => m.id === id);
+  if (idx < 0) return false;
+  const target = idx + dir;
+  if (target < 0 || target >= all.length) return false;
+  const a = all[idx];
+  const b = all[target];
+  bulkAction('移动消息', () => {
+    run('UPDATE event_messages SET order_key = ?, updated_at = ? WHERE id = ?', [
+      b.orderKey,
+      now(),
+      a.id,
+    ]);
+    run('UPDATE event_messages SET order_key = ?, updated_at = ? WHERE id = ?', [
+      a.orderKey,
+      now(),
+      b.id,
+    ]);
+    appendOplog('event_message', a.id, 'update', {
+      title: a.body.slice(0, 20),
+      prev: { orderKey: a.orderKey },
+    });
+    appendOplog('event_message', b.id, 'update', {
+      title: b.body.slice(0, 20),
+      prev: { orderKey: b.orderKey },
+    });
+  });
+  return true;
 }
 
 /** 软删：同步时才知道对端是删了还是改了 */

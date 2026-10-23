@@ -190,10 +190,134 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
   border-radius: 10px;
   background: #fff7f9;
+}
+
+/* 操作条里的分组细线：九个个按钮混在一排，没分隔就看不出谁和谁是一伙的 */
+.chat-actions-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* ---------- 引用（回复） ---------- */
+/* 气泡里挂在顶上的一条：谁说的、说了什么，点它跳到原文 */
+.chat-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: -2px 0 6px;
+  padding: 4px 8px;
+  border-left: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.035);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-quote:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.chat-quote-name {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.chat-quote-text {
+  color: var(--muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 原消息被删了：引用还在，但只剩一句弱提示，也不能再跳 */
+.chat-quote-gone {
+  border-left-color: var(--border);
+  background: none;
+  cursor: default;
+  opacity: 0.7;
+}
+
+.chat-quote-gone .chat-quote-name {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* 编辑器顶上那条「正在回复谁」 */
+.chat-quote-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-left: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.035);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.chat-quote-bar-name {
+  flex: none;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.chat-quote-bar-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-quote-bar-x {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chat-quote-bar-x:hover {
+  background: #fde8ef;
+  color: var(--primary);
+}
+
+/* 跳到被引用的那条时亮一下：跳转是看不见落点的，闪一下补上 */
+.chat-flash {
+  animation: chat-flash 1.2s ease-out;
+}
+
+@keyframes chat-flash {
+  0%,
+  40% {
+    background: #ffe9c7;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-flash {
+    animation: none;
+    background: #ffe9c7;
+  }
 }
 
 /* ---------- 头像菜单 ---------- */

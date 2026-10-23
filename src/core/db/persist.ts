@@ -20,18 +20,22 @@ export function markDirty(): void {
   }, 500);
 }
 
-/** 立即落盘（关闭页面、清空数据等场景用，避免 debounce 未触发导致丢数据） */
+/** 立即落盘（关闭页面、撤销换库、清空数据等场景用，避免 debounce 未触发导致丢数据） */
 export function flushPersist(): void {
   if (saveTimer !== null) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
-  void persist();
+  // 强制写：撤销是把整个库实例换回旧快照，中间没有任何 run()，
+  // dirty 还是凉的——不强制的话换回来的状态根本不会进 IndexedDB。
+  void persist(true);
 }
 
-export async function persist(): Promise<void> {
+export async function persist(force = false): Promise<void> {
   const db = getDbInstance();
-  if (!db || !dirty) return;
+  if (!db) return;
+  // force 跳过 dirty 判断（见 flushPersist）；普通路径仍然是「没脏就不重传」
+  if (!force && !dirty) return;
   dirty = false;
   const bytes = new Uint8Array(db.export());
   // 加密开启时写密文，绝不顺带留一份明文——那等于没加密

@@ -7,6 +7,7 @@ import { AiSection } from './AiSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
+import { LabSection } from './LabSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { DEFAULT_SETTINGS_KEY, resolveSettingsKey, type SettingsKey } from './sections';
@@ -63,6 +64,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         )}
 
         {active === 'data' && <DataSection />}
+
+        {active === 'lab' && <LabSection />}
       </div>
     </div>
   );
