@@ -1,0 +1,50 @@
+{
+  "version": "2026-10-23T22:28:50.916Z",
+  "link": "/index.html",
+  "subversion": [
+    {
+      "version": "f389ff1a1527c6ea",
+      "link": "/assets/diff-rZWJxbGB.js"
+    },
+    {
+      "version": "2e16e7a02ed2bad5",
+      "link": "/assets/index-CBrS2Jt_.js"
+    },
+    {
+      "version": "dcba75a8c0335830",
+      "link": "/assets/index-D_km4T0d.css"
+    },
+    {
+      "version": "8be885f0a6a49903",
+      "link": "/edge-split.html"
+    },
+    {
+      "version": "3f35118bb99b7e96",
+      "link": "/icon-192.png"
+    },
+    {
+      "version": "049b2814e3efbe62",
+      "link": "/icon-512.png"
+    },
+    {
+      "version": "f071137e32b5d0bf",
+      "link": "/icon-maskable-512.png"
+    },
+    {
+      "version": "2cfb305505b57bb2",
+      "link": "/icon.svg"
+    },
+    {
+      "version": "7a43caaccb74b044",
+      "link": "/index.html"
+    },
+    {
+      "version": "a0eca1b0a556139a",
+      "link": "/manifest.webmanifest"
+    },
+    {
+      "version": "f3aaaa47b7957d08",
+      "link": "/sql-wasm.wasm"
+    }
+  ]
+}
