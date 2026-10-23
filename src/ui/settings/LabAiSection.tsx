@@ -221,7 +221,13 @@ function targetsIn(s: SnapMeta): SnapTarget[] {
  */
 import type { SnapDiffItem } from '../../core/snapshots';
 
-function DiffChip({ item, onPreview }: { item: SnapDiffItem; onPreview?: (t: SnapTarget) => void }) {  const open = () => {
+function DiffChip({ item, onPreview, checked, onToggle }: {
+  item: SnapDiffItem;
+  onPreview?: (t: SnapTarget) => void;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const open = () => {
     if (item.before && onPreview) {
       onPreview({
         kind: item.kind,
@@ -236,12 +242,15 @@ function DiffChip({ item, onPreview }: { item: SnapDiffItem; onPreview?: (t: Sna
     else openCollection(item.id);
   };
   return (
-    <button type="button" className="aichat-target" onClick={open} title={item.before ? `查看「${item.name}」删除前内容` : `打开「${item.name}」`}>
-      <span className="aichat-target-mark" aria-hidden>
-        {item.kind === 'person' ? '人' : item.kind === 'event' ? '事' : '集'}
-      </span>
-      <span className="aichat-target-name">{item.name}</span>
-    </button>
+    <label className={`aichat-diff-chip ${checked ? '' : 'aichat-diff-chip-reject'}`}>
+      <input type="checkbox" checked={checked} onChange={onToggle} />
+      <button type="button" className="aichat-target" onClick={open} title={item.before ? `查看「${item.name}」删除前内容` : `打开「${item.name}」`}>
+        <span className="aichat-target-mark" aria-hidden>
+          {item.kind === 'person' ? '人' : item.kind === 'event' ? '事' : '集'}
+        </span>
+        <span className="aichat-target-name">{item.name}</span>
+      </button>
+    </label>
   );
 }
 
@@ -308,6 +317,8 @@ export function LabAiSection() {
   const [snapDetail, setSnapDetail] = useState<SnapMeta | null>(null);
   /** 删除类 target 点开展示删前存下的内容（对象已软删，不查库） */
   const [previewTarget, setPreviewTarget] = useState<SnapTarget | null>(null);
+  /** 成果详情里用户勾选为「拒绝」的条目，key 是 `${action}:${id}` */
+  const [rejected, setRejected] = useState<Set<string>>(new Set());
   const [sessions, setSessions] = useState<AiSession[]>(() => listSessions());
   const [libOpen, setLibOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
@@ -639,6 +650,39 @@ export function LabAiSection() {
     if (!window.confirm('确认接受这次改动？\n接受后这条成果记录会被关掉，数据保留不变。')) return;
     await deleteSnapshot(id);
     reloadSnaps();
+  };
+
+  const toggleReject = (key: string) => {
+    setRejected((s) => {
+      const n = new Set(s);
+      if (n.has(key)) n.delete(key); else n.add(key);
+      return n;
+    });
+  };
+
+  const applyRejected = async () => {
+    if (!snapDetail || rejected.size === 0) return;
+    if (!window.confirm(`拒绝选中的 ${rejected.size} 项改动？\n其余改动保留。`)) return;
+    const { revertDiffItems } = await import('../../core/snapshots/diff');
+    const diff = snapDetail.diff;
+    if (!diff) return;
+    const rejects: Array<{ kind: 'person'|'event'|'collection'; id: string; action: 'created'|'updated'|'deleted' }> = [];
+    for (const k of rejected) {
+      const [action, id] = k.split(':', 2);
+      const item = [...diff.created, ...diff.updated, ...diff.deleted].find((t) => t.id === id);
+      if (item) rejects.push({ kind: item.kind, id, action: action as 'created'|'updated'|'deleted' });
+    }
+    try {
+      await revertDiffItems(snapDetail.id, rejects);
+      const { flushPersist } = await import('../../core/db/persist');
+      flushPersist();
+      setRejected(new Set());
+      reloadSnaps();
+      setSnapDetail(null);
+      showToast('已拒绝选中的改动');
+    } catch (e) {
+      showToast('操作失败：' + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   const canSend = !busy && !!model && (!!input.trim() || atts.length > 0);
@@ -1071,7 +1115,9 @@ export function LabAiSection() {
                     <div className="aichat-diff-head">新增 {snapDetail.diff.created.length}</div>
                     <div className="aichat-diff-items">
                       {snapDetail.diff.created.map((t) => (
-                        <DiffChip key={`c:${t.id}`} item={t} />
+                        <DiffChip key={`c:${t.id}`} item={t} 
+                          checked={!rejected.has(`created:${t.id}`)}
+                          onToggle={() => toggleReject(`created:${t.id}`)} />
                       ))}
                     </div>
                   </div>
@@ -1081,7 +1127,9 @@ export function LabAiSection() {
                     <div className="aichat-diff-head">修改 {snapDetail.diff.updated.length}</div>
                     <div className="aichat-diff-items">
                       {snapDetail.diff.updated.map((t) => (
-                        <DiffChip key={`u:${t.id}`} item={t} />
+                        <DiffChip key={`u:${t.id}`} item={t} 
+                          checked={!rejected.has(`updated:${t.id}`)}
+                          onToggle={() => toggleReject(`updated:${t.id}`)} />
                       ))}
                     </div>
                   </div>
@@ -1091,9 +1139,19 @@ export function LabAiSection() {
                     <div className="aichat-diff-head">删除 {snapDetail.diff.deleted.length}</div>
                     <div className="aichat-diff-items">
                       {snapDetail.diff.deleted.map((t) => (
-                        <DiffChip key={`d:${t.id}`} item={t} onPreview={setPreviewTarget} />
+                        <DiffChip key={`d:${t.id}`} item={t}  onPreview={setPreviewTarget}
+                          checked={!rejected.has(`deleted:${t.id}`)}
+                          onToggle={() => toggleReject(`deleted:${t.id}`)} />
                       ))}
                     </div>
+                  </div>
+                )}
+                {rejected.size > 0 && (
+                  <div className="aichat-diff-actions">
+                    <button className="aichat-chipbtn aichat-chipbtn-danger" onClick={applyRejected}>
+                      拒绝选中的 {rejected.size} 项改动
+                    </button>
+                    <span className="muted small">其余保留</span>
                   </div>
                 )}
               </div>

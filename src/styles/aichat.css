@@ -1260,3 +1260,32 @@
   cursor: pointer;
   padding: 4px 0;
 }
+
+/* 逐条勾选：每个 diff item 是 checkbox + chip */
+.aichat-diff-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+.aichat-diff-chip input {
+  margin: 0;
+  accent-color: var(--primary);
+}
+.aichat-diff-chip-reject {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.aichat-diff-chip-reject .aichat-target {
+  text-decoration: line-through;
+}
+.aichat-diff-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}

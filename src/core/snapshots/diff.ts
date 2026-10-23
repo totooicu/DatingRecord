@@ -128,3 +128,52 @@ export async function diffSnapshot(snapId: string): Promise<SnapDiff | null> {
     snap?.close();
   }
 }
+
+/** 用户拒绝的单条改动：逐条 revert */
+export interface RejectItem {
+  kind: 'person' | 'event' | 'collection';
+  id: string;
+  action: 'created' | 'updated' | 'deleted';
+}
+
+/**
+ * 对用户勾选为「拒绝」的条目逐条回退：
+ * - created：这个对象是 AI 新建的，直接从当前库删掉
+ * - updated：从快照读出旧值，覆盖当前库这一行
+ * - deleted：从快照读出被删的行，INSERT OR REPLACE 恢复
+ */
+export async function revertDiffItems(snapId: string, rejects: RejectItem[]): Promise<void> {
+  const cur = getDbInstance();
+  if (!cur) throw new Error('数据库未初始化');
+  const sql = getSql();
+  if (!sql) throw new Error('sql.js 未加载');
+  const store = getSnapStore();
+  const bytes = await store.get(snapId);
+  if (!bytes) throw new Error('快照不存在');
+
+  const snap = new (sql.Database as new (b: Uint8Array) => {
+    exec: (q: string) => Array<{ columns: string[]; values: unknown[][] }>;
+    close: () => void;
+  })(bytes);
+
+  try {
+    for (const r of rejects) {
+      const table = r.kind === 'person' ? 'persons' : r.kind === 'event' ? 'events' : 'collections';
+      if (r.action === 'created') {
+        // 新建的：直接删
+        cur.run(`DELETE FROM ${table} WHERE id = ?`, [r.id]);
+      } else {
+        // updated / deleted：用快照行覆盖
+        const res = snap.exec(`SELECT * FROM ${table} WHERE id = '${r.id.replace(/'/g, "''")}'`);
+        const cols = res[0]?.columns ?? [];
+        const vals = res[0]?.values?.[0];
+        if (!vals || !cols.length) continue;
+        const colList = cols.join(', ');
+        const placeholders = cols.map(() => '?').join(', ');
+        cur.run(`INSERT OR REPLACE INTO ${table} (${colList}) VALUES (${placeholders})`, vals as unknown as (string | number | null)[]);
+      }
+    }
+  } finally {
+    snap.close();
+  }
+}
