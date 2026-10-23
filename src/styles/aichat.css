@@ -539,11 +539,50 @@
 
 .aichat-snap-list li {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* 主区是一整块按钮：概括标题 + 一行元信息，点开看这份快照对应的具体操作 */
+.aichat-snap-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.aichat-snap-main:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* 概括标题：「新建人物「林小满」、记 2 条事件」。最多两行，多了截断 */
+.aichat-snap-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.aichat-snap-sub {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .aichat-snap-time {
@@ -563,16 +602,86 @@
   color: var(--muted);
 }
 
-.aichat-snap-note {
-  flex: 1;
-  min-width: 120px;
-  color: var(--muted);
+/* 「3 项操作 ›」：告诉用户这块还能点开看细的 */
+.aichat-snap-more {
+  color: var(--primary-dark);
 }
 
 .aichat-snap-ops {
   display: inline-flex;
   gap: 10px;
   margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* ---------- 快照详情弹窗 ---------- */
+.aichat-snap-detail-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.aichat-op-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aichat-op {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.aichat-op-bad {
+  border-color: var(--danger);
+  background: rgba(192, 57, 43, 0.05);
+}
+
+.aichat-op-mark {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.aichat-op-bad .aichat-op-mark {
+  color: var(--danger);
+}
+
+.aichat-op-text {
+  word-break: break-all;
+}
+
+.aichat-op-side {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.aichat-op-tool {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.aichat-op-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 失败原因横跨整行，小一号灰字——详情是给人排查用的 */
+.aichat-op-err {
+  grid-column: 2 / -1;
+  color: var(--danger);
+  font-size: 11px;
+  word-break: break-all;
 }
 
 @media (max-width: 640px) {

@@ -18,15 +18,29 @@ import { getSnapStore, type SnapBytes } from './store';
 
 export interface SnapMeta {
   id: string;
-  /** 谁建的：manual（用户手点）/ ai（AI 动手前自动）/ cli */
+  /** 谁建的：manual（用户手点）/ ai（AI 动手前自动）/ cli / auto（恢复前留底） */
   source: 'manual' | 'ai' | 'cli' | 'auto';
   /** 建快照时库里有几条主要记录，给人一个「这里面有多少东西」的量感 */
   persons: number;
   events: number;
   bytes: number;
   createdAt: string;
-  /** 备注，例如「AI：把林小满的生日改成了 1999-01-01」 */
+  /** 备注，例如「AI：新建人物「林小满」、添加 2 条事件」 */
   note?: string;
+  /** 这一轮到底动了什么（AI 轮次结束后回写）。给人看，也给人点开细看 */
+  ops?: SnapOp[];
+}
+
+/** 一次具体操作。args 只留摘要，不存原文——快照元数据要能塞进 meta 表 */
+export interface SnapOp {
+  /** 工具名，如 person.create */
+  tool: string;
+  /** 人类可读的一句话，如「新建人物「林小满」」 */
+  text: string;
+  ok: boolean;
+  /** 失败时的原因（截断） */
+  err?: string;
+  at: string;
 }
 
 /** 上限：快照是整库拷贝，囤多了比没有备份更糟（磁盘 silent 爆掉） */
@@ -144,6 +158,31 @@ export async function deleteSnapshot(id: string): Promise<void> {
   writeMeta(readMeta().filter((s) => s.id !== id));
 }
 
+/**
+ * 回写快照的操作记录。
+ *
+ * 快照是在动手**之前**拍的，那时还不知道这一轮要干什么，所以摘要只能等
+ * 轮次结束后补。AI 干完活调这个函数，把「到底改了什么」写进元数据。
+ * 只改元数据，不动字节——字节是恢复用的，必须保持原样。
+ */
+export function patchSnapshotOps(
+  id: string,
+  ops: SnapOp[],
+  note?: string,
+): SnapMeta | null {
+  const list = readMeta();
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return null;
+  const next: SnapMeta = {
+    ...list[i],
+    ...(ops.length ? { ops } : {}),
+    ...(note ? { note } : {}),
+  };
+  list[i] = next;
+  writeMeta(list);
+  return next;
+}
+
 /** 超量就扔最旧的。保留最新的 MAX_SNAPS 个，且总字节不超上限 */
 async function prune(store: SnapBytes, list: SnapMeta[]): Promise<void> {
   let keep = list.slice(0, MAX_SNAPS);
@@ -169,4 +208,94 @@ export function fmtSnapTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * 把一次工具调用翻译成人话。
+ *
+ * 目标是「扫一眼就知道 AI 干了什么」，所以挑每个工具最有信息量的那个参数：
+ * 建人物报名字、记事件报标题、改东西报改的是谁。拿不到有用参数就退到工具名。
+ */
+export function describeOp(tool: string, args: Record<string, unknown>, ok: boolean): string {
+  if (!ok) return `${tool} 失败`;
+  const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  // 取第一个有内容的字符串参数，兜底用
+  const firstStr = (): string => {
+    for (const v of Object.values(args)) {
+      const t = s(v);
+      if (t) return t.length > 24 ? `${t.slice(0, 24)}…` : t;
+    }
+    return '';
+  };
+
+  const name = s(args.name) || s(args.displayName) || s(args.title);
+  const id = s(args.personId) || s(args.eventId) || s(args.collectionId) || s(args.id);
+
+  if (tool === 'person.create') return name ? `新建人物「${name}」` : '新建人物';
+  if (tool === 'person.update') return '修改人物资料';
+  if (tool === 'person.setAttr') return `设置属性 ${s(args.key) || ''}`.trim();
+  if (tool === 'person.archive' || tool === 'person.restore') return id ? `${tool === 'person.archive' ? '归档' : '恢复'}人物 ${id}` : (tool === 'person.archive' ? '归档人物' : '恢复人物');
+  if (tool === 'person.merge') return '合并重复人物';
+  if (tool === 'person.applyTemplate') return `套用模板 ${s(args.templateId) || ''}`.trim();
+  if (tool === 'person.hardDelete') return '彻底删除人物';
+
+  if (tool === 'event.create') return name ? `记事件「${name}」` : '记一条事件';
+  if (tool === 'event.update') return '修改事件';
+  if (tool === 'event.delete' || tool === 'event.purge') return tool === 'event.purge' ? '彻底删除事件' : '删除事件';
+  if (tool === 'event.restore') return '恢复事件';
+  if (tool === 'event.setPrivate') return args.on ? '标记事件为隐私' : '取消事件隐私标记';
+
+  if (tool === 'chat.append') return '追加一条聊天记录';
+  if (tool === 'chat.update') return '修改聊天记录';
+  if (tool === 'chat.delete') return '删除聊天记录';
+  if (tool === 'chat.move') return '移动聊天记录';
+
+  if (tool === 'collection.create') return name ? `新建事件集「${name}」` : '新建事件集';
+  if (tool === 'collection.update') return '修改事件集';
+  if (tool === 'collection.addMember') return '往事件集里加事件';
+  if (tool === 'collection.removeMember') return '从事件集移出事件';
+  if (tool === 'collection.move') return '移动事件集';
+  if (tool === 'collection.delete') return '删除事件集';
+  if (tool === 'collection.restore') return '恢复事件集';
+  if (tool === 'collection.setPrivate') return args.on ? '标记事件集为隐私' : '取消事件集隐私标记';
+
+  if (tool === 'file.rename') return name ? `文件改名为「${name}」` : '重命名文件';
+  if (tool === 'file.delete') return '删除文件';
+  if (tool === 'file.setPrivate') return args.on ? '标记文件为隐私' : '取消文件隐私标记';
+  if (tool === 'file.transferRefs') return '转移文件引用';
+
+  if (tool === 'io.exportLibrary') return '导出库';
+  if (tool === 'io.importLibrary') return '导入库';
+  if (tool === 'io.shareBuild' || tool === 'io.shareApply') return tool === 'io.shareBuild' ? '生成分享包' : '导入分享包';
+
+  if (tool === 'system.setMeta') return `设置 ${s(args.key) || '元数据'}`;
+  if (tool === 'system.sql') return '执行 SQL';
+
+  // 读操作不该出现在写快照里，但万一有，也别报错
+  const fb = firstStr();
+  return fb ? `${tool}（${fb}）` : tool;
+}
+
+/** 快照列表里那行标题：一轮操作的概括。只写不读，读操作不进快照 */
+export function summarizeOps(ops: SnapOp[]): string {
+  if (!ops.length) return '';
+  const done = ops.filter((o) => o.ok);
+  const failed = ops.length - done.length;
+  // 同一句话合并计数：「新建人物「A」「B」」比罗列三行更好扫
+  const parts: string[] = [];
+  const seen = new Map<string, number>();
+  for (const o of done) {
+    seen.set(o.text, (seen.get(o.text) ?? 0) + 1);
+  }
+  let shown = 0;
+  for (const [text, cnt] of seen) {
+    if (shown >= 3) break;
+    parts.push(cnt > 1 ? `${text} ×${cnt}` : text);
+    shown += 1;
+  }
+  const rest = done.length - [...seen.values()].slice(0, 3).reduce((a, b) => a + b, 0);
+  if (rest > 0) parts.push(`等 ${rest} 项`);
+  let out = parts.join('、');
+  if (failed > 0) out += `（${failed} 项失败）`;
+  return out;
 }
