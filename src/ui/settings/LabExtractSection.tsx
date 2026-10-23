@@ -133,7 +133,11 @@ export function LabExtractSection() {
       bump();
       setPersons(listPersons());
       setResult(saved);
-      showToast(`已整理成事件：${saved.messageCount} 条消息${saved.imageCount ? `、${saved.imageCount} 张图` : ''}`);
+      showToast(
+        `已整理成事件：${Math.max(0, saved.messageCount - saved.dividerCount)} 条消息${
+          saved.dividerCount ? `、${saved.dividerCount} 段旁白` : ''
+        }${saved.imageCount ? `、${saved.imageCount} 张图` : ''}`,
+      );
     } catch (e) {
       setErr(
         ac.signal.aborted
@@ -234,7 +238,9 @@ export function LabExtractSection() {
             <div>
               <b>{result.title}</b>
               <span className="muted small">
-                {result.messageCount} 条消息 · {result.imageCount} 张图片
+                {Math.max(0, result.messageCount - result.dividerCount)} 条消息
+                {result.dividerCount > 0 ? ` · ${result.dividerCount} 段旁白` : ''}
+                {result.imageCount ? ` · ${result.imageCount} 张图片` : ''}
               </span>
             </div>
             <button type="button" className="btn btn-sm" onClick={() => openEvent(result.eventId)}>
@@ -249,15 +255,27 @@ export function LabExtractSection() {
             </ul>
           )}
           <div className="extract-preview">
-            {result.preview.map((m, i) => (
-              <div key={i} className={`extract-msg extract-msg-${m.side}`}>
-                <div className="extract-who">{m.speaker}</div>
-                <div className="extract-bubble">
-                  {m.text && <span>{m.text}</span>}
-                  {m.imageUrl && <img src={m.imageUrl} alt="聊天图片" />}
+            {result.preview.map((m, i) =>
+              m.type === 'divider' ? (
+                <div key={i} className="extract-divider">
+                  {m.text}
                 </div>
-              </div>
-            ))}
+              ) : (
+                <div key={i} className={`extract-msg extract-msg-${m.side}`}>
+                  <div className="extract-who">{m.speaker}</div>
+                  <div className="extract-bubble">
+                    {m.quote && (
+                      <div className="extract-quote">
+                        {m.quote.speaker && <span className="extract-quote-name">{m.quote.speaker}</span>}
+                        <span className="extract-quote-text">{m.quote.text}</span>
+                      </div>
+                    )}
+                    {m.text && <span>{m.text}</span>}
+                    {m.imageUrl && <img src={m.imageUrl} alt="聊天图片" />}
+                  </div>
+                </div>
+              ),
+            )}
           </div>
           <p className="muted small">已经存成聊天事件，点「打开事件」可以接着改、加旁白或补图。</p>
         </div>
