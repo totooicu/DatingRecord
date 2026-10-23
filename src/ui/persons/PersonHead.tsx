@@ -18,10 +18,13 @@ export function PersonHead({
   person,
   onNewEvent,
   onArchived,
+  onBack,
 }: {
   person: Person;
   onNewEvent: () => void;
   onArchived?: (nextId: string | null) => void;
+  /** 手机上退回人物列表；宽屏没有这一层，传 undefined 就不渲染 */
+  onBack?: () => void;
 }) {
   // 归档二次确认就地替换按钮：记一件事 → 确认，归档 → 取消。
   // 不额外展开一块文案，头部布局在确认前后保持不变。
@@ -39,7 +42,13 @@ export function PersonHead({
 
   return (
     <>
-      <div className="detail-head">
+      <div className="detail-head detail-head-person">
+        {/* 返回并入头部：原先它独占一条 sticky 顶栏，把姓名显示了两遍 */}
+        {onBack && (
+          <button className="back-btn head-back" onClick={onBack} aria-label="返回">
+            ‹
+          </button>
+        )}
         <Avatar
           name={person.displayName}
           avatar={person.avatar}
