@@ -14,6 +14,8 @@
 }
 .md-tabs {
   display: flex;
+  /* 窄气泡或系统大字号下三个 tab 会挤不下，换行总比把「全屏」挤出屏幕好 */
+  flex-wrap: wrap;
   gap: 6px;
 }
 .md-tab {

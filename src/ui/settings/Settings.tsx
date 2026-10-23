@@ -71,7 +71,7 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'files' && (
           <Section
             title="文件"
-            desc="单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改，改名不影响已有正文。"
+            desc="单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改；正文里的显示名保留插入时的样子。"
           >
             <FilesPanel />
           </Section>

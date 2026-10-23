@@ -17,7 +17,13 @@ export {
 export { uploadFile, uploadFileQuiet, type CollisionPrompt, type UploadOutcome } from './upload';
 export { auditFiles, hashMissingFiles, type AuditResult, type HashGroup } from './audit';
 export { commitMerge, previewMerge, type MergePreview } from './merge';
-export { rewriteRefEverywhere, rewriteRefs, replaceRef, hasRef } from './rewrite';
+export {
+  rewriteRefEverywhere,
+  rewriteRefs,
+  transferRefsInEvents,
+  replaceRef,
+  hasRef,
+} from './rewrite';
 export {
   planMigration,
   planSummary,

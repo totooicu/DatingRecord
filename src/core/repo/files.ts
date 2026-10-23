@@ -300,8 +300,9 @@ export function setFilePrivate(id: string, on: boolean): void {
 /**
  * 重命名：只动元数据里的 name，id 与二进制都不变。
  *
- * 正文里存的是 file:<id>，名字压根没写进引用里（见 fileRefSyntax），
- * 所以改名后所有既有引用照旧有效，显示的名字也自动跟着变。
+ * 引用靠 file:<storedId> 定位，方括号里的名字只是插入时的快照，
+ * 所以**不重写正文**：改完名，既有引用照旧能打开，显示的也还是当初那个名字。
+ * 想让旧引用也换成新名字，得在文件页里手动合并 / 转移。
  */
 export function renameFile(id: string, name: string): void {
   const n = name.trim();
@@ -312,16 +313,23 @@ export function renameFile(id: string, name: string): void {
   });
 }
 
+/** 方括号里的名字只做最小转义：别让文件名里的 `[` `]` 破坏链接语法 */
+function bracketLabel(name: string): string {
+  return name.replace(/\\/g, '\\\\').replace(/[[\]]/g, '\\$&').replace(/\r?\n/g, ' ');
+}
+
 /**
  * 生成插入正文的引用片段。
  *
- * 方括号里**故意留空**——名字不写进正文，只靠 id 定位文件。
- * 否则改一次名字，正文里那串旧名字就成了永远对不上的死文字。
- * 显示时的名字由渲染层按 id 现查（见 renderMarkdown 的 nameMap）。
+ * 方括号写**用户看到的文件名**，方便在纯文本/源码里认出这是哪个附件；
+ * 定位文件仍只靠括号后的 file:<storedId>。因此：
+ *   · 改文件名不需要重写正文（旧名字留在方括号里不影响打开），
+ *   · 只有 hash 名（storedId）变了才需要改写（合并 / 批量转移时做）。
+ * 老数据里的 `[](...)` 空方括号照旧可用，渲染时回退到文件库当前名字。
  */
 export function fileRefSyntax(f: StoredFile): string {
   const bang = f.mime.startsWith('image/') ? '!' : '';
-  return `${bang}[](${FILE_REF_PREFIX}${f.storedId})`;
+  return `${bang}[${bracketLabel(f.name)}](${FILE_REF_PREFIX}${f.storedId})`;
 }
 
 /**

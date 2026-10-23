@@ -116,10 +116,12 @@ export async function commitMerge(targetId: string, sourceIds: string[]): Promis
   if (sources.length === 0) return;
 
   rewriteRefs(
-    sources.map((s) => ({ from: s.storedId, to: target.storedId, id: target.id })),
+    sources.map((s) => ({ from: s.storedId, to: target.storedId, id: target.id, name: target.name })),
   );
   // 老数据的引用写的是老 id，也得一起替换
-  rewriteRefs(sources.map((s) => ({ from: s.id, to: target.storedId, id: target.id })));
+  rewriteRefs(
+    sources.map((s) => ({ from: s.id, to: target.storedId, id: target.id, name: target.name })),
+  );
 
   for (const s of sources) {
     await deleteFile(s.id);

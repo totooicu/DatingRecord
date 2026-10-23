@@ -2,6 +2,7 @@
 
 import type { ToolDef } from './types';
 import { listFiles, getFile, deleteFile, renameFile, setFilePrivate, countRefs, personsUsingFile, eventsReferencingFile, collectionsUsingFile, urlForFile } from '../repo/files';
+import { transferRefsInEvents } from '../files';
 
 function brief(f: ReturnType<typeof listFiles>[number]): Record<string, unknown> {
   return {
@@ -90,6 +91,29 @@ export const FILE_TOOLS: ToolDef[] = [
       if (n > 0) throw new Error(`还有 ${n} 处引用，先解除引用再删`);
       await deleteFile(a.id as string);
       return { ok: true };
+    },
+  },
+  {
+    name: 'file.transferRefs',
+    group: 'file',
+    title: '批量转移事件引用',
+    desc: '把指定事件正文里对附件 a 的引用换成附件 b；只动事件正文，头像/图标不受影响',
+    mutating: true,
+    params: [
+      { name: 'fromId', type: 'string', desc: '源附件 id', required: true },
+      { name: 'toId', type: 'string', desc: '目标附件 id', required: true },
+      { name: 'eventIds', type: 'array', desc: '要处理的事件 id 列表；省略=所有正文引用源附件的事件' },
+    ],
+    run: (a) => {
+      const from = getFile(a.fromId as string);
+      const to = getFile(a.toId as string);
+      if (!from) throw new Error(`附件不存在：${a.fromId}`);
+      if (!to) throw new Error(`附件不存在：${a.toId}`);
+      const ids = Array.isArray(a.eventIds)
+        ? (a.eventIds as string[])
+        : eventsReferencingFile(from).map((e) => e.id);
+      const changed = transferRefsInEvents(ids, [from.storedId, from.id], to.storedId, to.name);
+      return { requested: ids.length, changed };
     },
   },
   {
