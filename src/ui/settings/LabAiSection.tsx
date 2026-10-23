@@ -219,6 +219,32 @@ function targetsIn(s: SnapMeta): SnapTarget[] {
  * 成果卡 / 详情里的「具体结果」：人名 + 头像、事件集图标、事件名。
  * 点一下直接跳到对应详情——看到「新建人物「林小满」」就能点开确认长什么样。
  */
+import type { SnapDiffItem } from '../../core/snapshots';
+
+function DiffChip({ item, onPreview }: { item: SnapDiffItem; onPreview?: (t: SnapTarget) => void }) {  const open = () => {
+    if (item.before && onPreview) {
+      onPreview({
+        kind: item.kind,
+        id: item.id,
+        name: item.name,
+        snapshot: item.before,
+      });
+      return;
+    }
+    if (item.kind === 'person') openPerson(item.id);
+    else if (item.kind === 'event') openEvent(item.id);
+    else openCollection(item.id);
+  };
+  return (
+    <button type="button" className="aichat-target" onClick={open} title={item.before ? `查看「${item.name}」删除前内容` : `打开「${item.name}」`}>
+      <span className="aichat-target-mark" aria-hidden>
+        {item.kind === 'person' ? '人' : item.kind === 'event' ? '事' : '集'}
+      </span>
+      <span className="aichat-target-name">{item.name}</span>
+    </button>
+  );
+}
+
 function SnapTargetChips({ targets, onPreviewDeleted }: { targets: SnapTarget[]; onPreviewDeleted?: (t: SnapTarget) => void }) {
   if (!targets.length) return null;
   return (
@@ -1037,30 +1063,59 @@ export function LabAiSection() {
               {fmtSnapTime(snapDetail.createdAt)} · {SNAP_SRC[snapDetail.source] ?? snapDetail.source} ·{' '}
               {snapDetail.persons} 人 / {snapDetail.events} 事件 / {fmtBytes(snapDetail.bytes)}
             </p>
+
+            {snapDetail.diff ? (
+              <div className="aichat-diff">
+                {snapDetail.diff.created.length > 0 && (
+                  <div className="aichat-diff-group aichat-diff-created">
+                    <div className="aichat-diff-head">新增 {snapDetail.diff.created.length}</div>
+                    <div className="aichat-diff-items">
+                      {snapDetail.diff.created.map((t) => (
+                        <DiffChip key={`c:${t.id}`} item={t} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {snapDetail.diff.updated.length > 0 && (
+                  <div className="aichat-diff-group aichat-diff-updated">
+                    <div className="aichat-diff-head">修改 {snapDetail.diff.updated.length}</div>
+                    <div className="aichat-diff-items">
+                      {snapDetail.diff.updated.map((t) => (
+                        <DiffChip key={`u:${t.id}`} item={t} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {snapDetail.diff.deleted.length > 0 && (
+                  <div className="aichat-diff-group aichat-diff-deleted">
+                    <div className="aichat-diff-head">删除 {snapDetail.diff.deleted.length}</div>
+                    <div className="aichat-diff-items">
+                      {snapDetail.diff.deleted.map((t) => (
+                        <DiffChip key={`d:${t.id}`} item={t} onPreview={setPreviewTarget} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {snapDetail.ops?.length ? (
-              <ul className="aichat-op-list">
-                {snapDetail.ops.map((o, i) => (
-                  <li key={i} className={o.ok ? 'aichat-op' : 'aichat-op aichat-op-bad'}>
-                    <span className="aichat-op-mark">{o.ok ? '✓' : '✗'}</span>
-                    <span className="aichat-op-text">{o.text}</span>
-                    <span className="aichat-op-side">
-                      <span className="aichat-op-tool">{o.tool}</span>
-                      <span className="aichat-op-time">{fmtSnapTime(o.at)}</span>
-                    </span>
-                    {o.targets?.length ? (
-                      <div className="aichat-op-targets">
-                        <SnapTargetChips targets={o.targets ?? []} onPreviewDeleted={setPreviewTarget} />
-                      </div>
-                    ) : null}
-                    {!o.ok && o.err && <span className="aichat-op-err">{o.err}</span>}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted small">
-                这份成果没有记录具体操作（手动记录的，或是早于操作记录功能之前生成的）。
-              </p>
-            )}
+              <details className="aichat-ops-collapse">
+                <summary className="muted small">工具调用明细（{snapDetail.ops.length}）</summary>
+                <ul className="aichat-op-list">
+                  {snapDetail.ops.map((o, i) => (
+                    <li key={i} className={o.ok ? 'aichat-op' : 'aichat-op aichat-op-bad'}>
+                      <span className="aichat-op-mark">{o.ok ? '✓' : '✗'}</span>
+                      <span className="aichat-op-text">{o.text}</span>
+                      <span className="aichat-op-side">
+                        <span className="aichat-op-tool">{o.tool}</span>
+                      </span>
+                      {!o.ok && o.err && <span className="aichat-op-err">{o.err}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </div>
         </Modal>
       )}

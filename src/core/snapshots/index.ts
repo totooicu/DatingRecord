@@ -15,6 +15,9 @@ import { flushPersist } from '../db/persist';
 import { bump } from '../../store';
 import { newId } from '../id';
 import { getSnapStore, type SnapBytes } from './store';
+import type { SnapDiff, SnapDiffItem } from './diff';
+
+export type { SnapDiff, SnapDiffItem };
 
 export interface SnapMeta {
   id: string;
@@ -29,6 +32,8 @@ export interface SnapMeta {
   note?: string;
   /** 这一轮到底动了什么（AI 轮次结束后回写）。给人看，也给人点开细看 */
   ops?: SnapOp[];
+  /** 对比快照和当前库得出的增删改分组（AI 轮次结束后回写） */
+  diff?: SnapDiff;
 }
 
 /** 这一轮新建 / 变动的对象，列表里直接展示成人名、事件名，点开就能跳过去 */
@@ -204,6 +209,19 @@ export function patchSnapshotOps(
     ...(ops.length ? { ops } : {}),
     ...(note ? { note } : {}),
   };
+  list[i] = next;
+  writeMeta(list);
+  flushPersist();
+  bump();
+  return next;
+}
+
+/** 回写 diff 结果（增删改分组） */
+export function patchSnapshotDiff(id: string, diff: SnapDiff): SnapMeta | null {
+  const list = readMeta();
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return null;
+  const next: SnapMeta = { ...list[i], diff };
   list[i] = next;
   writeMeta(list);
   flushPersist();

@@ -293,6 +293,15 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
     // 只改元数据，不动字节——字节是恢复用的，必须保持原样。
     if (snapshotId && ops.length) {
       patchSnapshotOps(snapshotId, ops, summarizeOps(ops));
+      // 对比快照和当前库，得出增删改分组——比 ops 列表更直观
+      try {
+        const { diffSnapshot } = await import('../snapshots/diff');
+        const { patchSnapshotDiff } = await import('../snapshots');
+        const d = await diffSnapshot(snapshotId);
+        if (d && (d.created.length || d.updated.length || d.deleted.length)) {
+          patchSnapshotDiff(snapshotId, d);
+        }
+      } catch { /* diff 失败不影响主流程 */ }
     }
   }
 
