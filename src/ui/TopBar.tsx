@@ -22,7 +22,7 @@ export function TopBar({
     <header className="topbar">
       <div className="brand">
         <span className="brand-dot" />
-        <span className="brand-text">约会记录</span>
+        <span className="brand-text">朝汇夕思</span>
       </div>
       <div className="tabs">
         {TABS.map((t) => (

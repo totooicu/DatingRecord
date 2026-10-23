@@ -57,6 +57,7 @@ export function SettingsNav({
       <div className="pane-head">
         <strong>设置目录</strong>
       </div>
+      <p className="settings-slogan">朝汇生活碎片，夕拾旧日回想</p>
       {groups.map(({ g, items }) => (
         <div className="settings-nav-group" key={g}>
           <div className="settings-nav-group-title">
