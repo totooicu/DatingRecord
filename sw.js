@@ -4,7 +4,7 @@
 // 占位符：构建时由 scripts/bust-sw.mjs 替换成带构建时间戳的缓存名。
 // 这样每次重新构建都会生成不同的 sw.js 内容，浏览器才会重新安装 SW、
 // 丢弃旧缓存 —— 否则旧 SW 会一直用 13:36 那版预缓存的页面，表现为「改了却不生效」。
-const CACHE = 'dating-record-2026-10-22T17-07-49-312Z';
+const CACHE = 'dating-record-2026-10-23T01-49-01-927Z';
 
 // 构建后带 hash 的资源走运行时缓存；这里先预缓存固定入口与体积较大的 wasm
 const PRECACHE = [
@@ -16,6 +16,8 @@ const PRECACHE = [
   './icon-maskable-512.png',
   './icon.svg',
   './sql-wasm.wasm',
+  // 「功能体验」页里的边缘分割工具：一个独立静态页，跟应用一起离线可用
+  './edge-split.html',
 ];
 
 self.addEventListener('install', (event) => {
