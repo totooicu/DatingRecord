@@ -4,10 +4,13 @@
 // 模型能思考、能连续调用多个工具（查数据 / 建人物 / 记事件 / 改消息……），
 // 每次调用的结果会喂回去给它看，直到它给出最终回复。
 //
-// 版面（本轮重做）：顶部四个按钮「聊天 / 历史会话 / 快照 / 说明」，点哪个哪个
+// 版面：顶部一排标签「聊天 / 模型 / 历史会话 / 成果 / 说明」，点哪个哪个
 // 铺满整屏，互不挤占。以前快照和说明是嵌在聊天页里的小面板，点开就把聊天区
 // 挤掉一半，体验很碎。现在各占一屏，切换只是换显示，组件不卸载、agent 循环
-// 不中断——AI 在后台跑着，你切到「快照」看备份也照样跑。
+// 不中断——AI 在后台跑着，你切到「成果」看备份也照样跑。
+//
+// 「模型」标签里挂的是原来顶级设置里的「AI 模型」整页（别名 / 服务商 / 密钥 / 连通测试），
+// 2026-10-23 从顶级目录挪进来：配模型和聊天本就是同一件事的两步，不该隔一层目录。
 //
 // 会话持久化（历史会话 tab 的来源）：每轮结束后把整段对话（喂模型的 messages）
 // 和界面气泡存进 SQLite 的 meta 表（见 core/ai/sessions.ts）。刷新、退出设置页、
@@ -27,7 +30,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { bump } from '../../store';
+import { bump, useVersion } from '../../store';
 import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
 import { findByAlias, getDefaultModel, listModels, type AiModel } from '../../core/ai';
 import { agentSystemPrompt, runAgentTurn, type AgentEvent, type AgentMessage } from '../../core/ai/agent';
@@ -72,6 +75,7 @@ import { Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
+import { AiSection } from './AiSection';
 import { setNavGuard } from '../navGuard';
 import { showToast } from '../toast';
 
@@ -86,7 +90,7 @@ interface Item {
   attachments?: Attachment[];
 }
 
-type TabKey = 'chat' | 'history' | 'snap' | 'help';
+type TabKey = 'chat' | 'models' | 'history' | 'snap' | 'help';
 
 const QUICK = ['这个库里都有什么？', '最近发生了哪些事？', '把这份文件里的内容整理成一条事件'];
 
@@ -246,7 +250,12 @@ function SnapTargetChips({ targets }: { targets: SnapTarget[] }) {
 }
 
 export function LabAiSection() {
-  const [models] = useState<AiModel[]>(() => listModels());
+  const [models, setModels] = useState<AiModel[]>(() => listModels());
+  // 「模型」标签里增删改别名后会 bump()，这里跟着重拉列表，聊天区的下拉才不会露出已删除的别名
+  const v = useVersion();
+  useEffect(() => {
+    setModels(listModels());
+  }, [v]);
   const [alias, setAlias] = useState<string>(() => getDefaultModel()?.alias ?? listModels()[0]?.alias ?? '');
   const [history, setHistory] = useState<AgentMessage[]>(() => listSessions()[0]?.messages ?? []);
   const [items, setItems] = useState<Item[]>(() => (listSessions()[0]?.items ?? []) as Item[]);
@@ -297,7 +306,7 @@ export function LabAiSection() {
     if (t === 'history') reloadSessions();
   };
 
-  // 顶部四个键闲置 8 秒后收成一条细带；点任意一个就恢复，再重新计时
+  // 顶部一排键闲置 8 秒后收成一条细带；点任意一个就恢复，再重新计时
   useEffect(() => {
     if (tabsTight) return;
     const t = window.setTimeout(() => setTabsTight(true), 8000);
@@ -454,7 +463,7 @@ export function LabAiSection() {
     // 只有附件、没有文字也可以发（「看看这张图」这种）
     if ((!t && atts.length === 0) || busy) return;
     if (!model) {
-      setErr('还没有可用的模型。先去「AI 模型」页配一个别名和密钥。');
+      setErr('还没有可用的模型。点上方「模型」标签配一个别名和密钥。');
       return;
     }
     setErr(null);
@@ -578,7 +587,7 @@ export function LabAiSection() {
     <div className="lab-page lab-page-chat">
       <LabHead title="AI 对话" subKey="labAi" />
 
-      {/* 四个全屏切换按钮：点哪个哪个铺满下面整块。切换不卸载组件，
+      {/* 一排全屏切换按钮：点哪个哪个铺满下面整块。切换不卸载组件，
           所以 agent 循环、busy 状态、聊天记录都还在，会话不会被打断。 */}
       <div
         className={tabsTight ? 'aichat-tabs aichat-tabs-tight' : 'aichat-tabs'}
@@ -592,6 +601,14 @@ export function LabAiSection() {
           onClick={() => switchTab('chat')}
         >
           聊天
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'models'}
+          className={tab === 'models' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => switchTab('models')}
+        >
+          模型{models.length > 0 && <span className="aichat-tab-n">{models.length}</span>}
         </button>
         <button
           role="tab"
@@ -756,6 +773,12 @@ export function LabAiSection() {
           </div>
         )}
 
+        {tab === 'models' && (
+          <div className="aichat-models">
+            <AiSection />
+          </div>
+        )}
+
         {tab === 'history' && (
           <div className="aichat-history">
             <div className="aichat-subhead">
@@ -862,10 +885,10 @@ export function LabAiSection() {
             </p>
             <p className="muted small">
               我能调用 person / event / chat / collection / file / snapshot / io / system 八组工具。
-              模型配置在「AI 模型」页。
+              模型的别名、服务商、密钥和连通测试都在上方「模型」标签里。
             </p>
             <p className="muted small">
-              顶部四个按钮：<b>聊天</b>是和 AI 对话；<b>历史会话</b>是自动保存的对话记录，可载入继续；
+              顶部五个按钮：<b>聊天</b>是和 AI 对话；<b>模型</b>管别名、服务商与密钥；<b>历史会话</b>是自动保存的对话记录，可载入继续；
               <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、记了什么事，也能一键恢复或删除；<b>说明</b>是本页。切换不中断 AI 正在做的事。
             </p>
           </div>
