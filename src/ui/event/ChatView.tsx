@@ -81,6 +81,23 @@ export function ChatView({ event }: { event: DREvent }) {
   const [flash, setFlash] = useState<string | null>(null);
   /** 就地编辑区：长内容要能滚到眼前，不然写着写着就看不见了 */
   const editRef = useRef<HTMLDivElement>(null);
+  /** 整段对话流铺满全屏：长聊天在弹窗里只有半屏，翻起来很憋 */
+  const [full, setFull] = useState(false);
+
+  // 全屏时锁住背景滚动，Esc 退出（和正文编辑器保持一致的手感）
+  useEffect(() => {
+    if (!full) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFull(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [full]);
 
   useEffect(() => {
     if (!editing) return;
@@ -241,7 +258,7 @@ export function ChatView({ event }: { event: DREvent }) {
   const selIdx = selected ? msgs.findIndex((m) => m.id === selected.id) : -1;
 
   return (
-    <div className="chat">
+    <div className={full ? 'chat chat-full' : 'chat'}>
       <div className="chat-list" onClick={() => setSel(null)}>
         {msgs.length === 0 && (
           <p className="muted chat-empty">
@@ -443,6 +460,13 @@ export function ChatView({ event }: { event: DREvent }) {
             ⇄ 换边
           </button>
         )}
+        <button
+          className="btn btn-sm chat-full-btn"
+          onClick={() => setFull((v) => !v)}
+          title={full ? '退出全屏（Esc）' : '对话流铺满全屏，长聊天翻起来更顺'}
+        >
+          {full ? '退出全屏' : '全屏'}
+        </button>
       </div>
 
       {/* 选中后浮出的操作，按「怎么处置这一条」分组 */}

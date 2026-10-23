@@ -198,6 +198,35 @@
   flex-wrap: wrap;
 }
 
+/* 全屏入口和「记一句 / 旁白」同一行，靠右不抢戏 */
+.chat-full-btn {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+/* 对话流全屏：整段聊天铺满屏幕，消息列表自己滚，底部入口和操作条常驻 */
+.chat-full {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px
+    calc(env(safe-area-inset-bottom, 0px) + 10px);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.chat-full .chat-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  background: var(--panel);
+}
+
+.chat-full .chat-compose,
+.chat-full .chat-actions {
+  flex: none;
+}
+
 .chat-actions {
   display: flex;
   gap: 6px;
