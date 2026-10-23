@@ -6,11 +6,13 @@ export interface FlatNode {
   id: string;
   name: string;
   depth: number;
+  /** 智能集合：成员由规则实时算出，不能手动挂事件进去 */
+  smart: boolean;
 }
 
 export function flattenTree(n: TreeNode | null, out: FlatNode[] = [], d = 0): FlatNode[] {
   if (!n) return out;
-  out.push({ id: n.id, name: n.name, depth: d });
+  out.push({ id: n.id, name: n.name, depth: d, smart: n.kind === 'smart' });
   for (const c of n.children) flattenTree(c, out, d + 1);
   return out;
 }

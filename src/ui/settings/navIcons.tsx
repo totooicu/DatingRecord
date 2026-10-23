@@ -30,13 +30,33 @@ const wrap = (children: ReactNode) => <svg {...ICON}>{children}</svg>;
 
 export function SettingsIcon({ k }: { k: NavIconKey }) {
   switch (k) {
-    // 备份与恢复：箱子里装着一份存档
+    // 备份与分享：箱子里装着一份存档
     case 'backup':
       return wrap(
         <>
           <path d="M3.6 7.6h16.8v10.6a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8z" />
           <path d="M3.6 7.6 5.6 4.4h12.8l2 3.2" />
           <path d="M9.4 12h5.2" />
+        </>,
+      );
+    // 数据备份：文档 + 向下的导出箭头（整库落成一份文件）
+    case 'backupData':
+      return wrap(
+        <>
+          <path d="M6 3.8h7.2L18.6 9v11.2H6z" />
+          <path d="M13 4v5.2h5.2" />
+          <path d="M12.2 11.4v5.2" />
+          <path d="M10.2 14.6l2 2 2-2" />
+        </>,
+      );
+    // 分享：三个节点连成一个「给出」的形状
+    case 'share':
+      return wrap(
+        <>
+          <circle cx="17.4" cy="6" r="2.6" />
+          <circle cx="6.6" cy="12" r="2.6" />
+          <circle cx="17.4" cy="18" r="2.6" />
+          <path d="M9 10.8 15.2 7.4M9 13.2l6.2 3.4" />
         </>,
       );
     // 坚果云备份：云 + 上下箭头

@@ -135,7 +135,8 @@
   align-items: center;
 }
 
-.share-entry span {
+/* 只作用于直接的说明文字，别漏进弹层里的 span（弹层就挂在按钮旁边） */
+.share-entry > span {
   flex: 1;
   min-width: 0;
 }
@@ -146,4 +147,171 @@
   align-items: center;
   gap: 6px;
   margin-left: auto;
+}
+
+/* ---------- 导出：对象切换 ---------- */
+
+/* 事件集 / 人物 二选一：分段控件，不做成下拉，两个选项要一眼都看得见 */
+.share-kind {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfaf8;
+}
+
+.share-kind button {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.share-kind button.share-kind-on {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+.share-export-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- 分享程度：一列可点的卡片，不再用下拉 ---------- */
+
+.share-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-levels > p {
+  margin: 0 0 2px;
+  line-height: 1.7;
+}
+
+.share-level {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* 单选钮在全局是 100% 宽的输入框样式，这里要摁回原尺寸，否则会把文字挤成一条竖线 */
+.share-level input,
+.share-landing-row input {
+  width: auto;
+  margin-top: 3px;
+  flex: none;
+}
+
+.share-level-on {
+  border-color: var(--primary);
+  background: #fff7f9;
+}
+
+.share-level-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.share-level-text strong {
+  font-size: 13.5px;
+}
+
+.share-level-text span {
+  line-height: 1.55;
+}
+
+/* 自选：属性勾选区 */
+.share-attrs {
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.share-attrs-title {
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.share-attr-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.share-attach-toggle {
+  margin-top: 2px;
+}
+
+/* ---------- 导入：落地方式 ---------- */
+
+.share-landing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-landing-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.share-landing-row input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.share-landing-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.share-landing-row strong {
+  font-size: 13.5px;
+}
+
+.share-landing-row span span {
+  line-height: 1.55;
+}
+
+.share-landing-on {
+  border-color: var(--primary);
+  background: #fff7f9;
+}
+
+.share-landing-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.share-landing-detail p {
+  margin: 0;
+}
+
+.share-name-input {
+  width: 100%;
 }

@@ -146,7 +146,7 @@ export function MigrateSection() {
             <strong>{planSummary(plan)}</strong>
           </p>
           <PlanPreview plan={plan} />
-          <p className="muted small">迁移会改写事件正文与人物头像，建议先在「备份与恢复」里导出一份。</p>
+          <p className="muted small">迁移会改写事件正文与人物头像，建议先在「设置 → 备份与分享 → 数据备份」里导出一份。</p>
           <div className="row-actions">
             <button className="btn btn-primary btn-sm" onClick={() => void run()} disabled={busy}>
               {busy ? '执行中…' : '确认执行'}

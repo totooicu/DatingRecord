@@ -248,10 +248,10 @@
   }
 }
 
-/* ---------- 功能体验：入口页与子页 ---------- */
+/* ---------- 入口页：功能体验 / 备份与分享 ---------- */
 
-/* 入口页：每个功能一张卡，点进去各占一页 */
-.lab-list {
+/* 入口页：每个子页一张卡，点进去各占一页 */
+.settings-hub-list {
   list-style: none;
   margin: 10px 0 0;
   padding: 0;
@@ -260,7 +260,7 @@
   gap: 8px;
 }
 
-.lab-item {
+.settings-hub-item {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -273,7 +273,7 @@
   box-shadow: var(--shadow);
 }
 
-.lab-item-icon {
+.settings-hub-icon {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -284,7 +284,7 @@
   color: var(--primary);
 }
 
-.lab-item-text {
+.settings-hub-text {
   min-width: 0;
   flex: 1;
   display: flex;
@@ -292,29 +292,29 @@
   gap: 2px;
 }
 
-.lab-item-title {
+.settings-hub-title {
   font-weight: 600;
 }
 
-.lab-item-desc {
+.settings-hub-desc {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted);
 }
 
-.lab-item-hint {
+.settings-hub-hint {
   font-size: 11.5px;
   color: color-mix(in srgb, var(--muted) 80%, transparent);
 }
 
-.lab-item-arrow {
+.settings-hub-arrow {
   flex: 0 0 auto;
   font-size: 20px;
   line-height: 1;
   color: var(--muted);
 }
 
-.lab-item:hover {
+.settings-hub-item:hover {
   border-color: var(--primary);
 }
 

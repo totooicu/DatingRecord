@@ -7,7 +7,18 @@ import type { ToolDef } from './types';
 import { requireHostFs } from './host';
 import { buildLibrary, exportToFile } from '../io/export';
 import { importLibrary, type ImportResult } from '../io/import';
-import { buildShare, parseShare, planShare, applyShare, exportShareFile, NEW_PERSON } from '../io/share';
+import {
+  buildPersonShare,
+  buildShare,
+  parseShare,
+  planShare,
+  applyShare,
+  exportPersonShareFile,
+  exportShareFile,
+  NEW_PERSON,
+  type ShareLanding,
+} from '../io/share';
+import type { ShareLevel } from '../types';
 import { createSnapshot } from '../snapshots';
 import { getBlob } from '../db/blob';
 import { getFile } from '../repo/files';
@@ -108,11 +119,22 @@ export const IO_TOOLS: ToolDef[] = [
       { name: 'collectionId', type: 'string', desc: '事件集 id', required: true },
       { name: 'outPath', type: 'string', desc: '输出文件路径（仅 CLI 有意义）', required: false },
       { name: 'includeAttachments', type: 'boolean', desc: '是否内嵌被引用的附件', required: false, default: true },
+      {
+        name: 'level',
+        type: 'string',
+        desc: '分享程度：full 原样 / noPrivate 去私 / namesOnly 只名 / alias 化名 / custom 自选',
+        required: false,
+        default: 'full',
+      },
+      { name: 'attrKeys', type: 'array', desc: '自选等级下要带走的属性 key', required: false },
     ],
     run: async (a) => {
-      const share = await buildShare(a.collectionId as string, {
+      const opts = {
+        level: (a.level as ShareLevel | undefined) ?? 'full',
+        attrKeys: (a.attrKeys as string[] | undefined) ?? [],
         includeAttachments: a.includeAttachments !== false,
-      });
+      };
+      const share = await buildShare(a.collectionId as string, opts);
       const text = JSON.stringify(share, null, 2);
       const summary = {
         format: share.format,
@@ -131,10 +153,47 @@ export const IO_TOOLS: ToolDef[] = [
         return { ...summary, outPath };
       }
       if (hasHost()) return { ...summary, text };
-      const name = await exportShareFile(a.collectionId as string, {
-        includeAttachments: a.includeAttachments !== false,
-      });
+      const name = await exportShareFile(a.collectionId as string, opts);
       return { ...summary, downloaded: name };
+    },
+  },
+  {
+    name: 'io.sharePerson',
+    group: 'io',
+    title: '打包人物分享',
+    desc:
+      '把一个人参与过的全部事件（含事件里出现的其他人物、聊天、附件）打包成 .drshare.json。' +
+      '不带事件集结构——对方导入时自己选落到哪个集合',
+    mutating: false,
+    params: [
+      { name: 'personId', type: 'string', desc: '人物 id', required: true },
+      { name: 'outPath', type: 'string', desc: '输出文件路径（仅 CLI 有意义）', required: false },
+      { name: 'includeAttachments', type: 'boolean', desc: '是否内嵌被引用的附件', required: false, default: true },
+      {
+        name: 'level',
+        type: 'string',
+        desc: '分享程度：full / noPrivate / namesOnly / alias / custom',
+        required: false,
+        default: 'full',
+      },
+      { name: 'attrKeys', type: 'array', desc: '自选等级下要带走的属性 key', required: false },
+    ],
+    run: async (a) => {
+      const opts = {
+        level: (a.level as ShareLevel | undefined) ?? 'full',
+        attrKeys: (a.attrKeys as string[] | undefined) ?? [],
+        includeAttachments: a.includeAttachments !== false,
+      };
+      const share = await buildPersonShare(a.personId as string, opts);
+      const text = JSON.stringify(share, null, 2);
+      const outPath = a.outPath as string | undefined;
+      if (outPath) {
+        requireHostFs().writeText(outPath, text);
+        return { scope: share.scope, level: share.level, events: share.events.length, persons: share.persons.length, outPath };
+      }
+      if (hasHost()) return { scope: share.scope, level: share.level, events: share.events.length, text };
+      const name = await exportPersonShareFile(a.personId as string, opts);
+      return { scope: share.scope, level: share.level, events: share.events.length, downloaded: name };
     },
   },
   {
@@ -181,13 +240,31 @@ export const IO_TOOLS: ToolDef[] = [
         desc: `{"<分享里的人物id>":"<本库人物id或${NEW_PERSON}>"}，可省略`,
         required: false,
       },
-      { name: 'parentId', type: 'string', desc: '挂到哪个事件集下，省略则挂到根', required: false },
+      {
+        name: 'mode',
+        type: 'string',
+        desc: 'new = 新建事件集（保留分享里的层级）；merge = 并进已有事件集（不建新集合）',
+        required: false,
+        default: 'new',
+      },
+      { name: 'parentId', type: 'string', desc: 'mode=new 时挂到哪个事件集下，省略则挂到根', required: false },
+      { name: 'name', type: 'string', desc: 'mode=new 且是人物分享时，新事件集的名字', required: false },
+      { name: 'collectionId', type: 'string', desc: 'mode=merge 时的目标事件集 id', required: false },
     ],
     run: async (a) => {
       const { share } = readShareInput(a);
+      if (a.mode === 'merge' && !a.collectionId) throw new Error('mode=merge 时必须给 collectionId');
+      const landing: ShareLanding =
+        a.mode === 'merge'
+          ? { mode: 'merge', collectionId: a.collectionId as string }
+          : {
+              mode: 'new',
+              parentId: (a.parentId as string | null | undefined) ?? null,
+              name: a.name as string | undefined,
+            };
       const r = await applyShare(share, {
         personMap: (a.personMap as Record<string, string> | undefined) ?? {},
-        parentId: (a.parentId as string | null | undefined) ?? null,
+        landing,
       });
       return { counts: r.counts, skipped: r.skipped };
     },

@@ -10,6 +10,7 @@ import {
 import { TagInput, PrivacyButton } from '../common';
 import { Avatar } from './Avatar';
 import { IconPicker } from '../collections/IconPicker';
+import { ShareDialog } from '../share/ShareDialog';
 import { bump } from '../../store';
 import type { Person } from '../../core/types';
 
@@ -26,6 +27,7 @@ export function PersonHead({
   // 不额外展开一块文案，头部布局在确认前后保持不变。
   const [confirming, setConfirming] = useState(false);
   const [iconOpen, setIconOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const archive = () => {
     deletePerson(person.id);
@@ -78,6 +80,10 @@ export function PersonHead({
               <button className="btn btn-primary" onClick={onNewEvent}>
                 记一件事
               </button>
+              {/* 分享一个人 ＝ 他参与过的事件；人物资料带多少由弹层里选 */}
+              <button className="btn" onClick={() => setShareOpen(true)} title="导出这个人的事件">
+                分享
+              </button>
               <PrivacyButton
                 active={person.isPrivate}
                 onToggle={() => {
@@ -92,6 +98,13 @@ export function PersonHead({
           )}
         </div>
       </div>
+
+      {shareOpen && (
+        <ShareDialog
+          target={{ kind: 'person', id: person.id, name: person.displayName }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       {iconOpen && (
         <IconPicker

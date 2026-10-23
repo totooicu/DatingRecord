@@ -15,10 +15,14 @@ export { importLibrary, type ImportResult } from './import';
 export {
   NEW_PERSON,
   applyShare,
+  buildPersonShare,
   buildShare,
+  exportPersonShareFile,
   exportShareFile,
   parseShare,
   planShare,
+  type ShareLanding,
+  type ShareOptions,
   type SharePersonRow,
   type SharePlan,
 } from './share';

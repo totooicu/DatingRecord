@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
+import { BackupHubSection } from './BackupHubSection';
 import { BackupSection } from './BackupSection';
 import { SyncSection } from './SyncSection';
+import { ShareSection } from './ShareSection';
 import { AiSection } from './AiSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
@@ -29,8 +31,8 @@ import { fmtBuildTime } from '../../core/buildInfo';
  * 目录常驻。所以这里不需要 JS 判断宽度——sub 为 null 只表示「手机上还在目录页」，
  * 宽屏永远按 DEFAULT_SETTINGS_KEY 渲染右栏。
  *
- * 入口已经按「做一件事」合并过（见 sections.ts），所以子页只剩八种：
- * 备份与恢复 / 隐私与安全 / 人物与属性 / 归档与回收 / 文件 / 数据与统计。
+ * 入口已经按「做一件事」合并过（见 sections.ts），带子页的入口有两个：
+ * 备份与分享（备份 / 同步 / 分享）、功能体验（AI 对话 / 边缘分割），其余入口各占一页。
  */
 export function Settings({ initial }: { initial?: string | null }) {
   // initial 允许带旧 key（lock / enc / templates / overview / sample），
@@ -56,9 +58,16 @@ export function Settings({ initial }: { initial?: string | null }) {
             进了具体子页就别再占一行——这一行在手机上等于半个按钮的高度 */}
         {sub === null && <div className="settings-build-time muted small">最后构建：{fmtBuildTime()}</div>}
 
-        {active === 'backup' && <BackupSection />}
+        {/* 备份与分享：入口页只放三个子页的目录，各自一页。
+            三件事都是搬数据，但「整库后路 / 增量同步 / 给别人看」的取舍完全不同，
+            挤在一屏会让每一块都想省一半说明 */}
+        {active === 'backup' && <BackupHubSection onPick={setSub} />}
+
+        {active === 'backupData' && <BackupSection />}
 
         {active === 'sync' && <SyncSection />}
+
+        {active === 'share' && <ShareSection />}
 
         {active === 'ai' && <AiSection />}
 
