@@ -54,9 +54,9 @@
 
 **合并即发布：版本时间必须前进（2026-10-23 用户确立）**
 
-- 版本时间由 `vite.config.ts` 构建时注入 `__BUILD_TIME__`，`scripts/bust-sw.mjs` 同时替换 SW 缓存名；**不构建就不会变**。
-- 合并回 `main` 之后必须重新执行 `npm run build`（不能把分支上的 `dist/` 直接搬过去），再推送触发 Pages 部署。
-- 推送后打开任意人物详情，头部「最新版本 · …」必须等于本次构建时间；两处展示同源（另有「设置」页底部「最后构建」）。
+- 版本时间 = `vite.config.ts` 中 `__BUILD_TIME__: new Date().toISOString()` 在构建那一刻取的值；不构建就不会变。
+- **线上时间由 CI 产生**：`deploy-pages.yml` 在 push 到 main 后执行 `pnpm build` 并覆盖 `gh-pages`。本机 `npm run build` 只作为合并门禁，它的时间不会出现在线上。
+- 合并推送后等该 run 变绿，打开任意人物详情，头部「最新版本 · …」应与**这次 Actions 构建**的时间一致（比本地门禁构建晚几十秒属正常）。
 - 时间没前进 = 发布没生效（部署未完成或浏览器仍命中旧 SW），此时不要判断成功能没写对。
 - **禁止**手改 `src/core/buildInfo.ts`、禁止把 `BUILD_TIME` 写成常量，那等于伪造版本号。
 
