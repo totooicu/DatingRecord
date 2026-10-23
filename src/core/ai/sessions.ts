@@ -27,6 +27,8 @@ export interface SessionItem {
   tools?: string[];
   /** 这一轮的自动快照（可回退） */
   snapshotId?: string | null;
+  /** 这一轮的改动暂存在哪条成果里（待执行 / 放弃） */
+  pendingId?: string | null;
   /** 用户消息带的附件（只在界面上展示，正文已拼进 text 发给模型） */
   attachments?: unknown[];
 }

@@ -52,14 +52,22 @@ import {
   type SessionItem,
 } from '../../core/ai/sessions';
 import {
+  applyPendingSnapshot,
   deleteSnapshot,
+  discardPendingSnapshot,
+  hasPendingSnapshot,
   listSnapshots,
+  renamePendingRecord,
   restoreSnapshot,
+  revertAiTurn,
+  stageAiTurn,
   fmtSnapTime,
   fmtBytes,
   summarizeOps,
   type SnapMeta,
+  type SnapRecordRef,
   type SnapTarget,
+  type SnapTargetKind,
 } from '../../core/snapshots';
 import type { StoredFile } from '../../core/repo/files';
 import { getPerson } from '../../core/repo/persons';
@@ -84,6 +92,8 @@ interface Item {
   tools?: string[];
   /** 这一轮的自动快照（可回退） */
   snapshotId?: string | null;
+  /** 这一轮改动暂存的成果 id（待执行 / 放弃） */
+  pendingId?: string | null;
   /** 用户消息带的附件（只在界面上展示，正文已拼进 text 发给模型） */
   attachments?: Attachment[];
 }
@@ -183,6 +193,12 @@ const SNAP_SRC: Record<SnapMeta['source'], string> = {
   auto: '自动',
 };
 
+const RECORD_KIND: Record<SnapTargetKind, string> = {
+  person: '人物',
+  event: '事件',
+  collection: '事件集',
+};
+
 /**
  * 快照列表的主标题：概括这份快照对应的那次操作。
  *
@@ -247,6 +263,140 @@ function SnapTargetChips({ targets }: { targets: SnapTarget[] }) {
   );
 }
 
+function hasReview(s: SnapMeta): boolean {
+  return Boolean(s.added?.length || s.deleted?.length || s.renamed?.length);
+}
+
+/** 审核结果：新增（+）/ 删除（−）/ 改名（→），点一颗看详情 */
+function ReviewChips({ snap, onPick }: { snap: SnapMeta; onPick: (ref: SnapRecordRef) => void }) {
+  const items: { ref: SnapRecordRef; sign: string; cls: string; label: string }[] = [
+    ...(snap.added ?? []).map((ref) => ({ ref, sign: '+', cls: 'aichat-review-add', label: '新增' })),
+    ...(snap.deleted ?? []).map((ref) => ({ ref, sign: '−', cls: 'aichat-review-del', label: '删除' })),
+    ...(snap.renamed ?? []).map((ref) => ({ ref, sign: '→', cls: 'aichat-review-ren', label: '改名' })),
+  ];
+  if (!items.length) return null;
+  return (
+    <div className="aichat-targets aichat-review-chips">
+      {items.map(({ ref, sign, cls, label }) => (
+        <button
+          key={`${label}:${ref.kind}:${ref.id}`}
+          type="button"
+          className={`aichat-target aichat-review-chip ${cls}`}
+          onClick={() => onPick(ref)}
+          title={`${label}：${ref.name}（点开看详情${snap.review === 'pending' && label === '新增' ? '，可改名' : ''}）`}
+        >
+          <span className="aichat-review-sign" aria-hidden>
+            {sign}
+          </span>
+          <span className="aichat-target-name">{ref.name}</span>
+          {ref.fromName && <span className="aichat-review-from">{ref.fromName}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RecordDetailModal({
+  snap,
+  record,
+  name,
+  onName,
+  onSave,
+  onClose,
+}: {
+  snap: SnapMeta | null;
+  record: SnapRecordRef;
+  name: string;
+  onName: (v: string) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const inAdded = Boolean(snap?.added?.some((r) => r.kind === record.kind && r.id === record.id));
+  const inDeleted = Boolean(snap?.deleted?.some((r) => r.kind === record.kind && r.id === record.id));
+  const inRenamed = Boolean(snap?.renamed?.some((r) => r.kind === record.kind && r.id === record.id));
+  const pending = snap?.review === 'pending';
+  const editable = pending && inAdded;
+  const label = inDeleted ? '已删除' : inRenamed ? '已改名' : inAdded ? '新增' : '记录';
+  const cls = inDeleted
+    ? 'aichat-review-del'
+    : inRenamed
+      ? 'aichat-review-ren'
+      : 'aichat-review-add';
+  const detail = record.detail ?? [];
+
+  return (
+    <Modal title={`${label} · ${RECORD_KIND[record.kind]}`} onClose={onClose}>
+      <div className="aichat-record">
+        <div className="aichat-record-head">
+          <span className={`aichat-record-avatar ${cls}`}>
+            {record.kind === 'person' ? (
+              <Avatar name={record.name} avatar={record.avatar} icon={record.icon} />
+            ) : record.kind === 'collection' ? (
+              <CollectionIconView icon={record.icon ?? null} size="sm" fallback={record.name} />
+            ) : (
+              <span className="aichat-target-mark" aria-hidden>
+                事
+              </span>
+            )}
+          </span>
+          <div className="aichat-record-title">
+            <b>{record.name}</b>
+            <span className="muted small">
+              {inDeleted
+                ? '这份成果执行后，它会从库里删掉'
+                : inRenamed && record.fromName
+                  ? `原名「${record.fromName}」`
+                  : inAdded && pending
+                    ? '暂存中，执行后才进库'
+                    : inAdded
+                      ? '这份成果新增的记录'
+                      : ''}
+            </span>
+          </div>
+        </div>
+
+        {detail.length ? (
+          <ul className="aichat-record-detail">
+            {detail.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">这条记录没有更多可看的字段。</p>
+        )}
+
+        {editable && (
+          <div className="aichat-record-edit">
+            <label className="aichat-record-label" htmlFor="aichat-record-name">
+              名称
+            </label>
+            <input
+              id="aichat-record-name"
+              value={name}
+              onChange={(e) => onName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onSave();
+              }}
+              placeholder="给它起个名字"
+            />
+            <button
+              type="button"
+              className="aichat-record-save"
+              disabled={!name.trim() || name.trim() === record.name}
+              onClick={onSave}
+            >
+              保存名称
+            </button>
+            <p className="muted small aichat-record-hint">
+              改名只改这份暂存的成果；点「执行」后才会写进库。
+            </p>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export function LabAiSection() {
   const [models] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState<string>(() => getDefaultModel()?.alias ?? listModels()[0]?.alias ?? '');
@@ -269,6 +419,9 @@ export function LabAiSection() {
   const [snaps, setSnaps] = useState(() => listSnapshots());
   /** 正在看详情的快照（点列表项弹出：这一轮到底做了什么） */
   const [snapDetail, setSnapDetail] = useState<SnapMeta | null>(null);
+  /** 成果里点开的「新增 / 删除 / 改名」记录详情 */
+  const [recordView, setRecordView] = useState<{ snapId: string; ref: SnapRecordRef } | null>(null);
+  const [recordName, setRecordName] = useState('');
   const [sessions, setSessions] = useState<AiSession[]>(() => listSessions());
   const [libOpen, setLibOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
@@ -494,6 +647,11 @@ export function LabAiSection() {
       setErr('还没有可用的模型。先去「AI 模型」页配一个别名和密钥。');
       return;
     }
+    // 上一轮的改动还没确认：先让用户执行或放弃，避免两批改动互相覆盖
+    if (hasPendingSnapshot()) {
+      setErr('还有一份成果没确认。先去「成果」里点「执行」或「放弃」，再继续聊。');
+      return;
+    }
     setErr(null);
     const sent = atts;
     setInput('');
@@ -543,15 +701,24 @@ export function LabAiSection() {
       // 失败不算「发过」：把这条气泡撤掉，原文和附件退回输入框，
       // 用户改一改就能重发，不会在记录里留下一条永远没有回应的提问。
       if (res.error) {
+        // 失败这一轮里已经写进去的东西也要退回去：只撤回消息、数据却改了，最让人糊涂
+        if (res.snapshotId) await revertAiTurn(res.snapshotId);
         setItems((s) => s.filter((x) => x !== userItem));
         setInput(t);
         setAtts(sent);
         setErr(res.error);
+        reloadSnaps();
         return;
       }
       const hist = res.messages;
       setHistory(hist);
-      if (res.snapshotId) setRollbackId(res.snapshotId);
+      // 写库这一轮不直接生效：把「改之后」暂存成一份成果，库先退回原样，
+      // 等用户在「成果」里点「执行」才真正写进去。
+      const staged = res.snapshotId
+        ? await stageAiTurn(res.snapshotId, res.ops, summarizeOps(res.ops))
+        : null;
+      const pendingId = staged?.id ?? null;
+      if (res.snapshotId && !staged) setRollbackId(res.snapshotId);
       const last = [...hist].reverse().find((m) => m.role === 'assistant' && !(m.role === 'assistant' && m.toolCalls?.length));
       const replyText = last && last.role === 'assistant' ? last.content : '';
       const nextItems: Item[] = [
@@ -561,13 +728,20 @@ export function LabAiSection() {
           kind: 'assistant',
           text: replyText || (res.aborted ? '（已停止）' : '（这一轮没有文本回复）'),
           tools: res.usedTools.length ? res.usedTools : undefined,
-          snapshotId: res.snapshotId,
+          snapshotId: staged ? null : res.snapshotId,
+          pendingId,
         },
       ];
       setItems(nextItems);
       reloadSnaps();
       // 明确告诉用户「干完了」：以前忙完只是停止按钮消失，不盯着看根本不知道
-      showToast(res.aborted ? '已停止本轮' : 'AI 已完成，可以继续提问或离开');
+      showToast(
+        staged
+          ? '改动已暂存，去「成果」确认后执行'
+          : res.aborted
+            ? '已停止本轮'
+            : 'AI 已完成，可以继续提问或离开',
+      );
       // 落盘：被中断也能从历史会话里找回并继续
       persistSession(hist, nextItems);
       reloadSessions();
@@ -600,6 +774,60 @@ export function LabAiSection() {
     if (!window.confirm('删除这份成果？删掉就再也回不去了。')) return;
     await deleteSnapshot(id);
     reloadSnaps();
+  };
+
+  /** 审核通过：把暂存的那份库换进来，这一轮改动才真正生效 */
+  const applySnap = async (id: string) => {
+    if (!window.confirm('确认执行这轮改动？\n执行后这些记录才会真正进库。')) return;
+    const ok = await applyPendingSnapshot(id);
+    if (!ok) {
+      setErr('执行失败：暂存的改动不见了，可能已被清理。请重试或放弃。');
+      reloadSnaps();
+      return;
+    }
+    const nextItems = items.map((it) => (it.pendingId === id ? { ...it, pendingId: null } : it));
+    setItems(nextItems);
+    persistSession(history, nextItems);
+    reloadSnaps();
+    showToast('已执行，改动已进库');
+  };
+
+  /** 不要这轮改动了：两份字节一起删掉，库本来就没动过 */
+  const discardSnap = async (id: string) => {
+    if (!window.confirm('放弃这轮改动？\n库里的数据不会变，这份成果会被删掉。')) return;
+    await discardPendingSnapshot(id);
+    const nextItems = items.map((it) => (it.pendingId === id ? { ...it, pendingId: null } : it));
+    setItems(nextItems);
+    persistSession(history, nextItems);
+    reloadSnaps();
+    showToast('已放弃，库没有变');
+  };
+
+  /** 点开成果里的新增 / 删除 / 改名记录，看存下来的详情 */
+  const openRecord = (snapId: string, ref: SnapRecordRef) => {
+    setRecordView({ snapId, ref });
+    setRecordName(ref.name);
+  };
+
+  /** 待执行时改一条新增记录的名字（只改暂存副本，执行后才生效） */
+  const saveRecordName = async () => {
+    if (!recordView) return;
+    const next = await renamePendingRecord(
+      recordView.snapId,
+      recordView.ref.kind,
+      recordView.ref.id,
+      recordName,
+    );
+    if (!next) {
+      showToast('改名失败：这份成果可能已经执行或放弃');
+      return;
+    }
+    const fresh = [...(next.added ?? []), ...(next.deleted ?? []), ...(next.renamed ?? [])].find(
+      (r) => r.kind === recordView.ref.kind && r.id === recordView.ref.id,
+    );
+    if (fresh) setRecordView({ snapId: recordView.snapId, ref: fresh });
+    reloadSnaps();
+    showToast('名字已改，执行后才生效');
   };
 
   const canSend = !busy && !!model && (!!input.trim() || atts.length > 0);
@@ -691,7 +919,12 @@ export function LabAiSection() {
                     <MarkdownView source={it.text} />
                   </div>
                   {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
-                  {it.snapshotId && !busy && (
+                  {it.pendingId && !busy && (
+                    <button className="aichat-rollback aichat-review-btn" onClick={() => switchTab('snap')}>
+                      待审核：去「成果」执行或放弃
+                    </button>
+                  )}
+                  {it.snapshotId && !it.pendingId && !busy && (
                     <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
                       回退本轮改动
                     </button>
@@ -949,6 +1182,8 @@ export function LabAiSection() {
                       >
                         <span className="aichat-snap-title">{snapTitle(s)}</span>
                         <span className="aichat-snap-sub">
+                          {s.review === 'pending' && <span className="aichat-snap-status aichat-snap-status-pending">待执行</span>}
+                          {s.review === 'applied' && <span className="aichat-snap-status aichat-snap-status-done">已执行</span>}
                           <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
                           <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
                           <span className="aichat-snap-meta">
@@ -959,15 +1194,32 @@ export function LabAiSection() {
                           ) : null}
                         </span>
                       </button>
-                      <SnapTargetChips targets={targetsIn(s)} />
+                      {hasReview(s) ? (
+                        <ReviewChips snap={s} onPick={(ref) => openRecord(s.id, ref)} />
+                      ) : (
+                        <SnapTargetChips targets={targetsIn(s)} />
+                      )}
                     </div>
                     <span className="aichat-snap-ops">
-                      <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
-                        恢复
-                      </button>
-                      <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => removeSnap(s.id)}>
-                        删除
-                      </button>
+                      {s.review === 'pending' ? (
+                        <>
+                          <button className="aichat-linkbtn aichat-linkbtn-go" onClick={() => void applySnap(s.id)}>
+                            执行
+                          </button>
+                          <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => void discardSnap(s.id)}>
+                            放弃
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
+                            恢复
+                          </button>
+                          <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => removeSnap(s.id)}>
+                            删除
+                          </button>
+                        </>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -1037,6 +1289,29 @@ export function LabAiSection() {
           </div>
         </Modal>
       )}
+
+      {recordView &&
+        (() => {
+          const snap = snaps.find((s) => s.id === recordView.snapId) ?? null;
+          const all = [
+            ...(snap?.added ?? []),
+            ...(snap?.deleted ?? []),
+            ...(snap?.renamed ?? []),
+          ];
+          const record =
+            all.find((r) => r.kind === recordView.ref.kind && r.id === recordView.ref.id) ??
+            recordView.ref;
+          return (
+            <RecordDetailModal
+              snap={snap}
+              record={record}
+              name={recordName}
+              onName={setRecordName}
+              onSave={() => void saveRecordName()}
+              onClose={() => setRecordView(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

@@ -1153,3 +1153,164 @@
     height: calc(100dvh - 56px - 70px - 24px);
   }
 }
+
+/* ---------- 成果审核：待执行 / 新增 / 删除 / 改名 ---------- */
+.aichat-snap-status {
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.aichat-snap-status-pending {
+  color: #a05a00;
+  background: #fff5e6;
+  border-color: #f2c98a;
+}
+
+.aichat-snap-status-done {
+  color: #237a45;
+  background: #eef8f1;
+  border-color: #b7dfc5;
+}
+
+/* 胶囊里的 +/-/→ 小圆点，一眼分清新增、删除、改名 */
+.aichat-review-chip {
+  padding-left: 3px;
+}
+
+.aichat-review-sign {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.aichat-review-add .aichat-review-sign {
+  color: #237a45;
+  background: #e3f5ea;
+}
+
+.aichat-review-del .aichat-review-sign {
+  color: #b03a2e;
+  background: #fdecea;
+}
+
+.aichat-review-ren .aichat-review-sign {
+  color: #1f5fa8;
+  background: #e8f1fc;
+}
+
+.aichat-review-del .aichat-target-name {
+  color: #b03a2e;
+  text-decoration: line-through;
+}
+
+/* 改名胶囊后面跟着旧名字 */
+.aichat-review-from {
+  color: var(--muted);
+  font-size: 11px;
+  text-decoration: line-through;
+}
+
+.aichat-linkbtn-go {
+  color: #1f7a42;
+  font-weight: 700;
+}
+
+/* ---------- 成果记录详情弹窗 ---------- */
+.aichat-record {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aichat-record-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.aichat-record-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.aichat-record-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.aichat-record-detail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.aichat-record-detail li {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.aichat-record-edit {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.aichat-record-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.aichat-record-edit input {
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.aichat-record-save {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.aichat-record-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.aichat-record-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
