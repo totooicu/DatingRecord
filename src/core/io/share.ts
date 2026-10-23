@@ -52,13 +52,19 @@ export interface ShareOptions {
   includeAttachments?: boolean;
 }
 
-/** 打包范围：选中的事件集 + 「要带走资料」的人物 */
+/** 打包范围：选中的事件集 + 进一步挑出的事件 + 「要带走资料」的人物 */
 export interface ShareSelection {
   /** 事件集 id（含子集），至少一个 */
   collectionIds: string[];
   /**
+   * 在这些事件集里再挑一层：只打包这些事件。
+   * undefined = 事件集圈到的全部事件；[] = 一个事件都不带（只留事件集结构）。
+   */
+  eventIds?: string[];
+  /**
    * 点名带走资料的人物 id。
    * undefined = 事件里出现的所有人按等级带资料；[] = 全部只留姓名。
+   * 不在事件里的人物也会被附加进来（导入后是一个没有事件指向的人）。
    */
   personIds?: string[];
 }
@@ -171,11 +177,18 @@ function personsOfEvents(events: DREvent[], collections: Collection[]): Person[]
 }
 
 /**
- * 向导第二步用：选中这些事件集之后，事件里出现了哪些人、各出现多少次。
+ * 向导第二步用：选中这些事件集（可再按事件挑一层）之后，事件里出现了哪些人、各出现多少次。
  * 顺序按出现次数降序，常用的人排在前面。
  */
-export function personsInCollections(collectionIds: string[]): { person: Person; eventCount: number }[] {
-  const events = eventsOfCollections(collectionIds);
+export function personsInCollections(
+  collectionIds: string[],
+  eventIds?: string[],
+): { person: Person; eventCount: number }[] {
+  let events = eventsOfCollections(collectionIds);
+  if (eventIds) {
+    const keep = new Set(eventIds);
+    events = events.filter((e) => keep.has(e.id));
+  }
   const counts = new Map<string, number>();
   for (const e of events) {
     for (const p of e.participants) counts.set(p.personId, (counts.get(p.personId) ?? 0) + 1);
@@ -193,6 +206,8 @@ export function personsInCollections(collectionIds: string[]): { person: Person;
  *
  * 成员关系是从 collection_members 里按集合筛出来的，而不是逐个事件反查——
  * 同一个事件挂在多个子集合下的情况，反查会漏掉一部分挂接关系。
+ * 如果进一步按事件挑了，成员关系也只保留被挑中的那些，否则导入时
+ * 会把没选的事件重新挂回集合里。
  */
 export async function buildShare(sel: ShareSelection, opts: ShareOptions = {}): Promise<ShareFile> {
   const level: ShareLevel = opts.level ?? 'full';
@@ -205,21 +220,39 @@ export async function buildShare(sel: ShareSelection, opts: ShareOptions = {}): 
     .filter((c): c is Collection => !!c);
   if (!collections.length) throw new Error('选中的事件集不存在或已删除');
 
-  const marks = colIds.map(() => '?').join(',');
-  const members = queryAll<Row>(
-    `SELECT * FROM collection_members WHERE collection_id IN (${marks}) AND deleted_at IS NULL`,
-    colIds,
-  ).map(rowToMember);
-
+  let pickedEventIds: Set<string> | null = null;
+  if (sel.eventIds) pickedEventIds = new Set(sel.eventIds);
   const events = visibleEvents(
     eventIdsOf(collections)
+      .filter((id) => !pickedEventIds || pickedEventIds.has(id))
       .map((id) => getEvent(id))
       .filter((e): e is DREvent => !!e),
     level,
   );
   const messages = events.flatMap((e) => listMessages(e.id));
 
-  const rawPersons = personsOfEvents(events, collections);
+  // 成员关系跟着事件一起裁：只保留真正带走的事件，集合成员照旧
+  const keptEventIds = new Set(events.map((e) => e.id));
+  const marks = colIds.map(() => '?').join(',');
+  const members = queryAll<Row>(
+    `SELECT * FROM collection_members WHERE collection_id IN (${marks}) AND deleted_at IS NULL`,
+    colIds,
+  )
+    .map(rowToMember)
+    .filter((m) => m.memberType !== 'event' || keptEventIds.has(m.memberId));
+
+  // 事件涉及的人 + 用户额外点名的人（后者没有事件指向，但资料要一起带走）
+  const byId = new Map<string, Person>();
+  for (const p of personsOfEvents(events, collections)) byId.set(p.id, p);
+  if (sel.personIds) {
+    const all = listPersons({ includeArchived: true });
+    for (const id of sel.personIds) {
+      if (byId.has(id)) continue;
+      const extra = all.find((p) => p.id === id);
+      if (extra) byId.set(id, extra);
+    }
+  }
+  const rawPersons = [...byId.values()];
   const picked =
     sel.personIds === undefined ? new Set(rawPersons.map((p) => p.id)) : new Set(sel.personIds);
   const book = aliasBook(rawPersons.map((p) => p.id));

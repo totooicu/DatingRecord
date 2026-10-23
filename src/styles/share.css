@@ -421,3 +421,202 @@
 .share-name-input {
   width: 100%;
 }
+
+/* ---------- 挑事件 ---------- */
+
+.share-pick-main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.share-pick-main input[type='checkbox'] {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.share-expand {
+  flex: none;
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.share-event-picks {
+  margin: 4px 0 6px 30px;
+  padding: 6px 0 6px 10px;
+  border-left: 2px solid var(--border);
+}
+
+.share-event-picks-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 2px 6px;
+}
+
+.share-event-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.share-event-pick:nth-child(odd) {
+  background: #fbfaf8;
+}
+
+.share-event-pick input[type='checkbox'] {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.share-event-off .share-pick-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* 人物分组标题 */
+.share-person-section {
+  margin: 14px 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* 预览里可点的人物 / 事件行 */
+.share-row-btn {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.share-row-btn:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+/* ---------- 预览：人物资料 / 聊天正文 ---------- */
+
+.share-person-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.share-person-view-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.share-person-view-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.share-person-view-head strong {
+  font-size: 16px;
+}
+
+.share-view-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.share-view-label {
+  flex: none;
+  width: 44px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.share-view-attrs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-view-attrs .share-attr-list {
+  gap: 6px 8px;
+}
+
+.share-attr-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fbfaf8;
+  font-size: 12.5px;
+}
+
+.share-attr-pill em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.share-person-note {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.share-chat-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-chat-div {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.share-chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fbfaf8;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.share-chat-msg strong {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* 事件行本来就是无边框的流水行，按钮化以后要把浏览器默认边框去掉 */
+.share-event-row.share-row-btn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.share-event-row.share-row-btn:hover {
+  background: #f4f2ef;
+}

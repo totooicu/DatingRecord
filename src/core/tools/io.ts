@@ -122,6 +122,12 @@ export const IO_TOOLS: ToolDef[] = [
     params: [
       { name: 'collectionIds', type: 'array', desc: '事件集 id 列表（至少一个，各自含子集）', required: true },
       {
+        name: 'eventIds',
+        type: 'array',
+        desc: '在这些事件集里再挑一层：只打包这些事件；省略 = 全部，空数组 = 一个都不带',
+        required: false,
+      },
+      {
         name: 'personIds',
         type: 'array',
         desc: '要带走资料的人物 id；省略 = 事件里的人全带，空数组 = 全部只留姓名',
@@ -146,6 +152,7 @@ export const IO_TOOLS: ToolDef[] = [
       };
       const sel = {
         collectionIds: (a.collectionIds as string[] | undefined) ?? [],
+        eventIds: a.eventIds as string[] | undefined,
         personIds: a.personIds as string[] | undefined,
       };
       const share = await buildShare(sel, opts);

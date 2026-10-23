@@ -18,6 +18,7 @@ export function EventView({
   collectionIds,
   candidates,
   body,
+  missingTitle = '（已删除）',
 }: {
   event: DREvent;
   persons: { id: string; displayName: string }[];
@@ -26,6 +27,8 @@ export function EventView({
   candidates: { id: string; title: string }[];
   /** 正文区替换内容：聊天形式用它换成对话流，其余元数据照旧 */
   body?: ReactNode;
+  /** 关联事件不在当前数据里时的占位文字：分享预览里是「没带进来」而不是「已删除」 */
+  missingTitle?: string;
 }) {
   const personName = new Map(persons.map((p) => [p.id, p.displayName]));
   const collectionName = new Map(flat.map(({ c }) => [c.id, c.name]));
@@ -60,7 +63,7 @@ export function EventView({
     .map((r) => ({
       id: r.targetId,
       label: RELATION_LABELS[r.type] ?? r.type,
-      title: titleOf.get(r.targetId) ?? '（已删除）',
+      title: titleOf.get(r.targetId) ?? missingTitle,
     }))
     .filter((r) => r.title);
 
