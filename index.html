@@ -7,14 +7,14 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
     />
     <meta name="theme-color" content="#d9536b" />
-    <meta name="description" content="本地优先的个人关系档案工具：人物 · 事件集 · 事件" />
+    <meta name="description" content="朝汇当下，夕忆从前 —— 本地优先的个人关系档案工具：人物 · 事件集 · 事件" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="约会记录" />
+    <meta name="apple-mobile-web-app-title" content="朝汇夕思" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
-    <title>约会记录 · Dating Record</title>
+    <title>朝汇夕思</title>
     <!--
       提前拉取 WASM：它约 700KB，是首屏最慢的一环。
       用 preload 让浏览器和 JS/CSS 并行下载，别等主包解析完才发现要它。
@@ -91,9 +91,24 @@
           opacity: 0.72;
         }
       }
+      /* 副名（短文 slogan）：名字逐字落定之后再浮现，不要和名字抢注意力 */
+      #boot .boot-slogan {
+        margin-top: -4px;
+        font-size: 12.5px;
+        letter-spacing: 3px;
+        color: #a9a29a;
+        opacity: 0;
+        animation: boot-slogan-in 0.9s ease-out 0.85s forwards;
+      }
+      @keyframes boot-slogan-in {
+        to {
+          opacity: 1;
+        }
+      }
       @media (prefers-reduced-motion: reduce) {
         #boot .boot-name,
         #boot .boot-name span,
+        #boot .boot-slogan,
         #boot .boot-progress-fill {
           animation: none;
           opacity: 1;
@@ -142,15 +157,16 @@
         color: #b3aca2;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Ce9lzGEp.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CSMR9w9e.css">
+    <script type="module" crossorigin src="./assets/index-CDtLWtTN.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BTU4zAc0.css">
   </head>
   <body>
     <div id="root"></div>
     <div id="boot">
       <div class="boot-name">
-        <span>记</span><span>录</span><span>美</span><span>好</span><span>生</span><span>活</span>
+        <span>朝</span><span>汇</span><span>夕</span><span>思</span>
       </div>
+      <div class="boot-slogan">朝汇当下，夕忆从前</div>
       <div class="boot-progress" id="boot-progress">
         <div class="boot-progress-fill" id="boot-fill"></div>
       </div>
