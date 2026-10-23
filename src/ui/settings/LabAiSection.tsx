@@ -4,18 +4,23 @@
 // 模型能思考、能连续调用多个工具（查数据 / 建人物 / 记事件 / 改消息……），
 // 每次调用的结果会喂回去给它看，直到它给出最终回复。
 //
+// 版面（本轮重做）：顶部四个按钮「聊天 / 历史会话 / 快照 / 说明」，点哪个哪个
+// 铺满整屏，互不挤占。以前快照和说明是嵌在聊天页里的小面板，点开就把聊天区
+// 挤掉一半，体验很碎。现在各占一屏，切换只是换显示，组件不卸载、agent 循环
+// 不中断——AI 在后台跑着，你切到「快照」看备份也照样跑。
+//
+// 会话持久化（历史会话 tab 的来源）：每轮结束后把整段对话（喂模型的 messages）
+// 和界面气泡存进 SQLite 的 meta 表（见 core/ai/sessions.ts）。刷新、退出设置页、
+// 甚至被中断，回来都能在历史会话里找回并继续。
+//
 // 防误改的三道闸：
 //   1. 本轮第一次写库前自动拍整库快照，气泡下面始终挂着「回退本轮」按钮；
-//   2. 快照列表收进顶部「快照」面板，任何时候都能手动恢复；
+//   2. 「快照」tab 任何时候都能手动恢复或删除；
 //   3. 工具调用过程全程可见（哪一步调了什么、成没成），不是黑盒。
 //
-// 防「一轮白跑」：忙的时候日志上方钉一条状态条（第几轮、正在干什么），
+// 防「一轮白跑」：忙的时候顶部钉一条状态条（第几轮、正在干什么，跨 tab 不掉），
 // 导航入口（底部 Tab / 设置返回）被 navGuard 拦下，刷新走浏览器原生确认；
 // 干完 toast 一句「AI 已完成」。用户再也不用盯着屏幕猜它好没有。
-//
-// 版面分配（本轮改的重点）：聊天区吃掉整屏剩余高度，说明文字全部收进折叠区。
-// 以前这一页顶着「AI 对话」「边缘分割」两段大说明，聊天框只有 44vh，手机上
-// 输入法一弹就什么都看不见了。
 //
 // 附件：两个入口——「选文件」挑本地任意文件，「文件库」挑已入库的文件。
 // 附件只随这一条消息发送，不入库（详见 core/ai/attach.ts）。
@@ -35,6 +40,15 @@ import {
   previewOf,
   type Attachment,
 } from '../../core/ai/attach';
+import {
+  createSession,
+  deleteSession,
+  listSessions,
+  saveSession,
+  titleOf,
+  type AiSession,
+  type SessionItem,
+} from '../../core/ai/sessions';
 import {
   deleteSnapshot,
   listSnapshots,
@@ -62,6 +76,8 @@ interface Item {
   /** 用户消息带的附件（只在界面上展示，正文已拼进 text 发给模型） */
   attachments?: Attachment[];
 }
+
+type TabKey = 'chat' | 'history' | 'snap' | 'help';
 
 const QUICK = ['这个库里都有什么？', '最近发生了哪些事？', '把这份文件里的内容整理成一条事件'];
 
@@ -172,8 +188,9 @@ function snapTitle(s: SnapMeta): string {
 export function LabAiSection() {
   const [models] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState<string>(() => getDefaultModel()?.alias ?? listModels()[0]?.alias ?? '');
-  const [history, setHistory] = useState<AgentMessage[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
+  const [history, setHistory] = useState<AgentMessage[]>(() => listSessions()[0]?.messages ?? []);
+  const [items, setItems] = useState<Item[]>(() => (listSessions()[0]?.items ?? []) as Item[]);
+  const [sessionId, setSessionId] = useState<string | null>(() => listSessions()[0]?.id ?? null);
   const [input, setInput] = useState('');
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
@@ -181,12 +198,12 @@ export function LabAiSection() {
   /** 当前第几轮（模型↔工具往返），状态条上显示 */
   const [roundNo, setRoundNo] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>('chat');
   const [snaps, setSnaps] = useState(() => listSnapshots());
-  const [snapOpen, setSnapOpen] = useState(false);
   /** 正在看详情的快照（点列表项弹出：这一轮到底做了什么） */
   const [snapDetail, setSnapDetail] = useState<SnapMeta | null>(null);
+  const [sessions, setSessions] = useState<AiSession[]>(() => listSessions());
   const [libOpen, setLibOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -202,6 +219,14 @@ export function LabAiSection() {
   }, [items, activity, busy]);
 
   const reloadSnaps = () => setSnaps(listSnapshots());
+  const reloadSessions = () => setSessions(listSessions());
+
+  // 切到快照 / 历史会话时顺手刷新，避免看到旧数据
+  const switchTab = (t: TabKey) => {
+    setTab(t);
+    if (t === 'snap') reloadSnaps();
+    if (t === 'history') reloadSessions();
+  };
 
   // 忙的时候两道防线，都是防「手滑一下，一轮工具调用全白跑」——
   // 会话还在组件 state 里，刷新更是连记录都不剩：
@@ -220,6 +245,56 @@ export function LabAiSection() {
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
   }, [busy]);
+
+  /** 把当前对话落盘成会话：没有会话就新建，有就更新。标题取首条用户消息 */
+  const persistSession = (hist: AgentMessage[], its: Item[]) => {
+    const firstUser = its.find((x) => x.kind === 'user');
+    const title = titleOf(firstUser?.text ?? '');
+    const now = new Date().toISOString();
+    let id = sessionId;
+    const existing = id ? sessions.find((s) => s.id === id) : undefined;
+    if (!existing) {
+      const created = createSession();
+      id = created.id;
+      setSessionId(id);
+    }
+    const next: AiSession = {
+      id: id!,
+      title,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      messages: hist,
+      items: its as SessionItem[],
+    };
+    saveSession(next);
+  };
+
+  /** 从历史会话里载入一段对话：恢复上下文，切回聊天继续 */
+  const loadSession = (id: string) => {
+    const s = sessions.find((x) => x.id === id);
+    if (!s) return;
+    setSessionId(s.id);
+    setHistory(s.messages);
+    setItems(s.items as Item[]);
+    setRollbackId(null);
+    setErr(null);
+    switchTab('chat');
+  };
+
+  /** 开一段新对话：清空上下文（不删历史会话里的旧记录） */
+  const newSession = () => {
+    setSessionId(null);
+    setHistory([]);
+    setItems([]);
+    setRollbackId(null);
+    setErr(null);
+    setInput('');
+    setAtts([]);
+    switchTab('chat');
+  };
+
+  // 忙的时候两道闸之外的第三道：离开 AI 对话页（设置返回 / 切到别的设置项）
+  // 由 Settings 的 navGuard 统一拦，这里只管本页四个 tab 之间的切换——那不中断。
 
   /** 追加附件；满了就提示，而不是静默丢弃 */
   const addAtts = (list: Attachment[]) => {
@@ -268,7 +343,10 @@ export function LabAiSection() {
     const sent = atts;
     setInput('');
     setAtts([]);
-    setItems((s) => [...s, { kind: 'user', text: t || '（只发了附件）', attachments: sent }]);
+    // 先记住这条用户气泡：下面拼完整列表（含助手回复）时要用它，
+    // 否则用闭包里的 items 会把刚加的这条冲掉。
+    const userItem: Item = { kind: 'user', text: t || '（只发了附件）', attachments: sent };
+    setItems((s) => [...s, userItem]);
     setActivity([]);
     setRoundNo(0);
     setBusy(true);
@@ -307,22 +385,28 @@ export function LabAiSection() {
         signal: ac.signal,
         onEvent,
       });
-      setHistory(res.messages);
+      const hist = res.messages;
+      setHistory(hist);
       if (res.snapshotId) setRollbackId(res.snapshotId);
-      const last = [...res.messages].reverse().find((m) => m.role === 'assistant' && !(m.role === 'assistant' && m.toolCalls?.length));
-      const text = last && last.role === 'assistant' ? last.content : '';
-      setItems((s) => [
-        ...s,
+      const last = [...hist].reverse().find((m) => m.role === 'assistant' && !(m.role === 'assistant' && m.toolCalls?.length));
+      const replyText = last && last.role === 'assistant' ? last.content : '';
+      const nextItems: Item[] = [
+        ...items,
+        userItem,
         {
           kind: 'assistant',
-          text: text || (res.aborted ? '（已停止）' : '（这一轮没有文本回复）'),
+          text: replyText || (res.aborted ? '（已停止）' : '（这一轮没有文本回复）'),
           tools: res.usedTools.length ? res.usedTools : undefined,
           snapshotId: res.snapshotId,
         },
-      ]);
+      ];
+      setItems(nextItems);
       reloadSnaps();
       // 明确告诉用户「干完了」：以前忙完只是停止按钮消失，不盯着看根本不知道
       showToast(res.aborted ? '已停止本轮' : 'AI 已完成，可以继续提问或离开');
+      // 落盘：被中断也能从历史会话里找回并继续
+      persistSession(hist, nextItems);
+      reloadSessions();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -350,110 +434,308 @@ export function LabAiSection() {
     reloadSnaps();
   };
 
+  const removeSession = async (id: string) => {
+    if (!window.confirm('删除这段历史会话？只删聊天记录，不影响库里的人物和事件。')) return;
+    deleteSession(id);
+    if (sessionId === id) newSession();
+    reloadSessions();
+  };
+
   const canSend = !busy && !!model && (!!input.trim() || atts.length > 0);
 
   return (
     <div className="lab-page lab-page-chat">
       <LabHead title="AI 对话" subKey="labAi" />
 
-      {/* 工具条：模型 + 快照入口 + 说明开关。一行解决，把高度让给聊天区 */}
-      <div className="aichat-bar">
-        <label className="aichat-model">
-          <select value={alias} onChange={(e) => setAlias(e.target.value)} disabled={busy}>
-            {models.length === 0 && <option value="">（未配置模型）</option>}
-            {models.map((m) => (
-              <option key={m.id} value={m.alias}>
-                {m.alias} · {m.model}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="aichat-bar-ops">
-          <button
-            className={snapOpen ? 'aichat-chip aichat-chip-on' : 'aichat-chip'}
-            onClick={() => {
-              reloadSnaps();
-              setSnapOpen((v) => !v);
-            }}
-          >
-            快照 {snaps.length > 0 && <span className="aichat-chip-n">{snaps.length}</span>}
-          </button>
-          <button className="aichat-chip" onClick={() => setHelpOpen((v) => !v)} aria-expanded={helpOpen}>
-            说明
-          </button>
-          {busy && (
-            <button className="btn-danger aichat-stop" onClick={stop}>
-              停止
-            </button>
-          )}
-        </div>
+      {/* 四个全屏切换按钮：点哪个哪个铺满下面整块。切换不卸载组件，
+          所以 agent 循环、busy 状态、聊天记录都还在，会话不会被打断。 */}
+      <div className="aichat-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'chat'}
+          className={tab === 'chat' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => switchTab('chat')}
+        >
+          聊天
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'history'}
+          className={tab === 'history' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => switchTab('history')}
+        >
+          历史会话{sessions.length > 0 && <span className="aichat-tab-n">{sessions.length}</span>}
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'snap'}
+          className={tab === 'snap' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => switchTab('snap')}
+        >
+          快照{snaps.length > 0 && <span className="aichat-tab-n">{snaps.length}</span>}
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'help'}
+          className={tab === 'help' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => switchTab('help')}
+        >
+          说明
+        </button>
       </div>
 
-      {helpOpen && (
-        <div className="aichat-help">
-          <p>
-            能查数据、建人物、记事件、整理聊天记录。**每次写库前自动备份**，聊完不满意可以整轮回退。
-            支持上传文件（文本读内容、图片走视觉），附件只随这一条消息发送，不进文件库。
-          </p>
-          <p className="muted small">
-            我能调用 person / event / chat / collection / file / snapshot / io / system 八组工具。
-            模型配置在「AI 模型」页。
-          </p>
+      {/* 状态条：忙不忙、第几轮、正在干什么，一眼可见。跨 tab 不掉——
+          你在「快照」tab 看备份，AI 仍在后台跑，这条始终钉在眼前。 */}
+      {busy && (
+        <div className="aichat-status" role="status">
+          <span className="aichat-status-dot" aria-hidden />
+          <span className="aichat-status-text">
+            <b>AI 正在干活{roundNo > 1 ? `（第 ${roundNo} 轮）` : ''}</b>
+            {' · '}
+            {activity[activity.length - 1] ?? '思考中'}
+          </span>
+          <button className="aichat-status-stop" onClick={stop}>
+            停止
+          </button>
         </div>
       )}
 
-      {snapOpen && (
-        <div className="aichat-snaps">
-          <div className="aichat-snaps-head">
-            <span className="muted small">快照（AI / CLI 动手前自动拍，也可手动恢复）</span>
-            <button className="aichat-linkbtn" onClick={reloadSnaps}>
-              刷新
-            </button>
-          </div>
-          {snaps.length === 0 ? (
-            <p className="muted small">还没有快照。</p>
-          ) : (
-            <ul className="aichat-snap-list">
-              {snaps.slice(0, 8).map((s) => (
-                <li key={s.id}>
-                  {/* 整块可点：点开看「这一轮具体做了什么」。恢复/删除是另一组按钮，
-                      点它们别触发详情——所以详情用单独的一块，不包住操作按钮 */}
-                  <button
-                    type="button"
-                    className="aichat-snap-main"
-                    onClick={() => setSnapDetail(s)}
-                    title="查看这份快照对应的具体操作"
-                  >
-                    <span className="aichat-snap-title">{snapTitle(s)}</span>
-                    <span className="aichat-snap-sub">
-                      <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
-                      <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
-                      <span className="aichat-snap-meta">
-                        {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
-                      </span>
-                      {s.ops?.length ? (
-                        <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
-                      ) : null}
-                    </span>
-                  </button>
-                  <span className="aichat-snap-ops">
-                    <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
-                      恢复
+      {/* 内容区：吃掉剩余高度，四个 tab 共用这块，切换只换里面的视图 */}
+      <div className="aichat-body">
+        {tab === 'chat' && (
+          <div className="aichat-chat">
+            <div className="aichat-bar">
+              <label className="aichat-model">
+                <select value={alias} onChange={(e) => setAlias(e.target.value)} disabled={busy}>
+                  {models.length === 0 && <option value="">（未配置模型）</option>}
+                  {models.map((m) => (
+                    <option key={m.id} value={m.alias}>
+                      {m.alias} · {m.model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="aichat-chip" onClick={newSession} disabled={busy} title="开一段新对话">
+                ＋ 新会话
+              </button>
+            </div>
+
+            <div className="aichat-log" ref={logRef}>
+              {items.length === 0 && (
+                <div className="aichat-empty">
+                  <p>比如可以问我：</p>
+                  <ul>
+                    {QUICK.map((q) => (
+                      <li key={q}>
+                        <button className="aichat-quick" onClick={() => send(q)} disabled={busy || !model}>
+                          {q}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {items.map((it, i) => (
+                <div key={i} className={`aichat-item aichat-${it.kind}`}>
+                  {it.attachments && it.attachments.length > 0 && <AttachmentChips atts={it.attachments} />}
+                  {/* 气泡内容按 Markdown 渲染：模型的回复天生带标题/列表/代码块，
+                      当纯文本显示就是把 ** 和 # 原样甩给用户。安全性由 core/markdown
+                      （marked 解析 + DOMPurify 白名单）保证，这里只管展示。 */}
+                  <div className="aichat-bubble">
+                    <MarkdownView source={it.text} />
+                  </div>
+                  {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
+                  {it.snapshotId && (
+                    <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
+                      回退本轮改动
                     </button>
-                    <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => removeSnap(s.id)}>
+                  )}
+                </div>
+              ))}
+
+              {busy && activity.length > 0 && (
+                <div className="aichat-item aichat-assistant">
+                  <div className="aichat-activity">
+                    {activity.map((a, i) => (
+                      <div key={i} className="aichat-activity-line">
+                        {a}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {busy && activity.length === 0 && <div className="aichat-item aichat-assistant">思考中…</div>}
+            </div>
+
+            {err && <p className="aichat-err">{err}</p>}
+
+            {/* 待发送的附件：贴在输入框上方，发出去就清空 */}
+            {atts.length > 0 && (
+              <div className="aichat-pending">
+                <AttachmentChips atts={atts} onRemove={removeAtt} />
+              </div>
+            )}
+
+            <div className="aichat-input">
+              <div className="aichat-input-tools">
+                <button
+                  className="aichat-toolbtn"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy || atts.length >= MAX_ATTACHMENTS}
+                  title="从本地选文件（手机上就是系统文件选择器）"
+                >
+                  <AttachIcon /> 选文件
+                </button>
+                <button
+                  className="aichat-toolbtn"
+                  onClick={() => setLibOpen(true)}
+                  disabled={busy || atts.length >= MAX_ATTACHMENTS}
+                  title="从本库的文件里挑一个"
+                >
+                  <LibIcon /> 文件库
+                </button>
+                {rollbackId && (
+                  <button className="aichat-toolbtn aichat-toolbtn-warn" onClick={() => rollback(rollbackId)}>
+                    回退本轮
+                  </button>
+                )}
+              </div>
+              <div className="aichat-input-row">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey) {
+                      e.preventDefault();
+                      void send(input);
+                    }
+                  }}
+                  placeholder={busy ? 'AI 正在干活，说不了话…' : '说点什么，Enter 发送，Shift+Enter 换行'}
+                  rows={2}
+                  disabled={busy}
+                />
+                <button className="btn-primary aichat-send" onClick={() => send(input)} disabled={!canSend}>
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'history' && (
+          <div className="aichat-history">
+            <div className="aichat-subhead">
+              <span className="muted small">聊过的对话会自动存到这里，刷新或中断后都能回来继续。</span>
+              <button className="aichat-linkbtn" onClick={newSession}>
+                ＋ 新会话
+              </button>
+            </div>
+            {sessions.length === 0 ? (
+              <p className="muted small aichat-history-empty">还没有历史会话。在「聊天」里说点什么，会自动存下来。</p>
+            ) : (
+              <ul className="aichat-session-list">
+                {sessions.map((s) => (
+                  <li key={s.id} className="aichat-session">
+                    <button
+                      type="button"
+                      className="aichat-session-main"
+                      onClick={() => loadSession(s.id)}
+                      title="载入这段对话，切回聊天继续"
+                    >
+                      <span className="aichat-session-title">{s.title}</span>
+                      <span className="aichat-session-sub">
+                        <span className="aichat-session-time">{fmtSnapTime(s.updatedAt)}</span>
+                        <span className="aichat-session-meta">{s.items.length} 条消息</span>
+                      </span>
+                    </button>
+                    <button
+                      className="aichat-linkbtn aichat-linkbtn-dim"
+                      onClick={() => removeSession(s.id)}
+                      aria-label="删除这段历史会话"
+                    >
                       删除
                     </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {tab === 'snap' && (
+          <div className="aichat-snaps">
+            <div className="aichat-subhead">
+              <span className="muted small">AI / CLI 动手前自动拍，也可留作备份。点开看这一轮具体动了什么。</span>
+            </div>
+            {snaps.length === 0 ? (
+              <p className="muted small aichat-history-empty">还没有快照。</p>
+            ) : (
+              <ul className="aichat-snap-list">
+                {snaps.map((s) => (
+                  <li key={s.id}>
+                    {/* 整块可点：点开看「这一轮具体做了什么」。恢复/删除是另一组按钮，
+                        点它们别触发详情——所以详情用单独的一块，不包住操作按钮 */}
+                    <button
+                      type="button"
+                      className="aichat-snap-main"
+                      onClick={() => setSnapDetail(s)}
+                      title="查看这份快照对应的具体操作"
+                    >
+                      <span className="aichat-snap-title">{snapTitle(s)}</span>
+                      <span className="aichat-snap-sub">
+                        <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
+                        <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
+                        <span className="aichat-snap-meta">
+                          {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
+                        </span>
+                        {s.ops?.length ? (
+                          <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
+                        ) : null}
+                      </span>
+                    </button>
+                    <span className="aichat-snap-ops">
+                      <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
+                        恢复
+                      </button>
+                      <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => removeSnap(s.id)}>
+                        删除
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {tab === 'help' && (
+          <div className="aichat-help">
+            <p>
+              能查数据、建人物、记事件、整理聊天记录。<b>每次写库前自动备份</b>，聊完不满意可以整轮回退。
+              支持上传文件（文本读内容、图片走视觉），附件只随这一条消息发送，不进文件库。
+            </p>
+            <p className="muted small">
+              我能调用 person / event / chat / collection / file / snapshot / io / system 八组工具。
+              模型配置在「AI 模型」页。
+            </p>
+            <p className="muted small">
+              顶部四个按钮：<b>聊天</b>是和 AI 对话；<b>历史会话</b>是自动保存的对话记录，可载入继续；
+              <b>快照</b>是数据备份点，可一键恢复或删除；<b>说明</b>是本页。切换不中断 AI 正在做的事。
+            </p>
+          </div>
+        )}
+      </div>
+
+      <input ref={fileRef} type="file" multiple hidden accept="*/*" onChange={(e) => void pickFiles(e.target.files)} />
+
+      {libOpen && (
+        <Modal title="文件库 · 选一个发给 AI" wide onClose={() => setLibOpen(false)}>
+          <FilesSection onPick={(f) => void pickStored(f)} />
+        </Modal>
       )}
 
-      {/* 快照详情：逐条列出这一轮调了什么工具、成没成、几点干的。
-          AI 轮次结束后 ops 会回写进快照元数据，所以这里能看到的不只是
-          「有一份备份」，而是「备份之前 AI 到底动了什么」。 */}
       {snapDetail && (
         <Modal title="快照详情" onClose={() => setSnapDetail(null)} wide>
           <div className="aichat-snap-detail">
@@ -482,138 +764,6 @@ export function LabAiSection() {
               </p>
             )}
           </div>
-        </Modal>
-      )}
-
-      {models.length === 0 && (
-        <p className="aichat-hint">还没有配置模型。到「AI 模型」页添加别名、选服务商、填密钥，回来就能开聊。</p>
-      )}
-
-      {/* 状态条：忙不忙、第几轮、正在干什么，一眼可见。
-          放在日志外面——日志会滚动，这条得始终钉在眼前。
-          以前只有日志里一行「思考中…」和工具条上一个「停止」，不盯着看
-          根本不知道 AI 还在干活，手滑切走/刷新就把它中断了。 */}
-      {busy && (
-        <div className="aichat-status" role="status">
-          <span className="aichat-status-dot" aria-hidden />
-          <span className="aichat-status-text">
-            <b>AI 正在干活{roundNo > 1 ? `（第 ${roundNo} 轮）` : ''}</b>
-            {' · '}
-            {activity[activity.length - 1] ?? '思考中'}
-          </span>
-          <button className="aichat-status-stop" onClick={stop}>
-            停止
-          </button>
-        </div>
-      )}
-
-      <div className="aichat-log" ref={logRef}>
-        {items.length === 0 && (
-          <div className="aichat-empty">
-            <p>比如可以问我：</p>
-            <ul>
-              {QUICK.map((q) => (
-                <li key={q}>
-                  <button className="aichat-quick" onClick={() => send(q)} disabled={busy || !model}>
-                    {q}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {items.map((it, i) => (
-          <div key={i} className={`aichat-item aichat-${it.kind}`}>
-            {it.attachments && it.attachments.length > 0 && <AttachmentChips atts={it.attachments} />}
-            {/* 气泡内容按 Markdown 渲染：模型的回复天生带标题/列表/代码块，
-                当纯文本显示就是把 ** 和 # 原样甩给用户。安全性由 core/markdown
-                （marked 解析 + DOMPurify 白名单）保证，这里只管展示。 */}
-            <div className="aichat-bubble">
-              <MarkdownView source={it.text} />
-            </div>
-            {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
-            {it.snapshotId && (
-              <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
-                回退本轮改动
-              </button>
-            )}
-          </div>
-        ))}
-
-        {busy && activity.length > 0 && (
-          <div className="aichat-item aichat-assistant">
-            <div className="aichat-activity">
-              {activity.map((a, i) => (
-                <div key={i} className="aichat-activity-line">
-                  {a}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {busy && activity.length === 0 && <div className="aichat-item aichat-assistant">思考中…</div>}
-      </div>
-
-      {err && <p className="aichat-err">{err}</p>}
-
-      {/* 待发送的附件：贴在输入框上方，发出去就清空 */}
-      {atts.length > 0 && (
-        <div className="aichat-pending">
-          <AttachmentChips atts={atts} onRemove={removeAtt} />
-        </div>
-      )}
-
-      <div className="aichat-input">
-        <div className="aichat-input-tools">
-          <button
-            className="aichat-toolbtn"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy || atts.length >= MAX_ATTACHMENTS}
-            title="从本地选文件（手机上就是系统文件选择器）"
-          >
-            <AttachIcon /> 选文件
-          </button>
-          <button
-            className="aichat-toolbtn"
-            onClick={() => setLibOpen(true)}
-            disabled={busy || atts.length >= MAX_ATTACHMENTS}
-            title="从本库的文件里挑一个"
-          >
-            <LibIcon /> 文件库
-          </button>
-          {rollbackId && (
-            <button className="aichat-toolbtn aichat-toolbtn-warn" onClick={() => rollback(rollbackId)}>
-              回退本轮
-            </button>
-          )}
-        </div>
-        <div className="aichat-input-row">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.metaKey) {
-                e.preventDefault();
-                void send(input);
-              }
-            }}
-            placeholder={busy ? 'AI 正在干活，说不了话…' : '说点什么，Enter 发送，Shift+Enter 换行'}
-            rows={2}
-            disabled={busy}
-          />
-          <button className="btn-primary aichat-send" onClick={() => send(input)} disabled={!canSend}>
-            发送
-          </button>
-        </div>
-      </div>
-
-      <input ref={fileRef} type="file" multiple hidden accept="*/*" onChange={(e) => void pickFiles(e.target.files)} />
-
-      {libOpen && (
-        <Modal title="文件库 · 选一个发给 AI" wide onClose={() => setLibOpen(false)}>
-          <FilesSection onPick={(f) => void pickStored(f)} />
         </Modal>
       )}
     </div>

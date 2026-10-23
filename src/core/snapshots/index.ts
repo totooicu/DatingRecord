@@ -107,6 +107,11 @@ export async function createSnapshot(
   const list = [meta, ...readMeta()];
   writeMeta(list);
   await prune(store, list);
+  // 元数据写进内存库后必须显式落盘：快照的增删改不能指望后续某次 repo 写
+  // 操作顺带把整库冲进 IndexedDB（手动快照、或删除后不再有写操作时就会漏掉），
+  // 否则刷新回来元数据和字节对不上，出现「删了又回来」的幽灵快照。
+  flushPersist();
+  bump();
   return meta;
 }
 
@@ -156,6 +161,8 @@ export async function restoreSnapshot(id: string): Promise<boolean> {
 export async function deleteSnapshot(id: string): Promise<void> {
   await getSnapStore().del(id);
   writeMeta(readMeta().filter((s) => s.id !== id));
+  flushPersist();
+  bump();
 }
 
 /**
@@ -180,6 +187,8 @@ export function patchSnapshotOps(
   };
   list[i] = next;
   writeMeta(list);
+  flushPersist();
+  bump();
   return next;
 }
 
