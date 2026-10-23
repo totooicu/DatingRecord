@@ -120,7 +120,9 @@ function withTimeout(ms: number): { signal: AbortSignal; done: () => void } {
   return { signal: ctl.signal, done: () => clearTimeout(t) };
 }
 
-function describeError(e: unknown): string {
+function describeError(e: unknown, reason?: unknown): string {
+  if (reason === 'cancelled') return '已取消下载';
+  if (reason === 'timeout') return '下载超时';
   if (e instanceof DOMException && e.name === 'AbortError') return '连接超时';
   if (e instanceof TypeError) return '连接失败（链接打不开，或对方不允许跨域访问）';
   return e instanceof Error ? e.message : '连接失败';
@@ -170,21 +172,58 @@ export interface DownloadedLink {
   finalUrl: string;
 }
 
-/** 下载链接内容（保存为实体 / hash 实体文件用） */
-export async function downloadLink(url: string, timeoutMs = 60000): Promise<DownloadedLink> {
+export interface DownloadOptions {
+  /** 外部取消信号：用户点「取消下载」或关掉弹窗时传进来 */
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  /** 流式读取进度：total 为 0 表示远端没给 Content-Length */
+  onProgress?: (loaded: number, total: number) => void;
+}
+
+/**
+ * 下载链接内容（保存为实体 / hash 实体文件用）。
+ * 走流式读取：大文件能显示已下载多少，也能被 signal 立刻掐断。
+ */
+export async function downloadLink(url: string, opts: DownloadOptions = {}): Promise<DownloadedLink> {
   const target = normalizeLink(url);
-  const t = withTimeout(timeoutMs);
+  const ctl = new AbortController();
+  const timeout = setTimeout(() => ctl.abort('timeout'), opts.timeoutMs ?? 60000);
+  const onCancel = () => ctl.abort('cancelled');
+  if (opts.signal) {
+    if (opts.signal.aborted) ctl.abort('cancelled');
+    else opts.signal.addEventListener('abort', onCancel, { once: true });
+  }
   try {
-    const res = await fetch(target, { signal: t.signal });
+    const res = await fetch(target, { signal: ctl.signal });
     if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`);
     const mime = (res.headers.get('content-type') ?? '').split(';')[0].trim();
     const fileName =
       fileNameFromDisposition(res.headers.get('content-disposition')) || fileNameFromLink(res.url || target);
-    return { blob: await res.blob(), mime, fileName, finalUrl: res.url || target };
+    const total = Number(res.headers.get('content-length') ?? '') || 0;
+    let blob: Blob;
+    if (res.body && opts.onProgress) {
+      const reader = res.body.getReader();
+      const chunks: BlobPart[] = [];
+      let loaded = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.length;
+          opts.onProgress(loaded, total);
+        }
+      }
+      blob = new Blob(chunks, { type: mime });
+    } else {
+      blob = await res.blob();
+    }
+    return { blob, mime, fileName, finalUrl: res.url || target };
   } catch (e) {
-    throw new Error(describeError(e));
+    throw new Error(describeError(e, ctl.signal.reason));
   } finally {
-    t.done();
+    clearTimeout(timeout);
+    opts.signal?.removeEventListener('abort', onCancel);
   }
 }
 

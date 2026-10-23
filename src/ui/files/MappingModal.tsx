@@ -7,7 +7,7 @@
 //   hash 实体文件 —— 下载一份算内容 hash（sha-…），顺便把大小/类型填上
 //   保存为映射 —— 只落一行元数据 + 链接，不占存储
 //   保存为实体 —— 下载后交给正常上传流程（判重、落 IndexedDB 都走原路）
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   downloadLink,
   fileNameFromLink,
@@ -50,8 +50,18 @@ export function MappingModal({
   const [busy, setBusy] = useState<Busy>('');
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [proc, setProc] = useState<{ loaded: number; total: number } | null>(null);
+  const ctlRef = useRef<AbortController | null>(null);
+  const progAt = useRef(0);
 
   const mimeOf = (n = name) => guessMime(n, probe?.mime);
+
+  // 弹窗关掉（点 ×、点遮罩、切页面）时把还挂着的下载一起掐断
+  useEffect(() => () => ctlRef.current?.abort('cancelled'), []);
+
+  const downloading = busy === 'entity' || busy === 'saveEntity';
+
+  const cancelDownload = () => ctlRef.current?.abort('cancelled');
 
   const run = async (kind: Busy, fn: () => Promise<string | void>) => {
     setBusy(kind);
@@ -60,9 +70,46 @@ export function MappingModal({
       const msg = await fn();
       if (msg) setNote(msg);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : '操作失败');
+      const msg = e instanceof Error ? e.message : '操作失败';
+      // 用户主动取消不算错误，别用红色警示吓人
+      if (msg === '已取消下载') setNote(msg);
+      else setErr(msg);
     } finally {
       setBusy('');
+    }
+  };
+
+  /** 下载并算 hash；signal 让「取消下载」在读取和算 hash 之间都能生效 */
+  const downloadEntity = async (): Promise<EntityInfo> => {
+    const ctl = new AbortController();
+    ctlRef.current = ctl;
+    progAt.current = 0;
+    setProc({ loaded: 0, total: 0 });
+    try {
+      const d = await downloadLink(url, {
+        signal: ctl.signal,
+        onProgress: (loaded, total) => {
+          // 大文件分片很密，节流到 ~7 帧/秒，别让进度条把主线程拖住
+          const now = Date.now();
+          if (loaded === total || now - progAt.current > 150) {
+            progAt.current = now;
+            setProc({ loaded, total });
+          }
+        },
+      });
+      const sha = await sha256Hex(d.blob);
+      if (ctl.signal.aborted) throw new Error('已取消下载');
+      const n = name.trim() || d.fileName || probe?.fileName || fileNameFromLink(d.finalUrl);
+      return {
+        blob: d.blob,
+        sha256: sha,
+        mime: d.mime || mimeOf(n),
+        size: d.blob.size,
+        fileName: n,
+      };
+    } finally {
+      ctlRef.current = null;
+      setProc(null);
     }
   };
 
@@ -96,22 +143,13 @@ export function MappingModal({
 
   const hashEntity = () =>
     run('entity', async () => {
-      const d = await downloadLink(url);
-      const sha = await sha256Hex(d.blob);
-      const n = name.trim() || d.fileName || probe?.fileName || fileNameFromLink(d.finalUrl);
-      const info: EntityInfo = {
-        blob: d.blob,
-        sha256: sha,
-        mime: d.mime || mimeOf(n),
-        size: d.blob.size,
-        fileName: n,
-      };
+      const info = await downloadEntity();
       setEntity(info);
-      if (!name.trim() && n) setName(n);
+      if (!name.trim() && info.fileName) setName(info.fileName);
       setProbe((p) =>
-        p ?? { ok: true, status: 200, mime: info.mime, size: info.size, fileName: n, finalUrl: d.finalUrl },
+        p ?? { ok: true, status: 200, mime: info.mime, size: info.size, fileName: info.fileName, finalUrl: url },
       );
-      return `实体文件：${fmtSize(info.size)}${sha ? ` · SHA-256 ${sha.slice(0, 12)}…` : ''}`;
+      return `实体文件：${fmtSize(info.size)}${info.sha256 ? ` · SHA-256 ${info.sha256.slice(0, 12)}…` : ''}`;
     });
 
   const saveMapping = () =>
@@ -135,18 +173,8 @@ export function MappingModal({
 
   const saveEntity = () =>
     run('saveEntity', async () => {
-      let info = entity;
-      if (!info) {
-        const d = await downloadLink(url);
-        info = {
-          blob: d.blob,
-          sha256: await sha256Hex(d.blob),
-          mime: d.mime || mimeOf(),
-          size: d.blob.size,
-          fileName: name.trim() || d.fileName || probe?.fileName || fileNameFromLink(d.finalUrl),
-        };
-        setEntity(info);
-      }
+      const info = entity ?? (await downloadEntity());
+      if (!entity) setEntity(info);
       const n = name.trim() || info.fileName;
       if (!n) throw new Error('请填写文件名');
       const file = new File([info.blob], n, { type: info.mime || mimeOf(n) });
@@ -162,7 +190,14 @@ export function MappingModal({
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose} disabled={!!busy}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              cancelDownload();
+              onClose();
+            }}
+            disabled={!!busy && !downloading}
+          >
             取消
           </button>
           <button className="btn" onClick={() => void saveMapping()} disabled={!canAct}>
@@ -213,6 +248,21 @@ export function MappingModal({
           {busy === 'entity' ? '下载中…' : 'hash 实体文件'}
         </button>
       </div>
+
+      {downloading && (
+        <p className="muted small mapping-progress">
+          <span>
+            {proc
+              ? proc.total
+                ? `已下载 ${fmtSize(proc.loaded)} / ${fmtSize(proc.total)}`
+                : `已下载 ${fmtSize(proc.loaded)}`
+              : '下载完成，正在计算 hash…'}
+          </span>
+          <button className="btn btn-sm btn-ghost" onClick={cancelDownload}>
+            取消下载
+          </button>
+        </p>
+      )}
 
       {linkId && <p className="muted small">链接引用名：{linkId}</p>}
       {entity && (
