@@ -33,7 +33,7 @@ import {
   type ShareFile,
   type ShareLevel,
 } from '../../core/types';
-import { clearDraft, draftsEnabled, loadDraft, saveDraft } from '../../core/drafts';
+import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
 import { formatAttrValue } from '../attr';
 import { Modal } from '../common';
 import { EventView } from '../event/EventView';
@@ -63,16 +63,6 @@ interface WizardDraft {
   withAttachments: boolean;
 }
 
-/** 草稿时间：一小时以内给分钟，超过按天说 */
-function agoText(ts: number): string {
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  return days === 1 ? '昨天' : `${days} 天前`;
-}
 
 interface ColRow {
   id: string;
@@ -307,7 +297,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
       return;
     }
     const t = setTimeout(() => {
-      saveDraft<WizardDraft>(DRAFT_KEY, '分享向导（还没导出）', {
+      saveDraft<WizardDraft>(DRAFT_KEY, `分享向导（第 ${step} 步，还没导出）`, {
         step,
         colIds,
         excluded: [...excluded],
@@ -526,7 +516,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
 
         {restoredAt !== null && (
           <div className="draft-restored">
-            <span className="muted small">已恢复上次没做完的选择 · {agoText(restoredAt)}</span>
+            <span className="muted small">已恢复上次没做完的选择 · {draftTimeLabel(restoredAt)}</span>
             <button className="btn btn-sm" onClick={resetAll}>
               清空重选
             </button>

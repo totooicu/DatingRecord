@@ -28,6 +28,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { bump } from '../../store';
+import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
 import { findByAlias, getDefaultModel, listModels, type AiModel } from '../../core/ai';
 import { agentSystemPrompt, runAgentTurn, type AgentEvent, type AgentMessage } from '../../core/ai/agent';
 import {
@@ -252,7 +253,12 @@ export function LabAiSection() {
   const [history, setHistory] = useState<AgentMessage[]>(() => listSessions()[0]?.messages ?? []);
   const [items, setItems] = useState<Item[]>(() => (listSessions()[0]?.items ?? []) as Item[]);
   const [sessionId, setSessionId] = useState<string | null>(() => listSessions()[0]?.id ?? null);
-  const [input, setInput] = useState('');
+  // 输入框里没发出去的文字也留底（开关在「功能体验 → 未完成的记录」）
+  const [inputDraft] = useState(() => loadDraft<{ text: string }>('ai-input'));
+  const [input, setInput] = useState(inputDraft?.data.text ?? '');
+  const [inputRestoredAt, setInputRestoredAt] = useState<number | null>(
+    inputDraft ? inputDraft.updatedAt : null,
+  );
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
@@ -456,6 +462,19 @@ export function LabAiSection() {
     addAtts(out);
     if (fileRef.current) fileRef.current.value = '';
   };
+
+  // 输入变化就落一份草稿：打了一大段手滑刷新，回来原样还在。
+  // 发出去（send 会 setInput('')）或手动清空时顺手删掉，不留空草稿。
+  useEffect(() => {
+    if (!draftsEnabled()) return;
+    if (!input.trim()) {
+      clearDraft('ai-input');
+      setInputRestoredAt(null);
+      return;
+    }
+    const t = setTimeout(() => saveDraft('ai-input', 'AI 对话（还没发送）', { text: input }), 400);
+    return () => clearTimeout(t);
+  }, [input]);
 
   /** 从文件库挑：文件本来就在库里，这里只把它读出来随消息发送 */
   const pickStored = async (f: StoredFile) => {
@@ -727,6 +746,16 @@ export function LabAiSection() {
             )}
 
             <div className="aichat-input">
+              {inputRestoredAt !== null && (
+                <div className="draft-restored">
+                  <span className="muted small">
+                    已恢复上次没发出去的内容 · {draftTimeLabel(inputRestoredAt)}
+                  </span>
+                  <button className="btn btn-sm" onClick={() => setInput('')}>
+                    清空
+                  </button>
+                </div>
+              )}
               <div className="aichat-input-tools">
                 <button
                   className="aichat-toolbtn"
