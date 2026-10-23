@@ -16,11 +16,48 @@
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>朝汇夕思 · DawnRecall</title>
     <!--
-      提前拉取 WASM：它约 700KB，是首屏最慢的一环。
-      用 preload 让浏览器和 JS/CSS 并行下载，别等主包解析完才发现要它。
-      crossorigin 必填，否则会与 WASM 实例化时的凭证模式不匹配而重复下载一次。
+      引擎约 685KB，是首屏最慢的一环，所以第一次要 preload：让浏览器和 JS/CSS
+      并行下载，别等主包解析完才发现要它。crossorigin 必填，否则会与 WASM
+      实例化时的凭证模式不匹配而重复下载一次。
+
+      但**只有没缓存时才 preload**：这行标签每次打开页面都会发一次请求，
+      而引擎下过一次之后就存在本地（Cache Storage 的 dr-wasm-v1 桶，
+      见 src/core/db/wasmCache.ts），JS 直接读本地、根本不需要网络。
+      以前不管有没有缓存都 preload，表现为「每次刷新都在重新下载数据库引擎」。
     -->
-    <link rel="preload" href="./sql-wasm.wasm" as="fetch" type="application/wasm" crossorigin="anonymous" />
+    <script>
+      (function () {
+        var attrs = {
+          rel: 'preload',
+          as: 'fetch',
+          type: 'application/wasm',
+          href: './sql-wasm.wasm',
+          crossorigin: 'anonymous',
+        };
+        function preload() {
+          var l = document.createElement('link');
+          for (var k in attrs) l.setAttribute(k, attrs[k]);
+          document.head.appendChild(l);
+        }
+        // 不能用 caches 就退回老做法：照旧 preload，功能不受影响
+        if (typeof caches === 'undefined' || !caches.has) {
+          preload();
+          return;
+        }
+        caches
+          .has('dr-wasm-v1')
+          .then(function (has) {
+            if (!has) return null;
+            return caches.open('dr-wasm-v1').then(function (c) {
+              return c.match('./sql-wasm.wasm');
+            });
+          })
+          .then(function (hit) {
+            if (!hit) preload();
+          })
+          .catch(preload);
+      })();
+    </script>
     <!--
       首屏加载态：内联在 HTML 里，JS/CSS 下载完成前就能看到。
       应用要等 SQLite WASM（约 700KB）下载 + 初始化完成后才有内容，

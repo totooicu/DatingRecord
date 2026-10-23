@@ -31,6 +31,12 @@ export function LabSection({ onPick }: { onPick: (k: SettingsKey) => void }) {
       hint: '自动框选 · 批量裁剪 · 图片不出浏览器',
     },
     {
+      key: 'labChat',
+      title: '聊天提取',
+      desc: '上传聊天截图和提示词，AI 把文字和图片整理成一条聊天事件，图片自动抠出来存进文件库。',
+      hint: '截图 → 聊天事件 · 图片自动裁剪',
+    },
+    {
       key: 'labDraft',
       title: '未完成的记录',
       desc: '还没提交的表单先在本地留一份草稿，刷新或误关页面之后回来接着填。',

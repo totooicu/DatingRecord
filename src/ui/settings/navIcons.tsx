@@ -68,14 +68,6 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M9.9 11.6 12 9.5l2.1 2.1" />
         </>,
       );
-    // AI 模型：对话气泡 + 星
-    case 'ai':
-      return wrap(
-        <>
-          <path d="M4.2 6.4h11.2v7.4H9.6l-3.6 2.6v-2.6H4.2z" />
-          <path d="M18.4 11.4h1.4v7.2h-1.8l-2.6 2v-2h-4" />
-        </>,
-      );
     // 隐私与安全（分组）：盾牌
     case 'security':
       return wrap(
@@ -197,6 +189,15 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2" strokeDasharray="3 2.4" />
           <rect x="7" y="8" width="4.6" height="4.6" rx="1" />
           <rect x="13.4" y="12.4" width="3.8" height="3.8" rx="0.9" />
+        </>,
+      );
+    // 聊天提取：截图 + 向下箭头
+    case 'labChat':
+      return wrap(
+        <>
+          <rect x="3.6" y="5" width="16.8" height="11.2" rx="2" />
+          <path d="M7.4 8.8h9.2M7.4 12.2h5.6" />
+          <path d="M12 18.2v2.2M10 18.6l2 2 2-2" />
         </>,
       );
     // 未完成的记录：便签 + 折角

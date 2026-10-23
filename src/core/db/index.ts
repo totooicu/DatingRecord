@@ -13,6 +13,7 @@ import { queryOne } from './query';
 import { dropEncContent, readPlaintextBytes, resealAfterReset } from './encStore';
 import { setMeta } from './meta';
 import { flushPersist } from './persist';
+import { clearCachedWasm, readCachedWasm, writeCachedWasm } from './wasmCache';
 import { seedDefaults } from './seed';
 import { ensureAttachmentColumns, runMigrations } from './migrate';
 
@@ -101,18 +102,35 @@ export async function initDb(onProgress?: BootProgress): Promise<Database> {
 
   let sql = getSql();
   if (!sql) {
-    report('正在下载数据库引擎…', 0);
     const wasmUrl = `${base}sql-wasm.wasm`;
-    const binary = await fetchWasm(wasmUrl, (r) => {
-      // 下载阶段映射到总进度的前 P_WASM
-      report('正在下载数据库引擎…', r === null ? null : r * P_WASM);
-    });
-    // 拿不到字节（或被拦截）就退回让 sql.js 自己取，功能不受影响，只是没有下载进度
-    report(binary ? '正在启动数据库引擎…' : '正在加载数据库引擎…', binary ? P_WASM : null);
-    sql = await initSqlJs({
-      locateFile: () => wasmUrl,
-      ...(binary ? { wasmBinary: binary } : {}),
-    });
+    // 引擎是固定二进制：先从本地缓存拿，命中就一次网络往返都不用（见 db/wasmCache.ts）
+    let binary = await readCachedWasm(wasmUrl);
+    const fromCache = binary !== null;
+    if (fromCache) {
+      report('正在启动数据库引擎…（已缓存）', P_WASM);
+    } else {
+      report('正在下载数据库引擎…', 0);
+      binary = await fetchWasm(wasmUrl, (r) => {
+        // 下载阶段映射到总进度的前 P_WASM
+        report('正在下载数据库引擎…', r === null ? null : r * P_WASM);
+      });
+      // 第一次下完就存本地：之后刷新、之后发版都不用再下这 685KB
+      if (binary) await writeCachedWasm(wasmUrl, binary);
+      // 拿不到字节（或被拦截）就退回让 sql.js 自己取，功能不受影响，只是没有下载进度
+      report(binary ? '正在启动数据库引擎…' : '正在加载数据库引擎…', binary ? P_WASM : null);
+    }
+    try {
+      sql = await initSqlJs({
+        locateFile: () => wasmUrl,
+        ...(binary ? { wasmBinary: binary } : {}),
+      });
+    } catch (e) {
+      // 只有「拿缓存启动失败」才需要兜底：说明缓存的引擎和当前代码对不上
+      // （常见于升级过 sql.js）。丢掉缓存让 sql.js 自己取一次，别卡在启动页。
+      if (!fromCache) throw e;
+      await clearCachedWasm(wasmUrl);
+      sql = await initSqlJs({ locateFile: () => wasmUrl });
+    }
     setSql(sql);
   }
 

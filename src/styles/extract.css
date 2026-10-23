@@ -1,0 +1,294 @@
+/* ---------- 功能体验 → 聊天提取 ----------
+   上传区在上、结果在下，整页跟设置页其他子页一样纵向滚动。
+   截图缩略图用小方块，结果预览气泡按左右分边，尽量贴近真实聊天视图。 */
+
+.extract-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.extract-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.extract-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.extract-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.extract-shot {
+  position: relative;
+  width: 92px;
+  height: 122px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--side);
+}
+
+.extract-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.extract-shot-x {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.extract-shot-x:hover {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.extract-add {
+  width: 92px;
+  height: 122px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.extract-add:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.extract-add:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.extract-hint {
+  margin: 0;
+}
+
+.extract-prompt,
+.extract-row-fields select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 8px 10px;
+}
+
+.extract-prompt {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.6;
+}
+
+.extract-prompt:focus,
+.extract-row-fields select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.extract-row-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.extract-err {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.extract-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.extract-actions .muted {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.extract-result {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.extract-result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.extract-result-head b {
+  display: block;
+  font-size: 14px;
+}
+
+.extract-result-head .muted {
+  display: block;
+  margin-top: 2px;
+}
+
+.extract-warn {
+  margin: 0 0 10px;
+  padding: 8px 10px 8px 26px;
+  border-radius: 8px;
+  background: rgba(217, 83, 107, 0.07);
+  color: var(--primary-dark);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.extract-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 4px 2px 8px;
+}
+
+.extract-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 86%;
+}
+
+.extract-msg-right {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.extract-who {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 0 4px 3px;
+}
+
+.extract-bubble {
+  padding: 8px 11px;
+  border-radius: 12px;
+  background: var(--side);
+  border: 1px solid var(--border);
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.extract-msg-right .extract-bubble {
+  background: rgba(217, 83, 107, 0.1);
+  border-color: rgba(217, 83, 107, 0.22);
+}
+
+.extract-bubble img {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+.extract-bubble span + img {
+  margin-top: 6px;
+}
+
+.extract-result > .muted.small {
+  margin: 8px 0 0;
+}
+
+.extract-recent {
+  margin-top: 18px;
+}
+
+.extract-recent ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.extract-recent button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.extract-recent button:hover {
+  background: var(--side);
+  border-color: var(--border);
+}
+
+.extract-recent-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .extract-row-fields {
+    grid-template-columns: 1fr;
+  }
+}

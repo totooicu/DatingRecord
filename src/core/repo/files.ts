@@ -281,13 +281,20 @@ export function eventsReferencingFile(file: StoredFile | string): FileRefEvent[]
       ? [file]
       : Array.from(new Set([file.storedId, file.id].filter(Boolean)));
   if (keys.length === 0) return [];
-  const where = keys.map(() => 'content LIKE ?').join(' OR ');
+  // 事件正文在 events.content；聊天形式的事件把每条消息放在 event_messages.body，
+  // 两处都要算，否则聊天里插入的图片会被当成「未被引用」，孤儿回收时直接删掉。
+  const evWhere = keys.map(() => 'content LIKE ?').join(' OR ');
+  const msgWhere = keys.map(() => 'body LIKE ?').join(' OR ');
   return queryAll<{ id: string; title: string; start_ts: number | null; created_at: string }>(
-    `SELECT id, title, start_ts, created_at FROM events
-     WHERE deleted_at IS NULL AND (${where})
+    `SELECT id, title, start_ts, created_at FROM events e
+     WHERE deleted_at IS NULL
+       AND (${evWhere} OR EXISTS (
+         SELECT 1 FROM event_messages m
+         WHERE m.event_id = e.id AND m.deleted_at IS NULL AND (${msgWhere})
+       ))
        ${isPrivacyMode() ? 'AND is_private = 0' : ''}
      ORDER BY COALESCE(start_ts, 0) DESC, created_at DESC`,
-    keys.map((k) => `%${FILE_REF_PREFIX}${k}%`),
+    [...keys, ...keys].map((k) => `%${FILE_REF_PREFIX}${k}%`),
   ).map((r) => ({
     id: r.id,
     title: r.title || '（无标题）',

@@ -19,6 +19,7 @@ import { setEventOpener } from './openEvent';
 import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
 import { setCollectionOpener } from './openCollection';
+import { peekSnapReturn } from './snapReturn';
 import { canLeave } from './navGuard';
 import type { TabKey } from './icons';
 
@@ -45,6 +46,8 @@ export default function App() {
   const [quickEvent, setQuickEvent] = useState(false);
   /** 从别处（文件库的引用列表）点进来要打开的事件 */
   const [jumpEventId, setJumpEventId] = useState<string | null>(null);
+  // 事件已经打开过就把它清掉；固定引用，免得 Timeline 的 effect 每次渲染都重跑
+  const onJumpOpened = useCallback(() => setJumpEventId(null), []);
 
   const isEmpty = useMemo(() => !hasAnyPerson(), [v]);
   // 欢迎页只拦一次：点过「直接开始创建」就放行，否则空库时那个按钮是死的
@@ -128,6 +131,12 @@ export default function App() {
   }, []);
 
   const backToList = useCallback(() => {
+    // 从 AI 成果详情点某个对象跳进来的：返回键应该回到那份成果，
+    // 而不是把人丢回列表页——否则用户看完对象就再也回不去成果了。
+    if (peekSnapReturn()) {
+      setView({ k: 'settings' });
+      return;
+    }
     setView({ k: 'list', s: view.k === 'detail' ? view.s : 'persons' });
   }, [view]);
 
@@ -206,7 +215,7 @@ export default function App() {
               filter={filter}
               keyword={keyword}
               openId={jumpEventId}
-              onOpened={() => setJumpEventId(null)}
+              onOpened={onJumpOpened}
               onClearDay={() => setFilter(defaultFilter)}
               onBackToCalendar={() => setView({ k: 'calendar' })}
             />

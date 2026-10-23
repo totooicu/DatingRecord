@@ -15,7 +15,6 @@ export type SettingsKey =
   | 'backupData'
   | 'sync'
   | 'share'
-  | 'ai'
   | 'security'
   | 'people'
   | 'data'
@@ -26,6 +25,7 @@ export type SettingsKey =
   | 'lab'
   | 'labAi'
   | 'labEdge'
+  | 'labChat'
   | 'labDraft';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
@@ -45,7 +45,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.zip', group: 'general' },
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
-  { key: 'ai', title: 'AI 模型', hint: '别名、服务商、密钥与连通测试', group: 'general' },
   { key: 'security', title: '隐私与安全', hint: '应用锁、本地库加密、隐私模式', group: 'security' },
   { key: 'people', title: '人物与属性', hint: '属性字典、属性模板、重复合并', group: 'people' },
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除', group: 'people' },
@@ -56,6 +55,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'lab', title: '功能体验', hint: '新功能试用区', group: 'trial' },
   { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'trial' },
   { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
+  { key: 'labChat', title: '聊天提取', hint: '截图 → 聊天事件', group: 'trial' },
   // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
 ];
@@ -77,7 +77,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  * 加新子页只需在 SETTINGS_ENTRIES 里加一条、再挂到这里。
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
-  lab: ['labAi', 'labEdge', 'labDraft'],
+  lab: ['labAi', 'labEdge', 'labChat', 'labDraft'],
   backup: ['backupData', 'sync', 'share'],
 };
 
@@ -96,6 +96,8 @@ export const LEGACY_KEYS: Record<string, SettingsKey> = {
   templates: 'attrs',
   overview: 'data',
   sample: 'data',
+  // 顶级「AI 模型」入口已并入「功能体验 → AI 对话」页的「模型」标签
+  ai: 'labAi',
 };
 
 /** 某个 key 在目录里的标题；子页也有标题，用来拼「← 返回 xxx」 */

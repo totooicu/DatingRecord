@@ -156,8 +156,9 @@ export const PERSON_TOOLS: ToolDef[] = [
     mutating: true,
     params: [{ name: 'id', type: 'string', desc: '人物 id', required: true }],
     run: (a) => {
+      const p = getPerson(a.id as string);
       deletePerson(a.id as string);
-      return { ok: true };
+      return { ok: true, id: a.id, displayName: p?.displayName ?? '' };
     },
   },
   {
@@ -180,8 +181,9 @@ export const PERSON_TOOLS: ToolDef[] = [
     mutating: true,
     params: [{ name: 'id', type: 'string', desc: '人物 id', required: true }],
     run: (a) => {
+      const p = getPerson(a.id as string);
       hardDeletePerson(a.id as string);
-      return { ok: true };
+      return { ok: true, id: a.id, displayName: p?.displayName ?? '' };
     },
   },
   {

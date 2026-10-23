@@ -44,7 +44,9 @@ export type IdPrefix =
   /** AI 对话会话；'ai' 已被模型占用，会话另起一个前缀 */
   | 'ais'
   | 'msg'
-  | 'snap';
+  | 'snap'
+  /** AI 待审核改动的「之后」整库字节 */
+  | 'pend';
 
 /** 生成带前缀的实体 ID，如 p_01J... */
 export function newId(prefix: IdPrefix): string {

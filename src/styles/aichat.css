@@ -29,22 +29,23 @@
 }
 
 .lab-page-chat {
-  /* 这一页定高，内部各块自己分配。顶部四个 tab 按钮 + 状态条按内容占位，
-     下面的 .aichat-body（flex:1）吃掉剩余高度；里面的聊天区 / 列表各自滚动，
-     整页永远不会比屏幕高。 */
-  height: calc(100dvh - 150px);
+  /* 高度由父链 flex 撑开（settings-panes → settings-body-tight），不再写死
+     calc(100dvh - Npx)——硬算和实际 tabbar / padding 总会差出一截空隙。 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  min-height: 420px;
   display: flex;
   flex-direction: column;
+  /* 标题、选择条、内容区之间收紧：三层叠起来原来有 16px 的空隙，太散 */
+  gap: 3px;
 }
 
-/* 顶部四个全屏切换按钮：聊天 / 历史会话 / 快照 / 说明 */
+/* 顶部四个全屏切换按钮：聊天 / 历史会话 / 成果 / 说明 */
 .aichat-tabs {
   display: flex;
   gap: 0;
   flex: 0 0 auto;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   /* 四个键连成一条：一体化的分段控件，不再像四颗散落的胶囊 */
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -58,9 +59,9 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 34px;
+  height: 28px;
   padding: 0 6px;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
   border: none;
@@ -77,25 +78,25 @@
 
 /* 闲置 8 秒后收成一条细带；点任意一个键立刻恢复正常高度 */
 .aichat-tabs-tight .aichat-tab {
-  height: 22px;
-  font-size: 11.5px;
+  height: 20px;
+  font-size: 11px;
 }
 
 /* 窄屏四个 tab 平分一行，字和留白都得收一收，不然「历史会话」会换行 */
 @media (max-width: 480px) {
   .aichat-tab {
     padding: 0 3px;
-    font-size: 12.5px;
+    font-size: 12px;
     gap: 3px;
   }
   .aichat-tabs-tight .aichat-tab {
-    font-size: 11px;
+    font-size: 10.5px;
   }
   .aichat-tab-n {
-    min-width: 15px;
+    min-width: 14px;
     padding: 0 4px;
-    font-size: 10px;
-    line-height: 15px;
+    font-size: 9.5px;
+    line-height: 14px;
   }
   .aichat-subhead button {
     white-space: nowrap;
@@ -139,7 +140,8 @@
   flex-direction: column;
 }
 
-/* 历史会话 / 快照 / 说明：整屏滚动 */
+/* 模型 / 历史会话 / 快照 / 说明：整屏滚动 */
+.aichat-models,
 .aichat-history,
 .aichat-snaps,
 .aichat-help {
@@ -259,6 +261,98 @@
   justify-content: center;
   gap: 2px;
   padding-left: 2px;
+}
+
+/* 聊天页：点一条已完成的对话，气泡下方浮出「复制到对话框 / 删除」 */
+.aichat-item-open .aichat-bubble {
+  border-color: var(--primary);
+}
+
+.aichat-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+/* 历史会话工具栏：批量删除 / 新会话 / 完成 */
+.aichat-subhead-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+/* 批量模式下的勾选圈 */
+.aichat-pick {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.aichat-pick-on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.aichat-session-picked .aichat-session-main {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+/* 每行的改名按钮：和主体同高，但只占一个小方块 */
+.aichat-session-edit {
+  flex: 0 0 auto;
+  width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.aichat-session-edit:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 行内改名：输入框 + 保存 / 取消 */
+.aichat-session-rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.aichat-session-rename input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
 }
 
 /* 折叠的说明：默认不占地方；展开后自己滚，不把整页顶高 */
@@ -405,6 +499,11 @@
   flex-direction: column;
   gap: 4px;
   max-width: 82%;
+  cursor: pointer;
+}
+
+.aichat-item:hover .aichat-bubble {
+  border-color: var(--primary);
 }
 
 .aichat-user {
@@ -514,6 +613,10 @@
 
 .aichat-linkbtn-dim {
   color: var(--muted);
+}
+
+.aichat-linkbtn-danger {
+  color: #c0392b;
 }
 
 .aichat-note {
@@ -826,31 +929,13 @@
   color: var(--muted);
 }
 
-.aichat-snap-src {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  font-size: 11px;
-}
-
-.aichat-snap-meta {
-  color: var(--muted);
-}
-
-/* 「3 项操作 ›」：告诉用户这块还能点开看细的 */
-.aichat-snap-more {
-  color: var(--primary-dark);
+/* 详情里的补充说明：动过又复原的对象不进增删改三组，但要留个痕迹 */
+.aichat-diff-note {
+  margin: 6px 0 0;
+  line-height: 1.6;
 }
 
 /* 具体结果：人名 + 头像 / 事件集图标 / 事件名，一个对象一颗小胶囊 */
-.aichat-targets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 2px 6px 4px;
-}
-
 .aichat-target {
   display: inline-flex;
   align-items: center;
@@ -973,78 +1058,6 @@
   font-weight: 600;
 }
 
-.aichat-op-list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.aichat-op {
-  display: grid;
-  grid-template-columns: 18px 1fr auto;
-  gap: 2px 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  font-size: 13px;
-}
-
-.aichat-op-bad {
-  border-color: var(--danger);
-  background: rgba(192, 57, 43, 0.05);
-}
-
-.aichat-op-mark {
-  color: var(--ok);
-  font-weight: 700;
-}
-
-.aichat-op-bad .aichat-op-mark {
-  color: var(--danger);
-}
-
-.aichat-op-text {
-  word-break: break-all;
-}
-
-.aichat-op-side {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.aichat-op-tool {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.aichat-op-time {
-  font-variant-numeric: tabular-nums;
-}
-
-/* 失败原因横跨整行，小一号灰字——详情是给人排查用的 */
-.aichat-op-err {
-  grid-column: 2 / -1;
-  color: var(--danger);
-  font-size: 11px;
-  word-break: break-all;
-}
-
-/* 具体结果排在操作文字下方，和正文左对齐 */
-.aichat-op-targets {
-  grid-column: 2 / -1;
-}
-
-.aichat-op-targets .aichat-targets {
-  padding: 2px 0 0;
-}
-
 @media (max-width: 640px) {
   .aichat-item {
     max-width: 92%;
@@ -1061,4 +1074,263 @@
     /* 宽屏 header 更矮（56px），但 .pane 有 24px 底部内边距，都要减掉 */
     height: calc(100dvh - 56px - 70px - 24px);
   }
+}
+
+/* 删除对象预览：成果里点被删事件 chip 弹出的详情 */
+.aichat-snap-preview-name {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.aichat-snap-preview-body {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 历史会话 / 成果页头部的小胶囊按钮：替代裸下划线 linkbtn，更像可点的控件 */
+.aichat-chipbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.aichat-chipbtn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.aichat-chipbtn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.aichat-chipbtn-primary:hover {
+  background: var(--primary-dark);
+  color: #fff;
+}
+.aichat-chipbtn-danger {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+.aichat-chipbtn-danger:hover {
+  background: #c0392b;
+  color: #fff;
+}
+.aichat-chipbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 成果详情：增删改分组 */
+.aichat-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.aichat-diff-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.aichat-diff-head {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.aichat-diff-created { border-left: 3px solid #27ae60; }
+.aichat-diff-created .aichat-diff-head { color: #27ae60; }
+.aichat-diff-updated { border-left: 3px solid #2980b9; }
+.aichat-diff-updated .aichat-diff-head { color: #2980b9; }
+.aichat-diff-deleted { border-left: 3px solid #c0392b; }
+.aichat-diff-deleted .aichat-diff-head { color: #c0392b; }
+.aichat-diff-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* 逐条勾选：每个 diff item 是 checkbox + chip */
+.aichat-diff-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+.aichat-diff-chip input {
+  margin: 0;
+  accent-color: var(--primary);
+}
+.aichat-diff-chip-reject {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.aichat-diff-chip-reject .aichat-target {
+  text-decoration: line-through;
+}
+.aichat-diff-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+/* ---------- 成果审核：待执行 / 新增 / 删除 ---------- */
+.aichat-snap-status {
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.aichat-snap-status-pending {
+  color: #a05a00;
+  background: #fff5e6;
+  border-color: #f2c98a;
+}
+
+.aichat-snap-status-done {
+  color: #237a45;
+  background: #eef8f1;
+  border-color: #b7dfc5;
+}
+
+.aichat-review-chip {
+  padding-left: 3px;
+}
+
+.aichat-review-sign {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.aichat-review-add .aichat-review-sign {
+  color: #237a45;
+  background: #e3f5ea;
+}
+
+.aichat-review-del .aichat-review-sign {
+  color: #b03a2e;
+  background: #fdecea;
+}
+
+.aichat-review-del .aichat-target-name {
+  color: #b03a2e;
+  text-decoration: line-through;
+}
+
+.aichat-linkbtn-go {
+  color: #1f7a42;
+  font-weight: 700;
+}
+
+/* ---------- 成果记录详情弹窗 ---------- */
+.aichat-record {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aichat-record-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.aichat-record-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.aichat-record-detail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.aichat-record-detail li {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.aichat-record-edit {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.aichat-record-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.aichat-record-edit input {
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.aichat-record-save {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.aichat-record-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.aichat-record-hint {
+  grid-column: 1 / -1;
+  margin: 0;
 }

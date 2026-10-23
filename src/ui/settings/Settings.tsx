@@ -1,17 +1,18 @@
 import { useState } from 'react';
+import { peekSnapReturn } from '../snapReturn';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupHubSection } from './BackupHubSection';
 import { BackupSection } from './BackupSection';
 import { SyncSection } from './SyncSection';
 import { ShareSection } from './ShareSection';
-import { AiSection } from './AiSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
 import { LabSection } from './LabSection';
 import { LabAiSection } from './LabAiSection';
 import { LabEdgeSection } from './LabEdgeSection';
+import { LabExtractSection } from './LabExtractSection';
 import { LabDraftSection } from './LabDraftSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
@@ -39,7 +40,11 @@ import { canLeave } from '../navGuard';
 export function Settings({ initial }: { initial?: string | null }) {
   // initial 允许带旧 key（lock / enc / templates / overview / sample），
   // resolveSettingsKey 会把它换到合并后的那一页
-  const [sub, setSub] = useState<SettingsKey | null>(() => resolveSettingsKey(initial ?? null));
+  // 带着「从成果详情跳出来看过对象」的来路进来时，直接落在 AI 对话子页：
+  // 下面的 LabAiSection 会把那份成果详情重新打开，用户等于原路返回。
+  const [sub, setSub] = useState<SettingsKey | null>(() =>
+    peekSnapReturn() ? 'labAi' : resolveSettingsKey(initial ?? null),
+  );
   const active = sub ?? DEFAULT_SETTINGS_KEY;
   // 子页标题就是该设置项的名字；返回目标优先父入口（功能体验 → 它的子页），否则回目录
   const entry = SETTINGS_ENTRIES.find((e) => e.key === active);
@@ -61,7 +66,7 @@ export function Settings({ initial }: { initial?: string | null }) {
       />
       <SettingsNav active={active} onPick={go} />
 
-      <div className="settings-body">
+      <div className={active === 'labAi' ? 'settings-body settings-body-tight' : 'settings-body'}>
         {/* 构建时间只是排查用的元信息：放在目录首页一眼能看到就够，
             进了具体子页就别再占一行——这一行在手机上等于半个按钮的高度 */}
         {sub === null && <div className="settings-build-time muted small">最后构建：{fmtBuildTime()}</div>}
@@ -76,8 +81,6 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'sync' && <SyncSection />}
 
         {active === 'share' && <ShareSection />}
-
-        {active === 'ai' && <AiSection />}
 
         {active === 'security' && <SecuritySection />}
 
@@ -103,6 +106,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'labAi' && <LabAiSection />}
 
         {active === 'labEdge' && <LabEdgeSection />}
+
+        {active === 'labChat' && <LabExtractSection />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>

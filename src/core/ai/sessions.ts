@@ -27,6 +27,8 @@ export interface SessionItem {
   tools?: string[];
   /** 这一轮的自动快照（可回退） */
   snapshotId?: string | null;
+  /** 这一轮的改动暂存在哪条成果里（待执行 / 放弃） */
+  pendingId?: string | null;
   /** 用户消息带的附件（只在界面上展示，正文已拼进 text 发给模型） */
   attachments?: unknown[];
 }
@@ -126,4 +128,19 @@ export function createSession(): AiSession {
 
 export function deleteSession(id: string): void {
   writeAll(readAll().filter((s) => s.id !== id));
+}
+
+/** 批量删除：一次写盘，避免逐条 flush */
+export function deleteSessions(ids: string[]): void {
+  const gone = new Set(ids);
+  writeAll(readAll().filter((s) => !gone.has(s.id)));
+}
+
+/** 改会话名（只动标题，上下文不动） */
+export function renameSession(id: string, title: string): AiSession | null {
+  const s = getSession(id);
+  if (!s) return null;
+  const next: AiSession = { ...s, title, updatedAt: new Date().toISOString() };
+  saveSession(next);
+  return next;
 }
