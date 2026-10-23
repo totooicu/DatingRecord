@@ -929,29 +929,6 @@
   color: var(--muted);
 }
 
-.aichat-snap-src {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  font-size: 11px;
-}
-
-.aichat-snap-meta {
-  color: var(--muted);
-}
-
-/* 「3 项操作 ›」：告诉用户这块还能点开看细的 */
-.aichat-snap-more {
-  color: var(--primary-dark);
-}
-
-/* 净变化（新增 3 · 修改 2 · 删除 2）：比操作数更能说明这轮改了多大范围 */
-.aichat-snap-net {
-  color: var(--primary-dark);
-  font-weight: 600;
-}
-
 /* 详情里的补充说明：动过又复原的对象不进增删改三组，但要留个痕迹 */
 .aichat-diff-note {
   margin: 6px 0 0;
@@ -959,13 +936,6 @@
 }
 
 /* 具体结果：人名 + 头像 / 事件集图标 / 事件名，一个对象一颗小胶囊 */
-.aichat-targets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 2px 6px 4px;
-}
-
 .aichat-target {
   display: inline-flex;
   align-items: center;
@@ -1088,78 +1058,6 @@
   font-weight: 600;
 }
 
-.aichat-op-list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.aichat-op {
-  display: grid;
-  grid-template-columns: 18px 1fr auto;
-  gap: 2px 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  font-size: 13px;
-}
-
-.aichat-op-bad {
-  border-color: var(--danger);
-  background: rgba(192, 57, 43, 0.05);
-}
-
-.aichat-op-mark {
-  color: var(--ok);
-  font-weight: 700;
-}
-
-.aichat-op-bad .aichat-op-mark {
-  color: var(--danger);
-}
-
-.aichat-op-text {
-  word-break: break-all;
-}
-
-.aichat-op-side {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.aichat-op-tool {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.aichat-op-time {
-  font-variant-numeric: tabular-nums;
-}
-
-/* 失败原因横跨整行，小一号灰字——详情是给人排查用的 */
-.aichat-op-err {
-  grid-column: 2 / -1;
-  color: var(--danger);
-  font-size: 11px;
-  word-break: break-all;
-}
-
-/* 具体结果排在操作文字下方，和正文左对齐 */
-.aichat-op-targets {
-  grid-column: 2 / -1;
-}
-
-.aichat-op-targets .aichat-targets {
-  padding: 2px 0 0;
-}
-
 @media (max-width: 640px) {
   .aichat-item {
     max-width: 92%;
@@ -1265,14 +1163,6 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.aichat-ops-collapse {
-  margin-top: 8px;
-}
-.aichat-ops-collapse summary {
-  cursor: pointer;
-  padding: 4px 0;
-}
-
 /* 逐条勾选：每个 diff item 是 checkbox + chip */
 .aichat-diff-chip {
   display: inline-flex;

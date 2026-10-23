@@ -65,10 +65,6 @@ import {
   type SnapTarget,
 } from '../../core/snapshots';
 import type { StoredFile } from '../../core/repo/files';
-import { getPerson } from '../../core/repo/persons';
-import { getCollection } from '../../core/repo/collections';
-import { Avatar } from '../persons/Avatar';
-import { CollectionIconView } from '../collections/CollectionIcon';
 import { openPerson } from '../openPerson';
 import { openEvent } from '../openEvent';
 import { openCollection } from '../openCollection';
@@ -204,34 +200,6 @@ function snapTitle(s: SnapMeta): string {
   return `${SNAP_SRC[s.source] ?? ''}备份`.replace(/^备份$/, '记录');
 }
 
-/** 副行里的净变化：新增 / 修改 / 删除各多少，扫一眼就知道这轮动了多大范围 */
-function snapNetLabel(s: SnapMeta): string | null {
-  const d = s.diff;
-  if (!d) return null;
-  const n = d.created.length + d.updated.length + d.deleted.length;
-  if (n === 0) return '净变化：无';
-  const parts: string[] = [];
-  if (d.created.length) parts.push(`新增 ${d.created.length}`);
-  if (d.updated.length) parts.push(`修改 ${d.updated.length}`);
-  if (d.deleted.length) parts.push(`删除 ${d.deleted.length}`);
-  return parts.join(' · ');
-}
-
-/** 这份成果里新建 / 变动的对象，按出现顺序去重 */
-function targetsIn(s: SnapMeta): SnapTarget[] {
-  const seen = new Set<string>();
-  const out: SnapTarget[] = [];
-  for (const op of s.ops ?? []) {
-    for (const t of op.targets ?? []) {
-      const key = `${t.kind}:${t.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(t);
-    }
-  }
-  return out;
-}
-
 /**
  * 成果卡 / 详情里的「具体结果」：人名 + 头像、事件集图标、事件名。
  * 点一下直接跳到对应详情——看到「新建人物「林小满」」就能点开确认长什么样。
@@ -273,46 +241,6 @@ function DiffChip({ item, onPreview, checked, onToggle, snapId }: {
         <span className="aichat-target-name">{item.name}</span>
       </button>
     </label>
-  );
-}
-
-function SnapTargetChips({ targets, onPreviewDeleted, snapId }: {
-  targets: SnapTarget[];
-  onPreviewDeleted?: (t: SnapTarget) => void;
-  /** 成果列表里点结果也会跳走，同样记住来路 */
-  snapId?: string;
-}) {
-  if (!targets.length) return null;
-  return (
-    <div className="aichat-targets">
-      {targets.map((t) => {
-        const p = t.kind === 'person' ? getPerson(t.id) : null;
-        const c = t.kind === 'collection' ? getCollection(t.id) : null;
-        // 带 snapshot 的是删除类 target：对象已软删，点开展示删前存下的内容，不跳详情
-        const open = t.snapshot
-          ? () => onPreviewDeleted?.(t)
-          : () => {
-              if (snapId) setSnapReturn(snapId);
-              if (t.kind === 'person') openPerson(t.id);
-              else if (t.kind === 'event') openEvent(t.id);
-              else openCollection(t.id);
-            };
-        return (
-          <button key={`${t.kind}:${t.id}`} type="button" className="aichat-target" onClick={open} title={t.snapshot ? `查看「${t.name}」删除前内容` : `打开「${t.name}」`}>
-            {t.kind === 'person' ? (
-              <Avatar name={t.name} avatar={p?.avatar} icon={p?.icon} />
-            ) : t.kind === 'collection' ? (
-              <CollectionIconView icon={c?.icon ?? null} size="sm" fallback={t.name} />
-            ) : (
-              <span className="aichat-target-mark" aria-hidden>
-                事
-              </span>
-            )}
-            <span className="aichat-target-name">{t.name}</span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1102,8 +1030,9 @@ export function LabAiSection() {
               <ul className="aichat-snap-list">
                 {snaps.map((s) => (
                   <li key={s.id}>
-                    {/* 主区是一整块按钮：概括标题 + 一行元信息，点开看这份成果对应的具体操作。
-                        具体结果（人名 / 事件名等）放在按钮外侧，单独可点，避免按钮嵌套。 */}
+                    {/* 卡片只给「标题 + 时间」。具体改了谁、加了谁、删了谁，
+                        点开详情里按 新增 / 修改 / 删除 分组看——列表上再堆净变化数字和
+                        对象 chip，既占地方又和详情重复，用户扫一眼也分不清哪个是哪个。 */}
                     <div className="aichat-snap-block">
                       <button
                         type="button"
@@ -1114,20 +1043,8 @@ export function LabAiSection() {
                         <span className="aichat-snap-title">{snapTitle(s)}</span>
                         <span className="aichat-snap-sub">
                           <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
-                          <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
-                          <span className="aichat-snap-meta">
-                            {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
-                          </span>
-                          {/* 净变化比「几项操作」更说明问题：9 次调用可能只改了 3 个对象 */}
-                          {snapNetLabel(s) ? (
-                            <span className="aichat-snap-net">{snapNetLabel(s)}</span>
-                          ) : null}
-                          {s.ops?.length ? (
-                            <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
-                          ) : null}
                         </span>
                       </button>
-                      <SnapTargetChips targets={targetsIn(s)} onPreviewDeleted={setPreviewTarget} snapId={s.id} />
                     </div>
                     <span className="aichat-snap-ops">
                       <button className="aichat-linkbtn" onClick={() => removeSnap(s.id)}>
@@ -1240,24 +1157,6 @@ export function LabAiSection() {
                   </div>
                 )}
               </div>
-            ) : null}
-
-            {snapDetail.ops?.length ? (
-              <details className="aichat-ops-collapse">
-                <summary className="muted small">工具调用明细（{snapDetail.ops.length}）</summary>
-                <ul className="aichat-op-list">
-                  {snapDetail.ops.map((o, i) => (
-                    <li key={i} className={o.ok ? 'aichat-op' : 'aichat-op aichat-op-bad'}>
-                      <span className="aichat-op-mark">{o.ok ? '✓' : '✗'}</span>
-                      <span className="aichat-op-text">{o.text}</span>
-                      <span className="aichat-op-side">
-                        <span className="aichat-op-tool">{o.tool}</span>
-                      </span>
-                      {!o.ok && o.err && <span className="aichat-op-err">{o.err}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </details>
             ) : null}
           </div>
         </Modal>
