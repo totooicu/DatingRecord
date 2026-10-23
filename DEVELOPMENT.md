@@ -252,6 +252,23 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 
 ---
 
+## 1.8 数据库引擎（sql-wasm.wasm）的缓存约定
+
+引擎是**固定二进制**：`public/sql-wasm.wasm`（685KB）来自 sql.js 发布包，不含业务代码也不含用户数据。只要 `package.json` 里的 sql.js 版本不变，它一个字节都不会变——改业务代码不会变、重新部署不会变。所以它必须缓存，缓存了也绝不会「读到旧逻辑」。
+
+**约定（改这几处前先读完本节）**
+
+1. 启动路径：`src/core/db/index.ts` 先查 `src/core/db/wasmCache.ts`，命中就用本地字节初始化（零网络请求，进度条直接进到「启动引擎」）；未命中才带进度下载，下完写进缓存。
+2. 缓存桶名 `dr-wasm-v1` 是**固定的**，不跟 SW 的版本缓存一起换。`public/sw.js` 的 `activate` 清理旧缓存时必须跳过它；`install` 只在桶里没有时才 `add`。
+3. `index.html` 里那行 WASM preload **只在没缓存时才插入**（内联脚本判断 `caches.has('dr-wasm-v1')`）。写死成静态 `<link rel=preload>` 会让每次打开页面都发一次请求——这正是「每次刷新都在重新下载数据库引擎」的原因。
+4. Service Worker 的注册在 `main.tsx`，且必须判断 `document.readyState === 'complete'`：注册发生在引擎加载完之后，此时 `load` 事件早已过去，无条件监听 `load` 等于永远不注册。
+5. 校验：缓存读取后检查文件头 `\0asm` 与最小体积，坏缓存自动丢弃重下；拿缓存初始化失败时会清缓存并退回网络取一次。
+6. **升级 sql.js 时**：把 `wasmCache.ts` 与 `sw.js` 里的 `dr-wasm-v1` 一起改成 `v2`，旧缓存立即失效。
+
+验证工具：`node tools/e2e/wasm-cache-check.mjs <url>`（先 `npm run build` + `vite preview`）。连续刷新三次，`sql-wasm.wasm` 的网络响应应当只有 1 次。
+
+---
+
 # 第二部分 · 功能规格
 
 ## 2.0 优先级总览

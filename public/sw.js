@@ -6,6 +6,13 @@
 // 丢弃旧缓存 —— 否则旧 SW 会一直用 13:36 那版预缓存的页面，表现为「改了却不生效」。
 const CACHE = '__SW_CACHE__';
 
+// 数据库引擎专用桶：名字固定，不随构建版本变化。
+// 引擎是固定二进制（685KB），以前跟版本缓存一起被清，发一次版就要重新下一遍。
+// 页面侧（src/core/db/wasmCache.ts）用的是同一个桶名，SW 与页面共用一份缓存。
+// 升级 sql.js 时把 v1 改成 v2，与 wasmCache.ts 同步改。
+const WASM_CACHE = 'dr-wasm-v1';
+const WASM_URL = './sql-wasm.wasm';
+
 // 构建后带 hash 的资源走运行时缓存；这里先预缓存固定入口与体积较大的 wasm
 const PRECACHE = [
   './',
@@ -15,17 +22,20 @@ const PRECACHE = [
   './icon-512.png',
   './icon-maskable-512.png',
   './icon.svg',
-  './sql-wasm.wasm',
   // 「功能体验」页里的边缘分割工具：一个独立静态页，跟应用一起离线可用
   './edge-split.html',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting()),
+    (async () => {
+      const cache = await caches.open(CACHE);
+      await cache.addAll(PRECACHE);
+      // 引擎单独存进长期桶，且只在桶里没有时才下——已有缓存就一个字节都不再请求
+      const wasm = await caches.open(WASM_CACHE);
+      if (!(await wasm.match(WASM_URL))) await wasm.add(WASM_URL);
+      await self.skipWaiting();
+    })(),
   );
 });
 
@@ -33,7 +43,10 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // 引擎桶要留着：它是跨版本复用的，清掉就等于下次打开又得重下 685KB
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE && k !== WASM_CACHE).map((k) => caches.delete(k))),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -60,6 +73,22 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() => caches.match(req).then((c) => c || caches.match('./index.html'))),
+    );
+    return;
+  }
+
+  // 数据库引擎：长期桶优先，命中就直接用，不必等网络
+  if (url.pathname.endsWith('/sql-wasm.wasm')) {
+    event.respondWith(
+      caches.open(WASM_CACHE).then((c) =>
+        c.match(req).then((hit) => {
+          if (hit) return hit;
+          return fetch(req).then((res) => {
+            if (res && res.status === 200) c.put(req, res.clone());
+            return res;
+          });
+        }),
+      ),
     );
     return;
   }

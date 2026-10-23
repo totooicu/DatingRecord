@@ -63,11 +63,16 @@ function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator)) return;
   // 只在 http(s) 下可用；file:// 直接打开时跳过
   if (!/^https?:$/.test(location.protocol)) return;
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {
       /* 注册失败不影响使用 */
     });
-  });
+  };
+  // 这里是引擎加载完之后才调用的，而 load 事件往往早就过去了（它只等资源下载完）。
+  // 以前无条件监听 load 就等于永远等不到，SW 一直没注册——离线、预缓存、
+  // 版本更新全是摆设，表现为「每次打开都要重新下载数据库引擎」。
+  if (document.readyState === 'complete') register();
+  else window.addEventListener('load', register, { once: true });
 }
 
 // 慢网提示：8 秒还没起来说明引擎还没下完。
