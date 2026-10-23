@@ -131,18 +131,6 @@
   color: var(--muted);
 }
 
-.settings-back {
-  display: block;
-  width: 100%;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  text-align: left;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
 /* 文件名原地改名 */
 .file-rename {
   font-size: 13px;
@@ -181,9 +169,6 @@
     top: 8px;
   }
 
-  .settings-back {
-    display: none;
-  }
 }
 
 /* ---------- 隐私模式开关卡（设置正文顶部，始终可见） ---------- */
@@ -326,16 +311,6 @@
   min-height: 30px;
 }
 
-.lab-back {
-  padding: 2px 8px 2px 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--primary);
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-
 .lab-page-icon {
   display: none;
 }
@@ -370,11 +345,10 @@
   color: var(--muted);
 }
 
-/* 手机上子页用「← 功能体验」返回，宽屏可直接点左栏 */
-@media (min-width: 1024px) {
-  .lab-back {
-    visibility: hidden;
-    width: 0;
-    padding: 0;
+/* 手机上标题由吸顶的 PageHead 提供，LabHead 只在宽屏（PageHead 隐藏时）顶替它，
+   否则同一个标题会上下出现两遍 */
+@media (max-width: 1023px) {
+  .lab-page-head {
+    display: none;
   }
 }

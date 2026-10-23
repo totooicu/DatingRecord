@@ -42,6 +42,7 @@ export function PersonsPane({
   const person = showId ? getPerson(showId) : null;
   // 隐私模式下，标了隐私的选中项当作「没选中」——否则详情页会把它亮出来
   const personHidden = !!person && hides(person);
+  const title = personHidden ? '人物' : (person?.displayName ?? '人物');
   return (
     <>
       <div className="pane pane-list" ref={listRef}>
@@ -50,8 +51,9 @@ export function PersonsPane({
       <div className="pane pane-detail">
         {showId && person && !personHidden ? (
           <>
-            {/* 不再用 PageHead：返回键和姓名都在 PersonHead 里，避免姓名出现两遍 */}
-            <PersonDetail id={showId} onArchived={onArchived} onBack={detailMode ? onBack : undefined} />
+            {/* 顶部条与事件集详情、其它主页保持一致：吸顶、标题居中、返回键常驻 */}
+            <PageHead title={title} onBack={detailMode ? onBack : undefined} />
+            <PersonDetail id={showId} onArchived={onArchived} />
           </>
         ) : (
           <>

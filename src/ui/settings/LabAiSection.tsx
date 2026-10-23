@@ -136,7 +136,7 @@ function AttachmentChips({
   );
 }
 
-export function LabAiSection({ onBack }: { onBack: () => void }) {
+export function LabAiSection() {
   const [models] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState<string>(() => getDefaultModel()?.alias ?? listModels()[0]?.alias ?? '');
   const [history, setHistory] = useState<AgentMessage[]>([]);
@@ -293,7 +293,7 @@ export function LabAiSection({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="lab-page lab-page-chat">
-      <LabHead title="AI 对话" onBack={onBack} subKey="labAi" />
+      <LabHead title="AI 对话" subKey="labAi" />
 
       {/* 工具条：模型 + 快照入口 + 说明开关。一行解决，把高度让给聊天区 */}
       <div className="aichat-bar">

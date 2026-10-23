@@ -11,15 +11,7 @@ import { PersonAttrs } from './PersonAttrs';
 import { AttrHistory } from './AttrHistory';
 import { PersonEvents } from './PersonEvents';
 
-export function PersonDetail({
-  id,
-  onArchived,
-  onBack,
-}: {
-  id: string;
-  onArchived?: (nextId: string | null) => void;
-  onBack?: () => void;
-}) {
+export function PersonDetail({ id, onArchived }: { id: string; onArchived?: (nextId: string | null) => void }) {
   const v = useVersion();
   const person = useMemo(() => getPerson(id), [id, v]);
   const defs = useMemo(() => listDefs(), [v]);
@@ -33,12 +25,7 @@ export function PersonDetail({
 
   return (
     <div className="detail">
-      <PersonHead
-        person={person}
-        onNewEvent={() => setNewEvent(true)}
-        onArchived={onArchived}
-        onBack={onBack}
-      />
+      <PersonHead person={person} onNewEvent={() => setNewEvent(true)} onArchived={onArchived} />
       <PersonStats stats={stats} />
       <PersonAttrs person={person} defs={defs} />
       {/* key：换人物时重置展开态与选中项，否则会继承上一个人的状态 */}

@@ -19,7 +19,7 @@ interface LabEntry {
   status: string;
 }
 
-export function LabSection({ onPick, onBack }: { onPick: (k: SettingsKey) => void; onBack: () => void }) {
+export function LabSection({ onPick }: { onPick: (k: SettingsKey) => void }) {
   // 这些读数只在打开这一页时取一次：都是同步的本地查询，成本可以忽略
   const models = listModels();
   const def = getDefaultModel() ?? models[0];
@@ -43,9 +43,6 @@ export function LabSection({ onPick, onBack }: { onPick: (k: SettingsKey) => voi
   ];
   return (
     <div className="settings-intro">
-      <button className="lab-back" onClick={onBack}>
-        ← 设置目录
-      </button>
       <p className="muted small">新功能先在这里试用，用顺了会搬去该去的地方。</p>
 
       <ul className="lab-list">
