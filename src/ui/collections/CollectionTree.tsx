@@ -68,7 +68,7 @@ export function CollectionTree({
 
   return (
     <div className="pane-body">
-      <div className="pane-head">
+      <div className="pane-head home-head">
         <strong>事件集</strong>
         <span className="pane-head-actions">
           {children}

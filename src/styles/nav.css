@@ -7,6 +7,8 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
+  /* 标题改成绝对定位后不再撑高，这里把高度固定回原来的两行内边距 + 行高 */
+  min-height: 44px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
@@ -28,6 +30,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 标题按整条宽度居中：绝对定位，左右两侧的返回键 / 操作按钮不参与计算，
+     否则有返回键时会整体向右偏半个按钮宽 */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 120px);
 }
 
 .back-btn {

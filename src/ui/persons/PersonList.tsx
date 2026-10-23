@@ -58,7 +58,7 @@ export function PersonList({
       <div className="pane-build-time muted small" title={BUILD_TIME}>
         最新版本 · {fmtBuildTime()}
       </div>
-      <div className="pane-head">
+      <div className="pane-head home-head">
         <strong>人物</strong>
         <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">
           ＋

@@ -14,6 +14,49 @@
   font-size: 11px;
 }
 
+/* 主页标题条：与「时间线」「日历」的 PageHead 同一套观感——
+   整宽、16px 粗体、底部细线、滚动时吸顶；标题居中，操作按钮贴右。
+   只用在人物主页与事件集主页，筛选栏、设置导航仍走 .pane-head。 */
+.home-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+}
+
+.home-head > strong {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 绝对定位，避免按钮宽度把标题挤得偏离正中 */
+.home-head > .icon-btn,
+.home-head > .pane-head-actions {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 装成独立应用时页面顶到屏幕边缘，和 .page-head 一样补系统栏高度 */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .home-head {
+    padding-top: calc(10px + min(env(safe-area-inset-top, 0px), 48px));
+  }
+}
+
 /* 手机上顶栏是隐藏的，这里就是页面最顶，需要自己让开状态栏 */
 @media (max-width: 1023px) {
   .pane-build-time {
