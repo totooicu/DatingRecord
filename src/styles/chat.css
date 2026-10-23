@@ -166,15 +166,17 @@
   min-width: min(320px, 78vw);
 }
 
-/* 编辑框内的文本域：至少六行的高度，且不再出现内部滚动条 */
-.chat-edit .md-editor textarea {
+/* 编辑框内的文本域：至少六行的高度，且不再出现内部滚动条。
+   这些约束只对气泡里的就地编辑生效——全屏时如果还压着 46vh，
+   编辑区就只有半屏高，看起来像「全屏没用」。 */
+.chat-edit .md-editor:not(.md-editor-full) textarea {
   min-height: 132px;
   max-height: 46vh;
 }
 
 /* 长对话里就地改一句时，弹窗会滚动。编辑器头部（编辑/预览/全屏）
    跟着吸在顶部，按钮不会滑出视野——不然手机上像是「没有全屏」。 */
-.chat-edit .md-editor-head {
+.chat-edit .md-editor:not(.md-editor-full) .md-editor-head {
   position: sticky;
   top: 0;
   z-index: 2;
