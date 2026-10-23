@@ -29,12 +29,11 @@
 }
 
 .lab-page-chat {
-  /* 这一页定高，内部各块自己分配。顶部四个 tab 按钮 + 状态条按内容占位，
-     下面的 .aichat-body（flex:1）吃掉剩余高度；里面的聊天区 / 列表各自滚动，
-     整页永远不会比屏幕高。 */
-  height: calc(100dvh - 150px);
+  /* 高度由父链 flex 撑开（settings-panes → settings-body-tight），不再写死
+     calc(100dvh - Npx)——硬算和实际 tabbar / padding 总会差出一截空隙。 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  min-height: 420px;
   display: flex;
   flex-direction: column;
   /* 标题、选择条、内容区之间收紧：三层叠起来原来有 16px 的空隙，太散 */
