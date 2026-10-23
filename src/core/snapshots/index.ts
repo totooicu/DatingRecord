@@ -237,9 +237,16 @@ export function fmtSnapTime(iso: string): string {
  * 目标是「扫一眼就知道 AI 干了什么」，所以挑每个工具最有信息量的那个参数：
  * 建人物报名字、记事件报标题、改东西报改的是谁。拿不到有用参数就退到工具名。
  */
-export function describeOp(tool: string, args: Record<string, unknown>, ok: boolean): string {
+export function describeOp(
+  tool: string,
+  args: Record<string, unknown>,
+  ok: boolean,
+  data?: unknown,
+): string {
   if (!ok) return `${tool} 失败`;
   const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  // 工具返回的结果行（删除类工具现在会把被删对象的名字带回来）
+  const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
   // 取第一个有内容的字符串参数，兜底用
   const firstStr = (): string => {
     for (const v of Object.values(args)) {
@@ -255,14 +262,25 @@ export function describeOp(tool: string, args: Record<string, unknown>, ok: bool
   if (tool === 'person.create') return name ? `新建人物「${name}」` : '新建人物';
   if (tool === 'person.update') return '修改人物资料';
   if (tool === 'person.setAttr') return `设置属性 ${s(args.key) || ''}`.trim();
-  if (tool === 'person.archive' || tool === 'person.restore') return id ? `${tool === 'person.archive' ? '归档' : '恢复'}人物 ${id}` : (tool === 'person.archive' ? '归档人物' : '恢复人物');
+  if (tool === 'person.archive' || tool === 'person.restore') {
+    const nm = s(row?.displayName);
+    const verb = tool === 'person.archive' ? '归档人物' : '恢复人物';
+    return nm ? `${verb}「${nm}」` : (id ? `${verb} ${id}` : verb);
+  }
   if (tool === 'person.merge') return '合并重复人物';
   if (tool === 'person.applyTemplate') return `套用模板 ${s(args.templateId) || ''}`.trim();
-  if (tool === 'person.hardDelete') return '彻底删除人物';
+  if (tool === 'person.hardDelete') {
+    const nm = s(row?.displayName);
+    return nm ? `彻底删除人物「${nm}」` : '彻底删除人物';
+  }
 
   if (tool === 'event.create') return name ? `记事件「${name}」` : '记一条事件';
   if (tool === 'event.update') return '修改事件';
-  if (tool === 'event.delete' || tool === 'event.purge') return tool === 'event.purge' ? '彻底删除事件' : '删除事件';
+  if (tool === 'event.delete' || tool === 'event.purge') {
+    const nm = s(row?.title);
+    const verb = tool === 'event.purge' ? '彻底删除事件' : '删除事件';
+    return nm ? `${verb}「${nm}」` : verb;
+  }
   if (tool === 'event.restore') return '恢复事件';
   if (tool === 'event.setPrivate') return args.on ? '标记事件为隐私' : '取消事件隐私标记';
 
@@ -276,12 +294,18 @@ export function describeOp(tool: string, args: Record<string, unknown>, ok: bool
   if (tool === 'collection.addMember') return '往事件集里加事件';
   if (tool === 'collection.removeMember') return '从事件集移出事件';
   if (tool === 'collection.move') return '移动事件集';
-  if (tool === 'collection.delete') return '删除事件集';
+  if (tool === 'collection.delete') {
+    const nm = s(row?.name);
+    return nm ? `删除事件集「${nm}」` : '删除事件集';
+  }
   if (tool === 'collection.restore') return '恢复事件集';
   if (tool === 'collection.setPrivate') return args.on ? '标记事件集为隐私' : '取消事件集隐私标记';
 
   if (tool === 'file.rename') return name ? `文件改名为「${name}」` : '重命名文件';
-  if (tool === 'file.delete') return '删除文件';
+  if (tool === 'file.delete') {
+    const nm = s(row?.name);
+    return nm ? `删除附件「${nm}」` : '删除文件';
+  }
   if (tool === 'file.setPrivate') return args.on ? '标记文件为隐私' : '取消文件隐私标记';
   if (tool === 'file.transferRefs') return '转移文件引用';
 

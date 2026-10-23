@@ -127,17 +127,19 @@ function truncateResult(json: string): string {
 }
 
 /**
- * 从建对象的工具结果里取出「做成了什么」。
+ * 从工具结果里取出「做成了什么」。
  *
- * 只认 person.create / event.create / collection.create——这些是用户最想直接看到
- * 名字、点头像就能跳过去看详情的结果。改、删不产出新对象，列表里仍用文字概括。
+ * 新建类（person/event/collection.create）返回可跳转的 target；删除类（archive/
+ * delete/purge）也返回 target，但带 deleted 标记——列表里能看到删的是谁，
+ * 点开详情时对象已软删，由 UI 决定怎么展示（至少名字留在成果里，不再是干巴巴
+ * 的「删除事件」四个字）。
  */
 function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): SnapTarget[] {
-  if (tool !== 'person.create' && tool !== 'event.create' && tool !== 'collection.create') return [];
   const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
-  const id = typeof row?.id === 'string' ? row.id : '';
-  if (!id) return [];
   const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const id = s(row?.id);
+  if (!id) return [];
+
   if (tool === 'person.create') {
     const name = s(row?.displayName) || s(args.displayName);
     return name ? [{ kind: 'person', id, name }] : [];
@@ -146,8 +148,25 @@ function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): 
     const name = s(row?.title) || s(args.title);
     return name ? [{ kind: 'event', id, name }] : [];
   }
-  const name = s(row?.name) || s(args.name);
-  return name ? [{ kind: 'collection', id, name }] : [];
+  if (tool === 'collection.create') {
+    const name = s(row?.name) || s(args.name);
+    return name ? [{ kind: 'collection', id, name }] : [];
+  }
+
+  // 删除/归档类：把被删对象的名字也带出来
+  if (tool === 'person.archive' || tool === 'person.hardDelete') {
+    const name = s(row?.displayName);
+    return name ? [{ kind: 'person', id, name }] : [];
+  }
+  if (tool === 'event.delete' || tool === 'event.purge') {
+    const name = s(row?.title);
+    return name ? [{ kind: 'event', id, name }] : [];
+  }
+  if (tool === 'collection.delete') {
+    const name = s(row?.name);
+    return name ? [{ kind: 'collection', id, name }] : [];
+  }
+  return [];
 }
 
 /** 跑一轮：模型可以调多次工具，直到它给出最终文本回复 */
@@ -224,12 +243,13 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
           const out = await callTool(tc.name, args);
           usedTools.push(tc.name);
           const text = truncateResult(JSON.stringify(out));
-          const targets = out.ok ? targetsOf(tc.name, args, out.data) : [];
+          const data = out.ok ? out.data : undefined;
+          const targets = out.ok ? targetsOf(tc.name, args, data) : [];
           // 记一条人话操作：快照列表靠它概括「这一轮到底改了什么」，
           // 出错也记——失败的操作同样是这轮发生的事，详情页里要看得见
           ops.push({
             tool: tc.name,
-            text: describeOp(tc.name, args, out.ok),
+            text: describeOp(tc.name, args, out.ok, data),
             ok: out.ok,
             ...(targets.length ? { targets } : {}),
             // 错误原因截断：meta 表要能塞下，详情里看个开头就够定位了

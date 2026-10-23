@@ -615,6 +615,10 @@
   color: var(--muted);
 }
 
+.aichat-linkbtn-danger {
+  color: #c0392b;
+}
+
 .aichat-note {
   margin: 0;
   font-size: 12.5px;

@@ -597,7 +597,7 @@ export function LabAiSection() {
   const stop = () => abortRef.current?.abort();
 
   const rollback = async (id: string) => {
-    if (!window.confirm('把整个库恢复到这一步之前？\n当前数据会先自动记录一份，踩错了还能再退回来。')) return;
+    if (!window.confirm('拒绝这次改动？\n数据会回退到 AI 动手之前。当前状态会自动留底，踩错了还能再退回来。')) return;
     await restoreSnapshot(id);
     bump();
     reloadSnaps();
@@ -606,7 +606,7 @@ export function LabAiSection() {
   };
 
   const removeSnap = async (id: string) => {
-    if (!window.confirm('删除这份成果？删掉就再也回不去了。')) return;
+    if (!window.confirm('确认接受这次改动？\n接受后这条成果记录会被关掉，数据保留不变。')) return;
     await deleteSnapshot(id);
     reloadSnaps();
   };
@@ -985,11 +985,11 @@ export function LabAiSection() {
                       <SnapTargetChips targets={targetsIn(s)} />
                     </div>
                     <span className="aichat-snap-ops">
-                      <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
-                        恢复
+                      <button className="aichat-linkbtn" onClick={() => removeSnap(s.id)}>
+                        接受
                       </button>
-                      <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => removeSnap(s.id)}>
-                        删除
+                      <button className="aichat-linkbtn aichat-linkbtn-danger" onClick={() => rollback(s.id)}>
+                        放弃改动
                       </button>
                     </span>
                   </li>
@@ -1011,7 +1011,7 @@ export function LabAiSection() {
             </p>
             <p className="muted small">
               顶部五个按钮：<b>聊天</b>是和 AI 对话；<b>模型</b>管别名、服务商与密钥；<b>历史会话</b>是自动保存的对话记录，可载入继续；
-              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、记了什么事，也能一键恢复或删除；<b>说明</b>是本页。切换不中断 AI 正在做的事。
+              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、删了谁、记了什么事；点进去核对后，<b>接受</b>保留改动并关掉记录，<b>放弃改动</b>则整轮回退到 AI 动手前。<b>说明</b>是本页。切换不中断 AI 正在做的事。
             </p>
           </div>
         )}
