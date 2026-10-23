@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupHubSection } from './BackupHubSection';
@@ -23,7 +23,7 @@ import {
   type SettingsKey,
 } from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
-import { canLeave } from '../navGuard';
+import { canLeave, setBackHandler } from '../navGuard';
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -49,6 +49,19 @@ export function Settings({ initial }: { initial?: string | null }) {
     if (!canLeave()) return;
     setSub(k);
   };
+
+  // 系统返回键：在设置子页时先退回目录（go 内部会再拦 AI 忙）；
+  // 在目录时返回 false，交给 App 切回主 tab。补钉由 App 统一做。
+  useEffect(() => {
+    setBackHandler(() => {
+      if (sub !== null) {
+        if (canLeave()) setSub(null);
+        return true;
+      }
+      return false;
+    });
+    return () => setBackHandler(null);
+  }, [sub]);
 
   return (
     <div className="settings-panes" data-sub={sub ?? ''}>

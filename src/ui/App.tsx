@@ -19,7 +19,7 @@ import { setEventOpener } from './openEvent';
 import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
 import { setCollectionOpener } from './openCollection';
-import { canLeave } from './navGuard';
+import { canLeave, runBackHandler } from './navGuard';
 import type { TabKey } from './icons';
 
 /**
@@ -38,6 +38,9 @@ export default function App() {
   const v = useVersion();
   const privacy = usePrivacyMode();
   const [view, setView] = useState<View>({ k: 'list', s: 'persons' });
+  // popstate 回调里要读最新 view，用 ref 避免闭包捕获旧值
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [personId, setPersonId] = useState<string | null>(null);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
@@ -96,6 +99,32 @@ export default function App() {
       if (root) setCollectionId(root.id);
     }
   }, [v, personId, collectionId]);
+
+  // 进设置页压一条历史：这样系统返回键先在应用内退一层（子页→目录→主 tab），
+  // 而不是一上来就退网页。初始加载不压（那时就在主 tab）。
+  useEffect(() => {
+    if (view.k === 'settings') {
+      window.history.pushState({ app: 'settings' }, '');
+    }
+  }, [view.k]);
+
+  // 系统返回键：先问设置页要不要内部后退（子页→目录）；它处理了就补钉把历史钉回来。
+  // 设置页在目录上时它返回 false，这里再把视图切回人物列表并补钉。
+  // 不在设置页时不拦，让浏览器真的退（退出网页）。
+  useEffect(() => {
+    const onPop = () => {
+      if (runBackHandler()) {
+        window.history.pushState({ app: 'inapp' }, '');
+        return;
+      }
+      if (viewRef.current.k === 'settings') {
+        setView({ k: 'list', s: 'persons' });
+        window.history.pushState({ app: 'inapp' }, '');
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const section: TabKey =
     view.k === 'timeline' || view.k === 'settings' || view.k === 'calendar' ? view.k : view.s;
