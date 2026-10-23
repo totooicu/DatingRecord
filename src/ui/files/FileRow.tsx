@@ -3,7 +3,7 @@
 //   第二行起 文件名：单独成行，长名字按需换行，绝不截断
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
-import { countRefs, collectionsUsingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
+import { countRefs, collectionsUsingFile, isMappingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
 import { ConfirmButton, PrivacyButton } from '../common';
 import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
@@ -109,6 +109,11 @@ export function FileRow({
       <div className="file-main">
         <div className="file-row-top">
           <span className="file-type">{kindLabel(kind)}</span>
+          {isMappingFile(file) && (
+            <span className="mapping-badge" title={file.sourceUrl}>
+              映射
+            </span>
+          )}
           {file.isPrivate && <span className="privacy-badge">隐私</span>}
 
           {!batch && (
@@ -186,7 +191,13 @@ export function FileRow({
         <div className="file-row-meta muted small">
           <HashBadge storedId={file.storedId} />
           <span>·</span>
-          <span>{fmtSize(file.size)}</span>
+          {isMappingFile(file) ? (
+            <span title={file.sourceUrl}>
+              链接文件{file.size > 0 ? ` · 远端 ${fmtSize(file.size)}` : ''}
+            </span>
+          ) : (
+            <span>{fmtSize(file.size)}</span>
+          )}
           <span>·</span>
           <span>{fmtDate(file.createdAt)}</span>
           <span>·</span>

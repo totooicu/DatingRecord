@@ -30,7 +30,7 @@ export function useUploader(onNote: (text: string) => void) {
    * 第一张必须落库后第二张才能查重命中，并发会把两份都插进去。
    */
   const upload = useCallback(
-    async (list: FileList | null) => {
+    async (list: FileList | File[] | null) => {
       if (!list || list.length === 0) return;
       setBusy(true);
       const notes: string[] = [];

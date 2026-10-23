@@ -112,7 +112,7 @@ $ cli.cjs person.create --displayName 张三 --compact
 | `event.*` | 事件增删改查、回收站、隐私标记、类型字典、全局统计 |
 | `chat.*` | 聊天事件的增删改查、插播、上移下移 |
 | `collection.*` | 事件集树、增删改、移动、成员增删、智能集合规则 |
-| `file.*` | 附件列表/详情/重命名/删除/隐私/访问地址/批量转移事件引用（`file.transferRefs`） |
+| `file.*` | 附件列表/详情/重命名/删除/隐私/访问地址/批量转移事件引用（`file.transferRefs`）/ 映射文件（`file.addMapping`、`file.probeLink`） |
 | `snapshot.*` | 快照创建、列表、恢复、删除 |
 | `io.*` | 整库导出/导入、事件集分享的打包/预览/导入、读取本地文本文件内容（`io.readFile`） |
 | `system.*` | 库概览、只读 SQL、表结构、操作记录、meta 读写 |

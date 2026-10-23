@@ -141,6 +141,78 @@
   background: var(--panel);
 }
 
+/* ---------- 忙碌状态条 ---------- */
+/* 钉在日志上方：日志会滚动，这条不能滚走。主题色描边 + 呼吸圆点，
+   远处扫一眼就知道 AI 还在干活——「不知道它干完没有」这个吐槽，
+   主要就靠这条 + 完成时的 toast 解决。 */
+.aichat-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  background: rgba(217, 83, 107, 0.08);
+  font-size: 12.5px;
+  color: var(--primary-dark);
+}
+
+.aichat-status-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: aichat-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes aichat-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.75);
+  }
+}
+
+.aichat-status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aichat-status-text b {
+  font-weight: 600;
+}
+
+.aichat-status-stop {
+  flex: 0 0 auto;
+  padding: 3px 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.aichat-status-stop:hover {
+  background: var(--primary-dark);
+}
+
+/* 尊重「少动效」偏好：呼吸点改成常亮，信息一个不少 */
+@media (prefers-reduced-motion: reduce) {
+  .aichat-status-dot {
+    animation: none;
+  }
+}
+
 /* ---------- 消息区 ---------- */
 
 .aichat-empty {

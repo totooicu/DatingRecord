@@ -149,7 +149,7 @@ export function mergeRows(lib: LibraryFile, counts: MergeCounts = emptyCounts())
       continue;
     }
     run(
-      'INSERT OR IGNORE INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared, is_private) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT OR IGNORE INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared, is_private, source_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
       [
         a.id,
         // 老备份没有 storedId：用 id 顶上，语义等同「老的引用名」
@@ -164,6 +164,7 @@ export function mergeRows(lib: LibraryFile, counts: MergeCounts = emptyCounts())
         a.createdAt ?? new Date().toISOString(),
         a.hashShared ? 1 : 0,
         a.isPrivate ? 1 : 0,
+        a.sourceUrl ?? null,
       ],
     );
     counts.attachments++;
