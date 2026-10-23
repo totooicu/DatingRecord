@@ -4,10 +4,19 @@
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
 import { countRefs, collectionsUsingFile, isMappingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
-import { ConfirmButton, PrivacyButton } from '../common';
 import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
-import { CheckIcon, EyeIcon, IconButton, LinkIcon, PencilIcon, TrashIcon } from './rowIcons';
+import {
+  CheckIcon,
+  CloseIcon,
+  EyeIcon,
+  IconButton,
+  LinkIcon,
+  LockIcon,
+  PencilIcon,
+  TrashIcon,
+  UnlockIcon,
+} from './rowIcons';
 import { bump } from '../../store';
 import type { StoredFile } from '../../core/repo/files';
 import { kindLabel, kindOf } from '../preview';
@@ -53,6 +62,7 @@ export function FileRow({
   onPick?: (f: StoredFile) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const [draft, setDraft] = useState(file.name);
   const refs = countRefs(file);
   const avatars = personsUsingFile(file);
@@ -138,27 +148,62 @@ export function FileRow({
               <IconButton label="复制引用" onClick={() => onCopy(file)}>
                 <LinkIcon />
               </IconButton>
-              <PrivacyButton
-                active={file.isPrivate}
-                onToggle={() => {
-                  setFilePrivate(file.id, !file.isPrivate);
-                  bump();
-                }}
-              />
-              <ConfirmButton
-                compact
-                text="删除"
-                icon={<TrashIcon />}
-                className="file-icon-btn file-icon-btn-danger"
-                danger
-                confirmText={deleteHint(
-                  file.name,
-                  refs,
-                  avatars.map((a) => a.displayName),
-                  icons.map((c) => c.name),
-                )}
-                onConfirm={() => onDelete(file)}
-              />
+              {confirmDel ? (
+                <>
+                  {/* 确认删除占住隐私键的位置，取消删除占住删除键的位置：按钮数量不变，窄屏不会挤出卡片 */}
+                  <button
+                    type="button"
+                    className="file-icon-btn file-icon-btn-danger"
+                    title="确定删除"
+                    aria-label="确定删除"
+                    onClick={() => {
+                      setConfirmDel(false);
+                      onDelete(file);
+                    }}
+                  >
+                    <CheckIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="file-icon-btn"
+                    title="取消删除"
+                    aria-label="取消删除"
+                    onClick={() => setConfirmDel(false)}
+                  >
+                    <CloseIcon />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={file.isPrivate ? 'file-icon-btn file-icon-btn-on' : 'file-icon-btn'}
+                    title={file.isPrivate ? '已设为隐私，点击取消' : '设为隐私'}
+                    aria-label={file.isPrivate ? '取消隐私' : '设为隐私'}
+                    aria-pressed={file.isPrivate}
+                    onClick={() => {
+                      setFilePrivate(file.id, !file.isPrivate);
+                      bump();
+                    }}
+                  >
+                    {file.isPrivate ? <LockIcon /> : <UnlockIcon />}
+                  </button>
+                  <button
+                    type="button"
+                    className="file-icon-btn file-icon-btn-danger"
+                    title={deleteHint(
+                      file.name,
+                      refs,
+                      avatars.map((a) => a.displayName),
+                      icons.map((c) => c.name),
+                    )}
+                    aria-label="删除"
+                    onClick={() => setConfirmDel(true)}
+                  >
+                    <TrashIcon />
+                  </button>
+                </>
+              )}
             </span>
           )}
         </div>
