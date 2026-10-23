@@ -14,6 +14,7 @@
 // 所以这个模块只服务 UI；agent 循环本身（runAgentTurn）不依赖它。
 
 import { getDbInstance } from '../db/state';
+import { flushPersist } from '../db/persist';
 import { newId } from '../id';
 import type { AgentMessage } from './agent';
 
@@ -67,6 +68,10 @@ function writeAll(list: AiSession[]): void {
   if (!d) return;
   d.run(`INSERT INTO meta (key, value) VALUES (?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [META_KEY, JSON.stringify(list)]);
+  // 会话是「被中断也能继续」的唯一凭据，写完必须立刻落盘：
+  // 只靠页面隐藏时的兜底 flush 会来不及（persist 是异步的，刷新会把在途写掐掉），
+  // 回来后历史会话就空了。
+  flushPersist();
 }
 
 /** 全部会话，新的在前 */

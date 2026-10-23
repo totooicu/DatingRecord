@@ -50,11 +50,11 @@ export function PreviewModal({ file, onClose }: { file: StoredFile; onClose: () 
         </>
       }
     >
-      {kind === 'image' && <ImageView id={file.id} name={file.name} />}
-      {kind === 'video' && <VideoView id={file.id} name={file.name} />}
-      {kind === 'audio' && <AudioView id={file.id} name={file.name} />}
-      {kind === 'markdown' && <MarkdownPreview id={file.id} />}
-      {kind === 'text' && <TextView id={file.id} />}
+      {kind === 'image' && <ImageView id={file.id} name={file.name} mime={file.mime} />}
+      {kind === 'video' && <VideoView id={file.id} name={file.name} mime={file.mime} />}
+      {kind === 'audio' && <AudioView id={file.id} name={file.name} mime={file.mime} />}
+      {kind === 'markdown' && <MarkdownPreview id={file.id} name={file.name} mime={file.mime} />}
+      {kind === 'text' && <TextView id={file.id} name={file.name} mime={file.mime} />}
       {kind === 'unknown' && <UnknownView id={file.id} name={file.name} mime={file.mime} />}
     </Modal>
   );

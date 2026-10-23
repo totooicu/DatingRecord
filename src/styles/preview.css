@@ -309,6 +309,42 @@
   gap: 8px;
 }
 
+/* 无法预览时把扩展名做成大色块：一眼看出是什么文件 */
+.pv-ext-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.pv-ext {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  max-width: 42vw;
+  height: 84px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--side);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: clamp(13px, 4.2vw, 20px);
+  letter-spacing: 0.5px;
+  overflow-wrap: anywhere;
+}
+
+.pv-ext-info {
+  min-width: 0;
+}
+
+.pv-ext-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- 宽屏：弹窗别铺满整屏 ---------- */
 @media (min-width: 768px) {
   .modal-media {
