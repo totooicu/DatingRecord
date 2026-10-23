@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { MarkdownView } from '../markdown';
 import { readText, useBlobUrl } from './useBlobUrl';
 import { Loading } from './MediaView';
+import { ExtFallback } from './UnknownView';
 
-export function MarkdownPreview({ id }: { id: string }) {
+export function MarkdownPreview({ id, name, mime }: { id: string; name: string; mime: string }) {
   const url = useBlobUrl(id);
   const [text, setText] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export function MarkdownPreview({ id }: { id: string }) {
     };
   }, [url]);
 
-  if (err) return <div className="pv-error">读不出内容：{err}</div>;
+  if (err) return <ExtFallback id={id} name={name} mime={mime} reason={`读不出内容：${err}`} />;
   if (text === null) return <Loading />;
   if (!text.trim()) return <div className="pv-loading muted">这个文件是空的</div>;
   return (
