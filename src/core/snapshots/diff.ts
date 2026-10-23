@@ -40,6 +40,8 @@ interface Row {
   deleted_at?: string | null;
   rev?: number;
   updated_at?: string;
+  /** 人物状态：active / archived / merged（事件与事件集表没有这一列） */
+  status?: string;
 }
 
 interface SqlLike {
