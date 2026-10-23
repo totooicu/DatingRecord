@@ -21,6 +21,7 @@
 | `e2e/wasm-cache-check.mjs` | 验证数据库引擎只下一次：连开三次页面，统计 `sql-wasm.wasm` 的网络响应次数 | 先 `npm run build` + `npx vite preview --port 4173`，再 `node tools/e2e/wasm-cache-check.mjs [url]`；正常结果 = 1 次。依赖全局 playwright |
 | `e2e/fake-ai-flow.mjs` | 假 OpenAI 服务，喂一条「建 P1/Es1/E1 → 改 E1 → 删 E2、归档 P2 → 改 Es1 → 建 E3 → 删 E3 → 改 P3」的操作流 | `node tools/e2e/fake-ai-flow.mjs`（PORT 可改）。配合下面的 e2e 脚本，不需要真密钥 |
 | `e2e/snap-flow-e2e.mjs` | 端到端跑上面那条操作流，检查成果只有 1 条、分组正确、能点开真实详情页、能拒绝单条改动、从详情页跳出去还能回成果 | 需要 dev/preview 服务 + 上面的假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/snap-flow-e2e.mjs [url]`。控制台的 error/warning 会连同源码位置一起打印 |
+| `e2e/input-review-e2e.mjs` | 验证两项：① AI 对话框 Enter 只换行不发送、Ctrl+Enter 才发送；② 「审核后执行」——AI 跑完改动先挂起，点「执行」前真实人物列表看不到新建的 P1、点「执行」后才看得到 | 需要 preview 服务 + 假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/input-review-e2e.mjs http://localhost:4173/`。依赖全局 playwright |
 
 ## src/core/tools/
 

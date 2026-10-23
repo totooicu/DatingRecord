@@ -209,7 +209,8 @@ function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): 
 /** 跑一轮：模型可以调多次工具，直到它给出最终文本回复 */
 export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
   const { model, signal, onEvent } = opts;
-  const maxRounds = opts.maxRounds ?? 20;
+  // 轮次不硬封顶：没传 maxRounds 就一路跑到模型主动收尾（用户要求「不要限制 AI 的思考轮次」）
+  const maxRounds = opts.maxRounds;
   const messages: AgentMessage[] = [...opts.history];
   const usedTools: string[] = [];
   const ops: SnapOp[] = [];
@@ -227,7 +228,7 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
       }
       rounds += 1;
       onEvent?.({ type: 'round', n: rounds });
-      if (rounds > maxRounds) {
+      if (maxRounds && rounds > maxRounds) {
         messages.push({
           role: 'assistant',
           content: `（已连续调用 ${maxRounds} 轮工具，先停在这里。可以把上一步的结果告诉我，我们继续。）`,
