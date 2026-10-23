@@ -39,6 +39,13 @@ export interface SnapTarget {
   id: string;
   /** 当时的名字（对象后来改名了，这里仍是那一轮做出来的名字） */
   name: string;
+  /** 删除/归档类操作在删前把对象关键内容存这里——对象已软删，事后点开看详情不查库 */
+  snapshot?: {
+    content?: string;
+    timeLabel?: string;
+    personNames?: string[];
+    placeName?: string;
+  };
 }
 
 /** 一次具体操作。args 只留摘要，不存原文——快照元数据要能塞进 meta 表 */

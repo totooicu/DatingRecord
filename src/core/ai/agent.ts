@@ -129,10 +129,8 @@ function truncateResult(json: string): string {
 /**
  * 从工具结果里取出「做成了什么」。
  *
- * 新建类（person/event/collection.create）返回可跳转的 target；删除类（archive/
- * delete/purge）也返回 target，但带 deleted 标记——列表里能看到删的是谁，
- * 点开详情时对象已软删，由 UI 决定怎么展示（至少名字留在成果里，不再是干巴巴
- * 的「删除事件」四个字）。
+ * 新建类返回可跳转 target；删除类在删前把对象关键内容存进 target.snapshot，
+ * 对象软删后点开仍能看到正文、时间、参与人，不用先恢复。
  */
 function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): SnapTarget[] {
   const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
@@ -153,14 +151,36 @@ function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): 
     return name ? [{ kind: 'collection', id, name }] : [];
   }
 
-  // 删除/归档类：把被删对象的名字也带出来
+  // 删除/归档类：把被删对象的关键内容也存下来，事后核对不用先恢复
   if (tool === 'person.archive' || tool === 'person.hardDelete') {
     const name = s(row?.displayName);
     return name ? [{ kind: 'person', id, name }] : [];
   }
   if (tool === 'event.delete' || tool === 'event.purge') {
-    const name = s(row?.title);
-    return name ? [{ kind: 'event', id, name }] : [];
+    const ev = row?.event && typeof row.event === 'object' ? (row.event as Record<string, unknown>) : null;
+    const name = s(ev?.title) || s(row?.title);
+    if (!name) return [];
+    const content = s(ev?.content);
+    const placeName = s(ev?.place && typeof ev.place === 'object' ? (ev.place as Record<string, unknown>).name : '');
+    const participants = Array.isArray(ev?.participants)
+      ? (ev.participants as Record<string, unknown>[])
+          .map((p) => s(p.displayName) || s(p.name))
+          .filter(Boolean)
+      : [];
+    const timeLabel = ev?.startTs
+      ? new Date(Number(ev.startTs)).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    return [{
+      kind: 'event',
+      id,
+      name,
+      snapshot: {
+        ...(content ? { content } : {}),
+        ...(placeName ? { placeName } : {}),
+        ...(participants.length ? { personNames: participants } : {}),
+        ...(timeLabel ? { timeLabel } : {}),
+      },
+    }];
   }
   if (tool === 'collection.delete') {
     const name = s(row?.name);
@@ -244,18 +264,19 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
           usedTools.push(tc.name);
           const text = truncateResult(JSON.stringify(out));
           const data = out.ok ? out.data : undefined;
-          const targets = out.ok ? targetsOf(tc.name, args, data) : [];
-          // 记一条人话操作：快照列表靠它概括「这一轮到底改了什么」，
-          // 出错也记——失败的操作同样是这轮发生的事，详情页里要看得见
-          ops.push({
-            tool: tc.name,
-            text: describeOp(tc.name, args, out.ok, data),
-            ok: out.ok,
-            ...(targets.length ? { targets } : {}),
-            // 错误原因截断：meta 表要能塞下，详情里看个开头就够定位了
-            ...(out.ok ? {} : { err: out.error.slice(0, 200) }),
-            at: new Date().toISOString(),
-          });
+          // 只读工具（event.list / event.get / deletedList 等）是 AI 的思考过程，
+          // 不进成果列表——成果只列真正动了数据的操作，失败的写操作同样记。
+          if (def?.mutating) {
+            const targets = out.ok ? targetsOf(tc.name, args, data) : [];
+            ops.push({
+              tool: tc.name,
+              text: describeOp(tc.name, args, out.ok, data),
+              ok: out.ok,
+              ...(targets.length ? { targets } : {}),
+              ...(out.ok ? {} : { err: out.error.slice(0, 200) }),
+              at: new Date().toISOString(),
+            });
+          }
           onEvent?.({ type: 'tool_end', name: tc.name, ok: out.ok, preview: preview(text) });
           messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: text });
         }

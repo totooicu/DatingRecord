@@ -1165,3 +1165,21 @@
     height: calc(100dvh - 56px - 70px - 24px);
   }
 }
+
+/* 删除对象预览：成果里点被删事件 chip 弹出的详情 */
+.aichat-snap-preview-name {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.aichat-snap-preview-body {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

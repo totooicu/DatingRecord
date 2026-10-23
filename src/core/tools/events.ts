@@ -247,7 +247,7 @@ export const EVENT_TOOLS: ToolDef[] = [
     run: (a) => {
       const ev = getEvent(a.id as string);
       deleteEvent(a.id as string);
-      return { ok: true, id: a.id, title: ev?.title ?? '' };
+      return { ok: true, id: a.id, event: ev };
     },
   },
   {
@@ -272,7 +272,7 @@ export const EVENT_TOOLS: ToolDef[] = [
     run: (a) => {
       const ev = getEvent(a.id as string);
       purgeEvent(a.id as string);
-      return { ok: true, id: a.id, title: ev?.title ?? '' };
+      return { ok: true, id: a.id, event: ev };
     },
   },
   {

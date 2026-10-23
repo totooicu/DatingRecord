@@ -219,21 +219,23 @@ function targetsIn(s: SnapMeta): SnapTarget[] {
  * 成果卡 / 详情里的「具体结果」：人名 + 头像、事件集图标、事件名。
  * 点一下直接跳到对应详情——看到「新建人物「林小满」」就能点开确认长什么样。
  */
-function SnapTargetChips({ targets }: { targets: SnapTarget[] }) {
+function SnapTargetChips({ targets, onPreviewDeleted }: { targets: SnapTarget[]; onPreviewDeleted?: (t: SnapTarget) => void }) {
   if (!targets.length) return null;
   return (
     <div className="aichat-targets">
       {targets.map((t) => {
         const p = t.kind === 'person' ? getPerson(t.id) : null;
         const c = t.kind === 'collection' ? getCollection(t.id) : null;
-        const open =
-          t.kind === 'person'
+        // 带 snapshot 的是删除类 target：对象已软删，点开展示删前存下的内容，不跳详情
+        const open = t.snapshot
+          ? () => onPreviewDeleted?.(t)
+          : t.kind === 'person'
             ? () => openPerson(t.id)
             : t.kind === 'event'
               ? () => openEvent(t.id)
               : () => openCollection(t.id);
         return (
-          <button key={`${t.kind}:${t.id}`} type="button" className="aichat-target" onClick={open} title={`打开「${t.name}」`}>
+          <button key={`${t.kind}:${t.id}`} type="button" className="aichat-target" onClick={open} title={t.snapshot ? `查看「${t.name}」删除前内容` : `打开「${t.name}」`}>
             {t.kind === 'person' ? (
               <Avatar name={t.name} avatar={p?.avatar} icon={p?.icon} />
             ) : t.kind === 'collection' ? (
@@ -278,6 +280,8 @@ export function LabAiSection() {
   const [snaps, setSnaps] = useState(() => listSnapshots());
   /** 正在看详情的快照（点列表项弹出：这一轮到底做了什么） */
   const [snapDetail, setSnapDetail] = useState<SnapMeta | null>(null);
+  /** 删除类 target 点开展示删前存下的内容（对象已软删，不查库） */
+  const [previewTarget, setPreviewTarget] = useState<SnapTarget | null>(null);
   const [sessions, setSessions] = useState<AiSession[]>(() => listSessions());
   const [libOpen, setLibOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
@@ -982,7 +986,7 @@ export function LabAiSection() {
                           ) : null}
                         </span>
                       </button>
-                      <SnapTargetChips targets={targetsIn(s)} />
+                      <SnapTargetChips targets={targetsIn(s)} onPreviewDeleted={setPreviewTarget} />
                     </div>
                     <span className="aichat-snap-ops">
                       <button className="aichat-linkbtn" onClick={() => removeSnap(s.id)}>
@@ -1045,7 +1049,7 @@ export function LabAiSection() {
                     </span>
                     {o.targets?.length ? (
                       <div className="aichat-op-targets">
-                        <SnapTargetChips targets={o.targets} />
+                        <SnapTargetChips targets={o.targets ?? []} onPreviewDeleted={setPreviewTarget} />
                       </div>
                     ) : null}
                     {!o.ok && o.err && <span className="aichat-op-err">{o.err}</span>}
@@ -1056,6 +1060,28 @@ export function LabAiSection() {
               <p className="muted small">
                 这份成果没有记录具体操作（手动记录的，或是早于操作记录功能之前生成的）。
               </p>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {previewTarget && (
+        <Modal title={`删除前的${previewTarget.kind === 'event' ? '事件' : previewTarget.kind === 'person' ? '人物' : '事件集'}`} onClose={() => setPreviewTarget(null)}>
+          <div className="aichat-snap-preview">
+            <p className="aichat-snap-preview-name">{previewTarget.name}</p>
+            {previewTarget.snapshot?.timeLabel && (
+              <p className="muted small">时间：{previewTarget.snapshot.timeLabel}</p>
+            )}
+            {previewTarget.snapshot?.placeName && (
+              <p className="muted small">地点：{previewTarget.snapshot.placeName}</p>
+            )}
+            {previewTarget.snapshot?.personNames?.length ? (
+              <p className="muted small">参与：{previewTarget.snapshot.personNames.join('、')}</p>
+            ) : null}
+            {previewTarget.snapshot?.content ? (
+              <div className="aichat-snap-preview-body">{previewTarget.snapshot.content}</div>
+            ) : (
+              <p className="muted small">（这条记录没有存正文内容，可点「放弃改动」回退后查看完整记录）</p>
             )}
           </div>
         </Modal>
