@@ -374,3 +374,53 @@
     display: none;
   }
 }
+
+/* ---------- 功能体验 → 未完成的记录 ---------- */
+
+.draft-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 6px;
+}
+
+.draft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.draft-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.draft-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 恢复草稿时的提示条：说明「这是上次的，不是新建的」，并给一个丢弃出口 */
+.draft-restored {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 35%, transparent);
+  border-radius: 9px;
+  background: #fffaf4;
+}

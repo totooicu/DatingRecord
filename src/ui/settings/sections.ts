@@ -25,7 +25,8 @@ export type SettingsKey =
   | 'files'
   | 'lab'
   | 'labAi'
-  | 'labEdge';
+  | 'labEdge'
+  | 'labDraft';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'security' | 'people' | 'data' | 'trial';
@@ -50,11 +51,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除', group: 'people' },
   { key: 'files', title: '文件', hint: '正文引用的图片与附件', group: 'people' },
   { key: 'data', title: '数据与统计', hint: '库概览、示例数据与重置', group: 'data' },
-  // 功能体验单独成组（trial）：lab 是这一组的入口页，labAi / labEdge 是它的子页。
+  // 功能体验单独成组（trial）：lab 是这一组的入口页，labAi / labEdge / labDraft 是它的子页。
   // 以前 AI 对话和边缘分割叠在同一个 lab 页里，聊天区被挤到 44vh。
   { key: 'lab', title: '功能体验', hint: '新功能试用区', group: 'trial' },
   { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'trial' },
   { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
+  // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
+  { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -74,7 +77,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  * 加新子页只需在 SETTINGS_ENTRIES 里加一条、再挂到这里。
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
-  lab: ['labAi', 'labEdge'],
+  lab: ['labAi', 'labEdge', 'labDraft'],
   backup: ['backupData', 'sync', 'share'],
 };
 

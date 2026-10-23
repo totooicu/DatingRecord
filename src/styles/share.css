@@ -657,8 +657,16 @@
   align-items: flex-start;
 }
 
-.share-event-row strong {
+/* 名称一行、日期一行：日期挤在同一行会把长标题截掉 */
+.share-event-row-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.share-event-row strong {
   min-width: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -733,3 +741,4 @@
 .share-peek-note {
   margin: 12px 0 0;
 }
+

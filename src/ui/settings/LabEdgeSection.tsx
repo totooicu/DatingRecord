@@ -54,7 +54,7 @@ export function LabHead({ title, subKey }: { title: string; subKey: SettingsKey 
   return (
     <div className="lab-page-head">
       <span className="lab-page-icon" aria-hidden>
-        <SettingsIcon k={subKey === 'labAi' ? 'ai' : 'labEdge'} />
+        <SettingsIcon k={subKey === 'labAi' ? 'ai' : subKey} />
       </span>
       <h4 className="lab-page-title">{title}</h4>
     </div>

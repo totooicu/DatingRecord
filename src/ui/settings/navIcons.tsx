@@ -199,6 +199,15 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <rect x="13.4" y="12.4" width="3.8" height="3.8" rx="0.9" />
         </>,
       );
+    // 未完成的记录：便签 + 折角
+    case 'labDraft':
+      return wrap(
+        <>
+          <path d="M5.4 4.6h9.2l4 4v10.8H5.4z" />
+          <path d="M14.4 4.6v4.2h4.2" />
+          <path d="M8.4 12.6h7.2M8.4 16h4.6" />
+        </>,
+      );
     // 库概览：仪表盘
     case 'overview':
       return wrap(
