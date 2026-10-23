@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createEvent, deleteEvent, getEvent, listEvents, setEventPrivate, updateEvent } from '../../core/repo/events';
 import { listPersons } from '../../core/repo/persons';
 import {
@@ -11,12 +11,21 @@ import {
 import type { Collection, DREvent } from '../../core/types';
 import { ConfirmButton, Modal, PrivacyButton } from '../common';
 import { bump } from '../../store';
+import { clearDraft, draftsEnabled, loadDraft, saveDraft } from '../../core/drafts';
 import { hides } from '../../privacy';
 import { showToast } from '../toast';
 import { EventFields } from './EventFields';
 import { EventView } from './EventView';
 import { ChatView } from './ChatView';
 import { draftToPayload, initialDraft, type EventDraft } from './draft';
+
+/** 新建事件的草稿：只覆盖「还没保存」的表单，编辑已有事件不掺和 */
+const DRAFT_KEY = 'event-new';
+
+interface NewEventDraft {
+  d: EventDraft;
+  priv: boolean;
+}
 
 export function EventForm({
   event,
@@ -45,14 +54,41 @@ export function EventForm({
     [ev?.id],
   );
 
+  // 新建时若上次写了一半就关掉页面，这里把草稿捡回来（开关在设置里）
+  const [restored] = useState(() => (event ? null : loadDraft<NewEventDraft>(DRAFT_KEY)));
   const [d, setD] = useState<EventDraft>(() =>
-    initialDraft(event, defaultPersonId, defaultCollectionId, existingCols),
+    !event && restored
+      ? restored.data.d
+      : initialDraft(event, defaultPersonId, defaultCollectionId, existingCols),
   );
   // 打开已有事件先给浏览态：读的人不需要一屏输入框；点「编辑」才进表单。
   // 新建没有可读的旧数据，直接进编辑态。
   const [mode, setMode] = useState<'view' | 'edit'>(event ? 'view' : 'edit');
-  const [priv, setPriv] = useState<boolean>(!!event?.isPrivate);
+  const [priv, setPriv] = useState<boolean>(!event && restored ? restored.data.priv : !!event?.isPrivate);
+  const [draftRestored, setDraftRestored] = useState(!!restored);
   const patch = (p: Partial<EventDraft>) => setD((s) => ({ ...s, ...p }));
+
+  // 新建事件时把表单实时落成本地草稿：刷新、误关都不会白写
+  const isNew = !ev;
+  const draftSig = isNew ? `${JSON.stringify(d)}|${priv}` : '';
+  useEffect(() => {
+    if (!isNew || !draftsEnabled()) return;
+    const empty = !d.title.trim() && !d.content.trim() && !d.placeName.trim() && d.tags.length === 0;
+    if (empty) {
+      clearDraft(DRAFT_KEY);
+      return;
+    }
+    const t = setTimeout(() => saveDraft(DRAFT_KEY, '新建事件（还没保存）', { d, priv }), 500);
+    return () => clearTimeout(t);
+    // 依赖收进 draftSig，逐项列会重复触发
+  }, [draftSig, isNew]);
+
+  const discardDraft = () => {
+    clearDraft(DRAFT_KEY);
+    setD(initialDraft(undefined, defaultPersonId, defaultCollectionId, []));
+    setPriv(false);
+    setDraftRestored(false);
+  };
 
   const save = () => {
     const payload = draftToPayload(d);
@@ -74,6 +110,8 @@ export function EventForm({
     bump();
     // 留在原地：刚改完往往还要接着写（尤其聊天形式下一条条往下记），
     // 关掉弹窗等于把人赶出去。只飘一句「已保存」，想要关自己点关闭。
+    clearDraft(DRAFT_KEY);
+    setDraftRestored(false);
     setSavedEvent(getEvent(savedId));
     showToast('已保存');
   };
@@ -134,6 +172,14 @@ export function EventForm({
         </>
       }
     >
+      {isNew && draftRestored && (
+        <div className="draft-restored">
+          <span className="muted small">已恢复上次没写完的草稿 · 保存后才会写进库</span>
+          <button className="btn btn-sm" onClick={discardDraft}>
+            丢弃草稿
+          </button>
+        </div>
+      )}
       {ev && mode === 'view' ? (
         <EventView
           event={ev}

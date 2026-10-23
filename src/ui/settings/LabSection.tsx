@@ -30,6 +30,12 @@ export function LabSection({ onPick }: { onPick: (k: SettingsKey) => void }) {
       desc: '把一张图里的多个元素自动框出来并裁开，图片只在浏览器里处理。',
       hint: '自动框选 · 批量裁剪 · 图片不出浏览器',
     },
+    {
+      key: 'labDraft',
+      title: '未完成的记录',
+      desc: '还没提交的表单先在本地留一份草稿，刷新或误关页面之后回来接着填。',
+      hint: '未完成 · 草稿自动留底',
+    },
   ];
   return (
     <div className="settings-intro">

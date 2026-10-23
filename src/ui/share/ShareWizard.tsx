@@ -33,6 +33,7 @@ import {
   type ShareFile,
   type ShareLevel,
 } from '../../core/types';
+import { clearDraft, draftsEnabled, loadDraft, saveDraft } from '../../core/drafts';
 import { formatAttrValue } from '../attr';
 import { Modal } from '../common';
 import { EventView } from '../event/EventView';
@@ -47,6 +48,31 @@ import {
 } from './SharePeeks';
 
 const STEPS = ['事件集', '人物', '程度', '预览'];
+
+/** 草稿只存「选到哪儿了」，不存预览结果与派生的 id 集合 */
+const DRAFT_KEY = 'share-wizard';
+
+interface WizardDraft {
+  step: number;
+  colIds: string[];
+  excluded: string[];
+  expanded: string[];
+  extraPicked: string[];
+  level: ShareLevel;
+  attrKeys: string[];
+  withAttachments: boolean;
+}
+
+/** 草稿时间：一小时以内给分钟，超过按天说 */
+function agoText(ts: number): string {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? '昨天' : `${days} 天前`;
+}
 
 interface ColRow {
   id: string;
@@ -161,16 +187,21 @@ function shareColPeek(c: Collection, share: ShareFile): ColPeekData {
 }
 
 export function ShareWizard({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState(1);
-  const [colIds, setColIds] = useState<string[]>([]);
+  // 打开时先看看有没有上次没做完的草稿（开关关着时 loadDraft 恒为 null）
+  const [restored] = useState(() => loadDraft<WizardDraft>(DRAFT_KEY));
+  const saved = restored?.data;
+  const [step, setStep] = useState(saved?.step ?? 1);
+  const [colIds, setColIds] = useState<string[]>(saved?.colIds ?? []);
   /** 被单独取消勾选的事件（全局生效：同一个事件在别的事件集下也不会分享） */
-  const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [excluded, setExcluded] = useState<Set<string>>(new Set(saved?.excluded ?? []));
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(saved?.expanded ?? []));
   /** 额外多选的人：不在事件里，但资料要一起带走 */
-  const [extraPicked, setExtraPicked] = useState<Set<string>>(new Set());
-  const [level, setLevel] = useState<ShareLevel>('full');
-  const [attrKeys, setAttrKeys] = useState<string[]>([]);
-  const [withAttachments, setWithAttachments] = useState(true);
+  const [extraPicked, setExtraPicked] = useState<Set<string>>(new Set(saved?.extraPicked ?? []));
+  const [level, setLevel] = useState<ShareLevel>(saved?.level ?? 'full');
+  const [attrKeys, setAttrKeys] = useState<string[]>(saved?.attrKeys ?? []);
+  const [withAttachments, setWithAttachments] = useState(saved?.withAttachments ?? true);
+  const [restoredAt, setRestoredAt] = useState<number | null>(restored ? restored.updatedAt : null);
+  const [confirmClose, setConfirmClose] = useState(false);
   const [preview, setPreview] = useState<ShareFile | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -256,6 +287,41 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
     };
   }, [step, colsKey, eventsKey, pickedKey, level, attrKeys, withAttachments]);
 
+  // 草稿跟着每次改动落盘：500ms 防抖，连续点选时不至于一直写 localStorage。
+  // 第 4 步的预览结果不存——它由前面的选择算得出来，存了反而会读到过期数据。
+  const draftSig = [
+    step,
+    colsKey,
+    [...excluded].sort().join(','),
+    [...expanded].sort().join(','),
+    [...extraPicked].sort().join(','),
+    level,
+    attrKeys.join(','),
+    String(withAttachments),
+  ].join('|');
+  useEffect(() => {
+    if (!draftsEnabled()) return;
+    const empty = step === 1 && colIds.length === 0 && excluded.size === 0 && extraPicked.size === 0;
+    if (empty) {
+      clearDraft(DRAFT_KEY);
+      return;
+    }
+    const t = setTimeout(() => {
+      saveDraft<WizardDraft>(DRAFT_KEY, '分享向导（还没导出）', {
+        step,
+        colIds,
+        excluded: [...excluded],
+        expanded: [...expanded],
+        extraPicked: [...extraPicked],
+        level,
+        attrKeys,
+        withAttachments,
+      });
+    }, 500);
+    return () => clearTimeout(t);
+    // 依赖统一收进 draftSig，逐项列出会重复触发
+  }, [draftSig]);
+
   const defs = useMemo(() => listDefs(true), []);
   const levelDefs = useMemo(() => (level === 'custom' ? listDefs() : []), [level]);
 
@@ -334,6 +400,32 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
 
   const canNext = step !== 1 || colIds.length > 0;
 
+  // 有选择时关窗要问一句：这些选择没写进库，关了就得重选
+  const discardAndClose = () => {
+    clearDraft(DRAFT_KEY);
+    setConfirmClose(false);
+    onClose();
+  };
+
+  const requestClose = () => {
+    const hasProgress = step > 1 || colIds.length > 0 || excluded.size > 0 || extraPicked.size > 0;
+    if (hasProgress) setConfirmClose(true);
+    else discardAndClose();
+  };
+
+  const resetAll = () => {
+    setStep(1);
+    setColIds([]);
+    setExcluded(new Set());
+    setExpanded(new Set());
+    setExtraPicked(new Set());
+    setLevel('full');
+    setAttrKeys([]);
+    setWithAttachments(true);
+    setRestoredAt(null);
+    clearDraft(DRAFT_KEY);
+  };
+
   const exportNow = async () => {
     setBusy(true);
     setError(null);
@@ -342,6 +434,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
         { collectionIds: colIds, eventIds, personIds: pickedIds },
         opts,
       );
+      clearDraft(DRAFT_KEY);
       showToast(`已生成分享压缩包：${name}`);
       onClose();
     } catch (e) {
@@ -379,10 +472,10 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
       <Modal
         wide
         title="开始分享"
-        onClose={onClose}
+        onClose={requestClose}
         footer={
           <>
-            <button className="btn btn-ghost" onClick={onClose}>
+            <button className="btn btn-ghost" onClick={requestClose}>
               取消
             </button>
             {step > 1 && (
@@ -430,6 +523,15 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
         </div>
 
         <h4 className="share-wizard-title">{stepTitle}</h4>
+
+        {restoredAt !== null && (
+          <div className="draft-restored">
+            <span className="muted small">已恢复上次没做完的选择 · {agoText(restoredAt)}</span>
+            <button className="btn btn-sm" onClick={resetAll}>
+              清空重选
+            </button>
+          </div>
+        )}
 
         {step === 1 && (
           <>
@@ -724,8 +826,10 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
                         className="share-event-row share-row-btn"
                         onClick={() => setEventView(e)}
                       >
-                        <strong>{e.title || '未命名事件'}</strong>
-                        <span className="muted small">{formatTime(e.time)}</span>
+                        <span className="share-event-row-text">
+                          <strong>{e.title || '未命名事件'}</strong>
+                          <span className="muted small">{formatTime(e.time)}</span>
+                        </span>
                         <span className="share-row-caret">›</span>
                       </button>
                     ))}
@@ -789,6 +893,31 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
       )}
 
       {repoEventPeek && <RepoEventPeek event={repoEventPeek} onClose={() => setRepoEventPeek(null)} />}
+
+      {/* 明确放弃：把「选择会丢」说清楚，并顺手把草稿一起删掉 */}
+      {confirmClose && (
+        <Modal
+          title="取消这次分享？"
+          onClose={() => setConfirmClose(false)}
+          footer={
+            <>
+              <button className="btn" onClick={() => setConfirmClose(false)}>
+                继续编辑
+              </button>
+              <button className="btn btn-danger" onClick={discardAndClose}>
+                放弃并关闭
+              </button>
+            </>
+          }
+        >
+          <p>取消后这次的选择会丢掉：事件集、挑掉的事件、多选的人物、分享程度都要重新选一遍。</p>
+          <p className="muted small">
+            {draftsEnabled()
+              ? '只有刷新、切走或误关页面时才会自动留底；点「放弃并关闭」会把草稿一起删掉。'
+              : '「设置 → 功能体验 → 未完成的记录」可以打开草稿保护，误关页面时自动留底。'}
+          </p>
+        </Modal>
+      )}
 
       {/* ---- 预览里的两个放大镜：资料 / 事件 ---- */}
       {personView && (

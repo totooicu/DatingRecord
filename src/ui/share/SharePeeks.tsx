@@ -196,8 +196,10 @@ export function ColPeekModal({
                 className="share-event-row share-row-btn"
                 onClick={() => onEvent(event)}
               >
-                <strong>{event.title || '未命名事件'}</strong>
-                <span className="muted small">{formatTime(event.time)}</span>
+                <span className="share-event-row-text">
+                  <strong>{event.title || '未命名事件'}</strong>
+                  <span className="muted small">{formatTime(event.time)}</span>
+                </span>
                 {off && <span className="share-pick-tag share-pick-muted">不分享</span>}
                 <span className="share-row-caret">›</span>
               </button>

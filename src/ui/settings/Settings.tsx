@@ -12,6 +12,7 @@ import { DataSection } from './DataSection';
 import { LabSection } from './LabSection';
 import { LabAiSection } from './LabAiSection';
 import { LabEdgeSection } from './LabEdgeSection';
+import { LabDraftSection } from './LabDraftSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
@@ -33,7 +34,7 @@ import { canLeave } from '../navGuard';
  * 宽屏永远按 DEFAULT_SETTINGS_KEY 渲染右栏。
  *
  * 入口已经按「做一件事」合并过（见 sections.ts），带子页的入口有两个：
- * 备份与分享（备份 / 同步 / 分享）、功能体验（AI 对话 / 边缘分割），其余入口各占一页。
+ * 备份与分享（备份 / 同步 / 分享）、功能体验（AI 对话 / 边缘分割 / 未完成的记录），其余入口各占一页。
  */
 export function Settings({ initial }: { initial?: string | null }) {
   // initial 允许带旧 key（lock / enc / templates / overview / sample），
@@ -102,6 +103,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'labAi' && <LabAiSection />}
 
         {active === 'labEdge' && <LabEdgeSection />}
+
+        {active === 'labDraft' && <LabDraftSection />}
       </div>
     </div>
   );
