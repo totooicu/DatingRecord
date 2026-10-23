@@ -47,6 +47,36 @@ function extOfName(name: string): string {
   return i > 0 ? name.slice(i + 1).toLowerCase() : '';
 }
 
+/** 附件的预览信息：界面上照着画缩略图，而不是只显示一个文件名 */
+export type AttPreview =
+  /** 真图片，直接拿 data URL 当缩略图 */
+  | { type: 'image'; src: string }
+  /** 文本，露几行正文让人一眼认出是什么 */
+  | { type: 'text'; snippet: string }
+  /** 读不了内容的（pdf/zip/音视频…），把后缀放大当缩略图 */
+  | { type: 'ext'; ext: string };
+
+/** 取文本开头几行当预览：优先排前面的非空行，超长截断 */
+function textSnippet(text: string): string {
+  const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const head = lines.slice(0, 3).join('\n');
+  if (!head) return '（空文件）';
+  return head.length > 160 ? `${head.slice(0, 160)}…` : head;
+}
+
+/**
+ * 决定这个附件在界面上长什么样。
+ *
+ * 注意与 {@link kindOf} 的分工：kind 决定「怎么发给模型」，
+ * 这里只决定「怎么给人看」——所以图片超大没发出去时，
+ * 预览仍按 ext 走（提示有问题靠 warning）。
+ */
+export function previewOf(a: Attachment): AttPreview {
+  if (a.kind === 'image' && a.dataUrl) return { type: 'image', src: a.dataUrl };
+  if (a.kind === 'text' && a.text) return { type: 'text', snippet: textSnippet(a.text) };
+  return { type: 'ext', ext: extOfName(a.name).toUpperCase() || '?' };
+}
+
 /** 判断一个文件该走哪条路；mime 为空时靠扩展名兜底 */
 export function kindOf(name: string, mime: string): AttachmentKind {
   const ext = extOfName(name);
@@ -84,7 +114,7 @@ export async function toAttachment(blob: Blob, name: string, key: string): Promi
   const base = { key, name: name || '未命名', mime, size: blob.size, kind };
 
   if (kind === 'unsupported') {
-    return { ...base, warning: '这种格式读不了内容，只能告诉模型有这么一个文件' };
+    return { ...base, warning: '读不了内容，只告诉模型文件名' };
   }
 
   if (kind === 'image') {

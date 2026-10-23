@@ -325,25 +325,25 @@
 }
 
 /* ---------- 附件 ---------- */
+/* 一张张竖版小卡片横向排：上面缩略图，下面文件名 + 体积。
+   图片铺满缩略区；文本露几行正文；读不了的把后缀放大当图。 */
 .aichat-atts {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .aichat-att {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 4px 8px;
-  font-size: 12px;
+  position: relative;
+  width: 84px;
+  padding-bottom: 6px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
+  overflow: hidden;
 }
 
 .aichat-att-warn {
@@ -351,40 +351,114 @@
   background: #fffbf0;
 }
 
-.aichat-att-icon {
-  flex: 0 0 auto;
-  display: inline-flex;
-  color: var(--muted);
+/* 缩略图区：固定正方形，四类内容各自居中/铺满 */
+.aichat-att-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 84px;
+  overflow: hidden;
+  background: #f6f4f1;
+  border-bottom: 1px solid var(--border);
+}
+
+.aichat-att-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 文本预览：极小字号露几行，颜色压暗，避免抢焦点 */
+.aichat-att-text {
+  width: 100%;
+  height: 100%;
+  padding: 6px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #6f675c;
+}
+
+/* 读不了内容的（pdf/zip/音视频）：后缀放大当缩略图 */
+.aichat-att-ext {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #8a8177;
+}
+
+.aichat-att-meta {
+  display: block;
+  padding: 5px 7px 0;
 }
 
 .aichat-att-name {
-  max-width: 180px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-all;
 }
 
+.aichat-att-size {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* 读不了的提示：限两行，全文放 title 里悬浮看 */
 .aichat-att-warn-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding: 3px 7px 0;
+  font-size: 10px;
+  line-height: 1.35;
   color: #9a6700;
 }
 
+/* 移除按钮：浮在缩略图右上角，白底小圆点，不挡图片主体 */
 .aichat-att-x {
-  padding: 0 2px;
-  font-size: 15px;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 14px;
   line-height: 1;
-  color: var(--muted);
-  background: none;
-  border: 0;
+  color: #5c554b;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 50%;
   cursor: pointer;
 }
 
 .aichat-att-x:hover {
   color: #b42318;
+  background: #fff;
 }
 
-/* 待发送的附件条：贴在输入框上方 */
+/* 待发送的附件条：贴在输入框上方。自身不设死高，但要封顶，
+   否则一次贴 4 张大卡会把整页撑出屏幕（缩略图改成竖版卡片后更容易超） */
 .aichat-pending {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 34vh;
+  overflow-y: auto;
   padding: 6px 8px;
   border: 1px dashed var(--border);
   border-radius: 10px;
@@ -463,10 +537,6 @@
 
   .aichat-model select {
     max-width: 160px;
-  }
-
-  .aichat-att-name {
-    max-width: 120px;
   }
 }
 

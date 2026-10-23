@@ -28,6 +28,7 @@ import {
   fromFile,
   fromStored,
   imagesOf,
+  previewOf,
   type Attachment,
 } from '../../core/ai/attach';
 import { deleteSnapshot, listSnapshots, restoreSnapshot, fmtSnapTime, fmtBytes } from '../../core/snapshots';
@@ -78,35 +79,24 @@ function LibIcon() {
   );
 }
 
-/** 附件前面那个小图标：按类型分三种，同样用内联 SVG */
-function KindIcon({ kind }: { kind: Attachment['kind'] }) {
-  if (kind === 'image') {
-    return (
-      <svg {...ICON} aria-hidden>
-        <rect x="3.4" y="4.6" width="17.2" height="14.8" rx="2" />
-        <circle cx="8.6" cy="9.6" r="1.6" />
-        <path d="M3.8 17l4.8-4.6 3.4 3 3-2.6 5.2 4.6" />
-      </svg>
-    );
+/**
+ * 附件卡片的缩略图。
+ *
+ * 三类：真图片直接缩略；文本露几行正文；读不了的（pdf/zip…）把后缀放大显示。
+ * 纯展示，不参与发送——发什么由 core/ai/attach.ts 决定。
+ */
+function AttThumb({ att }: { att: Attachment }) {
+  const p = previewOf(att);
+  if (p.type === 'image') {
+    return <img className="aichat-att-img" src={p.src} alt="" loading="lazy" />;
   }
-  if (kind === 'text') {
-    return (
-      <svg {...ICON} aria-hidden>
-        <path d="M6 3.6h7.4L18 8.2v12.2H6z" />
-        <path d="M13.2 3.8v4.6h4.6" />
-        <path d="M8.8 12.4h6M8.8 15.6h4.4" />
-      </svg>
-    );
+  if (p.type === 'text') {
+    return <span className="aichat-att-text">{p.snippet}</span>;
   }
-  return (
-    <svg {...ICON} aria-hidden>
-      <path d="M4 7.6l8-3.4 8 3.4v8.8l-8 3.4-8-3.4z" />
-      <path d="M4 7.6l8 3.4 8-3.4M12 11v8.8" />
-    </svg>
-  );
+  return <span className="aichat-att-ext">{p.ext}</span>;
 }
 
-/** 附件清单里显示的一条 */
+/** 附件清单：一张张卡片，横向排不开就换行 */
 function AttachmentChips({
   atts,
   onRemove,
@@ -118,13 +108,20 @@ function AttachmentChips({
     <ul className="aichat-atts">
       {atts.map((a) => (
         <li key={a.key} className={a.warning ? 'aichat-att aichat-att-warn' : 'aichat-att'}>
-          <span className="aichat-att-icon" aria-hidden>
-            <KindIcon kind={a.kind} />
+          <span className="aichat-att-thumb" aria-hidden>
+            <AttThumb att={a} />
           </span>
-          <span className="aichat-att-name" title={`${a.name}（${fmtSize(a.size)}）`}>
-            {a.name}
+          <span className="aichat-att-meta">
+            <span className="aichat-att-name" title={`${a.name}（${fmtSize(a.size)}）`}>
+              {a.name}
+            </span>
+            <span className="aichat-att-size">{fmtSize(a.size)}</span>
           </span>
-          {a.warning && <span className="aichat-att-warn-text">{a.warning}</span>}
+          {a.warning && (
+            <span className="aichat-att-warn-text" title={a.warning}>
+              {a.warning}
+            </span>
+          )}
           {onRemove && (
             <button className="aichat-att-x" onClick={() => onRemove(a.key)} aria-label={`移除 ${a.name}`}>
               ×
