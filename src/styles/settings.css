@@ -16,9 +16,10 @@
   padding: 14px 14px 8px;
 }
 
-/* 应用副名（长文 slogan）：只在设置目录页出现，安静地贴在小标题下面 */
+/* 应用副名（长文 slogan）：放在设置目录最下方居中，只当气质，不抢入口 */
 .settings-slogan {
-  margin: 6px 2px 14px;
+  margin: 20px 0 4px;
+  text-align: center;
   font-size: 12px;
   line-height: 1.7;
   letter-spacing: 0.5px;
