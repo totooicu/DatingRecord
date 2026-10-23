@@ -9,6 +9,10 @@
 //   2. 快照列表收进顶部「快照」面板，任何时候都能手动恢复；
 //   3. 工具调用过程全程可见（哪一步调了什么、成没成），不是黑盒。
 //
+// 防「一轮白跑」：忙的时候日志上方钉一条状态条（第几轮、正在干什么），
+// 导航入口（底部 Tab / 设置返回）被 navGuard 拦下，刷新走浏览器原生确认；
+// 干完 toast 一句「AI 已完成」。用户再也不用盯着屏幕猜它好没有。
+//
 // 版面分配（本轮改的重点）：聊天区吃掉整屏剩余高度，说明文字全部收进折叠区。
 // 以前这一页顶着「AI 对话」「边缘分割」两段大说明，聊天框只有 44vh，手机上
 // 输入法一弹就什么都看不见了。
@@ -45,6 +49,8 @@ import { Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
+import { setNavGuard } from '../navGuard';
+import { showToast } from '../toast';
 
 interface Item {
   kind: 'user' | 'assistant';
@@ -172,6 +178,8 @@ export function LabAiSection() {
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
+  /** 当前第几轮（模型↔工具往返），状态条上显示 */
+  const [roundNo, setRoundNo] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [snaps, setSnaps] = useState(() => listSnapshots());
   const [snapOpen, setSnapOpen] = useState(false);
@@ -194,6 +202,24 @@ export function LabAiSection() {
   }, [items, activity, busy]);
 
   const reloadSnaps = () => setSnaps(listSnapshots());
+
+  // 忙的时候两道防线，都是防「手滑一下，一轮工具调用全白跑」——
+  // 会话还在组件 state 里，刷新更是连记录都不剩：
+  // ① 导航入口（底部 Tab、设置返回/切页）统一问 navGuard，不让走就 toast 原因；
+  // ② 刷新 / 关标签页交给浏览器原生确认（beforeunload）。
+  useEffect(() => {
+    if (!busy) return;
+    setNavGuard(() => 'AI 还在干活，现在离开会中断这一轮。等它做完，或先点「停止」。');
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      setNavGuard(null);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [busy]);
 
   /** 追加附件；满了就提示，而不是静默丢弃 */
   const addAtts = (list: Attachment[]) => {
@@ -244,6 +270,7 @@ export function LabAiSection() {
     setAtts([]);
     setItems((s) => [...s, { kind: 'user', text: t || '（只发了附件）', attachments: sent }]);
     setActivity([]);
+    setRoundNo(0);
     setBusy(true);
 
     const ac = new AbortController();
@@ -259,7 +286,9 @@ export function LabAiSection() {
       : { role: 'user', content: body };
 
     const onEvent = (e: AgentEvent) => {
-      if (e.type === 'tool_start') {
+      if (e.type === 'round') {
+        setRoundNo(e.n);
+      } else if (e.type === 'tool_start') {
         const argKeys = Object.keys(e.args).filter((k) => e.args[k] !== undefined && e.args[k] !== null && e.args[k] !== '');
         setActivity((s) => [...s, `调用 ${e.name}${argKeys.length ? `（${argKeys.join('、')}）` : ''}`]);
       } else if (e.type === 'tool_end') {
@@ -292,11 +321,14 @@ export function LabAiSection() {
         },
       ]);
       reloadSnaps();
+      // 明确告诉用户「干完了」：以前忙完只是停止按钮消失，不盯着看根本不知道
+      showToast(res.aborted ? '已停止本轮' : 'AI 已完成，可以继续提问或离开');
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
       setActivity([]);
+      setRoundNo(0);
       abortRef.current = null;
     }
   };
@@ -457,6 +489,24 @@ export function LabAiSection() {
         <p className="aichat-hint">还没有配置模型。到「AI 模型」页添加别名、选服务商、填密钥，回来就能开聊。</p>
       )}
 
+      {/* 状态条：忙不忙、第几轮、正在干什么，一眼可见。
+          放在日志外面——日志会滚动，这条得始终钉在眼前。
+          以前只有日志里一行「思考中…」和工具条上一个「停止」，不盯着看
+          根本不知道 AI 还在干活，手滑切走/刷新就把它中断了。 */}
+      {busy && (
+        <div className="aichat-status" role="status">
+          <span className="aichat-status-dot" aria-hidden />
+          <span className="aichat-status-text">
+            <b>AI 正在干活{roundNo > 1 ? `（第 ${roundNo} 轮）` : ''}</b>
+            {' · '}
+            {activity[activity.length - 1] ?? '思考中'}
+          </span>
+          <button className="aichat-status-stop" onClick={stop}>
+            停止
+          </button>
+        </div>
+      )}
+
       <div className="aichat-log" ref={logRef}>
         {items.length === 0 && (
           <div className="aichat-empty">
@@ -549,7 +599,7 @@ export function LabAiSection() {
                 void send(input);
               }
             }}
-            placeholder="说点什么，Enter 发送，Shift+Enter 换行"
+            placeholder={busy ? 'AI 正在干活，说不了话…' : '说点什么，Enter 发送，Shift+Enter 换行'}
             rows={2}
             disabled={busy}
           />

@@ -21,6 +21,7 @@ import {
   type SettingsKey,
 } from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
+import { canLeave } from '../navGuard';
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -41,15 +42,21 @@ export function Settings({ initial }: { initial?: string | null }) {
   const entry = SETTINGS_ENTRIES.find((e) => e.key === active);
   const backTo = sub === null ? null : (parentOf(active) ?? null);
 
+  // 子页切换/返回统一走这里：AI 对话正忙时不让走（见 navGuard）
+  const go = (k: SettingsKey | null) => {
+    if (!canLeave()) return;
+    setSub(k);
+  };
+
   return (
     <div className="settings-panes" data-sub={sub ?? ''}>
       {/* 顶部条跟着状态走：目录页写「设置与数据」，子页换成本项名字并把返回键放进条里，
           这样返回键吸在顶部，不随内容滚动 */}
       <PageHead
         title={sub === null ? '设置与数据' : (entry?.title ?? '设置')}
-        onBack={sub === null ? undefined : () => setSub(backTo)}
+        onBack={sub === null ? undefined : () => go(backTo)}
       />
-      <SettingsNav active={active} onPick={setSub} />
+      <SettingsNav active={active} onPick={go} />
 
       <div className="settings-body">
         {/* 构建时间只是排查用的元信息：放在目录首页一眼能看到就够，
@@ -81,7 +88,7 @@ export function Settings({ initial }: { initial?: string | null }) {
 
         {/* 功能体验：入口页只放目录，具体功能各占一页，互不挤占屏幕。
             lab 的返回目标就是「设置目录」，子页的返回目标是 lab——两级，不多不少 */}
-        {active === 'lab' && <LabSection onPick={setSub} />}
+        {active === 'lab' && <LabSection onPick={go} />}
 
         {active === 'labAi' && <LabAiSection />}
 

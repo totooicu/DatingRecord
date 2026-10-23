@@ -18,6 +18,7 @@ import { getEvent } from '../core/repo/events';
 import { setEventOpener } from './openEvent';
 import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
+import { canLeave } from './navGuard';
 import type { TabKey } from './icons';
 
 /**
@@ -90,6 +91,8 @@ export default function App() {
     view.k === 'timeline' || view.k === 'settings' || view.k === 'calendar' ? view.k : view.s;
 
   const gotoTab = (key: TabKey) => {
+    // AI 忙着的时候不让切走：这一轮会中断，会话还在组件 state 里
+    if (!canLeave()) return;
     setKeyword('');
     if (key === 'timeline') setView({ k: 'timeline' });
     else if (key === 'calendar') setView({ k: 'calendar' });
