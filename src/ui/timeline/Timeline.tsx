@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getEvent, listEvents } from '../../core/repo/events';
 import { getPerson } from '../../core/repo/persons';
 import { EventForm } from '../event';
@@ -57,15 +57,22 @@ export function Timeline({
   const [editing, setEditing] = useState<DREvent | null>(null);
 
   // 外部跳转：把目标事件找出来直接开编辑框。
-  // 用 ref 比较避免重复打开——父层在 onOpened 里清空 openId 之前，
-  // 任何一次重渲染都会让这个 effect 再跑一遍。
+  // 用 seenOpenId 记住已经开过哪个，避免父层清空 openId 之前的重渲染把它反复打开。
+  // 这段必须放在 effect 里：onOpened 是父组件（App）的 setState，
+  // 在渲染期间调它会触发 React 的「渲染 A 时改 B」警告，而且父层状态可能在渲染中途被改坏。
   const [seenOpenId, setSeenOpenId] = useState<string | null>(null);
-  if (openId && openId !== seenOpenId) {
+  useEffect(() => {
+    // 父层把 openId 清掉了，记忆也跟着清掉——否则再跳同一条事件时会被当成「已经开过」而不响应
+    if (!openId) {
+      if (seenOpenId) setSeenOpenId(null);
+      return;
+    }
+    if (openId === seenOpenId) return;
     setSeenOpenId(openId);
     const target = getEvent(openId);
     if (target) setEditing(target);
     onOpened?.();
-  }
+  }, [openId, seenOpenId, onOpened]);
   const [creating, setCreating] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const groups = useMemo(() => groupByMonth(events), [events]);

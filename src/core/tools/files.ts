@@ -119,7 +119,7 @@ export const FILE_TOOLS: ToolDef[] = [
       const n = countRefs(f);
       if (n > 0) throw new Error(`还有 ${n} 处引用，先解除引用再删`);
       await deleteFile(a.id as string);
-      return { ok: true };
+      return { ok: true, id: a.id, name: f.name ?? '' };
     },
   },
   {

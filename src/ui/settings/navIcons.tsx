@@ -68,14 +68,6 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M9.9 11.6 12 9.5l2.1 2.1" />
         </>,
       );
-    // AI 模型：对话气泡 + 星
-    case 'ai':
-      return wrap(
-        <>
-          <path d="M4.2 6.4h11.2v7.4H9.6l-3.6 2.6v-2.6H4.2z" />
-          <path d="M18.4 11.4h1.4v7.2h-1.8l-2.6 2v-2h-4" />
-        </>,
-      );
     // 隐私与安全（分组）：盾牌
     case 'security':
       return wrap(

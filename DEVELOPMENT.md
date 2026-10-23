@@ -252,6 +252,67 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 
 ---
 
+## 1.8 数据库引擎（sql-wasm.wasm）的缓存约定
+
+引擎是**固定二进制**：`public/sql-wasm.wasm`（685KB）来自 sql.js 发布包，不含业务代码也不含用户数据。只要 `package.json` 里的 sql.js 版本不变，它一个字节都不会变——改业务代码不会变、重新部署不会变。所以它必须缓存，缓存了也绝不会「读到旧逻辑」。
+
+**约定（改这几处前先读完本节）**
+
+1. 启动路径：`src/core/db/index.ts` 先查 `src/core/db/wasmCache.ts`，命中就用本地字节初始化（零网络请求，进度条直接进到「启动引擎」）；未命中才带进度下载，下完写进缓存。
+2. 缓存桶名 `dr-wasm-v1` 是**固定的**，不跟 SW 的版本缓存一起换。`public/sw.js` 的 `activate` 清理旧缓存时必须跳过它；`install` 只在桶里没有时才 `add`。
+3. `index.html` 里那行 WASM preload **只在没缓存时才插入**（内联脚本判断 `caches.has('dr-wasm-v1')`）。写死成静态 `<link rel=preload>` 会让每次打开页面都发一次请求——这正是「每次刷新都在重新下载数据库引擎」的原因。
+4. Service Worker 的注册在 `main.tsx`，且必须判断 `document.readyState === 'complete'`：注册发生在引擎加载完之后，此时 `load` 事件早已过去，无条件监听 `load` 等于永远不注册。
+5. 校验：缓存读取后检查文件头 `\0asm` 与最小体积，坏缓存自动丢弃重下；拿缓存初始化失败时会清缓存并退回网络取一次。
+6. **升级 sql.js 时**：把 `wasmCache.ts` 与 `sw.js` 里的 `dr-wasm-v1` 一起改成 `v2`，旧缓存立即失效。
+
+验证工具：`node tools/e2e/wasm-cache-check.mjs <url>`（先 `npm run build` + `vite preview`）。连续刷新三次，`sql-wasm.wasm` 的网络响应应当只有 1 次。
+
+---
+
+## 1.9 成果（快照）的展示语义
+
+一次 AI 操作流只生成 **1 条成果**（`agent.ts` 里 `resumeSnapshotId` 复用上一轮快照），名字取**用户第一条指令**（比罗列九个工具调用好认）。
+
+**两层界面，各管一件事**：
+
+- **列表卡片**：只显示「标题（用户指令）+ 时间」。不堆净变化数字、不堆对象 chip、不显示来源/体积/操作数——这些和详情重复，只会让卡片变长、扫一眼分不清。
+- **详情弹窗**：按「净变化」分组展示具体对象（`LabAiSection` 里的 新增 / 修改 / 删除 三组），每组项可点开真实详情页；删除类点开显示删前存下的内容，不跳详情。
+
+**分组一律按「净变化」，不按工具调用次数**：`core/snapshots/diff.ts` 拿「动手前快照」（`createSnapshot` 是整库 `db.export()` dump）和「当前库」逐表对比（`SELECT *`，三张主表列不齐，写死列名会让查询报错、分组变空），按行内容指纹（排除 `rev`/`updated_at`/`hlc`/`deleted_at`）判断是否变过。修改 / 删除 两组来自「预先存在、这一轮被改 / 被删（软删或归档合并）」的对象，必须能正常出现——这俩分组是成果价值的主体，绝不能空着。
+
+| 情况 | 归入 |
+|---|---|
+| 快照里没有、现在有 | 新增 |
+| 快照里有、现在内容变了 | 修改 |
+| 软删（`deleted_at`）、人物归档 / 被合并 | 删除 |
+| 建了又删（快照里没有、现在也没有） | 净变化为零，只在详情里注明一句 |
+
+拒绝单条改动走**仓库层的软删**（`deletePerson` / `deleteEvent` / `deleteCollection`），不要直接 `DELETE`——会绕过 oplog 与回收站，用户反悔找不回来。
+
+验证：`node tools/e2e/fake-ai-flow.mjs` + `node tools/e2e/snap-flow-e2e.mjs`（配一个指向假服务的模型即可，不需要真密钥）。
+
+---
+
+## 1.10 成果详情 ↔ 对象详情页的往返（来路记忆）
+
+成果详情是弹窗，里面点「P1 / E1 / Es1」会切到真实详情页，弹窗所在的设置页随之卸载。跳过去容易，**回来难**——以前只能重走 设置 → 功能体验 → AI 对话 → 成果 → 点开，多数人走到一半就放弃了。
+
+约定：`src/ui/snapReturn.ts` 存一个**内存态**的 pending snapId（刷新即失效，不必持久化），三段接力：
+
+| 环节 | 位置 | 做什么 |
+|---|---|---|
+| 记 | `LabAiSection` 的 `DiffChip` / `SnapTargetChips` | 跳转前 `setSnapReturn(snapId)`；删除类只弹「删前内容」小窗，不离开本页，不记 |
+| 回 | `App.backToList` | 有 pending 时返回键进设置页，而不是丢回列表 |
+| 落 | `Settings` 初始 sub / `LabAiSection` 挂载 | 前者有 pending 时直落 `labAi`；后者 `takeSnapReturn()` 切到「成果」并重开那份详情 |
+
+**清掉的时机**：用户自己关掉成果详情、点了「接受」或「放弃」，`clearSnapReturn()` 结束回程。注意要放在 `window.confirm` **之后**——否则用户点取消也会把来路清掉，再看一眼对象就回不来了。
+
+事件走的是「时间线 + 弹窗」，没有返回键，靠点底部「设置」回；人物/事件集走详情页，按返回键回。两条路都必须能回到原成果。
+
+另：`Timeline` 以前在**渲染期间**直接调父组件的 `onOpened`（App 的 `setJumpEventId(null)`），触发 React 的「渲染 A 时改 B」警告。这类"通知父层"的回调一律放 `useEffect`，渲染期间只改自己的 state。
+
+---
+
 # 第二部分 · 功能规格
 
 ## 2.0 优先级总览

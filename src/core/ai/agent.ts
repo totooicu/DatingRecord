@@ -41,8 +41,10 @@ export interface AgentOpts {
   history: AgentMessage[];
   signal?: AbortSignal;
   onEvent?: (e: AgentEvent) => void;
-  /** 最多几轮模型↔工具往返，默认 8 */
+  /** 最多几轮模型↔工具往返，默认 20（复杂任务建人+记事件+整理常常超 8 轮） */
   maxRounds?: number;
+  /** 复用上一轮的快照 id：连续对话里，后续写操作归到同一条成果，不另拍新快照 */
+  resumeSnapshotId?: string | null;
 }
 
 export interface AgentTurnResult {
@@ -116,6 +118,21 @@ function toWire(msgs: AgentMessage[]): AiMessage[] {
   });
 }
 
+/**
+ * 从这轮对话里抽出「用户想干什么」——第一条用户消息。
+ * 用来当成果名：一条指令比一串工具调用好认。
+ * 附件正文会被拼进 content，所以只取前一段，超出就截断。
+ */
+function intentOf(messages: AgentMessage[]): string {
+  for (const m of messages) {
+    if (m.role !== 'user') continue;
+    const text = String(m.content ?? '').trim().replace(/\s+/g, ' ');
+    if (!text) continue;
+    return text.length > 34 ? `${text.slice(0, 34)}…` : text;
+  }
+  return '';
+}
+
 function preview(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim();
   return t.length > 120 ? `${t.slice(0, 120)}…` : t;
@@ -127,17 +144,17 @@ function truncateResult(json: string): string {
 }
 
 /**
- * 从建对象的工具结果里取出「做成了什么」。
+ * 从工具结果里取出「做成了什么」。
  *
- * 只认 person.create / event.create / collection.create——这些是用户最想直接看到
- * 名字、点头像就能跳过去看详情的结果。改、删不产出新对象，列表里仍用文字概括。
+ * 新建类返回可跳转 target；删除类在删前把对象关键内容存进 target.snapshot，
+ * 对象软删后点开仍能看到正文、时间、参与人，不用先恢复。
  */
 function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): SnapTarget[] {
-  if (tool !== 'person.create' && tool !== 'event.create' && tool !== 'collection.create') return [];
   const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
-  const id = typeof row?.id === 'string' ? row.id : '';
-  if (!id) return [];
   const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const id = s(row?.id);
+  if (!id) return [];
+
   if (tool === 'person.create') {
     const name = s(row?.displayName) || s(args.displayName);
     return name ? [{ kind: 'person', id, name }] : [];
@@ -146,18 +163,57 @@ function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): 
     const name = s(row?.title) || s(args.title);
     return name ? [{ kind: 'event', id, name }] : [];
   }
-  const name = s(row?.name) || s(args.name);
-  return name ? [{ kind: 'collection', id, name }] : [];
+  if (tool === 'collection.create') {
+    const name = s(row?.name) || s(args.name);
+    return name ? [{ kind: 'collection', id, name }] : [];
+  }
+
+  // 删除/归档类：把被删对象的关键内容也存下来，事后核对不用先恢复
+  if (tool === 'person.archive' || tool === 'person.hardDelete') {
+    const name = s(row?.displayName);
+    return name ? [{ kind: 'person', id, name }] : [];
+  }
+  if (tool === 'event.delete' || tool === 'event.purge') {
+    const ev = row?.event && typeof row.event === 'object' ? (row.event as Record<string, unknown>) : null;
+    const name = s(ev?.title) || s(row?.title);
+    if (!name) return [];
+    const content = s(ev?.content);
+    const placeName = s(ev?.place && typeof ev.place === 'object' ? (ev.place as Record<string, unknown>).name : '');
+    const participants = Array.isArray(ev?.participants)
+      ? (ev.participants as Record<string, unknown>[])
+          .map((p) => s(p.displayName) || s(p.name))
+          .filter(Boolean)
+      : [];
+    const timeLabel = ev?.startTs
+      ? new Date(Number(ev.startTs)).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    return [{
+      kind: 'event',
+      id,
+      name,
+      snapshot: {
+        ...(content ? { content } : {}),
+        ...(placeName ? { placeName } : {}),
+        ...(participants.length ? { personNames: participants } : {}),
+        ...(timeLabel ? { timeLabel } : {}),
+      },
+    }];
+  }
+  if (tool === 'collection.delete') {
+    const name = s(row?.name);
+    return name ? [{ kind: 'collection', id, name }] : [];
+  }
+  return [];
 }
 
 /** 跑一轮：模型可以调多次工具，直到它给出最终文本回复 */
 export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
   const { model, signal, onEvent } = opts;
-  const maxRounds = opts.maxRounds ?? 8;
+  const maxRounds = opts.maxRounds ?? 20;
   const messages: AgentMessage[] = [...opts.history];
   const usedTools: string[] = [];
   const ops: SnapOp[] = [];
-  let snapshotId: string | null = null;
+  let snapshotId = opts.resumeSnapshotId ?? null;
   let rounds = 0;
   let aborted = false;
 
@@ -224,18 +280,20 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
           const out = await callTool(tc.name, args);
           usedTools.push(tc.name);
           const text = truncateResult(JSON.stringify(out));
-          const targets = out.ok ? targetsOf(tc.name, args, out.data) : [];
-          // 记一条人话操作：快照列表靠它概括「这一轮到底改了什么」，
-          // 出错也记——失败的操作同样是这轮发生的事，详情页里要看得见
-          ops.push({
-            tool: tc.name,
-            text: describeOp(tc.name, args, out.ok),
-            ok: out.ok,
-            ...(targets.length ? { targets } : {}),
-            // 错误原因截断：meta 表要能塞下，详情里看个开头就够定位了
-            ...(out.ok ? {} : { err: out.error.slice(0, 200) }),
-            at: new Date().toISOString(),
-          });
+          const data = out.ok ? out.data : undefined;
+          // 只读工具（event.list / event.get / deletedList 等）是 AI 的思考过程，
+          // 不进成果列表——成果只列真正动了数据的操作，失败的写操作同样记。
+          if (def?.mutating) {
+            const targets = out.ok ? targetsOf(tc.name, args, data) : [];
+            ops.push({
+              tool: tc.name,
+              text: describeOp(tc.name, args, out.ok, data),
+              ok: out.ok,
+              ...(targets.length ? { targets } : {}),
+              ...(out.ok ? {} : { err: out.error.slice(0, 200) }),
+              at: new Date().toISOString(),
+            });
+          }
           onEvent?.({ type: 'tool_end', name: tc.name, ok: out.ok, preview: preview(text) });
           messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: text });
         }
@@ -251,7 +309,18 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
     // 所以「做了什么」只能等轮次结束（正常收尾 / 报错 / 被中止）再回写。
     // 只改元数据，不动字节——字节是恢复用的，必须保持原样。
     if (snapshotId && ops.length) {
-      patchSnapshotOps(snapshotId, ops, summarizeOps(ops));
+      // 成果名优先用用户意图（第一条用户指令）：「把聊天记录整理进去」比
+      // 「新建人物…、记事件…等 6 项」更像人话，也更容易在列表里认出是哪一次。
+      patchSnapshotOps(snapshotId, ops, intentOf(messages) || summarizeOps(ops));
+      // 对比快照和当前库，得出增删改分组——比 ops 列表更直观
+      try {
+        const { diffSnapshot } = await import('../snapshots/diff');
+        const { patchSnapshotDiff } = await import('../snapshots');
+        const d = await diffSnapshot(snapshotId);
+        if (d && (d.created.length || d.updated.length || d.deleted.length)) {
+          patchSnapshotDiff(snapshotId, d);
+        }
+      } catch { /* diff 失败不影响主流程 */ }
     }
   }
 

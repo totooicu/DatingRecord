@@ -178,9 +178,10 @@ export const COLLECTION_TOOLS: ToolDef[] = [
     mutating: true,
     params: [{ name: 'id', type: 'string', desc: '事件集 id', required: true }],
     run: (a) => {
+      const c = getCollection(a.id as string);
       const r = deleteCollection(a.id as string);
       if (!r.ok) throw new Error(r.reason ?? '删除失败');
-      return { ok: true };
+      return { ok: true, id: a.id, name: c?.name ?? '' };
     },
   },
   {

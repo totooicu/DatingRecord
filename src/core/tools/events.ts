@@ -245,8 +245,9 @@ export const EVENT_TOOLS: ToolDef[] = [
     mutating: true,
     params: [{ name: 'id', type: 'string', desc: '事件 id', required: true }],
     run: (a) => {
+      const ev = getEvent(a.id as string);
       deleteEvent(a.id as string);
-      return { ok: true };
+      return { ok: true, id: a.id, event: ev };
     },
   },
   {
@@ -269,8 +270,9 @@ export const EVENT_TOOLS: ToolDef[] = [
     mutating: true,
     params: [{ name: 'id', type: 'string', desc: '事件 id', required: true }],
     run: (a) => {
+      const ev = getEvent(a.id as string);
       purgeEvent(a.id as string);
-      return { ok: true };
+      return { ok: true, id: a.id, event: ev };
     },
   },
   {

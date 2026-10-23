@@ -15,7 +15,9 @@ import { flushPersist } from '../db/persist';
 import { bump } from '../../store';
 import { newId } from '../id';
 import { getSnapStore, type SnapBytes } from './store';
-import type { CollectionIcon } from '../types';
+import type { SnapDiff, SnapDiffItem } from './diff';
+
+export type { SnapDiff, SnapDiffItem };
 
 export interface SnapMeta {
   id: string;
@@ -30,6 +32,8 @@ export interface SnapMeta {
   note?: string;
   /** 这一轮到底动了什么（AI 轮次结束后回写）。给人看，也给人点开细看 */
   ops?: SnapOp[];
+  /** 对比快照和当前库得出的增删改分组（AI 轮次结束后回写） */
+  diff?: SnapDiff;
   /**
    * AI 改动的审核状态：pending = 改动已暂存、等用户点「执行」；
    * applied = 已执行完；没有 = 普通备份（手动 / CLI / 恢复前留底）。
@@ -37,10 +41,6 @@ export interface SnapMeta {
   review?: 'pending' | 'applied';
   /** 待执行时「改完之后」的整库字节存在哪个 id 下（执行 / 放弃后删掉） */
   afterId?: string;
-  /** 这一轮新增、删除、改名的具体记录：成果卡上直接显示名字，点开看详情 */
-  added?: SnapRecordRef[];
-  deleted?: SnapRecordRef[];
-  renamed?: SnapRecordRef[];
 }
 
 /** 这一轮新建 / 变动的对象，列表里直接展示成人名、事件名，点开就能跳过去 */
@@ -51,19 +51,13 @@ export interface SnapTarget {
   id: string;
   /** 当时的名字（对象后来改名了，这里仍是那一轮做出来的名字） */
   name: string;
-}
-
-/** 审核用的记录引用：名字、头像/图标、可读的字段摘要都在这里，不依赖库里还在不在 */
-export interface SnapRecordRef {
-  kind: SnapTargetKind;
-  id: string;
-  name: string;
-  /** 改名前的名字（只有 renamed 里有） */
-  fromName?: string;
-  avatar?: string | null;
-  icon?: CollectionIcon | null;
-  /** 详情弹窗里的字段行，如「时间：2026-10-01」「标签：旅行、生日」 */
-  detail?: string[];
+  /** 删除/归档类操作在删前把对象关键内容存这里——对象已软删，事后点开看详情不查库 */
+  snapshot?: {
+    content?: string;
+    timeLabel?: string;
+    personNames?: string[];
+    placeName?: string;
+  };
 }
 
 /** 一次具体操作。args 只留摘要，不存原文——快照元数据要能塞进 meta 表 */
@@ -202,202 +196,6 @@ export async function deleteSnapshot(id: string): Promise<void> {
   bump();
 }
 
-/**
- * 回写快照的操作记录。
- *
- * 快照是在动手**之前**拍的，那时还不知道这一轮要干什么，所以摘要只能等
- * 轮次结束后补。AI 干完活调这个函数，把「到底改了什么」写进元数据。
- * 只改元数据，不动字节——字节是恢复用的，必须保持原样。
- */
-export function patchSnapshotOps(
-  id: string,
-  ops: SnapOp[],
-  note?: string,
-): SnapMeta | null {
-  const list = readMeta();
-  const i = list.findIndex((s) => s.id === id);
-  if (i < 0) return null;
-  const next: SnapMeta = {
-    ...list[i],
-    ...(ops.length ? { ops } : {}),
-    ...(note ? { note } : {}),
-  };
-  list[i] = next;
-  writeMeta(list);
-  flushPersist();
-  bump();
-  return next;
-}
-
-// ---------------- AI 改动：先暂存，等用户点「执行」 ----------------
-//
-// 为什么用「前后两份整库字节」而不是逐条记 SQL：写入口有几十个，
-// 一轮工具调用又可能改多张表；整库 export() 本来就是一次 memcpy，
-// 拍一份「之后」的字节最省事，也能一键放弃。
-//
-// 流程：AI 本轮动手前已有 before 快照 → 轮次结束导出 after →
-// 对比出新增 / 删除 / 改名 → 把 after 存到 afterId → 立刻把库切回 before。
-// 用户点「执行」才把 after 换回来；点「放弃」就删掉两份，库始终没变过。
-
-type RawRow = Record<string, unknown>;
-
-function rowsOf(db: import('sql.js').Database, table: string): Map<string, RawRow> {
-  const out = new Map<string, RawRow>();
-  const set = db.exec(`SELECT * FROM ${table}`)[0];
-  if (!set) return out;
-  const idAt = set.columns.indexOf('id');
-  for (const values of set.values) {
-    const row: RawRow = {};
-    set.columns.forEach((c, i) => {
-      row[c] = values[i];
-    });
-    const id = String(values[idAt] ?? '');
-    if (id) out.set(id, row);
-  }
-  return out;
-}
-
-const TABLE_OF: Record<SnapTargetKind, string> = {
-  person: 'persons',
-  event: 'events',
-  collection: 'collections',
-};
-
-const NAME_COL: Record<SnapTargetKind, string> = {
-  person: 'display_name',
-  event: 'title',
-  collection: 'name',
-};
-
-const UPDATE_COL: Record<SnapTargetKind, string> = {
-  person: 'display_name',
-  event: 'title',
-  collection: 'name',
-};
-
-function isActive(kind: SnapTargetKind, row: RawRow | undefined): boolean {
-  if (!row) return false;
-  if (row.deleted_at !== null && row.deleted_at !== undefined) return false;
-  // 人物的「删除」是归档（status=archived），不再改 deleted_at
-  if (kind === 'person' && row.status === 'archived') return false;
-  return true;
-}
-
-function nameOf(kind: SnapTargetKind, row: RawRow): string {
-  const v = row[NAME_COL[kind]];
-  return typeof v === 'string' && v.trim() ? v.trim() : '（未命名）';
-}
-
-function jsonArray(v: unknown): string[] {
-  if (typeof v !== 'string' || !v) return [];
-  try {
-    const arr = JSON.parse(v) as unknown;
-    return Array.isArray(arr) ? arr.map((x) => String(x)).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
-
-function jsonObject(v: unknown): Record<string, unknown> {
-  if (typeof v !== 'string' || !v) return {};
-  try {
-    const o = JSON.parse(v) as unknown;
-    return o && typeof o === 'object' ? (o as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function tsText(v: unknown): string {
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  const d = new Date(n);
-  const p = (x: number) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function clip(text: string, max = 80): string {
-  const t = text.replace(/\s+/g, ' ').trim();
-  return t.length > max ? `${t.slice(0, max)}…` : t;
-}
-
-/** 一条记录给人看的摘要：详情弹窗里直接列这些行，不再回库查 */
-function detailOf(kind: SnapTargetKind, row: RawRow): string[] {
-  const out: string[] = [];
-  if (kind === 'person') {
-    const aliases = jsonArray(row.aliases_json);
-    if (aliases.length) out.push(`别名：${aliases.join('、')}`);
-    const tags = jsonArray(row.tags_json);
-    if (tags.length) out.push(`标签：${tags.join('、')}`);
-    if (row.kind === 'group') out.push('类型：群体');
-    const notes = typeof row.notes === 'string' ? row.notes.trim() : '';
-    if (notes) out.push(`备注：${clip(notes, 100)}`);
-  } else if (kind === 'event') {
-    const t = tsText(row.start_ts);
-    if (t) out.push(`时间：${t}`);
-    if (typeof row.kind === 'string' && row.kind) out.push(`类型：${row.kind}`);
-    const place = jsonObject(row.place_json);
-    if (typeof place.name === 'string' && place.name) out.push(`地点：${place.name}`);
-    const content = typeof row.content === 'string' ? row.content.trim() : '';
-    if (content) out.push(`正文：${clip(content, 100)}`);
-  } else {
-    if (typeof row.kind === 'string' && row.kind) out.push(`类型：${row.kind}`);
-    if (typeof row.status === 'string' && row.status) out.push(`状态：${row.status}`);
-    const desc = typeof row.description === 'string' ? row.description.trim() : '';
-    if (desc) out.push(`描述：${clip(desc, 100)}`);
-  }
-  return out;
-}
-
-function refOf(kind: SnapTargetKind, row: RawRow): SnapRecordRef {
-  const base: SnapRecordRef = { kind, id: String(row.id), name: nameOf(kind, row) };
-  if (kind === 'person') {
-    base.avatar = typeof row.avatar === 'string' ? row.avatar : null;
-    const icon = jsonObject(row.icon_json);
-    base.icon = Object.keys(icon).length ? (icon as unknown as CollectionIcon) : null;
-  } else if (kind === 'collection') {
-    const icon = jsonObject(row.icon_json);
-    base.icon = Object.keys(icon).length ? (icon as unknown as CollectionIcon) : null;
-  }
-  const detail = detailOf(kind, row);
-  if (detail.length) base.detail = detail;
-  return base;
-}
-
-interface SnapDiff {
-  added: SnapRecordRef[];
-  deleted: SnapRecordRef[];
-  renamed: SnapRecordRef[];
-}
-
-function diffSnapshots(before: import('sql.js').Database, after: import('sql.js').Database): SnapDiff {
-  const added: SnapRecordRef[] = [];
-  const deleted: SnapRecordRef[] = [];
-  const renamed: SnapRecordRef[] = [];
-  for (const kind of ['person', 'event', 'collection'] as SnapTargetKind[]) {
-    const table = TABLE_OF[kind];
-    const a = rowsOf(before, table);
-    const b = rowsOf(after, table);
-    for (const [id, row] of b) {
-      const prev = a.get(id);
-      const was = isActive(kind, prev);
-      const now = isActive(kind, row);
-      if (now && !was) added.push(refOf(kind, row));
-      else if (now && was && prev && nameOf(kind, prev) !== nameOf(kind, row)) {
-        const ref = refOf(kind, row);
-        ref.fromName = nameOf(kind, prev);
-        renamed.push(ref);
-      }
-    }
-    for (const [id, row] of a) {
-      if (!isActive(kind, row)) continue;
-      if (!b.has(id) || !isActive(kind, b.get(id))) deleted.push(refOf(kind, row));
-    }
-  }
-  const byName = (x: SnapRecordRef, y: SnapRecordRef) => x.name.localeCompare(y.name, 'zh');
-  return { added: added.sort(byName), deleted: deleted.sort(byName), renamed: renamed.sort(byName) };
-}
-
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
@@ -405,10 +203,17 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * 把这一轮的写操作暂存起来：导出 after，算出新增/删除/改名，
- * 然后立刻把库切回动手前。返回的是更新后的成果元数据。
+ * 把这一轮的写操作暂存起来：导出 after，然后立刻把库切回动手前。
+ *
+ * 做法是「整库两份字节」：before 就是快照本身，after 另存一份。
+ * 比对新增 / 删除 / 改名由 agent 轮次结束时算好的 diff 提供，
+ * 所以这里只负责暂存与回退，不重复扫表。
  */
-export async function stageAiTurn(id: string, ops: SnapOp[], note: string): Promise<SnapMeta | null> {
+export async function stageAiTurn(
+  id: string,
+  ops: SnapOp[],
+  note: string,
+): Promise<SnapMeta | null> {
   const db = getDbInstance();
   const sql = getSql();
   if (!db || !sql) return null;
@@ -419,27 +224,14 @@ export async function stageAiTurn(id: string, ops: SnapOp[], note: string): Prom
   // 全是失败的工具调用时库没变，不必生成一张空成果
   if (sameBytes(beforeBytes, afterBytes)) return null;
 
-  const beforeDb = new sql.Database(beforeBytes);
-  const afterDb = new sql.Database(afterBytes);
-  let diff: SnapDiff;
-  try {
-    diff = diffSnapshots(beforeDb, afterDb);
-  } finally {
-    beforeDb.close();
-    afterDb.close();
-  }
-
-  const afterId = newId('pend');
-  await store.put(afterId, afterBytes);
-
   // 元数据要趁「改之后」的库还在时读：快照字节是写元数据之前导出的，
   // 切回 before 之后那份库里还没有这条快照，readMeta 会找不到它。
   const list = readMeta();
   const i = list.findIndex((s) => s.id === id);
-  if (i < 0) {
-    await store.del(afterId);
-    return null;
-  }
+  if (i < 0) return null;
+
+  const afterId = newId('pend');
+  await store.put(afterId, afterBytes);
 
   // 先换回动手前的库，再写元数据：这样随后的 flushPersist 落盘的是「没改过」的状态
   const next = new sql.Database(beforeBytes);
@@ -453,7 +245,6 @@ export async function stageAiTurn(id: string, ops: SnapOp[], note: string): Prom
     ops,
     review: 'pending',
     afterId,
-    ...diff,
   };
   list[i] = staged;
   writeMeta(list);
@@ -512,21 +303,36 @@ export async function renamePendingRecord(
   if (!bytes) return null;
   const db = new sql.Database(bytes);
   try {
-    db.run(`UPDATE ${TABLE_OF[kind]} SET ${UPDATE_COL[kind]} = ? WHERE id = ?`, [clean, recordId]);
+    if (kind === 'person') db.run('UPDATE persons SET display_name = ? WHERE id = ?', [clean, recordId]);
+    else if (kind === 'event') db.run('UPDATE events SET title = ? WHERE id = ?', [clean, recordId]);
+    else db.run('UPDATE collections SET name = ? WHERE id = ?', [clean, recordId]);
     await store.put(meta.afterId, new Uint8Array(db.export()));
   } finally {
     db.close();
   }
-  const patch = (list: SnapRecordRef[] | undefined) =>
-    list?.map((r) => (r.kind === kind && r.id === recordId ? { ...r, name: clean } : r));
+
   const list = readMeta();
   const i = list.findIndex((s) => s.id === snapId);
   if (i < 0) return null;
+  const diff = list[i].diff;
   const next: SnapMeta = {
     ...list[i],
-    ...(list[i].added ? { added: patch(list[i].added) } : {}),
-    ...(list[i].deleted ? { deleted: patch(list[i].deleted) } : {}),
-    ...(list[i].renamed ? { renamed: patch(list[i].renamed) } : {}),
+    ...(diff
+      ? {
+          diff: {
+            ...diff,
+            created: diff.created.map((r) =>
+              r.kind === kind && r.id === recordId ? { ...r, name: clean } : r,
+            ),
+            updated: diff.updated.map((r) =>
+              r.kind === kind && r.id === recordId ? { ...r, name: clean } : r,
+            ),
+            deleted: diff.deleted.map((r) =>
+              r.kind === kind && r.id === recordId ? { ...r, name: clean } : r,
+            ),
+          },
+        }
+      : {}),
   };
   list[i] = next;
   writeMeta(list);
@@ -555,7 +361,49 @@ export function hasPendingSnapshot(): boolean {
   return readMeta().some((s) => s.review === 'pending');
 }
 
-/** 超量就扔最旧的。保留最新的 MAX_SNAPS 个，且总字节不超上限 */async function prune(store: SnapBytes, list: SnapMeta[]): Promise<void> {
+
+/**
+ * 回写快照的操作记录。
+ *
+ * 快照是在动手**之前**拍的，那时还不知道这一轮要干什么，所以摘要只能等
+ * 轮次结束后补。AI 干完活调这个函数，把「到底改了什么」写进元数据。
+ * 只改元数据，不动字节——字节是恢复用的，必须保持原样。
+ */
+export function patchSnapshotOps(
+  id: string,
+  ops: SnapOp[],
+  note?: string,
+): SnapMeta | null {
+  const list = readMeta();
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return null;
+  const next: SnapMeta = {
+    ...list[i],
+    ...(ops.length ? { ops } : {}),
+    ...(note ? { note } : {}),
+  };
+  list[i] = next;
+  writeMeta(list);
+  flushPersist();
+  bump();
+  return next;
+}
+
+/** 回写 diff 结果（增删改分组） */
+export function patchSnapshotDiff(id: string, diff: SnapDiff): SnapMeta | null {
+  const list = readMeta();
+  const i = list.findIndex((s) => s.id === id);
+  if (i < 0) return null;
+  const next: SnapMeta = { ...list[i], diff };
+  list[i] = next;
+  writeMeta(list);
+  flushPersist();
+  bump();
+  return next;
+}
+
+/** 超量就扔最旧的。保留最新的 MAX_SNAPS 个，且总字节不超上限 */
+async function prune(store: SnapBytes, list: SnapMeta[]): Promise<void> {
   let keep = list.slice(0, MAX_SNAPS);
   let total = keep.reduce((s, x) => s + x.bytes, 0);
   while (keep.length > 1 && total > MAX_TOTAL_BYTES) {
@@ -587,9 +435,16 @@ export function fmtSnapTime(iso: string): string {
  * 目标是「扫一眼就知道 AI 干了什么」，所以挑每个工具最有信息量的那个参数：
  * 建人物报名字、记事件报标题、改东西报改的是谁。拿不到有用参数就退到工具名。
  */
-export function describeOp(tool: string, args: Record<string, unknown>, ok: boolean): string {
+export function describeOp(
+  tool: string,
+  args: Record<string, unknown>,
+  ok: boolean,
+  data?: unknown,
+): string {
   if (!ok) return `${tool} 失败`;
   const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  // 工具返回的结果行（删除类工具现在会把被删对象的名字带回来）
+  const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
   // 取第一个有内容的字符串参数，兜底用
   const firstStr = (): string => {
     for (const v of Object.values(args)) {
@@ -605,14 +460,25 @@ export function describeOp(tool: string, args: Record<string, unknown>, ok: bool
   if (tool === 'person.create') return name ? `新建人物「${name}」` : '新建人物';
   if (tool === 'person.update') return '修改人物资料';
   if (tool === 'person.setAttr') return `设置属性 ${s(args.key) || ''}`.trim();
-  if (tool === 'person.archive' || tool === 'person.restore') return id ? `${tool === 'person.archive' ? '归档' : '恢复'}人物 ${id}` : (tool === 'person.archive' ? '归档人物' : '恢复人物');
+  if (tool === 'person.archive' || tool === 'person.restore') {
+    const nm = s(row?.displayName);
+    const verb = tool === 'person.archive' ? '归档人物' : '恢复人物';
+    return nm ? `${verb}「${nm}」` : (id ? `${verb} ${id}` : verb);
+  }
   if (tool === 'person.merge') return '合并重复人物';
   if (tool === 'person.applyTemplate') return `套用模板 ${s(args.templateId) || ''}`.trim();
-  if (tool === 'person.hardDelete') return '彻底删除人物';
+  if (tool === 'person.hardDelete') {
+    const nm = s(row?.displayName);
+    return nm ? `彻底删除人物「${nm}」` : '彻底删除人物';
+  }
 
   if (tool === 'event.create') return name ? `记事件「${name}」` : '记一条事件';
   if (tool === 'event.update') return '修改事件';
-  if (tool === 'event.delete' || tool === 'event.purge') return tool === 'event.purge' ? '彻底删除事件' : '删除事件';
+  if (tool === 'event.delete' || tool === 'event.purge') {
+    const nm = s(row?.title);
+    const verb = tool === 'event.purge' ? '彻底删除事件' : '删除事件';
+    return nm ? `${verb}「${nm}」` : verb;
+  }
   if (tool === 'event.restore') return '恢复事件';
   if (tool === 'event.setPrivate') return args.on ? '标记事件为隐私' : '取消事件隐私标记';
 
@@ -626,12 +492,18 @@ export function describeOp(tool: string, args: Record<string, unknown>, ok: bool
   if (tool === 'collection.addMember') return '往事件集里加事件';
   if (tool === 'collection.removeMember') return '从事件集移出事件';
   if (tool === 'collection.move') return '移动事件集';
-  if (tool === 'collection.delete') return '删除事件集';
+  if (tool === 'collection.delete') {
+    const nm = s(row?.name);
+    return nm ? `删除事件集「${nm}」` : '删除事件集';
+  }
   if (tool === 'collection.restore') return '恢复事件集';
   if (tool === 'collection.setPrivate') return args.on ? '标记事件集为隐私' : '取消事件集隐私标记';
 
   if (tool === 'file.rename') return name ? `文件改名为「${name}」` : '重命名文件';
-  if (tool === 'file.delete') return '删除文件';
+  if (tool === 'file.delete') {
+    const nm = s(row?.name);
+    return nm ? `删除附件「${nm}」` : '删除文件';
+  }
   if (tool === 'file.setPrivate') return args.on ? '标记文件为隐私' : '取消文件隐私标记';
   if (tool === 'file.transferRefs') return '转移文件引用';
 
