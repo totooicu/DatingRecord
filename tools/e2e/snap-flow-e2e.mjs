@@ -16,8 +16,12 @@ const FAKE = process.env.FAKE ?? 'http://localhost:8791/v1';
 const b = await chromium.launch();
 const p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
 p.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 160)));
-p.on('console', (m) => {
-  if (m.type() === 'error') console.log('[console]', m.text().slice(0, 160));
+// 警告不是 error，但「渲染 A 时改 B」这类信号往往就是 bug 的苗头，一并抓下来
+p.on('console', async (m) => {
+  if (m.type() !== 'error' && m.type() !== 'warning') return;
+  const loc = m.location();
+  console.log(`[console/${m.type()}]`, m.text().slice(0, 400));
+  if (loc?.url) console.log(`    at ${loc.url}:${loc.lineNumber}:${loc.columnNumber}`);
 });
 
 const step = async (label, fn) => {
@@ -130,14 +134,31 @@ const opened = await p.evaluate(() => ({
 }));
 console.log('\n点开后：', JSON.stringify(opened));
 
+// 按返回键：应该原路回到那份成果详情，而不是被丢回人物列表
+await step('按返回键', async () => {
+  await p.locator('.back-btn').first().click();
+  await p.waitForTimeout(1800);
+});
+const back = await p.evaluate(() => ({
+  modalTitle: document.querySelector('.modal .aichat-snap-detail-title')?.textContent?.trim() ?? '',
+  onTab: document.querySelector('.aichat-tab-on')?.textContent?.trim() ?? '',
+  head: document.querySelector('.page-head-title')?.textContent?.trim() ?? '',
+}));
+console.log('返回后：', JSON.stringify(back));
+await p.locator('.modal-mask').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+await p.waitForTimeout(500);
+
 // 回成果页，拒绝其中一项改动，看它是否被还原
 await step('回到成果页', async () => {
-  await p.locator('.tabbar-item', { hasText: '设置' }).click();
-  await p.waitForTimeout(400);
-  await p.locator('.settings-nav-item', { hasText: '功能体验' }).click();
-  await p.waitForTimeout(400);
-  await p.locator('.settings-hub-item', { hasText: 'AI 对话' }).click();
-  await p.waitForTimeout(600);
+  // 上一步按返回键已经直接回到 AI 对话页了；不在就从底部导航进去
+  if ((await p.locator('.aichat-tab').count()) === 0) {
+    await p.locator('.tabbar-item', { hasText: '设置' }).click();
+    await p.waitForTimeout(400);
+    await p.locator('.settings-nav-item', { hasText: '功能体验' }).click();
+    await p.waitForTimeout(400);
+    await p.locator('.settings-hub-item', { hasText: 'AI 对话' }).click();
+    await p.waitForTimeout(600);
+  }
   await p.locator('.aichat-tab', { hasText: '成果' }).click();
   await p.waitForTimeout(700);
 });
@@ -176,5 +197,31 @@ const after = await p.evaluate(() => {
   }));
 });
 console.log('拒绝后：', JSON.stringify(after));
+
+// 事件走的是「时间线 + 弹窗」，没有返回键，靠点设置 tab 回成果
+await step('关掉弹窗，点开新增组里的事件', async () => {
+  await p.locator('.modal-head .icon-btn').first().click().catch(() => {});
+  await p.waitForTimeout(500);
+  await p.locator('.aichat-snap-main').first().click();
+  await p.waitForTimeout(1200);
+  await p.locator('.aichat-diff-created .aichat-target').nth(1).click();
+  await p.waitForTimeout(1800);
+});
+console.log('事件跳转后：', JSON.stringify(await p.evaluate(() => ({
+  head: document.querySelector('.page-head-title')?.textContent?.trim() ?? '',
+  modal: document.querySelector('.modal-head h3')?.textContent?.trim() ?? '',
+}))));
+
+await step('关掉事件弹窗，点底部「设置」', async () => {
+  await p.locator('.modal-head .icon-btn').first().click().catch(() => {});
+  await p.waitForTimeout(600);
+  await p.locator('.tabbar-item', { hasText: '设置' }).click();
+  await p.waitForTimeout(1500);
+});
+console.log('点设置后：', JSON.stringify(await p.evaluate(() => ({
+  modalTitle: document.querySelector('.modal .aichat-snap-detail-title')?.textContent?.trim() ?? '',
+  onTab: document.querySelector('.aichat-tab-on')?.textContent?.trim() ?? '',
+  head: document.querySelector('.page-head-title')?.textContent?.trim() ?? '',
+}))));
 
 await b.close();

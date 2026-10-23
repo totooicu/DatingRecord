@@ -288,6 +288,26 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 
 ---
 
+## 1.10 成果详情 ↔ 对象详情页的往返（来路记忆）
+
+成果详情是弹窗，里面点「P1 / E1 / Es1」会切到真实详情页，弹窗所在的设置页随之卸载。跳过去容易，**回来难**——以前只能重走 设置 → 功能体验 → AI 对话 → 成果 → 点开，多数人走到一半就放弃了。
+
+约定：`src/ui/snapReturn.ts` 存一个**内存态**的 pending snapId（刷新即失效，不必持久化），三段接力：
+
+| 环节 | 位置 | 做什么 |
+|---|---|---|
+| 记 | `LabAiSection` 的 `DiffChip` / `SnapTargetChips` | 跳转前 `setSnapReturn(snapId)`；删除类只弹「删前内容」小窗，不离开本页，不记 |
+| 回 | `App.backToList` | 有 pending 时返回键进设置页，而不是丢回列表 |
+| 落 | `Settings` 初始 sub / `LabAiSection` 挂载 | 前者有 pending 时直落 `labAi`；后者 `takeSnapReturn()` 切到「成果」并重开那份详情 |
+
+**清掉的时机**：用户自己关掉成果详情、点了「接受」或「放弃」，`clearSnapReturn()` 结束回程。注意要放在 `window.confirm` **之后**——否则用户点取消也会把来路清掉，再看一眼对象就回不来了。
+
+事件走的是「时间线 + 弹窗」，没有返回键，靠点底部「设置」回；人物/事件集走详情页，按返回键回。两条路都必须能回到原成果。
+
+另：`Timeline` 以前在**渲染期间**直接调父组件的 `onOpened`（App 的 `setJumpEventId(null)`），触发 React 的「渲染 A 时改 B」警告。这类"通知父层"的回调一律放 `useEffect`，渲染期间只改自己的 state。
+
+---
+
 # 第二部分 · 功能规格
 
 ## 2.0 优先级总览

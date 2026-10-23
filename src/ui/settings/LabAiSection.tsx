@@ -79,6 +79,7 @@ import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
 import { AiSection } from './AiSection';
 import { setNavGuard } from '../navGuard';
+import { clearSnapReturn, setSnapReturn, takeSnapReturn } from '../snapReturn';
 import { showToast } from '../toast';
 
 interface Item {
@@ -237,13 +238,16 @@ function targetsIn(s: SnapMeta): SnapTarget[] {
  */
 import type { SnapDiffItem } from '../../core/snapshots';
 
-function DiffChip({ item, onPreview, checked, onToggle }: {
+function DiffChip({ item, onPreview, checked, onToggle, snapId }: {
   item: SnapDiffItem;
   onPreview?: (t: SnapTarget) => void;
   checked: boolean;
   onToggle: () => void;
+  /** 这份成果的 id：点开对象详情前记住它，回来能原样回到这份成果 */
+  snapId?: string;
 }) {
   const open = () => {
+    // 删除类只弹「删前内容」的小窗，不离开本页，不需要记来路
     if (item.before && onPreview) {
       onPreview({
         kind: item.kind,
@@ -253,6 +257,8 @@ function DiffChip({ item, onPreview, checked, onToggle }: {
       });
       return;
     }
+    // 跳到真实详情页前记一下来路：否则看完就回不到这份成果了
+    if (snapId) setSnapReturn(snapId);
     if (item.kind === 'person') openPerson(item.id);
     else if (item.kind === 'event') openEvent(item.id);
     else openCollection(item.id);
@@ -270,7 +276,12 @@ function DiffChip({ item, onPreview, checked, onToggle }: {
   );
 }
 
-function SnapTargetChips({ targets, onPreviewDeleted }: { targets: SnapTarget[]; onPreviewDeleted?: (t: SnapTarget) => void }) {
+function SnapTargetChips({ targets, onPreviewDeleted, snapId }: {
+  targets: SnapTarget[];
+  onPreviewDeleted?: (t: SnapTarget) => void;
+  /** 成果列表里点结果也会跳走，同样记住来路 */
+  snapId?: string;
+}) {
   if (!targets.length) return null;
   return (
     <div className="aichat-targets">
@@ -280,11 +291,12 @@ function SnapTargetChips({ targets, onPreviewDeleted }: { targets: SnapTarget[];
         // 带 snapshot 的是删除类 target：对象已软删，点开展示删前存下的内容，不跳详情
         const open = t.snapshot
           ? () => onPreviewDeleted?.(t)
-          : t.kind === 'person'
-            ? () => openPerson(t.id)
-            : t.kind === 'event'
-              ? () => openEvent(t.id)
-              : () => openCollection(t.id);
+          : () => {
+              if (snapId) setSnapReturn(snapId);
+              if (t.kind === 'person') openPerson(t.id);
+              else if (t.kind === 'event') openEvent(t.id);
+              else openCollection(t.id);
+            };
         return (
           <button key={`${t.kind}:${t.id}`} type="button" className="aichat-target" onClick={open} title={t.snapshot ? `查看「${t.name}」删除前内容` : `打开「${t.name}」`}>
             {t.kind === 'person' ? (
@@ -364,6 +376,17 @@ export function LabAiSection() {
 
   const reloadSnaps = () => setSnaps(listSnapshots());
   const reloadSessions = () => setSessions(listSessions());
+
+  // 从成果详情点某个对象跳出去看过，回到本页时原样把那份成果打开——
+  // 否则用户看完人物详情就「回不来」了，得重新点四层才能接着处理。
+  useEffect(() => {
+    const back = takeSnapReturn();
+    if (!back) return;
+    setSnaps(listSnapshots());
+    setTab('snap');
+    const meta = listSnapshots().find((x) => x.id === back);
+    if (meta) setSnapDetail(meta);
+  }, []);
 
   // 打开成果详情时现算一次净变化：快照里存的是 AI 干完活那一刻的结果，
   // 之后用户自己又改了数据（或又让 AI 做了一轮），这里要反映的是当前状态。
@@ -680,6 +703,7 @@ export function LabAiSection() {
 
   const rollback = async (id: string) => {
     if (!window.confirm('拒绝这次改动？\n数据会回退到 AI 动手之前。当前状态会自动留底，踩错了还能再退回来。')) return;
+    clearSnapReturn();
     await restoreSnapshot(id);
     bump();
     reloadSnaps();
@@ -689,6 +713,7 @@ export function LabAiSection() {
 
   const removeSnap = async (id: string) => {
     if (!window.confirm('确认接受这次改动？\n接受后这条成果记录会被关掉，数据保留不变。')) return;
+    clearSnapReturn();
     await deleteSnapshot(id);
     reloadSnaps();
   };
@@ -720,6 +745,7 @@ export function LabAiSection() {
       setRejected(new Set());
       reloadSnaps();
       setSnapDetail(null);
+      clearSnapReturn();
       showToast('已拒绝选中的改动');
     } catch (e) {
       showToast('操作失败：' + (e instanceof Error ? e.message : String(e)));
@@ -1101,7 +1127,7 @@ export function LabAiSection() {
                           ) : null}
                         </span>
                       </button>
-                      <SnapTargetChips targets={targetsIn(s)} onPreviewDeleted={setPreviewTarget} />
+                      <SnapTargetChips targets={targetsIn(s)} onPreviewDeleted={setPreviewTarget} snapId={s.id} />
                     </div>
                     <span className="aichat-snap-ops">
                       <button className="aichat-linkbtn" onClick={() => removeSnap(s.id)}>
@@ -1145,7 +1171,14 @@ export function LabAiSection() {
       )}
 
       {snapDetail && (
-        <Modal title="成果详情" onClose={() => setSnapDetail(null)} wide>
+        <Modal
+          title="成果详情"
+          onClose={() => {
+            setSnapDetail(null);
+            clearSnapReturn();
+          }}
+          wide
+        >
           <div className="aichat-snap-detail">
             <p className="aichat-snap-detail-title">{snapTitle(snapDetail)}</p>
             <p className="muted small">
@@ -1160,7 +1193,7 @@ export function LabAiSection() {
                     <div className="aichat-diff-head">新增 {snapDetail.diff.created.length}</div>
                     <div className="aichat-diff-items">
                       {snapDetail.diff.created.map((t) => (
-                        <DiffChip key={`c:${t.id}`} item={t} 
+                        <DiffChip key={`c:${t.id}`} item={t} snapId={snapDetail.id}
                           checked={!rejected.has(`created:${t.id}`)}
                           onToggle={() => toggleReject(`created:${t.id}`)} />
                       ))}
@@ -1172,7 +1205,7 @@ export function LabAiSection() {
                     <div className="aichat-diff-head">修改 {snapDetail.diff.updated.length}</div>
                     <div className="aichat-diff-items">
                       {snapDetail.diff.updated.map((t) => (
-                        <DiffChip key={`u:${t.id}`} item={t} 
+                        <DiffChip key={`u:${t.id}`} item={t} snapId={snapDetail.id}
                           checked={!rejected.has(`updated:${t.id}`)}
                           onToggle={() => toggleReject(`updated:${t.id}`)} />
                       ))}
@@ -1184,7 +1217,7 @@ export function LabAiSection() {
                     <div className="aichat-diff-head">删除 {snapDetail.diff.deleted.length}</div>
                     <div className="aichat-diff-items">
                       {snapDetail.diff.deleted.map((t) => (
-                        <DiffChip key={`d:${t.id}`} item={t}  onPreview={setPreviewTarget}
+                        <DiffChip key={`d:${t.id}`} item={t} snapId={snapDetail.id} onPreview={setPreviewTarget}
                           checked={!rejected.has(`deleted:${t.id}`)}
                           onToggle={() => toggleReject(`deleted:${t.id}`)} />
                       ))}
