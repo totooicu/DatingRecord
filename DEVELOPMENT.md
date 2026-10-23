@@ -30,6 +30,17 @@
 
 理由：单人（或极小团队）+ AI 辅助开发的场景，长期分支的维护成本远大于收益。
 
+**合并回 main 的硬性规则（与 `CLAUDE.md` 铁律五一致）**
+
+> 用户 2026-10-23 立规：**在不与 main 冲突的前提下合并；一旦冲突，解决自己的分支，main 慎重改动。**
+
+- 合并前先 `git fetch origin --prune`，确认远端真实状态；
+- **先在自己分支上合 main**，冲突在自己分支解决；main 侧代码一行不改；
+- 只允许 `git merge --ff-only`，禁止在 main 上 rebase / reset / amend / 手改代码；
+- 冲突时**以 main 为准**：main 改动优先，自己改名/挪位适配；无法两全则停手报告用户裁决；
+- 合并前后各跑一次 `npm run build` + `npm run build:cli`；
+- 合并后删掉功能分支（本地 + 远端）。
+
 **提交规范：Conventional Commits**
 
 | 类型 | 用途 |

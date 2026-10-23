@@ -18,6 +18,33 @@
 - `data/`、`attachments/`、`*.db` 等运行时数据已进 `.gitignore`，不入库。
 - 删除操作一律软删除，附件按引用计数清理（见架构文档第 11 节）。
 
+## 铁律五：合并回 main —— main 只许前进，冲突只能改自己
+
+用户 2026-10-23 明确立规：**在不与 main 冲突的前提下合并；一旦冲突，解决自己的分支，main 慎重改动。**
+
+合并前必做（缺一不可）：
+
+1. `git fetch origin --prune` —— 先看远端真实状态，不看本地缓存。
+2. 比对改动文件：`git diff --name-only origin/main...HEAD` 与 `git log --stat origin/main..HEAD`，确认无重叠。
+3. **先在本分支合 main**（`git merge origin/main`），冲突在本分支内解决；main 侧代码一行不改。
+4. 本分支构建通过后才准合并：`npm run build` + `npm run build:cli` 全绿。
+5. 合并方式只允许 `git merge --ff-only`。**禁止在 main 上 rebase / reset / amend / 手改代码**；`--ff-only` 失败即说明 main 已前移，退回第 3 步，不许加 `--no-ff` 硬合。
+
+冲突原则（按优先级）：
+
+| 情况 | 做法 |
+|---|---|
+| main 改了我也改了的同一处 | **以 main 为准**，我的改动改名/挪位/重写适配，绝不反向覆盖 main |
+| main 新增的字段/导出/方法与我重名 | 我的改名为 `xxxForLab` / `xxxV2` 之类，main 侧保持原样 |
+| main 删了我依赖的东西 | 我在自己分支里补一层适配或另起实现，不恢复 main 已删内容 |
+| 实在无法两全 | **停手报告用户**，不擅自改 main；把冲突破法和两个方案讲清楚，由用户裁决 |
+
+收尾：
+
+- 合并成功 → `git push origin main` → 校验 `git rev-parse main origin/main` 一致 → 再跑一次构建确认。
+- 合并后删除已并入的功能分支（本地 + 远端），main 保持干净。
+- 若 main 推送被拒（远端已被人推新提交），**不 force**；重新 fetch，回到第 3 步。
+
 ## 铁律四：每个新功能都要给 AI 留调用接口
 
 用户明确要求过的约定：**新增能力时必须同时让 AI / CLI 能调用**。
