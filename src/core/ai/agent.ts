@@ -6,14 +6,16 @@
 // 安全设计：
 //   · 每轮第一次调**写库**工具前，自动拍一份整库快照（source='ai'）。
 //     模型一顿操作之后整体不对，用户一键就能回到它动手之前——
-//     这比「相信模型不会写错」可靠得多。
+//     这比「相信模型不会写错」可靠得多。轮次一结束（正常收尾 / 报错 /
+//     被中止都算），这一轮具体调了什么会翻译成人话回写进快照元数据，
+//     快照列表因此能概括每份备份对应哪次操作，点开还能逐条看。
 //   · 轮数有上限（默认 8），防止模型陷入「调用→报错→再调用」的死循环烧钱。
 //   · 单个工具结果超长会截断，避免把上下文撑爆。
 
 import { chat, type ToolCall } from './client';
 import type { AiMessage, AiModel } from './types';
 import { callTool, findTool, toolSchemas, toolCatalogText } from '../tools';
-import { createSnapshot } from '../snapshots';
+import { createSnapshot, patchSnapshotOps, describeOp, summarizeOps, type SnapOp } from '../snapshots';
 
 /** 对话里的一条。tool 角色是喂回去的工具结果 */
 export type AgentMessage =
@@ -49,6 +51,8 @@ export interface AgentTurnResult {
   /** 本轮自动拍的快照 id（没写库则为 null）——UI 拿它提供「回退本轮」 */
   snapshotId: string | null;
   usedTools: string[];
+  /** 本轮每次工具调用的人话记录，回写进快照元数据，也供 UI 展示 */
+  ops: SnapOp[];
   rounds: number;
   /** 被中止 / 触顶时没有最终回复 */
   aborted: boolean;
@@ -128,82 +132,102 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
   const maxRounds = opts.maxRounds ?? 8;
   const messages: AgentMessage[] = [...opts.history];
   const usedTools: string[] = [];
+  const ops: SnapOp[] = [];
   let snapshotId: string | null = null;
   let rounds = 0;
   let aborted = false;
 
   const tools = toolSchemas();
 
-  for (;;) {
-    if (signal?.aborted) {
-      aborted = true;
-      break;
-    }
-    rounds += 1;
-    onEvent?.({ type: 'round', n: rounds });
-    if (rounds > maxRounds) {
-      messages.push({
-        role: 'assistant',
-        content: `（已连续调用 ${maxRounds} 轮工具，先停在这里。可以把上一步的结果告诉我，我们继续。）`,
-      });
-      break;
-    }
-
-    let reply;
-    try {
-      reply = await chat(model, { messages: toWire(messages), tools, signal });
-    } catch (err) {
+  try {
+    for (;;) {
       if (signal?.aborted) {
         aborted = true;
         break;
       }
-      const message = err instanceof Error ? err.message : String(err);
-      onEvent?.({ type: 'error', message });
-      return { messages, snapshotId, usedTools, rounds, aborted: false, error: message };
-    }
+      rounds += 1;
+      onEvent?.({ type: 'round', n: rounds });
+      if (rounds > maxRounds) {
+        messages.push({
+          role: 'assistant',
+          content: `（已连续调用 ${maxRounds} 轮工具，先停在这里。可以把上一步的结果告诉我，我们继续。）`,
+        });
+        break;
+      }
 
-    if (reply.toolCalls?.length) {
-      messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
-
-      for (const tc of reply.toolCalls) {
+      let reply;
+      try {
+        reply = await chat(model, { messages: toWire(messages), tools, signal });
+      } catch (err) {
         if (signal?.aborted) {
           aborted = true;
           break;
         }
-        let args: Record<string, unknown> = {};
-        try {
-          const parsed = JSON.parse(tc.arguments || '{}') as unknown;
-          args = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-        } catch {
-          args = { _raw: tc.arguments };
-        }
-        onEvent?.({ type: 'tool_start', name: tc.name, args });
-
-        // 本轮第一次写库前自动备份：一个快照覆盖整轮，回退时一步到位
-        const def = findTool(tc.name);
-        if (def?.mutating && snapshotId === null) {
-          try {
-            const snap = await createSnapshot('ai', `AI 操作前自动备份（${tc.name}）`);
-            snapshotId = snap?.id ?? null;
-          } catch {
-            snapshotId = null; // 备份失败不阻断操作，但 UI 上就看不到回退入口
-          }
-          onEvent?.({ type: 'snapshot', id: snapshotId });
-        }
-
-        const out = await callTool(tc.name, args);
-        usedTools.push(tc.name);
-        const text = truncateResult(JSON.stringify(out));
-        onEvent?.({ type: 'tool_end', name: tc.name, ok: out.ok, preview: preview(text) });
-        messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: text });
+        const message = err instanceof Error ? err.message : String(err);
+        onEvent?.({ type: 'error', message });
+        return { messages, snapshotId, usedTools, ops, rounds, aborted: false, error: message };
       }
-      if (aborted) break;
-      continue;
-    }
 
-    messages.push({ role: 'assistant', content: reply.content });
-    return { messages, snapshotId, usedTools, rounds, aborted: false };
+      if (reply.toolCalls?.length) {
+        messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
+
+        for (const tc of reply.toolCalls) {
+          if (signal?.aborted) {
+            aborted = true;
+            break;
+          }
+          let args: Record<string, unknown> = {};
+          try {
+            const parsed = JSON.parse(tc.arguments || '{}') as unknown;
+            args = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+          } catch {
+            args = { _raw: tc.arguments };
+          }
+          onEvent?.({ type: 'tool_start', name: tc.name, args });
+
+          // 本轮第一次写库前自动备份：一个快照覆盖整轮，回退时一步到位
+          const def = findTool(tc.name);
+          if (def?.mutating && snapshotId === null) {
+            try {
+              const snap = await createSnapshot('ai', `AI 操作前自动备份（${tc.name}）`);
+              snapshotId = snap?.id ?? null;
+            } catch {
+              snapshotId = null; // 备份失败不阻断操作，但 UI 上就看不到回退入口
+            }
+            onEvent?.({ type: 'snapshot', id: snapshotId });
+          }
+
+          const out = await callTool(tc.name, args);
+          usedTools.push(tc.name);
+          const text = truncateResult(JSON.stringify(out));
+          // 记一条人话操作：快照列表靠它概括「这一轮到底改了什么」，
+          // 出错也记——失败的操作同样是这轮发生的事，详情页里要看得见
+          ops.push({
+            tool: tc.name,
+            text: describeOp(tc.name, args, out.ok),
+            ok: out.ok,
+            // 错误原因截断：meta 表要能塞下，详情里看个开头就够定位了
+            ...(out.ok ? {} : { err: out.error.slice(0, 200) }),
+            at: new Date().toISOString(),
+          });
+          onEvent?.({ type: 'tool_end', name: tc.name, ok: out.ok, preview: preview(text) });
+          messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: text });
+        }
+        if (aborted) break;
+        continue;
+      }
+
+      messages.push({ role: 'assistant', content: reply.content });
+      return { messages, snapshotId, usedTools, ops, rounds, aborted: false };
+    }
+  } finally {
+    // 快照是动手**之前**拍的，拍的时候还不知道这一轮要干什么，
+    // 所以「做了什么」只能等轮次结束（正常收尾 / 报错 / 被中止）再回写。
+    // 只改元数据，不动字节——字节是恢复用的，必须保持原样。
+    if (snapshotId && ops.length) {
+      patchSnapshotOps(snapshotId, ops, summarizeOps(ops));
+    }
   }
 
-  return { messages, snapshotId, usedTools, rounds, aborted: true };
+  return { messages, snapshotId, usedTools, ops, rounds, aborted: true };
 }

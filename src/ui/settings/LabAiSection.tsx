@@ -31,10 +31,19 @@ import {
   previewOf,
   type Attachment,
 } from '../../core/ai/attach';
-import { deleteSnapshot, listSnapshots, restoreSnapshot, fmtSnapTime, fmtBytes } from '../../core/snapshots';
+import {
+  deleteSnapshot,
+  listSnapshots,
+  restoreSnapshot,
+  fmtSnapTime,
+  fmtBytes,
+  summarizeOps,
+  type SnapMeta,
+} from '../../core/snapshots';
 import type { StoredFile } from '../../core/repo/files';
 import { Modal } from '../common';
 import { FilesSection } from '../files';
+import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
 
 interface Item {
@@ -133,6 +142,27 @@ function AttachmentChips({
   );
 }
 
+/** 快照来源的人话标签 */
+const SNAP_SRC: Record<SnapMeta['source'], string> = {
+  manual: '手动',
+  ai: 'AI',
+  cli: 'CLI',
+  auto: '自动',
+};
+
+/**
+ * 快照列表的主标题：概括这份快照对应的那次操作。
+ *
+ * 有 ops（AI 轮次结束回写的）就用人话概括，比如「新建人物「林小满」、记 2 条事件」；
+ * 没有就退到备注，再没有就按来源说「AI 自动备份」。扫一眼就知道每份快照是干什么的，
+ * 不用点开猜。
+ */
+function snapTitle(s: SnapMeta): string {
+  if (s.ops?.length) return summarizeOps(s.ops);
+  if (s.note) return s.note;
+  return `${SNAP_SRC[s.source] ?? ''}备份`.replace(/^备份$/, '快照');
+}
+
 export function LabAiSection() {
   const [models] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState<string>(() => getDefaultModel()?.alias ?? listModels()[0]?.alias ?? '');
@@ -145,6 +175,8 @@ export function LabAiSection() {
   const [err, setErr] = useState<string | null>(null);
   const [snaps, setSnaps] = useState(() => listSnapshots());
   const [snapOpen, setSnapOpen] = useState(false);
+  /** 正在看详情的快照（点列表项弹出：这一轮到底做了什么） */
+  const [snapDetail, setSnapDetail] = useState<SnapMeta | null>(null);
   const [libOpen, setLibOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
@@ -352,12 +384,26 @@ export function LabAiSection() {
             <ul className="aichat-snap-list">
               {snaps.slice(0, 8).map((s) => (
                 <li key={s.id}>
-                  <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
-                  <span className="aichat-snap-src">{s.source}</span>
-                  <span className="aichat-snap-meta">
-                    {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
-                  </span>
-                  <span className="aichat-snap-note">{s.note ?? ''}</span>
+                  {/* 整块可点：点开看「这一轮具体做了什么」。恢复/删除是另一组按钮，
+                      点它们别触发详情——所以详情用单独的一块，不包住操作按钮 */}
+                  <button
+                    type="button"
+                    className="aichat-snap-main"
+                    onClick={() => setSnapDetail(s)}
+                    title="查看这份快照对应的具体操作"
+                  >
+                    <span className="aichat-snap-title">{snapTitle(s)}</span>
+                    <span className="aichat-snap-sub">
+                      <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
+                      <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
+                      <span className="aichat-snap-meta">
+                        {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
+                      </span>
+                      {s.ops?.length ? (
+                        <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
+                      ) : null}
+                    </span>
+                  </button>
                   <span className="aichat-snap-ops">
                     <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
                       恢复
@@ -371,6 +417,40 @@ export function LabAiSection() {
             </ul>
           )}
         </div>
+      )}
+
+      {/* 快照详情：逐条列出这一轮调了什么工具、成没成、几点干的。
+          AI 轮次结束后 ops 会回写进快照元数据，所以这里能看到的不只是
+          「有一份备份」，而是「备份之前 AI 到底动了什么」。 */}
+      {snapDetail && (
+        <Modal title="快照详情" onClose={() => setSnapDetail(null)} wide>
+          <div className="aichat-snap-detail">
+            <p className="aichat-snap-detail-title">{snapTitle(snapDetail)}</p>
+            <p className="muted small">
+              {fmtSnapTime(snapDetail.createdAt)} · {SNAP_SRC[snapDetail.source] ?? snapDetail.source} ·{' '}
+              {snapDetail.persons} 人 / {snapDetail.events} 事件 / {fmtBytes(snapDetail.bytes)}
+            </p>
+            {snapDetail.ops?.length ? (
+              <ul className="aichat-op-list">
+                {snapDetail.ops.map((o, i) => (
+                  <li key={i} className={o.ok ? 'aichat-op' : 'aichat-op aichat-op-bad'}>
+                    <span className="aichat-op-mark">{o.ok ? '✓' : '✗'}</span>
+                    <span className="aichat-op-text">{o.text}</span>
+                    <span className="aichat-op-side">
+                      <span className="aichat-op-tool">{o.tool}</span>
+                      <span className="aichat-op-time">{fmtSnapTime(o.at)}</span>
+                    </span>
+                    {!o.ok && o.err && <span className="aichat-op-err">{o.err}</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted small">
+                这份快照没有记录具体操作（手动拍的，或是早于操作记录功能之前拍的）。
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
 
       {models.length === 0 && (
@@ -396,7 +476,12 @@ export function LabAiSection() {
         {items.map((it, i) => (
           <div key={i} className={`aichat-item aichat-${it.kind}`}>
             {it.attachments && it.attachments.length > 0 && <AttachmentChips atts={it.attachments} />}
-            <div className="aichat-bubble">{it.text}</div>
+            {/* 气泡内容按 Markdown 渲染：模型的回复天生带标题/列表/代码块，
+                当纯文本显示就是把 ** 和 # 原样甩给用户。安全性由 core/markdown
+                （marked 解析 + DOMPurify 白名单）保证，这里只管展示。 */}
+            <div className="aichat-bubble">
+              <MarkdownView source={it.text} />
+            </div>
             {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
             {it.snapshotId && (
               <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
