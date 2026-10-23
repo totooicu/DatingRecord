@@ -11,7 +11,7 @@
 //
 // 用户数据在 IndexedDB，SW 完全不碰。
 
-const CACHE = 'dating-record-2026-10-23T23-09-15-143Z';
+const CACHE = 'dating-record-2026-10-23T23-24-20-769Z';
 const VERSION_URL = './version.json';
 
 // 数据库引擎专用桶：名字固定，不随构建版本变化。
@@ -84,6 +84,25 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// 导航请求带超时的网络请求：保证「发版后第一次刷新」就能拿到新的 index.html
+// （cache-first 会先返回旧壳，用户得刷新两次才看得到更新）。断网或网络太慢时
+// 立刻退回缓存，不至于卡住白屏。
+function fetchIndex(req) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), 2500);
+    fetch(req, { cache: 'no-cache' }).then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -129,22 +148,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 导航请求：cache-first，后台检查更新
+  // 导航请求：网络优先（2.5s 超时），失败再退回缓存。
+  // 之前是 cache-first，发版后用户要刷新两次才能看到新版本。
   if (req.mode === 'navigate') {
     event.respondWith(
-      caches.match('./index.html').then((cached) => {
-        if (cached) {
-          checkVersion();
-          return cached;
-        }
-        return fetch(req, { cache: 'no-cache' }).then((res) => {
+      (async () => {
+        try {
+          const res = await fetchIndex(req);
           if (res && res.status === 200) {
             const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put('./index.html', copy));
+            const cache = await caches.open(CACHE);
+            await cache.put('./index.html', copy);
+            checkVersion();
+            return res;
           }
-          return res;
-        });
-      }),
+          throw new Error('bad status');
+        } catch {
+          const cached = await caches.match('./index.html');
+          if (cached) {
+            checkVersion();
+            return cached;
+          }
+          return fetch(req, { cache: 'no-cache' });
+        }
+      })(),
     );
     return;
   }
