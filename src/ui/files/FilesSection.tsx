@@ -14,6 +14,7 @@ import { MergeModal } from './MergeModal';
 import { FileBatchBar } from './FileBatchBar';
 import { FileFilters } from './FileFilters';
 import { FileRefsModal } from './FileRefsModal';
+import { MappingModal } from './MappingModal';
 import { FileRow } from './FileRow';
 import { useThumbs } from './useThumbs';
 import { useUploader } from './useUploader';
@@ -35,6 +36,7 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const [batch, setBatch] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
+  const [mappingOpen, setMappingOpen] = useState(false);
 
   const visible = useMemo(() => applyFilter(files, filter, sort), [files, filter, sort]);
   const selectedVisible = visible.filter((f) => selected.has(f.id));
@@ -92,6 +94,9 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
       <div className="row-actions">
         <button className="btn btn-primary btn-sm" onClick={openPicker} disabled={busy}>
           {busy ? '处理中…' : '＋ 上传文件'}
+        </button>
+        <button className="btn btn-sm" onClick={() => setMappingOpen(true)} disabled={busy}>
+          ＋ 添加映射文件
         </button>
         <span className="muted small">
           {visible.length === files.length
@@ -180,6 +185,20 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
           onDone={(m) => {
             setSelected(new Set());
             setTip(m);
+          }}
+        />
+      )}
+      {mappingOpen && (
+        <MappingModal
+          onClose={() => setMappingOpen(false)}
+          onSaved={(text) => {
+            setTip(text);
+            bump();
+          }}
+          onSaveEntity={(file) => {
+            // 下载好的实体走正常上传：判重、顺延序号、落 IndexedDB 都不另起一套
+            setMappingOpen(false);
+            void upload([file]);
           }}
         />
       )}

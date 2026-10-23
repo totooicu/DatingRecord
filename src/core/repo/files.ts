@@ -30,6 +30,13 @@ export interface StoredFile {
   createdAt: string;
   /** 隐私：开启隐私模式后默认隐藏 */
   isPrivate: boolean;
+  /** 非空 = 映射文件：库里只存这个链接，二进制不落 IndexedDB */
+  sourceUrl: string;
+}
+
+/** 映射文件？库里只有链接，没有二进制 */
+export function isMappingFile(f: StoredFile): boolean {
+  return !!f.sourceUrl;
 }
 
 interface FileRow {
@@ -42,6 +49,8 @@ interface FileRow {
   hash_shared: number | null;
   created_at: string;
   is_private: number;
+  /** 非空 = 映射文件，库里不存二进制 */
+  source_url: string | null;
 }
 
 function fromRow(r: FileRow): StoredFile {
@@ -56,12 +65,13 @@ function fromRow(r: FileRow): StoredFile {
     hashShared: Number(r.hash_shared ?? 0) === 1,
     createdAt: r.created_at ?? '',
     isPrivate: Number(r.is_private ?? 0) === 1,
+    sourceUrl: r.source_url || '',
   };
 }
 
 export function listFiles(): StoredFile[] {
   return queryAll<FileRow>(
-    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
+    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private, source_url FROM attachments
        ${isPrivacyMode() ? "WHERE is_private = 0" : ''}
      ORDER BY created_at DESC`,
   ).map(fromRow);
@@ -69,7 +79,7 @@ export function listFiles(): StoredFile[] {
 
 export function getFile(id: string): StoredFile | null {
   const r = queryOne<FileRow>(
-    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments WHERE id = ?',
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private, source_url FROM attachments WHERE id = ?',
     [id],
   );
   return r ? fromRow(r) : null;
@@ -101,6 +111,48 @@ export async function insertFileRaw(input: RawFileInput): Promise<StoredFile> {
   return getFile(id)!;
 }
 
+/** 映射文件：只落一条元数据 + 链接，不写 IndexedDB 二进制 */
+export interface MappedFileInput {
+  name: string;
+  sourceUrl: string;
+  storedId: string;
+  mime: string;
+  /** 远端大小（探测/下载时知道才填；不知道就 0） */
+  size?: number;
+  sha256?: string;
+}
+
+export function insertMappedFile(input: MappedFileInput): StoredFile {
+  const id = newId('f');
+  const now = new Date().toISOString();
+  transact(() => {
+    run(
+      `INSERT INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared, source_url)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id,
+        input.storedId,
+        input.sha256 ?? '',
+        input.mime,
+        input.name,
+        '',
+        input.size ?? 0,
+        null,
+        now,
+        0,
+        input.sourceUrl,
+      ],
+    );
+    appendOplog('attachment', id, 'insert', {
+      name: input.name,
+      mime: input.mime,
+      storedId: input.storedId,
+      sourceUrl: input.sourceUrl,
+    });
+  });
+  return getFile(id)!;
+}
+
 /** 改引用名（迁移/合并用）；正文里已有的旧引用需要调用方自己替换 */
 export function setStoredId(id: string, storedId: string, hashShared?: boolean): void {
   transact(() => {
@@ -125,7 +177,7 @@ export function setFileHash(id: string, sha256: string): void {
 export function filesByHash(sha256: string): StoredFile[] {
   if (!sha256) return [];
   return queryAll<FileRow>(
-    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
+    `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private, source_url FROM attachments
      WHERE sha256 = ? AND hash_shared = 0 ORDER BY created_at ASC`,
     [sha256],
   ).map(fromRow);
@@ -142,12 +194,12 @@ export function fileByStoredId(key: string): StoredFile | null {
   if (!k) return null;
   const r =
     queryOne<FileRow>(
-      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
+      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private, source_url FROM attachments
        WHERE stored_id = ? ORDER BY created_at ASC LIMIT 1`,
       [k],
     ) ??
     queryOne<FileRow>(
-      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments
+      `SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private, source_url FROM attachments
        WHERE id = ? LIMIT 1`,
       [k],
     );
@@ -167,7 +219,7 @@ export function resolveFileIds(keys: string[]): Record<string, string> {
 /** 所有引用名占用情况（挑新名字时用） */
 export function nameSlots(excludeId?: string): { storedId: string; hashShared: boolean; id: string }[] {
   return queryAll<FileRow>(
-    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private FROM attachments',
+    'SELECT id, stored_id, name, mime, size, sha256, hash_shared, created_at, is_private, source_url FROM attachments',
   )
     .map(fromRow)
     .filter((f) => f.id !== excludeId)
@@ -281,8 +333,10 @@ export function countRefs(file: StoredFile | string): number {
   return eventsReferencingFile(file).length;
 }
 
-/** 渲染用：拿到可放进 <img src> 的 objectURL */
-export function urlForFile(id: string): Promise<string | null> {
+/** 渲染用：拿到可放进 <img src> 的地址。映射文件直接返回源链接 */
+export async function urlForFile(id: string): Promise<string | null> {
+  const mapped = getFile(id);
+  if (mapped?.sourceUrl) return mapped.sourceUrl;
   return objectUrlFor(id);
 }
 

@@ -146,6 +146,14 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 10;
   }
+  if (v < 11) {
+    // 映射文件（v11）：attachments.source_url 非空表示「只存链接，不存二进制」。
+    // 不做任何回填：老附件都是实体文件，source_url 自然是 NULL。
+    if (!hasColumn(d, 'attachments', 'source_url')) {
+      d.run(`ALTER TABLE attachments ADD COLUMN source_url TEXT`);
+    }
+    v = 11;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);
