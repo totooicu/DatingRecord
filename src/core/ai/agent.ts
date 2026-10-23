@@ -15,7 +15,7 @@
 import { chat, type ToolCall } from './client';
 import type { AiMessage, AiModel } from './types';
 import { callTool, findTool, toolSchemas, toolCatalogText } from '../tools';
-import { createSnapshot, patchSnapshotOps, describeOp, summarizeOps, type SnapOp } from '../snapshots';
+import { createSnapshot, patchSnapshotOps, describeOp, summarizeOps, type SnapOp, type SnapTarget } from '../snapshots';
 
 /** 对话里的一条。tool 角色是喂回去的工具结果 */
 export type AgentMessage =
@@ -126,6 +126,30 @@ function truncateResult(json: string): string {
   return `${json.slice(0, MAX_TOOL_CHARS)}…（结果过长已截断，原始长度 ${json.length} 字符）`;
 }
 
+/**
+ * 从建对象的工具结果里取出「做成了什么」。
+ *
+ * 只认 person.create / event.create / collection.create——这些是用户最想直接看到
+ * 名字、点头像就能跳过去看详情的结果。改、删不产出新对象，列表里仍用文字概括。
+ */
+function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): SnapTarget[] {
+  if (tool !== 'person.create' && tool !== 'event.create' && tool !== 'collection.create') return [];
+  const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
+  const id = typeof row?.id === 'string' ? row.id : '';
+  if (!id) return [];
+  const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  if (tool === 'person.create') {
+    const name = s(row?.displayName) || s(args.displayName);
+    return name ? [{ kind: 'person', id, name }] : [];
+  }
+  if (tool === 'event.create') {
+    const name = s(row?.title) || s(args.title);
+    return name ? [{ kind: 'event', id, name }] : [];
+  }
+  const name = s(row?.name) || s(args.name);
+  return name ? [{ kind: 'collection', id, name }] : [];
+}
+
 /** 跑一轮：模型可以调多次工具，直到它给出最终文本回复 */
 export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
   const { model, signal, onEvent } = opts;
@@ -200,12 +224,14 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
           const out = await callTool(tc.name, args);
           usedTools.push(tc.name);
           const text = truncateResult(JSON.stringify(out));
+          const targets = out.ok ? targetsOf(tc.name, args, out.data) : [];
           // 记一条人话操作：快照列表靠它概括「这一轮到底改了什么」，
           // 出错也记——失败的操作同样是这轮发生的事，详情页里要看得见
           ops.push({
             tool: tc.name,
             text: describeOp(tc.name, args, out.ok),
             ok: out.ok,
+            ...(targets.length ? { targets } : {}),
             // 错误原因截断：meta 表要能塞下，详情里看个开头就够定位了
             ...(out.ok ? {} : { err: out.error.slice(0, 200) }),
             at: new Date().toISOString(),

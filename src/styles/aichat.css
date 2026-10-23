@@ -766,13 +766,22 @@
 
 .aichat-snap-list li {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   font-size: 12px;
   line-height: 1.6;
 }
 
-/* 主区是一整块按钮：概括标题 + 一行元信息，点开看这份快照对应的具体操作 */
+/* 标题 + 具体结果合成一块；操作按钮（恢复 / 删除）留在右侧 */
+.aichat-snap-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 主区是一整块按钮：概括标题 + 一行元信息，点开看这份成果对应的具体操作 */
 .aichat-snap-main {
   flex: 1;
   min-width: 0;
@@ -834,11 +843,68 @@
   color: var(--primary-dark);
 }
 
+/* 具体结果：人名 + 头像 / 事件集图标 / 事件名，一个对象一颗小胶囊 */
+.aichat-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 6px 4px;
+}
+
+.aichat-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px 2px 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.aichat-target:hover {
+  border-color: var(--primary);
+}
+
+/* 头像压成 20px，胶囊高度才不会被撑到 30px 以上 */
+.aichat-target .avatar,
+.aichat-target .coll-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  font-size: 11px;
+}
+
+.aichat-target-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 事件没有头像，用一个小方块代替，和人物 / 事件集保持同一节奏 */
+.aichat-target-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .aichat-snap-ops {
   display: inline-flex;
   gap: 10px;
   margin-left: auto;
   flex: 0 0 auto;
+  padding-top: 4px;
 }
 
 /* ---------- 历史会话列表 ---------- */
@@ -968,6 +1034,15 @@
   color: var(--danger);
   font-size: 11px;
   word-break: break-all;
+}
+
+/* 具体结果排在操作文字下方，和正文左对齐 */
+.aichat-op-targets {
+  grid-column: 2 / -1;
+}
+
+.aichat-op-targets .aichat-targets {
+  padding: 2px 0 0;
 }
 
 @media (max-width: 640px) {

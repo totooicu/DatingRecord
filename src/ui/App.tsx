@@ -18,6 +18,7 @@ import { getEvent } from '../core/repo/events';
 import { setEventOpener } from './openEvent';
 import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
+import { setCollectionOpener } from './openCollection';
 import { canLeave } from './navGuard';
 import type { TabKey } from './icons';
 
@@ -73,6 +74,15 @@ export default function App() {
       setView({ k: 'detail', s: 'persons', id });
     });
     return () => setPersonOpener(null);
+  }, []);
+
+  // AI 成果里点事件集结果 → 切到事件集并打开它的详情
+  useEffect(() => {
+    setCollectionOpener((id) => {
+      setCollectionId(id);
+      setView({ k: 'detail', s: 'collections', id });
+    });
+    return () => setCollectionOpener(null);
   }, []);
 
   // 首次进入自动选中第一项，避免宽屏右侧空白
