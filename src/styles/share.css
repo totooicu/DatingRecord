@@ -258,9 +258,13 @@
   flex: 1;
   min-width: 0;
   font-size: 13.5px;
+  /* 事件名经常一屏放不下，允许两行；超过两行才省略，别一行就切掉 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 
 .share-pick-name em {
@@ -466,8 +470,35 @@
   gap: 8px;
   padding: 5px 8px;
   border-radius: 7px;
-  cursor: pointer;
   font-size: 13px;
+}
+
+/* 勾选和名称一块儿点，右边的「查看」不能跟着切勾选，所以拆成 div + label */
+.share-event-pick-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.share-event-pick-main input[type='checkbox'] {
+  margin-top: 2px;
+}
+
+/* 时间挪到标题下面：名字能多占一列宽度，长标题才放得下两行 */
+.share-event-pick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.share-event-pick-text .share-pick-name {
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .share-event-pick:nth-child(odd) {
@@ -619,4 +650,86 @@
 
 .share-event-row.share-row-btn:hover {
   background: #f4f2ef;
+}
+
+/* 预览里的事件名同样两行，右侧留一枚箭头表明可以点开 */
+.share-event-row {
+  align-items: flex-start;
+}
+
+.share-event-row strong {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.share-row-caret {
+  flex: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+/* 预览里的事件集变成可点的胶囊 */
+.share-tree-row {
+  font: inherit;
+  cursor: pointer;
+}
+
+.share-tree-row:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+/* ---------- 事件集详情 ---------- */
+
+.share-colpeek {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-colpeek-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.share-colpeek-name em {
+  font-style: normal;
+}
+
+/* 事件集详情：标签列留宽一点，「子事件集」四个字不用折行 */
+.share-colpeek .share-view-label {
+  width: 56px;
+}
+
+.share-colpeek .share-view-row > span:not(.share-view-label):not(.share-colpeek-tags) {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-colpeek-tags,
+.share-colpeek-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.share-colpeek-events-title {
+  margin-top: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.share-peek-note {
+  margin: 12px 0 0;
 }

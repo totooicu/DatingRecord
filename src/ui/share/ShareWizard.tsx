@@ -15,11 +15,19 @@ import {
   personsInCollections,
   type ShareOptions,
 } from '../../core/io';
-import { getTree, type TreeNode } from '../../core/repo/collections';
+import {
+  getBreadcrumb,
+  getCollection,
+  getTree,
+  listChildren,
+  listSmartEvents,
+  type TreeNode,
+} from '../../core/repo/collections';
 import { listDefs, listPersons } from '../../core/repo/persons';
 import { formatTime } from '../../core/time';
 import {
   SHARE_LEVELS,
+  type Collection,
   type DREvent,
   type Person,
   type ShareFile,
@@ -30,6 +38,13 @@ import { Modal } from '../common';
 import { EventView } from '../event/EventView';
 import { Avatar } from '../persons/Avatar';
 import { showToast } from '../toast';
+import {
+  ChatPreview,
+  ColPeekModal,
+  RepoEventPeek,
+  ruleTextOf,
+  type ColPeekData,
+} from './SharePeeks';
 
 const STEPS = ['事件集', '人物', '程度', '预览'];
 
@@ -74,6 +89,77 @@ function attrsOf(p: Person, defs: ReturnType<typeof listDefs>) {
   });
 }
 
+const STATUS_TEXT: Record<Collection['status'], string> = {
+  ongoing: '进行中',
+  finished: '已完成',
+  archived: '已归档',
+};
+
+/** 本库的事件集详情：事件按当前勾选状态标出「不分享」 */
+function repoColPeek(id: string, excluded: Set<string>): ColPeekData | null {
+  const c = getCollection(id);
+  if (!c) return null;
+  return {
+    name: c.name,
+    smart: c.kind === 'smart',
+    path: getBreadcrumb(id)
+      .filter((x) => !x.isRoot && x.id !== id)
+      .map((x) => x.name)
+      .join(' / '),
+    description: c.description,
+    ruleText: ruleTextOf(c),
+    statusLabel: STATUS_TEXT[c.status] ?? c.status,
+    isPrivate: c.isPrivate,
+    children: listChildren(id).map((x) => x.name),
+    events: eventsOfCollections([id]).map((e) => ({ event: e, off: excluded.has(e.id) })),
+  };
+}
+
+/** 预览里的事件集详情：只能看打包带走的那些事件与子集 */
+function shareColPeek(c: Collection, share: ShareFile): ColPeekData {
+  const byId = new Map(share.collections.map((x) => [x.id, x]));
+  const path: string[] = [];
+  let p = c.parentId ? byId.get(c.parentId) : null;
+  while (p) {
+    if (!p.isRoot) path.unshift(p.name);
+    p = p.parentId ? byId.get(p.parentId) : null;
+  }
+
+  // 子集 + 直接挂在本集合上的事件；智能集合没有成员行，事件得按规则现算再和包内事件取交集
+  const ids = new Set([c.id]);
+  const stack = [c.id];
+  while (stack.length) {
+    const cur = stack.pop() as string;
+    for (const x of share.collections) {
+      if (x.parentId === cur && !ids.has(x.id)) {
+        ids.add(x.id);
+        stack.push(x.id);
+      }
+    }
+  }
+  const eventIds = new Set(
+    share.members
+      .filter((m) => m.memberType === 'event' && ids.has(m.collectionId))
+      .map((m) => m.memberId),
+  );
+  for (const x of share.collections) {
+    if (!ids.has(x.id) || x.kind !== 'smart') continue;
+    for (const e of listSmartEvents(x)) eventIds.add(e.id);
+  }
+
+  return {
+    name: c.name,
+    smart: c.kind === 'smart',
+    path: path.join(' / '),
+    description: c.description,
+    ruleText: ruleTextOf(c),
+    statusLabel: STATUS_TEXT[c.status] ?? c.status,
+    isPrivate: c.isPrivate,
+    children: share.collections.filter((x) => x.parentId === c.id).map((x) => x.name),
+    events: share.events.filter((e) => eventIds.has(e.id)).map((e) => ({ event: e })),
+  };
+}
+
 export function ShareWizard({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(1);
   const [colIds, setColIds] = useState<string[]>([]);
@@ -90,6 +176,9 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [personView, setPersonView] = useState<Person | null>(null);
   const [eventView, setEventView] = useState<DREvent | null>(null);
+  /** 事件集详情：repo = 挑选阶段看本库，share = 预览阶段看包内 */
+  const [colPeek, setColPeek] = useState<{ data: ColPeekData; from: 'repo' | 'share' } | null>(null);
+  const [repoEventPeek, setRepoEventPeek] = useState<DREvent | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -225,6 +314,22 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
       else next.add(id);
       return next;
     });
+  };
+
+  const openRepoCol = (id: string) => {
+    const data = repoColPeek(id, excluded);
+    if (data) setColPeek({ data, from: 'repo' });
+  };
+
+  const openShareCol = (c: Collection) => {
+    if (!preview) return;
+    setColPeek({ data: shareColPeek(c, preview), from: 'share' });
+  };
+
+  // 详情弹窗里点事件：挑事件阶段看本库原文，预览阶段看裁剪后的那份
+  const peekEvent = (e: DREvent) => {
+    if (colPeek?.from === 'share') setEventView(e);
+    else setRepoEventPeek(e);
   };
 
   const canNext = step !== 1 || colIds.length > 0;
@@ -369,6 +474,13 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
                         </label>
                         <span className="muted small">{row.eventCount} 个事件</span>
                         {implied && <span className="share-pick-tag">随上级</span>}
+                        <button
+                          className="btn btn-sm share-expand"
+                          onClick={() => openRepoCol(row.id)}
+                          title="看看这个事件集里都有什么"
+                        >
+                          详情
+                        </button>
                         {root && (group?.events.length ?? 0) > 0 && (
                           <button
                             className="btn btn-sm share-expand"
@@ -398,14 +510,25 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
                           {group.events.map((e) => {
                             const on = !excluded.has(e.id);
                             return (
-                              <label
+                              <div
                                 key={e.id}
                                 className={on ? 'share-event-pick' : 'share-event-pick share-event-off'}
                               >
-                                <input type="checkbox" checked={on} onChange={() => toggleEvent(e.id)} />
-                                <span className="share-pick-name">{e.title || '未命名事件'}</span>
-                                <span className="muted small">{formatTime(e.time)}</span>
-                              </label>
+                                <label className="share-event-pick-main">
+                                  <input type="checkbox" checked={on} onChange={() => toggleEvent(e.id)} />
+                                  <span className="share-event-pick-text">
+                                    <span className="share-pick-name">{e.title || '未命名事件'}</span>
+                                    <span className="muted small">{formatTime(e.time)}</span>
+                                  </span>
+                                </label>
+                                <button
+                                  className="btn btn-sm share-expand"
+                                  onClick={() => setRepoEventPeek(e)}
+                                  title="看这个事件的正文"
+                                >
+                                  查看
+                                </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -573,17 +696,20 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
                   <h4>事件集</h4>
                   <div className="share-tree">
                     {preview.collections.map((c) => (
-                      <span
+                      <button
                         key={c.id}
+                        type="button"
                         className={
                           preview.collectionIds?.includes(c.id)
                             ? 'share-tree-row share-tree-root'
                             : 'share-tree-row'
                         }
+                        onClick={() => openShareCol(c)}
+                        title="查看事件集详情"
                       >
                         {c.name}
                         {c.kind === 'smart' && <em title="智能集合">⚡</em>}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 </section>
@@ -600,6 +726,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
                       >
                         <strong>{e.title || '未命名事件'}</strong>
                         <span className="muted small">{formatTime(e.time)}</span>
+                        <span className="share-row-caret">›</span>
                       </button>
                     ))}
                     {preview.events.length === 0 && <p className="muted small">没有事件。</p>}
@@ -651,6 +778,17 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
 
         {error && <div className="alert alert-err">{error}</div>}
       </Modal>
+
+      {/* ---- 事件集详情：挑事件和预览都能点开，事件行还能继续往下看正文 ---- */}
+      {colPeek && (
+        <ColPeekModal
+          data={colPeek.data}
+          onClose={() => setColPeek(null)}
+          onEvent={peekEvent}
+        />
+      )}
+
+      {repoEventPeek && <RepoEventPeek event={repoEventPeek} onClose={() => setRepoEventPeek(null)} />}
 
       {/* ---- 预览里的两个放大镜：资料 / 事件 ---- */}
       {personView && (
@@ -738,22 +876,12 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
             missingTitle="（未包含在分享里）"
             body={
               eventView.viewMode === 'chat' && viewMessages.length > 0 ? (
-                <div className="share-chat-preview">
-                  {viewMessages.map((m) =>
-                    m.type === 'divider' ? (
-                      <div key={m.id} className="share-chat-div">
-                        {m.body}
-                      </div>
-                    ) : (
-                      <div key={m.id} className="share-chat-msg">
-                        <strong>
-                          {preview.persons.find((p) => p.id === m.personId)?.displayName ?? '旁白'}
-                        </strong>
-                        <span>{m.body}</span>
-                      </div>
-                    ),
-                  )}
-                </div>
+                <ChatPreview
+                  messages={viewMessages}
+                  nameOf={(id) =>
+                    preview.persons.find((p) => p.id === id)?.displayName ?? '旁白'
+                  }
+                />
               ) : undefined
             }
           />
