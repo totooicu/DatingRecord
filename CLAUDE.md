@@ -12,17 +12,29 @@
 - 不要提交空提交（脚本会自动跳过无变更的情况）。
 - 提交信息由脚本自动生成（时间戳 + 变更文件清单）；重大里程碑可手动改写为更清晰的 message 后再提交。
 - 推送失败时不要中断对话，如实告知用户原因即可（改动已安全保存在本地提交）。
+- **提交位置受铁律五约束**：业务改动一律提交在**任务分支**上，不直接提交 `main`。脚本会提交并推送当前分支，所以开工先建分支，收工前确认 `git branch --show-current` 是预期分支。例外：宪法类文档修订（`CLAUDE.md` / `DEVELOPMENT.md` 的规则条目）允许直接提交 `main`。
 
 ## 铁律二：不覆盖用户数据
 
 - `data/`、`attachments/`、`*.db` 等运行时数据已进 `.gitignore`，不入库。
 - 删除操作一律软删除，附件按引用计数清理（见架构文档第 11 节）。
 
-## 铁律五：合并回 main —— main 只许前进，冲突只能改自己
+## 铁律五：一任务一分支，验证通过才合并，main 只许前进
 
-用户 2026-10-23 明确立规：**在不与 main 冲突的前提下合并；一旦冲突，解决自己的分支，main 慎重改动。**
+用户 2026-10-23 立规，两条一起执行：
 
-合并前必做（缺一不可）：
+> **① 每次修改都应该创建新的分支，分支任务完成且没有问题后再与 main 分支合并。**
+> **② 不与 main 冲突的前提下合并；一旦冲突，解决自己的分支，main 慎重改动。**
+
+**分支与门禁（缺一不可）：**
+
+1. **开工先建分支**：`git fetch origin` → `git switch -c feat/<简短名> origin/main`。任何改动（含 bugfix、文档、样式微调）都不得直接在 `main` 上提交。
+2. 分支内可自由提交；`main` 保持随时可发布。
+3. 任务完成 + **本地构建全绿** + 自测通过 → 才允许合并：`npm run build` + `npm run build:cli`。
+4. **不走 PR**（2026-10-23 用户确认）：本仓库不创建 Pull Request、不等待 CI 通过才合并，直接本地合并。因此**本地构建就是唯一门禁**，跳过构建直接合并视同违规。
+5. 合并后立即删除该分支（本地 + 远端）。
+
+**合并前必做（缺一不可）：**
 
 1. `git fetch origin --prune` —— 先看远端真实状态，不看本地缓存。
 2. 比对改动文件：`git diff --name-only origin/main...HEAD` 与 `git log --stat origin/main..HEAD`，确认无重叠。
@@ -101,5 +113,6 @@
 - 远程仓库：已配置 `origin → git@github.com:totooicu/DatingRecord.git`，`git-sync.sh` 会自动推送。
 - **网络**：沙箱到 github.com 的 **HTTPS 与 SSH(22/443) 均可用**（2026-10-20 实测：HTTPS clone 成功、SSH 认证成功）。远程按约定走 SSH：`ssh-ed25519` 密钥在 `~/.ssh/id_ed25519_github`，`~/.ssh/config` 已指定。
 - **密钥随沙箱重置丢失**：这是常态，不是故障。恢复流程：`ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_github -N ""` → 把 `.pub` 交给用户添加到 GitHub → `ssh -T git@github.com` 验证。不要把私钥贴进对话。
-- **GitHub Actions 状态查不了**：`gh` 未登录（也没有 token），改用公开 API：`curl -s https://api.github.com/repos/totooicu/DatingRecord/actions/runs?per_page=5`，再取 `<run_id>/jobs` 看是哪一步失败。
+- **不用 PR / 不等 CI**：本仓库已摒弃 Pull Request 流程，直接本地合并（见铁律五）。`.github/workflows/ci.yml` 保留但只作兜底，合并门槛是本地 `npm run build` + `npm run build:cli`。
+- **GitHub Actions 状态查不了**：`gh` 未登录（也没有 token），如确需看运行结果，改用公开 API：`curl -s https://api.github.com/repos/totooicu/DatingRecord/actions/runs?per_page=5`，再取 `<run_id>/jobs` 看是哪一步失败。
 - **发布到 Pages**：`bash scripts/deploy-pages.sh`（SSH 需带 `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_github -o IdentitiesOnly=yes"`）。Pages 源是 gh-pages 分支，别用 `actions/deploy-pages`。
