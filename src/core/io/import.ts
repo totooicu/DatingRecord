@@ -33,6 +33,18 @@ export interface ImportResult {
   backupName?: string;
 }
 
+export interface ImportOpts {
+  /**
+   * 替换导入前的备份回调，返回备份名称（给人看）。
+   *
+   * 默认走浏览器下载（exportArchiveToFile）——那是 UI 时代唯一的选择。
+   * 但 CLI / AI 工具里没有 DOM，也没有「下载」这个概念，它们要的是
+   * 落盘快照，所以把这个钩子露出来，由调用方决定备份去哪。
+   * 不传 = 保持老行为（浏览器下载）。
+   */
+  onReplaceBackup?: () => Promise<string>;
+}
+
 /**
  * 按 hlc 合并写入。
  * pk 支持联合主键（如 collection_members 的 collection_id + member_type + member_id），
@@ -61,6 +73,7 @@ function upsertByHlc(
 export async function importLibrary(
   raw: string,
   mode: 'merge' | 'replace',
+  opts: ImportOpts = {},
 ): Promise<ImportResult> {
   const lib = JSON.parse(raw) as LibraryFile;
   if (!lib || typeof lib !== 'object' || !Array.isArray(lib.persons)) {
@@ -77,9 +90,13 @@ export async function importLibrary(
   let backupName: string | undefined;
 
   if (mode === 'replace') {
-    // 危险操作：替换前自动导出一份备份（zip 归档，体积比内联 JSON 小得多）
-    const { exportArchiveToFile } = await import('./archive');
-    backupName = await exportArchiveToFile({ includeAttachments: true });
+    // 危险操作：导入前自动备份。备份形式由调用方定（浏览器下载 / CLI 快照）
+    backupName = opts.onReplaceBackup
+      ? await opts.onReplaceBackup()
+      : await (async () => {
+          const { exportArchiveToFile } = await import('./archive');
+          return exportArchiveToFile({ includeAttachments: true });
+        })();
   }
 
   // 整次导入只记一步撤销：中间几百次 upsert 不该占满撤销栈

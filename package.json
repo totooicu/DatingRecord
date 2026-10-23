@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build && node scripts/bust-sw.mjs",
+    "build:cli": "node scripts/build-cli.mjs",
+    "dr": "node dist-cli/cli.cjs",
     "preview": "vite preview --port 4173 --host"
   },
   "dependencies": {
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@types/aes-js": "^3.1.4",
+    "@types/node": "^26.6.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/sql.js": "^1.4.9",

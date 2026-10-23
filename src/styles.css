@@ -28,5 +28,6 @@
 @import './styles/chat.css';
 @import './styles/sync.css';
 @import './styles/ai.css';
+@import './styles/aichat.css';
 @import './styles/toast.css';
 @import './styles/share.css';

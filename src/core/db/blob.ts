@@ -1,10 +1,46 @@
-// 附件二进制读写（IndexedDB blobs store）。
+// 附件二进制读写（默认 IndexedDB blobs store）。
 //
 // 为什么不放 SQLite：persist() 是「db.export() 整库 → 单个 Uint8Array → 整块写回」，
 // 任何一次编辑都会重传全库。几 MB 的图片塞进去，每次打字都要多传几 MB。
 // 所以库里只留元数据，二进制单独放这里。
+//
+// 存放位置可替换（setBlobStore）：浏览器用 IndexedDB，
+// CLI 没有 IndexedDB，由宿主注入一个落盘的实现。
 
 import { BLOB_STORE, openIdb } from './index';
+
+export interface BlobStore {
+  get(id: string): Promise<Blob | null>;
+  put(id: string, blob: Blob): Promise<void>;
+  del(id: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+let injected: BlobStore | null = null;
+
+export function setBlobStore(s: BlobStore | null): void {
+  injected = s;
+}
+
+export function getBlobStore(): BlobStore | null {
+  return injected;
+}
+
+const idbStore: BlobStore = {
+  async put(id, blob) {
+    await tx('readwrite', (s) => s.put(blob, id));
+  },
+  async get(id) {
+    const r = (await tx('readonly', (s) => s.get(id))) as Blob | undefined;
+    return r ?? null;
+  },
+  async del(id) {
+    await tx('readwrite', (s) => s.delete(id));
+  },
+  async clear() {
+    await tx('readwrite', (s) => s.clear());
+  },
+};
 
 function tx(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest): Promise<unknown> {
   return openIdb().then(
@@ -19,21 +55,20 @@ function tx(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest
 }
 
 export async function putBlob(id: string, blob: Blob): Promise<void> {
-  await tx('readwrite', (s) => s.put(blob, id));
+  await (injected ?? idbStore).put(id, blob);
 }
 
 export async function getBlob(id: string): Promise<Blob | null> {
-  const r = (await tx('readonly', (s) => s.get(id))) as Blob | undefined;
-  return r ?? null;
+  return (injected ?? idbStore).get(id);
 }
 
 export async function delBlob(id: string): Promise<void> {
-  await tx('readwrite', (s) => s.delete(id));
+  await (injected ?? idbStore).del(id);
 }
 
 /** 清空全部附件二进制（重置数据时用） */
 export async function clearBlobs(): Promise<void> {
-  await tx('readwrite', (s) => s.clear());
+  await (injected ?? idbStore).clear();
 }
 
 // ---------------- objectURL ----------------

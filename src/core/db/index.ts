@@ -5,7 +5,7 @@
 // 这里只保留初始化 / 迁移 / 重置，并把公共 API 原样转出——
 // 外部 import '../core/db' 的写法不需要改。
 
-import initSqlJs, { type Database } from 'sql.js';
+import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import { SCHEMA_SQL } from './schema';
 import { IDB_STORE, IDB_KEY, openIdb } from './idb';
 import { getDbInstance, getSql, setDbInstance, setSql } from './state';
@@ -118,19 +118,35 @@ export async function initDb(onProgress?: BootProgress): Promise<Database> {
 
   report('正在读取本地数据…', P_WASM + P_OPEN * 0.35);
   const bytes = await readPlaintextBytes();
-  const db = bytes ? new sql.Database(bytes) : new sql.Database();
-  db.run('PRAGMA foreign_keys = ON');
-  // 先登记实例：migrate 内部要用 queryOne，那时 getDb() 必须已经可用
-  setDbInstance(db);
+  const db = openWith(sql, bytes);
 
-  report('正在准备数据表…', P_WASM + P_OPEN);
-  migrate(db);
   report('就绪', 1);
 
   // 页面隐藏/关闭前尽力落盘，减少丢数据的窗口
   if (typeof window !== 'undefined') {
     window.addEventListener('pagehide', flushPersist);
   }
+  return db;
+}
+
+/**
+ * 用一段二进制打开（或新建）库，登记成当前实例并跑迁移。
+ *
+ * 浏览器和 CLI 共用这一段：区别只在「字节从哪儿来、往哪儿写」
+ * （IndexedDB ↔ 本地文件），而 schema 升级、建表、种子数据必须一模一样，
+ * 否则同一份文件在两边打开会走出不同的结构。
+ *
+ * bytes 为 null = 新建空库。
+ */
+export function openWith(sql: SqlJsStatic, bytes: Uint8Array | null): Database {
+  const db = bytes ? new sql.Database(bytes) : new sql.Database();
+  db.run('PRAGMA foreign_keys = ON');
+  // 先登记实例：migrate 内部要用 queryOne，那时 getDb() 必须已经可用
+  setDbInstance(db);
+  // sql 静态也要登记：恢复快照时要 new sql.Database(bytes)，
+  // 少了这一步 getSql() 是 null，恢复会静默失败
+  setSql(sql);
+  migrate(db);
   return db;
 }
 
@@ -192,7 +208,7 @@ export {
   type UndoStepInfo,
   type UndoOp,
 } from './undoStore';
-export { getDeviceId } from './device';
+export { getDeviceId, overrideDeviceId } from './device';
 export {
   probeEnc,
   getEncStatus,
@@ -208,7 +224,7 @@ export {
   type EncStatus,
 } from './encStore';
 export { getMeta, setMeta } from './meta';
-export { markDirty, flushPersist, persist } from './persist';
+export { markDirty, flushPersist, persist, setPersistSink, type PersistSink } from './persist';
 export { openIdb, BLOB_STORE } from './idb';
 export { SCHEMA_SQL } from './schema';
 export { runMigrations, ensureAttachmentColumns } from './migrate';

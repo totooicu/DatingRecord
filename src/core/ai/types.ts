@@ -117,6 +117,15 @@ export interface AiReply {
   content: string;
   /** 推理过程（部分模型会单独返回 reasoning_content） */
   reasoning?: string;
+  /** 模型要求调用的工具；有它时 content 通常为空 */
+  toolCalls?: {
+    id: string;
+    name: string;
+    /** JSON 字符串 */
+    arguments: string;
+  }[];
+  /** stop / tool_calls / length…，用于判断是不是被长度截断 */
+  finishReason?: string;
   model: string;
   usage?: { prompt: number; completion: number };
   ms: number;

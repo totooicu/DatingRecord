@@ -103,18 +103,34 @@ export interface ChatOpts {
   apiKey?: string;
   /** 生成长度上限；默认取模型的 maxTokens */
   signal?: AbortSignal;
+  /** 工具描述（OpenAI function calling 格式）；给了模型就可能返回 toolCalls */
+  tools?: unknown[];
+  /** auto = 模型自己决定用不用工具（默认） */
+  toolChoice?: 'auto' | 'none';
+}
+
+/** 模型要求调用一次工具 */
+export interface ToolCall {
+  id: string;
+  name: string;
+  /** JSON 字符串（个别厂商返回对象，已统一成字符串） */
+  arguments: string;
 }
 
 /** 用某个别名（模型）发一次对话 */
 export async function chat(m: AiModel, o: ChatOpts): Promise<AiReply> {
   const t0 = Date.now();
-  const body = {
+  const body: Record<string, unknown> = {
     model: m.model,
     messages: o.messages,
     temperature: o.temperature ?? m.temperature,
     max_tokens: o.maxTokens ?? m.maxTokens,
     stream: false,
   };
+  if (o.tools?.length) {
+    body.tools = o.tools;
+    body.tool_choice = o.toolChoice ?? 'auto';
+  }
   const data = (await call(
     `${rootOf(m.provider, m.baseUrl)}/chat/completions`,
     {
@@ -126,15 +142,38 @@ export async function chat(m: AiModel, o: ChatOpts): Promise<AiReply> {
     '调用模型',
   )) as {
     model?: string;
-    choices?: { message?: { content?: string; reasoning_content?: string } }[];
+    choices?: {
+      finish_reason?: string;
+      message?: {
+        content?: string | null;
+        reasoning_content?: string;
+        tool_calls?: { id?: string; function?: { name?: string; arguments?: unknown } }[];
+      };
+    }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 
   const msg = data.choices?.[0]?.message;
   if (!msg) throw new Error('模型没有返回内容');
+
+  // 工具调用参数：规范是 JSON 字符串，但真有厂商给对象。统一成字符串，
+  // 免得后面每个消费方都要写一遍「是字符串还是对象」的判断。
+  const toolCalls: ToolCall[] = (msg.tool_calls ?? [])
+    .map((tc, i) => ({
+      id: tc.id ?? `call_${i}`,
+      name: tc.function?.name ?? '',
+      arguments:
+        typeof tc.function?.arguments === 'string'
+          ? tc.function.arguments
+          : JSON.stringify(tc.function?.arguments ?? {}),
+    }))
+    .filter((tc) => tc.name);
+
   return {
     content: msg.content ?? '',
     reasoning: msg.reasoning_content || undefined,
+    toolCalls: toolCalls.length ? toolCalls : undefined,
+    finishReason: data.choices?.[0]?.finish_reason,
     model: data.model ?? m.model,
     usage: data.usage
       ? { prompt: data.usage.prompt_tokens ?? 0, completion: data.usage.completion_tokens ?? 0 }

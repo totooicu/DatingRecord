@@ -224,18 +224,19 @@
   background: #f5f5f5;
 }
 
-/* 高度给足：工具里上下有两块画布 + 结果网格，太矮就得在 iframe 里滚个不停 */
+/* 高度给足：工具里上下有两块画布 + 结果网格，太矮就得在 iframe 里滚个不停。
+   下面还挂着 AI 对话，所以从 78vh 收到 56vh，一屏能看见两块的开头 */
 .lab-frame-el {
   display: block;
   width: 100%;
-  height: 78vh;
-  min-height: 520px;
+  height: 56vh;
+  min-height: 420px;
   border: 0;
 }
 
 @media (max-width: 640px) {
   .lab-frame-el {
-    height: 70vh;
-    min-height: 420px;
+    height: 62vh;
+    min-height: 380px;
   }
 }

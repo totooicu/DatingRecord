@@ -27,6 +27,9 @@ pnpm preview    # 预览构建产物
 | **备份** | **导出 `.drp.json`（可含附件）**、**合并导入（按 hlc 比较，本地更新不被覆盖）**、**替换导入（自动先备份）** |
 | **坚果云备份** | **增量同步**：库切成 64KB 内容寻址分片，只传云端没有的那几片（改一句话通常只传 1 片）；三方比对（本机没改只下载 / 两边都改先按 hlc 合并再上传）；远端留 10 份历史快照；密钥与凭据不进备份 |
 | **AI 模型** | **按别名管理模型**：别名 + 服务商（硅基流动 / OpenAI 兼容 / Ollama / 自定义）+ 模型名 + 温度/长度；读服务商模型列表、测试连通；密钥按服务商存本机，不进备份 |
+| **AI 对话** | 设置 → 功能体验里的**助手**：多轮思考 + 连续调用工具（查数据 / 建人物 / 记事件 / 整理聊天记录），工具调用全程可见；**每轮第一次写库前自动拍整库快照**，不满意一键回退 |
+| **命令行 CLI** | 同一套能力的命令行入口（`npm run build:cli` 后 `node dist-cli/cli.cjs …`），输出 JSON、可脚本化；写操作同样自动快照。详见 [`docs/cli.md`](docs/cli.md) |
+| **系统快照** | 整库落盘备份（独立于库文件存放），AI / CLI 动手前自动拍；列表、恢复（恢复前再自动留底）、删除，上限 20 份 / 64MB |
 | 隐私与安全 | **应用锁**（口令 + 空闲自动锁）、**本地库加密**（口令 + 恢复码，CTR 密文落 IndexedDB）、**隐私模式**（人物 / 事件集 / 事件 / 文件可逐一标记，开启后全局隐藏） |
 | 设置 | 二级目录 + 分组图标：备份与恢复 / **坚果云备份** / **AI 模型** / **隐私与安全** / **人物与属性** / 归档与回收 / 文件 / **数据与统计**，目录上直接显示锁与加密的状态 |
 | 数据层 | ULID、HLC 混合逻辑时钟、软删除墓碑、oplog 操作日志、fractional index 排序 —— 为将来跨端同步埋好点 |
@@ -92,11 +95,32 @@ src/
 - 密钥存 `meta` 的 `ai.key.<provider>`，不进备份、不进云端快照（与坚果云凭据同一套剔除规则）
 - 模型配置本身进备份并随同步走 —— 换台机器不用重配
 
+## 命令行（CLI）与 AI 工具调用
+
+这个项目的每一项能力都同时在**三个入口**可用：网页 UI、命令行、AI 助手。
+三者共用 `src/core/tools` 里的同一份工具注册表（一个能力只有一份实现），
+所以新增功能时只要在注册表里声明一条 `ToolDef`，CLI 和 AI 自动就能用。
+
+```bash
+npm run build:cli                                  # 构建 dist-cli/cli.cjs
+node dist-cli/cli.cjs tools                        # 看全部工具
+node dist-cli/cli.cjs person.create --displayName 张三
+node dist-cli/cli.cjs event.list --from 2024-01-01
+node dist-cli/cli.cjs snapshot.restore --id snap_xxx   # 回退
+```
+
+- 操作的是普通 SQLite 文件（默认 `./dating-record.sqlite`，`--db` 可改），
+  与网页版数据互通（导出 `.drp.json` 互倒）
+- 写操作前自动拍整库快照，结果里带 `_snapshot` 字段，误操作可整笔退回
+- 输出一律 JSON（stdout），方便 `| jq` 接管道
+- 详细说明：[`docs/cli.md`](docs/cli.md)
+
 ## 文档
 
 - `dating-record-architecture.md` — 架构设计（数据模型、分层、存储）
 - `dating-record-ai-capabilities.md` — AI 能力规划
 - `dating-record-storage-sync.md` — 跨端与同步设计
+- `docs/cli.md` — 命令行用法与工具注册表约定
 - `DEVELOPMENT.md` — 开发手册（流程规范、功能规格、路线图）
 - `CLAUDE.md` — 项目约定
 

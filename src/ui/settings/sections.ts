@@ -42,7 +42,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除', group: 'people' },
   { key: 'files', title: '文件', hint: '正文引用的图片与附件', group: 'people' },
   { key: 'data', title: '数据与统计', hint: '库概览、示例数据与重置', group: 'data' },
-  { key: 'lab', title: '功能体验', hint: '边缘分割等独立小工具', group: 'data' },
+  { key: 'lab', title: '功能体验', hint: 'AI 对话、边缘分割等新功能', group: 'data' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {

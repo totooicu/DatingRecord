@@ -18,6 +18,21 @@
 - `data/`、`attachments/`、`*.db` 等运行时数据已进 `.gitignore`，不入库。
 - 删除操作一律软删除，附件按引用计数清理（见架构文档第 11 节）。
 
+## 铁律四：每个新功能都要给 AI 留调用接口
+
+用户明确要求过的约定：**新增能力时必须同时让 AI / CLI 能调用**。
+
+做法（三入口共用一份实现，不分叉）：
+
+1. 业务逻辑写在 `src/core/repo/`（或对应 core 子模块），UI 直接 import。
+2. 在 `src/core/tools/<分组>.ts` 里加一条 `ToolDef`（name / title / desc / params / mutating / run），
+   `run` 只做「参数收拢 + 结果裁剪」，不重写业务。
+3. 在 `src/core/tools/registry.ts` 的 `TOOLS` 数组里登记（重名会在启动时抛错）。
+4. 会写库的一律 `mutating: true` —— 这决定 AI / CLI 调用前会不会自动拍快照。
+
+这样网页 UI、命令行（`docs/cli.md`）、AI 助手（`src/core/ai/agent.ts`）三条路自动同时获得新能力。
+防误改靠快照：`src/core/snapshots/`，整库落盘、与库文件分开存放，AI/CLI 动手前自动拍。
+
 ## 目录结构
 
 ```

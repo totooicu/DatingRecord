@@ -7,10 +7,13 @@ export const IDB_KEY = 'main.sqlite';
 /** 附件二进制：单独一个 store，key 是附件 id。
  *  绝不把文件塞进 SQLite —— persist() 每次都会 db.export() 重传整库。 */
 export const BLOB_STORE = 'blobs';
+/** 整库快照：恢复用，和附件二进制分开，免得回收附件时误伤 */
+export const SNAP_STORE = 'snaps';
+export const SNAP_PREFIX = 'snap:';
 /** 加密后的整库（启用本地库加密后，主库存的就是它而不是 main.sqlite） */
 export const ENC_KEY = 'main.enc';
-/** v1 只有 files；v2 起新增 blobs（附件二进制） */
-const IDB_VERSION = 2;
+/** v1 只有 files；v2 起新增 blobs（附件二进制）；v3 起新增 snaps（整库快照） */
+const IDB_VERSION = 3;
 
 export function openIdb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -19,6 +22,7 @@ export function openIdb(): Promise<IDBDatabase> {
       const d = req.result;
       if (!d.objectStoreNames.contains(IDB_STORE)) d.createObjectStore(IDB_STORE);
       if (!d.objectStoreNames.contains(BLOB_STORE)) d.createObjectStore(BLOB_STORE);
+      if (!d.objectStoreNames.contains(SNAP_STORE)) d.createObjectStore(SNAP_STORE);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
