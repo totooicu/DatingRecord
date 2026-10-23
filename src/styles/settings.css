@@ -26,9 +26,10 @@
   padding: 14px 14px 8px;
 }
 
-/* AI 对话是满屏工作区，页面头下面那 14px 留白只会让选择条显得悬空 */
+/* AI 对话是满屏工作区，页面头下面那 14px 留白只会让选择条显得悬空。
+   底部 padding 直接给 0：输入框要贴到底部 tabbar，不要 settings-body 的内边距。 */
 .settings-body-tight {
-  padding: 4px;
+  padding: 4px 4px 0;
   display: flex;
   flex-direction: column;
   flex: 1;

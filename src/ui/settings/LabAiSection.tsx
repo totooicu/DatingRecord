@@ -854,11 +854,11 @@ export function LabAiSection() {
               <span className="aichat-subhead-actions">
                 {manage ? (
                   <>
-                    <button className="aichat-linkbtn" onClick={removePicked} disabled={picked.size === 0}>
+                    <button className="aichat-chipbtn aichat-chipbtn-danger" onClick={removePicked} disabled={picked.size === 0}>
                       删除选中{picked.size > 0 ? `（${picked.size}）` : ''}
                     </button>
                     <button
-                      className="aichat-linkbtn aichat-linkbtn-dim"
+                      className="aichat-chipbtn aichat-chipbtn-primary"
                       onClick={() => {
                         setManage(false);
                         setPicked(new Set());
@@ -869,10 +869,10 @@ export function LabAiSection() {
                   </>
                 ) : (
                   <>
-                    <button className="aichat-linkbtn" onClick={() => setManage(true)}>
+                    <button className="aichat-chipbtn" onClick={() => setManage(true)}>
                       批量删除
                     </button>
-                    <button className="aichat-linkbtn" onClick={newSession}>
+                    <button className="aichat-chipbtn aichat-chipbtn-primary" onClick={newSession}>
                       ＋ 新会话
                     </button>
                   </>
