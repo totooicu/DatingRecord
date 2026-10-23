@@ -172,6 +172,16 @@
   max-height: 46vh;
 }
 
+/* 长对话里就地改一句时，弹窗会滚动。编辑器头部（编辑/预览/全屏）
+   跟着吸在顶部，按钮不会滑出视野——不然手机上像是「没有全屏」。 */
+.chat-edit .md-editor-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  padding-bottom: 2px;
+}
+
 .chat-edit-foot {
   display: flex;
   gap: 6px;

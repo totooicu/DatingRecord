@@ -71,7 +71,7 @@ export function FileRow({
     const n = draft.trim();
     if (n && n !== file.name) {
       renameFile(file.id, n);
-      // 引用处显示的是「按 id 现查的名字」，不 bump 的话旧名字会留在屏幕上
+      // 只改元数据里的名字；正文引用靠 id 定位，不重写（方括号里保留旧名字）
       bump();
     } else {
       setDraft(file.name);

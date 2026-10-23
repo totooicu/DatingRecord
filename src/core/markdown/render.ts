@@ -22,12 +22,18 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** 方括号里写的是插入时的文件名；空方括号（老数据）回退到文件库当前名字 */
+function refLabel(raw: string | undefined, nameMap: Record<string, string>, id: string, fallback: string): string {
+  const text = (raw ?? '').replace(/\\([[\]\\])/g, '$1').trim();
+  return text || nameMap[id] || fallback;
+}
+
 /** 抽出正文里所有被引用的文件 id（去重，保持出现顺序） */
 export function extractFileRefs(md: string): string[] {
   const ids: string[] = [];
-  // 匹配 ![alt](file:xxx) 与 [text](file:xxx)
-  // 名字里允许点：内容寻址后引用名是 sha-xxxx.jpg 这种带扩展名的形式
-  const re = /!?\[[^\]]*\]\(\s*file:([A-Za-z0-9._-]+)\s*\)/g;
+  // 匹配 ![名字](file:xxx) 与 [名字](file:xxx)
+  // 方括号里的名字允许转义的 `\]`；名字里允许点（内容寻址后是 sha-xxxx.jpg 这种）
+  const re = /!?\[(?:\\.|[^\\\]])*\]\(\s*file:([A-Za-z0-9._-]+)\s*\)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(md)) !== null) {
     if (!ids.includes(m[1])) ids.push(m[1]);
@@ -51,11 +57,11 @@ function buildMarked(urlMap: Record<string, string>, nameMap: Record<string, str
         if (isFileRef(token.href)) {
           const id = fileIdOf(token.href);
           const url = urlMap[id];
-          // alt 用文件库的当前名字：正文里那串方括号文字可能是改名前的旧名，不可信
-          const alt = escapeHtml(nameMap[id] ?? '');
+          // 方括号里的名字优先（插入时的快照，改名不追着改）；空格子回退到当前名字
+          const label = refLabel(token.text, nameMap, id, '');
           return url
-            ? `<img src="${escapeHtml(url)}" alt="${alt}"${title} class="md-img" loading="lazy" />`
-            : missingFile(nameMap[id] ?? '');
+            ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(label)}"${title} class="md-img" loading="lazy" />`
+            : missingFile(label);
         }
         const text = escapeHtml(token.text ?? '');
         return `<img src="${escapeHtml(token.href)}" alt="${text}"${title} class="md-img" loading="lazy" />`;
@@ -65,11 +71,10 @@ function buildMarked(urlMap: Record<string, string>, nameMap: Record<string, str
         if (isFileRef(token.href)) {
           const id = fileIdOf(token.href);
           const url = urlMap[id];
-          // 链接文字同样取当前名字；正文里写的旧名一律忽略
-          const text = escapeHtml(nameMap[id] ?? '附件');
+          const label = refLabel(token.text, nameMap, id, '附件');
           return url
-            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"${title} class="md-file-link">${text}</a>`
-            : missingFile(nameMap[id] ?? '');
+            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"${title} class="md-file-link">${escapeHtml(label)}</a>`
+            : missingFile(label);
         }
         return `<a href="${escapeHtml(token.href)}" target="_blank" rel="noopener noreferrer"${title}>${token.text ?? ''}</a>`;
       },
@@ -96,8 +101,8 @@ const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
  * @param md 原始 markdown
  * @param urlMap fileId → objectURL。未提供时文件引用渲染成「已删除」占位，
  *               这样异步加载 URL 的过程中页面也不会闪空白。
- * @param nameMap fileId → 当前文件名。文件引用的显示名以此为准，
- *                正文方括号里的文字只当作历史残留，一律忽略。
+ * @param nameMap fileId → 当前文件名。只在方括号为空（老数据）时兜底；
+ *                方括号里写了名字就按正文里的名字显示，改名不会追着改既有引用。
  */
 export function renderMarkdown(
   md: string,

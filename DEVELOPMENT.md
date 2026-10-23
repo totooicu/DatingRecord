@@ -403,7 +403,7 @@ interface SqlDriver {
   `Avatar` 与事件集图标共用 `CollectionIconView`，只是外形保持圆形。
 - **写入口 `setPersonIcon()`**：与 `setCollectionIcon()` 同构，幂等、单独 oplog，`null` 恢复默认。
 - **文件引用一视同仁**：`personsUsingFile()` 同时匹配 `avatar` 与 `icon_json.fileId`；
-  `fileStillReferenced()` 把人物图标算作引用；文件合并/改名时 `rewriteRefs()` 会改写
+  `fileStillReferenced()` 把人物图标算作引用；文件合并时 `rewriteRefs()` 会改写
   人物图标与事件集图标里的 `fileId`，否则源文件一删图标就失效。
 
 ---
@@ -447,6 +447,13 @@ interface SqlDriver {
 - 正文：Markdown，支持图片内联；
 - 附件：存 `attachments` 表，**内容寻址（sha256 命名）**，天然去重；
 - **边界**：删除事件不清空附件（引用计数归零才清理）；附件丢失时 UI 显示占位符而非崩溃。
+- **引用语法**：正文里写 `![文件名](file:<storedId>)` / `[文件名](file:<storedId>)`。
+  方括号里是**用户看到的文件名**（插入时的快照），定位文件只靠括号后的 `storedId`：
+  改名不重写正文，既有引用照旧打开、显示也还是旧名字；只有 `storedId` 变了
+  （合并 / 批量转移 / 迁移）才改写，并把方括号里的名字一起换成新文件的名字。
+  老数据的空方括号 `[](...)` 仍可用，渲染时回退到文件库当前名字。
+- **批量转移**：文件页「谁在用」里勾选若干事件，选目标文件 b，就把这些事件正文里对 a 的引用整体换成 b
+  （`transferRefsInEvents()`，只动被勾选的事件；头像 / 图标不走这条路，交给「合并」）。
 - **做法**：一条文件引用的「主」有四处——事件正文里的 `file:<storedId>`、事件的 `media_json`、
   人物头像 / 人物图标（`persons.avatar` / `persons.icon_json`）、事件集图标（`collections.icon_json`）。
   引用计数归零的自动回收**只发生在彻底删除事件**（`purgeEvent` → `sweepEventFiles`，见 `core/repo/fileGc.ts`）：
