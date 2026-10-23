@@ -7,9 +7,18 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  padding-top: calc(10px + env(safe-area-inset-top, 0px));
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+}
+
+/* 只有装成独立应用（PWA / 全屏）时页面才真的顶到屏幕边缘，这时才需要补系统栏高度。
+   普通浏览器标签页里，地址栏已经把这块空间让出来了；部分安卓浏览器仍会误报
+   env(safe-area-inset-top)（把整个地址栏高度都算进去），再补一次会让标题被推得很低。
+   上限 48px 是防止个别浏览器报出夸张数值。 */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .page-head {
+    padding-top: calc(10px + min(env(safe-area-inset-top, 0px), 48px));
+  }
 }
 
 .page-head-title {
