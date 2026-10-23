@@ -946,6 +946,18 @@
   color: var(--primary-dark);
 }
 
+/* 净变化（新增 3 · 修改 2 · 删除 2）：比操作数更能说明这轮改了多大范围 */
+.aichat-snap-net {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+/* 详情里的补充说明：动过又复原的对象不进增删改三组，但要留个痕迹 */
+.aichat-diff-note {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
 /* 具体结果：人名 + 头像 / 事件集图标 / 事件名，一个对象一颗小胶囊 */
 .aichat-targets {
   display: flex;

@@ -5,6 +5,9 @@
 
 import { getDbInstance, getSql } from '../db/state';
 import { getSnapStore } from './store';
+import { deletePerson } from '../repo/persons/write';
+import { deleteEvent } from '../repo/events/write';
+import { deleteCollection } from '../repo/collections/write';
 
 export interface SnapDiffItem {
   kind: 'person' | 'event' | 'collection';
@@ -22,6 +25,8 @@ export interface SnapDiff {
   created: SnapDiffItem[];
   updated: SnapDiffItem[];
   deleted: SnapDiffItem[];
+  /** 这一轮里动过、但最终又回到原样的对象（建了又删、删了又建）：净变化为零 */
+  reverted: SnapDiffItem[];
 }
 
 interface Row {
@@ -41,8 +46,15 @@ interface SqlLike {
   exec: (sql: string) => Array<{ columns: string[]; values: unknown[][] }>;
 }
 
+/**
+ * 读整张表。
+ *
+ * 必须是 `SELECT *`：三张主表的列并不齐（events 没有 name、collections 没有 title/content），
+ * 写死列名会让 SQLite 直接报错「no such column」，diff 静默变成空——
+ * 表现就是成果详情里增删改三组全都不显示。列按实际返回的 columns 取，缺了就当没值。
+ */
 function readTable(db: SqlLike, table: string): Map<string, Row> {
-  const res = db.exec(`SELECT id, display_name, title, name, content, place_json, start_ts, deleted_at, rev, updated_at FROM ${table}`);
+  const res = db.exec(`SELECT * FROM ${table}`);
   const cols = res[0]?.columns ?? [];
   const rows = res[0]?.values ?? [];
   const map = new Map<string, Row>();
@@ -52,6 +64,21 @@ function readTable(db: SqlLike, table: string): Map<string, Row> {
     map.set(String(obj.id), obj as unknown as Row);
   }
   return map;
+}
+
+/** 每次写入都会变的字段，不参与「内容有没有变」的判断 */
+const VOLATILE = new Set(['rev', 'updated_at', 'hlc', 'deleted_at']);
+
+/**
+ * 一行内容的指纹：除掉易变字段后按列排序序列化。
+ * 比只比 rev 更可靠——有些改动（改属性、改标签）未必同步 bump rev。
+ */
+function signature(row: Row): string {
+  const rec = row as unknown as Record<string, unknown>;
+  const keys = Object.keys(rec)
+    .filter((k) => !VOLATILE.has(k))
+    .sort();
+  return JSON.stringify(keys.map((k) => rec[k] ?? null));
 }
 
 function itemName(kind: string, row: Row): string {
@@ -77,6 +104,22 @@ function eventBefore(row: Row): SnapDiffItem['before'] {
   return out;
 }
 
+/**
+ * 这个对象在用户眼里还算「在吗」。
+ *
+ * 除了软删（deleted_at），人物归档 / 被合并也会从人物列表里消失——
+ * 对用户来说和删掉没区别，得算进「删除」，否则「删了 P2」会显示在「修改」里。
+ */
+function isGone(kind: 'person' | 'event' | 'collection', row: Row | undefined): boolean {
+  if (!row) return false;
+  if (!!row.deleted_at) return true;
+  if (kind === 'person') {
+    const st = String(row.status ?? '');
+    return st === 'archived' || st === 'merged';
+  }
+  return false;
+}
+
 /** 对比快照和当前库，返回增删改分组。快照读不到时返回空。 */
 export async function diffSnapshot(snapId: string): Promise<SnapDiff | null> {
   const sql = getSql();
@@ -90,7 +133,7 @@ export async function diffSnapshot(snapId: string): Promise<SnapDiff | null> {
   let snap: { exec: SqlLike['exec']; close: () => void } | null = null;
   try {
     snap = new (sql.Database as new (b: Uint8Array) => { exec: SqlLike['exec']; close: () => void })(bytes);
-    const result: SnapDiff = { created: [], updated: [], deleted: [] };
+    const result: SnapDiff = { created: [], updated: [], deleted: [], reverted: [] };
 
     const tables: Array<[string, 'person' | 'event' | 'collection']> = [
       ['persons', 'person'],
@@ -104,20 +147,24 @@ export async function diffSnapshot(snapId: string): Promise<SnapDiff | null> {
 
       for (const [id, curRow] of after) {
         const oldRow = before.get(id);
-        const curDeleted = !!curRow.deleted_at;
-        const wasDeleted = !!oldRow?.deleted_at;
+        const curDeleted = isGone(kind, curRow);
+        const wasDeleted = isGone(kind, oldRow);
         const name = itemName(kind, curRow);
 
         if (!oldRow) {
-          if (!curDeleted) {
-            result.created.push({ kind, id, name });
-          }
+          // 快照里没有：这一轮新建的。建完又删掉的净变化为零，单独归到 reverted，
+          // 免得用户在「新增」里点一个已经不存在的对象
+          if (curDeleted) result.reverted.push({ kind, id, name });
+          else result.created.push({ kind, id, name });
         } else if (!wasDeleted && curDeleted) {
           result.deleted.push({ kind, id, name, before: kind === 'event' ? eventBefore(oldRow) : {} });
         } else if (!wasDeleted && !curDeleted) {
-          if (Number(oldRow.rev ?? 0) !== Number(curRow.rev ?? 0) || String(oldRow.updated_at ?? '') !== String(curRow.updated_at ?? '')) {
+          if (signature(oldRow) !== signature(curRow)) {
             result.updated.push({ kind, id, name });
           }
+        } else if (wasDeleted && !curDeleted) {
+          // 快照里是删掉的、现在又有了：等于重新出现，按新增算
+          result.created.push({ kind, id, name });
         }
       }
     }
@@ -160,8 +207,12 @@ export async function revertDiffItems(snapId: string, rejects: RejectItem[]): Pr
     for (const r of rejects) {
       const table = r.kind === 'person' ? 'persons' : r.kind === 'event' ? 'events' : 'collections';
       if (r.action === 'created') {
-        // 新建的：直接删
-        cur.run(`DELETE FROM ${table} WHERE id = ?`, [r.id]);
+        // 新建的：走仓库层的软删，不直接 DELETE——
+        // 本项目的删除一律软删（见架构文档 §11），直接物理删会绕过 oplog 与回收站，
+        // 用户想反悔也找不回来。
+        if (r.kind === 'person') deletePerson(r.id);
+        else if (r.kind === 'event') deleteEvent(r.id);
+        else deleteCollection(r.id);
       } else {
         // updated / deleted：用快照行覆盖
         const res = snap.exec(`SELECT * FROM ${table} WHERE id = '${r.id.replace(/'/g, "''")}'`);

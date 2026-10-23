@@ -195,9 +195,25 @@ const SNAP_SRC: Record<SnapMeta['source'], string> = {
  * 不用点开猜。
  */
 function snapTitle(s: SnapMeta): string {
-  if (s.ops?.length) return summarizeOps(s.ops);
+  // 用户想看的是「这轮是为了什么」：AI 轮次结束后把第一条用户指令回写成 note，
+  // 比如「把这批聊天记录整理进去」，比罗列九个工具调用更像人话。
   if (s.note) return s.note;
+  // 没有意图（CLI 触发、手动备份）才退回按操作概括
+  if (s.ops?.length) return summarizeOps(s.ops);
   return `${SNAP_SRC[s.source] ?? ''}备份`.replace(/^备份$/, '记录');
+}
+
+/** 副行里的净变化：新增 / 修改 / 删除各多少，扫一眼就知道这轮动了多大范围 */
+function snapNetLabel(s: SnapMeta): string | null {
+  const d = s.diff;
+  if (!d) return null;
+  const n = d.created.length + d.updated.length + d.deleted.length;
+  if (n === 0) return '净变化：无';
+  const parts: string[] = [];
+  if (d.created.length) parts.push(`新增 ${d.created.length}`);
+  if (d.updated.length) parts.push(`修改 ${d.updated.length}`);
+  if (d.deleted.length) parts.push(`删除 ${d.deleted.length}`);
+  return parts.join(' · ');
 }
 
 /** 这份成果里新建 / 变动的对象，按出现顺序去重 */
@@ -348,6 +364,27 @@ export function LabAiSection() {
 
   const reloadSnaps = () => setSnaps(listSnapshots());
   const reloadSessions = () => setSessions(listSessions());
+
+  // 打开成果详情时现算一次净变化：快照里存的是 AI 干完活那一刻的结果，
+  // 之后用户自己又改了数据（或又让 AI 做了一轮），这里要反映的是当前状态。
+  const snapDetailId = snapDetail?.id ?? null;
+  useEffect(() => {
+    if (!snapDetailId) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const { diffSnapshot } = await import('../../core/snapshots/diff');
+        const d = await diffSnapshot(snapDetailId);
+        if (!alive || !d) return;
+        setSnapDetail((s) => (s && s.id === snapDetailId ? { ...s, diff: d } : s));
+      } catch {
+        /* 算不出来就沿用快照里存的那份 */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [snapDetailId]);
 
   // 切到快照 / 历史会话时顺手刷新，避免看到旧数据
   const switchTab = (t: TabKey) => {
@@ -1055,6 +1092,10 @@ export function LabAiSection() {
                           <span className="aichat-snap-meta">
                             {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
                           </span>
+                          {/* 净变化比「几项操作」更说明问题：9 次调用可能只改了 3 个对象 */}
+                          {snapNetLabel(s) ? (
+                            <span className="aichat-snap-net">{snapNetLabel(s)}</span>
+                          ) : null}
                           {s.ops?.length ? (
                             <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
                           ) : null}
@@ -1149,6 +1190,13 @@ export function LabAiSection() {
                       ))}
                     </div>
                   </div>
+                )}
+                {(snapDetail.diff.reverted?.length ?? 0) > 0 && (
+                  <p className="muted small aichat-diff-note">
+                    另有 {snapDetail.diff.reverted.length} 个对象这一轮动过又复原（比如建了又删），
+                    净变化为零，所以不在上面三组里：
+                    {snapDetail.diff.reverted.map((t) => t.name).join('、')}
+                  </p>
                 )}
                 {rejected.size > 0 && (
                   <div className="aichat-diff-actions">

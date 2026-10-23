@@ -118,6 +118,21 @@ function toWire(msgs: AgentMessage[]): AiMessage[] {
   });
 }
 
+/**
+ * 从这轮对话里抽出「用户想干什么」——第一条用户消息。
+ * 用来当成果名：一条指令比一串工具调用好认。
+ * 附件正文会被拼进 content，所以只取前一段，超出就截断。
+ */
+function intentOf(messages: AgentMessage[]): string {
+  for (const m of messages) {
+    if (m.role !== 'user') continue;
+    const text = String(m.content ?? '').trim().replace(/\s+/g, ' ');
+    if (!text) continue;
+    return text.length > 34 ? `${text.slice(0, 34)}…` : text;
+  }
+  return '';
+}
+
 function preview(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim();
   return t.length > 120 ? `${t.slice(0, 120)}…` : t;
@@ -294,7 +309,9 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
     // 所以「做了什么」只能等轮次结束（正常收尾 / 报错 / 被中止）再回写。
     // 只改元数据，不动字节——字节是恢复用的，必须保持原样。
     if (snapshotId && ops.length) {
-      patchSnapshotOps(snapshotId, ops, summarizeOps(ops));
+      // 成果名优先用用户意图（第一条用户指令）：「把聊天记录整理进去」比
+      // 「新建人物…、记事件…等 6 项」更像人话，也更容易在列表里认出是哪一次。
+      patchSnapshotOps(snapshotId, ops, intentOf(messages) || summarizeOps(ops));
       // 对比快照和当前库，得出增删改分组——比 ops 列表更直观
       try {
         const { diffSnapshot } = await import('../snapshots/diff');

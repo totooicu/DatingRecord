@@ -269,6 +269,25 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 
 ---
 
+## 1.9 成果（快照）的展示语义
+
+一次 AI 操作流只生成 **1 条成果**（`agent.ts` 里 `resumeSnapshotId` 复用上一轮快照），名字取**用户第一条指令**（比罗列九个工具调用好认），副行显示净变化。
+
+**分组一律按「净变化」，不按工具调用次数**：`core/snapshots/diff.ts` 拿「动手前快照」和「当前库」逐表对比（`SELECT *`，三张主表列不齐，写死列名会让查询报错、分组变空），按行内容指纹（排除 `rev`/`updated_at`/`hlc`/`deleted_at`）判断是否变过。
+
+| 情况 | 归入 |
+|---|---|
+| 快照里没有、现在有 | 新增 |
+| 快照里有、现在内容变了 | 修改 |
+| 软删（`deleted_at`）、人物归档 / 被合并 | 删除 |
+| 建了又删（快照里没有、现在也没有） | 净变化为零，只在详情里注明一句 |
+
+拒绝单条改动走**仓库层的软删**（`deletePerson` / `deleteEvent` / `deleteCollection`），不要直接 `DELETE`——会绕过 oplog 与回收站，用户反悔找不回来。
+
+验证：`node tools/e2e/fake-ai-flow.mjs` + `node tools/e2e/snap-flow-e2e.mjs`（配一个指向假服务的模型即可，不需要真密钥）。
+
+---
+
 # 第二部分 · 功能规格
 
 ## 2.0 优先级总览
