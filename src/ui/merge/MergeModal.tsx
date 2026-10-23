@@ -86,7 +86,7 @@ export function MergeModal({
         </p>
       )}
 
-      <p className="warn-line">建议先到「备份与恢复」导出一份 JSON 再操作。</p>
+      <p className="warn-line">建议先到「备份与分享 → 数据备份」导出一份 JSON 再操作。</p>
     </Modal>
   );
 }

@@ -293,3 +293,24 @@
 .file-pref select {
   align-self: flex-start;
 }
+
+/* ---------- 映射文件 ---------- */
+/* 「映射」和「隐私」并排出现时，用中性色区分：链接不是敏感标记，只是存储方式 */
+.mapping-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+/* 添加映射文件面板：四个动作按钮一行放不下就换行 */
+.mapping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}

@@ -6,7 +6,10 @@
 export {
   DEFAULT_SMALL_LIMIT,
   HASH_NAME_PREFIX,
+  LINK_NAME_PREFIX,
   extFor,
+  linkStem,
+  sha256Text,
   extOf,
   hashStem,
   quickFingerprint,
@@ -16,6 +19,20 @@ export {
 } from './naming';
 export { uploadFile, uploadFileQuiet, type CollisionPrompt, type UploadOutcome } from './upload';
 export { auditFiles, hashMissingFiles, type AuditResult, type HashGroup } from './audit';
+export {
+  normalizeLink,
+  fileNameFromLink,
+  fileNameFromDisposition,
+  guessMime,
+  probeLink,
+  downloadLink,
+  linkStoredId,
+  saveAsMapping,
+  findMappingByUrl,
+  type LinkProbe,
+  type DownloadedLink,
+  type SaveMappingInput,
+} from './mapping';
 export { commitMerge, previewMerge, type MergePreview } from './merge';
 export {
   rewriteRefEverywhere,

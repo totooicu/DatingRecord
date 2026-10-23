@@ -166,8 +166,11 @@ CREATE TABLE IF NOT EXISTS attachments (
   size INTEGER NOT NULL DEFAULT 0,
   taken_at TEXT,
   created_at TEXT,
-  is_private INTEGER NOT NULL DEFAULT 0
+  is_private INTEGER NOT NULL DEFAULT 0,
+  source_url TEXT
 );
+-- 映射文件（schema v11 新增，见 db/migrate.ts）：
+--   source_url 非空 = 库里只存链接，二进制不落 IndexedDB（见 F-E05 映射文件）
 -- 内容寻址（schema v2 新增，见 db/migrate.ts）：
 --   stored_id   正文引用里用的名字（hash 名），如 A.jpg / A_1.jpg
 --   hash_shared 1 = 与别的行同 hash 但内容不同（用户确认过碰撞），参与查重时要排除

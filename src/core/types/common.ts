@@ -21,6 +21,8 @@ export interface Attachment {
   hashShared?: boolean;
   /** 隐私：开启隐私模式后默认隐藏 */
   isPrivate?: boolean;
+  /** 映射文件：非空表示库里只存链接，二进制不落 IndexedDB */
+  sourceUrl?: string | null;
 }
 
 export interface OplogEntry {
@@ -59,4 +61,4 @@ export interface LibraryFile {
   messages?: ChatMessage[];
 }
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;

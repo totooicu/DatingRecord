@@ -62,7 +62,8 @@ function avatarCountOf(ids: string[]): number {
 
 /** 给所有还没 hash 的文件补算 sha256（只改元数据，不动二进制） */
 export async function hashMissingFiles(onStep?: (done: number, total: number) => void): Promise<number> {
-  const todo = listFiles().filter((f) => !f.sha256);
+  // 映射文件没有二进制，算不了内容 hash；它们本来也不需要
+  const todo = listFiles().filter((f) => !f.sha256 && !f.sourceUrl);
   let done = 0;
   for (const f of todo) {
     const blob = await getBlob(f.id);
@@ -81,7 +82,8 @@ export function auditFiles(): AuditResult {
   const files = listFiles();
   const byHash = new Map<string, StoredFile[]>();
   for (const f of files) {
-    if (!f.sha256) continue;
+    // 映射文件没有实体内容，不参与「同内容合并」的分组
+    if (!f.sha256 || f.sourceUrl) continue;
     const arr = byHash.get(f.sha256) ?? [];
     arr.push(f);
     byHash.set(f.sha256, arr);
@@ -105,9 +107,9 @@ export function auditFiles(): AuditResult {
 
   return {
     total: files.length,
-    noHash: files.filter((f) => !f.sha256).length,
+    noHash: files.filter((f) => !f.sha256 && !f.sourceUrl).length,
     groups,
-    legacyNames: files.filter((f) => !f.storedId.startsWith('sha-')).length,
+    legacyNames: files.filter((f) => !f.sourceUrl && !f.storedId.startsWith('sha-')).length,
   };
 }
 

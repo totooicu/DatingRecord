@@ -12,7 +12,9 @@
 
 export type SettingsKey =
   | 'backup'
+  | 'backupData'
   | 'sync'
+  | 'share'
   | 'ai'
   | 'security'
   | 'people'
@@ -36,8 +38,12 @@ export interface SettingsEntry {
 }
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
-  { key: 'backup', title: '备份与恢复', hint: '导入 / 导出 .drp.json', group: 'general' },
+  // 「备份与分享」是一个入口页：数据备份 / 坚果云备份 / 分享 各占一页。
+  // 三者都是「把数据搬出去或搬进来」，但担子完全不同，混在一屏会互相挤占。
+  { key: 'backup', title: '备份与分享', hint: '备份 · 同步 · 分享', group: 'general' },
+  { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.json', group: 'general' },
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
+  { key: 'share', title: '分享', hint: '导出 / 导入 .drshare.json', group: 'general' },
   { key: 'ai', title: 'AI 模型', hint: '别名、服务商、密钥与连通测试', group: 'general' },
   { key: 'security', title: '隐私与安全', hint: '应用锁、本地库加密、隐私模式', group: 'security' },
   { key: 'people', title: '人物与属性', hint: '属性字典、属性模板、重复合并', group: 'people' },
@@ -69,6 +75,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   lab: ['labAi', 'labEdge'],
+  backup: ['backupData', 'sync', 'share'],
 };
 
 /** 这个 key 是不是某个入口页的子页 */
@@ -87,6 +94,11 @@ export const LEGACY_KEYS: Record<string, SettingsKey> = {
   overview: 'data',
   sample: 'data',
 };
+
+/** 某个 key 在目录里的标题；子页也有标题，用来拼「← 返回 xxx」 */
+export function titleOf(k: SettingsKey): string {
+  return SETTINGS_ENTRIES.find((e) => e.key === k)?.title ?? '';
+}
 
 /** 宽屏没有「目录页」这一步，默认落在第一项 */
 export const DEFAULT_SETTINGS_KEY: SettingsKey = 'backup';

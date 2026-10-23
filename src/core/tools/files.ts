@@ -2,7 +2,7 @@
 
 import type { ToolDef } from './types';
 import { listFiles, getFile, deleteFile, renameFile, setFilePrivate, countRefs, personsUsingFile, eventsReferencingFile, collectionsUsingFile, urlForFile } from '../repo/files';
-import { transferRefsInEvents } from '../files';
+import { probeLink, saveAsMapping, transferRefsInEvents } from '../files';
 
 function brief(f: ReturnType<typeof listFiles>[number]): Record<string, unknown> {
   return {
@@ -46,6 +46,35 @@ export const FILE_TOOLS: ToolDef[] = [
         },
       };
     },
+  },
+  {
+    name: 'file.addMapping',
+    group: 'file',
+    title: '添加映射文件',
+    desc: '只保存链接、不下载内容（省存储）；引用名按链接 hash 生成 link-…，正文引用与普通附件一致',
+    mutating: true,
+    params: [
+      { name: 'url', type: 'string', desc: '链接：https / ftp / file:// 或手机路径', required: true },
+      { name: 'name', type: 'string', desc: '文件名（含扩展名，决定类型）', required: true },
+      { name: 'mime', type: 'string', desc: 'MIME 类型；省略时按扩展名猜' },
+    ],
+    run: async (a) => {
+      const r = await saveAsMapping({
+        url: a.url as string,
+        name: a.name as string,
+        mime: (a.mime as string) ?? '',
+      });
+      return { ...brief(r.file), reused: r.reused };
+    },
+  },
+  {
+    name: 'file.probeLink',
+    group: 'file',
+    title: '测试链接',
+    desc: '探测链接能否访问，返回 HTTP 状态、类型、大小与文件名（添加映射文件前用）',
+    mutating: false,
+    params: [{ name: 'url', type: 'string', desc: '链接', required: true }],
+    run: async (a) => probeLink(a.url as string),
   },
   {
     name: 'file.rename',

@@ -89,8 +89,9 @@ const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
   ],
   ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'loading', 'colspan', 'rowspan'],
-  // 只放行这些协议：blob: 给库内文件，data:image/ 给内联图，mailto: 给邮箱
-  ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|blob:|data:image\/|#)/i,
+  // 只放行这些协议：blob: 给库内文件，data:image/ 给内联图，mailto: 给邮箱。
+  // ftp/file/content 是映射文件（只存链接的附件）可能用的协议——注意绝不放行 javascript:。
+  ALLOWED_URI_REGEXP: /^(?:https?:|ftp:|ftps:|file:|content:|blob:|data:image\/|mailto:|#)/i,
   FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'input'],
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'style'],
 };

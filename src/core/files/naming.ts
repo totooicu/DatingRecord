@@ -6,6 +6,9 @@
 /** 引用名的前缀：stored_id 统一长这样，避免和老的 f_01J... 混淆 */
 export const HASH_NAME_PREFIX = 'sha-';
 
+/** 映射文件的引用名前缀：名字来自**链接**的 hash，不来自内容 */
+export const LINK_NAME_PREFIX = 'link-';
+
 /** 小文件逐字节比较的默认阈值；用户可在设置里改 */
 export const DEFAULT_SMALL_LIMIT = 1024 * 1024;
 
@@ -37,6 +40,16 @@ function hexOf(bytes: Uint8Array): string {
 /** hash 名的主干：sha-<前 32 位十六进制> */
 export function hashStem(sha: string): string {
   return `${HASH_NAME_PREFIX}${sha.slice(0, 32)}`;
+}
+
+/** 映射文件的引用名主干：link-<链接 hash 的前 32 位> */
+export function linkStem(sha: string): string {
+  return `${LINK_NAME_PREFIX}${sha.slice(0, 32)}`;
+}
+
+/** 算一段文本的 SHA-256（映射文件按链接算引用名） */
+export async function sha256Text(text: string): Promise<string> {
+  return sha256Hex(new Blob([text]));
 }
 
 /** 从文件名里取扩展名（含点，小写保留原样）；没有扩展名返回 '' */

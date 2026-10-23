@@ -14,7 +14,9 @@ import { formatTime } from '../../core/time';
 import { bump } from '../../store';
 import { Modal } from '../common';
 import { Avatar } from '../persons/Avatar';
-import type { ShareFile } from '../../core/types';
+import { SHARE_LEVELS, type ShareFile } from '../../core/types';
+
+type LandingMode = 'new' | 'merge';
 
 /** 入口按钮：自己管弹窗开关，方便在任何地方塞一个 */
 export function ShareImportButton({ text = '导入分享' }: { text?: string }) {
@@ -33,7 +35,10 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [plan, setPlan] = useState<SharePlan | null>(null);
   const [personMap, setPersonMap] = useState<Record<string, string>>({});
+  const [mode, setMode] = useState<LandingMode>('new');
   const [parentId, setParentId] = useState<string>('');
+  const [mergeId, setMergeId] = useState<string>('');
+  const [newName, setNewName] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -41,6 +46,8 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
 
   const persons = useMemo(() => listPersons({ includeArchived: true }), []);
   const flat = useMemo(() => flattenTree(getTree()), []);
+  // 智能集合的成员由规则算出，事件挂不进去，合并时不能选
+  const mergeable = useMemo(() => flat.filter((c) => !c.smart), [flat]);
 
   const load = async (file: File) => {
     setError(null);
@@ -54,6 +61,10 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
       for (const row of p.persons) if (row.suggestedId) auto[row.person.id] = row.suggestedId;
       setPersonMap(auto);
       setParentId(getRoot()?.id ?? '');
+      setMergeId(mergeable[0]?.id ?? '');
+      // 人物分享没有自己的集合，落库时要新建一个装事件，名字可以改
+      setNewName(share.scope === 'person' ? `${share.sourceName ?? '分享'}的事件` : '');
+      setMode('new');
       setShowAll(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -65,7 +76,11 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await applyShare(plan.share, { personMap, parentId: parentId || null });
+      const landing =
+        mode === 'merge'
+          ? { mode: 'merge' as const, collectionId: mergeId }
+          : { mode: 'new' as const, parentId: parentId || null, name: newName };
+      const r = await applyShare(plan.share, { personMap, landing });
       bump();
       setResult(
         `已导入：事件 ${r.counts.events}、事件集 ${r.counts.collections}、` +
@@ -82,7 +97,7 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       wide
-      title={plan ? `导入分享 · ${plan.rootName}` : '导入事件集分享'}
+      title={plan ? `导入分享 · ${plan.rootName}` : '导入分享'}
       onClose={onClose}
       footer={
         <>
@@ -106,8 +121,8 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
       {!plan && (
         <div className="share-pick">
           <p className="muted">
-            选择一份 .drshare.json（别人「分享事件集」生成的文件）。先预览里面有什么、
-            人物怎么关联，确认后再导入。
+            选择一份 .drshare.json（别人「分享事件集」或「分享人物」生成的文件）。先预览里面有什么、
+            人物怎么关联、事件落在哪，确认后再导入。
           </p>
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
             选择分享文件
@@ -137,8 +152,9 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
                   <em>{plan.rootName}</em>
                 </span>
                 <span className="muted small">
-                  事件集 {plan.collectionCount} 个 · 事件 {plan.eventCount} 个 · 人物{' '}
-                  {plan.persons.length} 位
+                  {plan.share.scope === 'person' ? '人物分享' : '事件集分享'} ·{' '}
+                  {SHARE_LEVELS.find((l) => l.key === plan.share.level)?.title ?? '原样'} · 事件集{' '}
+                  {plan.collectionCount} 个 · 事件 {plan.eventCount} 个 · 人物 {plan.persons.length} 位
                 </span>
               </div>
 
@@ -149,20 +165,22 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
 
-              <section className="share-block">
-                <h4>事件集结构</h4>
-                <div className="share-tree">
-                  {plan.share.collections.map((c) => (
-                    <div
-                      key={c.id}
-                      className={c.id === plan.share.rootId ? 'share-tree-row share-tree-root' : 'share-tree-row'}
-                    >
-                      {c.name}
-                      {c.kind === 'smart' && <em title="智能集合：成员由规则实时算出">⚡</em>}
-                    </div>
-                  ))}
-                </div>
-              </section>
+              {plan.share.collections.length > 0 && (
+                <section className="share-block">
+                  <h4>事件集结构</h4>
+                  <div className="share-tree">
+                    {plan.share.collections.map((c) => (
+                      <div
+                        key={c.id}
+                        className={c.id === plan.share.rootId ? 'share-tree-row share-tree-root' : 'share-tree-row'}
+                      >
+                        {c.name}
+                        {c.kind === 'smart' && <em title="智能集合：成员由规则实时算出">⚡</em>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <section className="share-block">
                 <h4>事件</h4>
@@ -225,17 +243,75 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
 
               <section className="share-block">
                 <h4>放到哪里</h4>
-                <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
-                  {flat.map(({ id, name, depth }) => (
-                    <option key={id} value={id}>
-                      {'　'.repeat(depth)}
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <p className="muted small">
-                  分享里的子事件集会保持原来的层级，只有最外层挂到你选的位置。
-                </p>
+                <div className="share-landing">
+                  <label className={mode === 'new' ? 'share-landing-row share-landing-on' : 'share-landing-row'}>
+                    <input
+                      type="radio"
+                      name="share-landing"
+                      checked={mode === 'new'}
+                      onChange={() => setMode('new')}
+                    />
+                    <span>
+                      <strong>新建事件集</strong>
+                      <span className="muted small">
+                        {plan.share.collections.length > 0
+                          ? '保留分享里的层级，最外层挂到下面选的位置'
+                          : '分享里没有事件集，新建一个装这些事件'}
+                      </span>
+                    </span>
+                  </label>
+                  <label className={mode === 'merge' ? 'share-landing-row share-landing-on' : 'share-landing-row'}>
+                    <input
+                      type="radio"
+                      name="share-landing"
+                      checked={mode === 'merge'}
+                      onChange={() => setMode('merge')}
+                      disabled={mergeable.length === 0}
+                    />
+                    <span>
+                      <strong>并入已有事件集</strong>
+                      <span className="muted small">
+                        不新建集合，事件直接挂到选中的那个；分享里的子集合不一起进来
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {mode === 'new' ? (
+                  <div className="share-landing-detail">
+                    {plan.share.collections.length === 0 && (
+                      <input
+                        className="share-name-input"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="新事件集的名字"
+                      />
+                    )}
+                    <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+                      {flat.map(({ id, name, depth }) => (
+                        <option key={id} value={id}>
+                          {'　'.repeat(depth)}
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="muted small">挂到选中事件集的下面。</p>
+                  </div>
+                ) : (
+                  <div className="share-landing-detail">
+                    <select value={mergeId} onChange={(e) => setMergeId(e.target.value)}>
+                      {mergeable.map(({ id, name, depth }) => (
+                        <option key={id} value={id}>
+                          {'　'.repeat(depth)}
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="muted small">
+                      事件会追加进去，原有成员不动；重复导入同一份分享不会出现第二份。
+                    </p>
+                  </div>
+                )}
               </section>
             </>
           )}
