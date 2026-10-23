@@ -75,7 +75,10 @@ export function SettingsNav({
         </div>
       ))}
       {/* 副名放在目录最下方居中：它只是气质，不该挤占「设置目录」和第一组入口之间的视线 */}
-      <p className="settings-slogan">朝汇生活碎片，夕拾旧日回想</p>
+      <p className="settings-slogan">
+        朝汇生活碎片，夕拾旧日回想
+        <span className="settings-slogan-en">Gather Dawn’s Moments, Recall Them Later</span>
+      </p>
     </div>
   );
 }

@@ -23,6 +23,7 @@ export function TopBar({
       <div className="brand">
         <span className="brand-dot" />
         <span className="brand-text">朝汇夕思</span>
+        <span className="brand-en">DawnRecall</span>
       </div>
       <div className="tabs">
         {TABS.map((t) => (

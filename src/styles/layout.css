@@ -29,6 +29,15 @@
   letter-spacing: 0.5px;
 }
 
+/* 英文名跟在中文字标后面，作为小字副标：不换行、不抢主标题的字重 */
+.brand-en {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .brand-dot {
   width: 10px;
   height: 10px;

@@ -26,6 +26,18 @@
   color: var(--muted);
 }
 
+/* 英文长句单独占一行，字号比中文小一档，窄屏允许折行 */
+.settings-slogan-en {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.3px;
+  color: #b3aca2;
+  /* 宽屏左栏只有 240px，长句必然折行；balance 让它折成两行等长，而不是尾字落单 */
+  text-wrap: balance;
+}
+
 .settings-nav-list {
   list-style: none;
   margin: 0;

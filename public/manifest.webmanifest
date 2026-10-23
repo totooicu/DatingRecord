@@ -1,7 +1,7 @@
 {
-  "name": "朝汇夕思",
+  "name": "朝汇夕思 · DawnRecall",
   "short_name": "朝汇夕思",
-  "description": "朝汇当下，夕忆从前 —— 本地优先的个人关系档案工具：人物 · 事件集 · 事件，数据全部保存在你自己的浏览器里",
+  "description": "朝汇当下，夕忆从前 / Dawn Gather Dusk Recall —— 本地优先的个人关系档案工具：人物 · 事件集 · 事件，数据全部保存在你自己的浏览器里",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
