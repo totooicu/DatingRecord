@@ -207,6 +207,8 @@ async function main(): Promise<void> {
   setHostFs({
     readText: (p) => fs.readFileSync(p, 'utf8'),
     writeText: (p, text) => fs.writeFileSync(p, text),
+    readBytes: (p) => new Uint8Array(fs.readFileSync(p)),
+    writeBytes: (p, bytes) => fs.writeFileSync(p, bytes),
     exists: (p) => fs.existsSync(p),
   });
   // CLI 是一次性进程，内存里的撤销栈没有意义（刷新即失效那套在这里等于进程退出即失效），

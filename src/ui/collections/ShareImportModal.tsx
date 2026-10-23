@@ -7,7 +7,7 @@
 //
 // 只读预览：不点「导入」就一个字节都不会写进库里。
 import { useMemo, useRef, useState } from 'react';
-import { NEW_PERSON, applyShare, parseShare, planShare, type SharePlan } from '../../core/io';
+import { NEW_PERSON, applyShare, planShare, readShareBytes, type SharePlan } from '../../core/io';
 import { flattenTree, getRoot, getTree } from '../../core/repo/collections';
 import { listPersons } from '../../core/repo/persons';
 import { formatTime } from '../../core/time';
@@ -23,7 +23,7 @@ export function ShareImportButton({ text = '导入分享' }: { text?: string }) 
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className="btn btn-sm" onClick={() => setOpen(true)} title="从 .drshare.json 预览并导入别人的事件集">
+      <button className="btn btn-sm" onClick={() => setOpen(true)} title="从 .drshare.zip 预览并导入别人的事件集">
         ⇩ {text}
       </button>
       {open && <ShareImportModal onClose={() => setOpen(false)} />}
@@ -53,7 +53,7 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
     setError(null);
     setResult(null);
     try {
-      const share: ShareFile = parseShare(await file.text());
+      const share: ShareFile = await readShareBytes(new Uint8Array(await file.arrayBuffer()));
       const p = planShare(share);
       setPlan(p);
       // 同名自动关联的结果直接预选上：绝大多数情况不用动
@@ -121,7 +121,7 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
       {!plan && (
         <div className="share-pick">
           <p className="muted">
-            选择一份 .drshare.json（别人「分享事件集」或「分享人物」生成的文件）。先预览里面有什么、
+            选择一份 .drshare.zip（别人「开始分享」生成的压缩包）。先预览里面有什么、
             人物怎么关联、事件落在哪，确认后再导入。
           </p>
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
@@ -130,7 +130,7 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
           <input
             ref={fileRef}
             type="file"
-            accept=".json,.drshare.json,application/json"
+            accept=".zip,.drshare.zip,application/zip"
             style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0];

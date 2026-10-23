@@ -151,34 +151,140 @@
 
 /* ---------- 导出：对象切换 ---------- */
 
-/* 事件集 / 人物 二选一：分段控件，不做成下拉，两个选项要一眼都看得见 */
-.share-kind {
+.share-export-row {
+  align-items: center;
+}
+
+/* ---------- 向导 ---------- */
+
+.share-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-step {
   display: inline-flex;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fbfaf8;
-}
-
-.share-kind button {
-  padding: 5px 14px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
   color: var(--muted);
-  font-size: 13px;
 }
 
-.share-kind button.share-kind-on {
-  background: var(--panel);
-  color: var(--text);
+.share-step em {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.share-step-on {
+  color: var(--primary);
   font-weight: 600;
-  box-shadow: var(--shadow);
 }
 
-.share-export-row select {
+.share-step-on em {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.share-step-done em {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--primary);
+}
+
+.share-wizard-title {
+  margin: 14px 0 8px;
+  font-size: 14px;
+}
+
+.share-wizard-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.share-wizard-tools > span:first-child {
+  flex: 1;
+  min-width: 180px;
+  line-height: 1.6;
+}
+
+.share-wizard-btns {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.share-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.share-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* 全局 input 是 100% 宽，勾选框要摁回原尺寸 */
+.share-pick-row input[type='checkbox'] {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.share-pick-on {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: #fff7f9;
+}
+
+.share-pick-name {
   flex: 1;
   min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-pick-name em {
+  margin-left: 4px;
+  font-style: normal;
+}
+
+.share-pick-tag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fff0f4;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.share-pick-muted {
+  background: #f4f2ef;
+  color: var(--muted);
+}
+
+.share-pick-static {
+  cursor: default;
 }
 
 /* ---------- 分享程度：一列可点的卡片，不再用下拉 ---------- */

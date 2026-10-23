@@ -41,9 +41,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // 「备份与分享」是一个入口页：数据备份 / 坚果云备份 / 分享 各占一页。
   // 三者都是「把数据搬出去或搬进来」，但担子完全不同，混在一屏会互相挤占。
   { key: 'backup', title: '备份与分享', hint: '备份 · 同步 · 分享', group: 'general' },
-  { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.json', group: 'general' },
+  { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.zip', group: 'general' },
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
-  { key: 'share', title: '分享', hint: '导出 / 导入 .drshare.json', group: 'general' },
+  { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
   { key: 'ai', title: 'AI 模型', hint: '别名、服务商、密钥与连通测试', group: 'general' },
   { key: 'security', title: '隐私与安全', hint: '应用锁、本地库加密、隐私模式', group: 'security' },
   { key: 'people', title: '人物与属性', hint: '属性字典、属性模板、重复合并', group: 'people' },

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { readText, useBlobUrl } from './useBlobUrl';
 import { Loading } from './MediaView';
+import { ExtFallback } from './UnknownView';
 
 /** 一次最多渲染这么多字符；再多浏览器排版会明显卡 */
 const MAX_CHARS = 200_000;
@@ -12,7 +13,7 @@ const ZOOMS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 const BASE_PX = 13;
 const DEFAULT_ZOOM = 2; // index → 100%
 
-export function TextView({ id }: { id: string }) {
+export function TextView({ id, name, mime }: { id: string; name: string; mime: string }) {
   const url = useBlobUrl(id);
   const [text, setText] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function TextView({ id }: { id: string }) {
     };
   }, [url]);
 
-  if (err) return <div className="pv-error">读不出内容：{err}</div>;
+  if (err) return <ExtFallback id={id} name={name} mime={mime} reason={`读不出内容：${err}`} />;
   if (text === null) return <Loading />;
 
   const truncated = text.length > MAX_CHARS;

@@ -68,3 +68,32 @@ export function TrashIcon() {
     </svg>
   );
 }
+
+/** 未设隐私：开着的锁 */
+export function UnlockIcon() {
+  return (
+    <svg {...ICON}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+      <path d="M8 10.5V7.6a4 4 0 0 1 7.6-1.7" />
+    </svg>
+  );
+}
+
+/** 已设隐私：合上的锁 */
+export function LockIcon() {
+  return (
+    <svg {...ICON}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+      <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9" />
+    </svg>
+  );
+}
+
+/** 取消删除 */
+export function CloseIcon() {
+  return (
+    <svg {...ICON}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}

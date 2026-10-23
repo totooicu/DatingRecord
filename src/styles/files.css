@@ -54,9 +54,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  min-height: 30px;
+  min-height: 28px;
+}
+
+/* 徽标不参与压缩：宁可让左侧类型字省掉，也不能把「映射」竖排成两行 */
+.file-row-top .mapping-badge,
+.file-row-top .privacy-badge {
+  flex: none;
+  margin-left: 0;
+  white-space: nowrap;
 }
 
 /* 文件名单独成行：长名字完整换行，绝不省略 */
@@ -84,7 +92,7 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 /* 确认/取消也保持紧凑，避免撑高第一行 */
@@ -98,8 +106,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  flex: none;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -116,6 +125,14 @@
 .file-icon-btn-danger {
   color: var(--danger);
   border-color: #e8c4bf;
+}
+
+/* 隐私已开启：和 btn-privacy 同一套配色，只是收成 30×30 的图标键 */
+.file-icon-btn-on,
+.file-icon-btn-on:hover {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .file-rename {
