@@ -31,6 +31,16 @@ export interface SnapMeta {
   ops?: SnapOp[];
 }
 
+/** 这一轮新建 / 变动的对象，列表里直接展示成人名、事件名，点开就能跳过去 */
+export type SnapTargetKind = 'person' | 'event' | 'collection';
+
+export interface SnapTarget {
+  kind: SnapTargetKind;
+  id: string;
+  /** 当时的名字（对象后来改名了，这里仍是那一轮做出来的名字） */
+  name: string;
+}
+
 /** 一次具体操作。args 只留摘要，不存原文——快照元数据要能塞进 meta 表 */
 export interface SnapOp {
   /** 工具名，如 person.create */
@@ -40,6 +50,8 @@ export interface SnapOp {
   ok: boolean;
   /** 失败时的原因（截断） */
   err?: string;
+  /** 这一条具体产出的对象：新建人物 / 事件 / 事件集时带上，供列表展示与点击跳转 */
+  targets?: SnapTarget[];
   at: string;
 }
 

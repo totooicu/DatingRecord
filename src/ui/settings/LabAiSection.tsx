@@ -57,8 +57,16 @@ import {
   fmtBytes,
   summarizeOps,
   type SnapMeta,
+  type SnapTarget,
 } from '../../core/snapshots';
 import type { StoredFile } from '../../core/repo/files';
+import { getPerson } from '../../core/repo/persons';
+import { getCollection } from '../../core/repo/collections';
+import { Avatar } from '../persons/Avatar';
+import { CollectionIconView } from '../collections/CollectionIcon';
+import { openPerson } from '../openPerson';
+import { openEvent } from '../openEvent';
+import { openCollection } from '../openCollection';
 import { Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
@@ -182,7 +190,58 @@ const SNAP_SRC: Record<SnapMeta['source'], string> = {
 function snapTitle(s: SnapMeta): string {
   if (s.ops?.length) return summarizeOps(s.ops);
   if (s.note) return s.note;
-  return `${SNAP_SRC[s.source] ?? ''}备份`.replace(/^备份$/, '快照');
+  return `${SNAP_SRC[s.source] ?? ''}备份`.replace(/^备份$/, '记录');
+}
+
+/** 这份成果里新建 / 变动的对象，按出现顺序去重 */
+function targetsIn(s: SnapMeta): SnapTarget[] {
+  const seen = new Set<string>();
+  const out: SnapTarget[] = [];
+  for (const op of s.ops ?? []) {
+    for (const t of op.targets ?? []) {
+      const key = `${t.kind}:${t.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/**
+ * 成果卡 / 详情里的「具体结果」：人名 + 头像、事件集图标、事件名。
+ * 点一下直接跳到对应详情——看到「新建人物「林小满」」就能点开确认长什么样。
+ */
+function SnapTargetChips({ targets }: { targets: SnapTarget[] }) {
+  if (!targets.length) return null;
+  return (
+    <div className="aichat-targets">
+      {targets.map((t) => {
+        const p = t.kind === 'person' ? getPerson(t.id) : null;
+        const c = t.kind === 'collection' ? getCollection(t.id) : null;
+        const open =
+          t.kind === 'person'
+            ? () => openPerson(t.id)
+            : t.kind === 'event'
+              ? () => openEvent(t.id)
+              : () => openCollection(t.id);
+        return (
+          <button key={`${t.kind}:${t.id}`} type="button" className="aichat-target" onClick={open} title={`打开「${t.name}」`}>
+            {t.kind === 'person' ? (
+              <Avatar name={t.name} avatar={p?.avatar} icon={p?.icon} />
+            ) : t.kind === 'collection' ? (
+              <CollectionIconView icon={c?.icon ?? null} size="sm" fallback={t.name} />
+            ) : (
+              <span className="aichat-target-mark" aria-hidden>
+                事
+              </span>
+            )}
+            <span className="aichat-target-name">{t.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function LabAiSection() {
@@ -473,16 +532,16 @@ export function LabAiSection() {
   const stop = () => abortRef.current?.abort();
 
   const rollback = async (id: string) => {
-    if (!window.confirm('把整个库恢复到这一步之前？\n当前数据会先自动留一份快照，踩错了还能再退回来。')) return;
+    if (!window.confirm('把整个库恢复到这一步之前？\n当前数据会先自动记录一份，踩错了还能再退回来。')) return;
     await restoreSnapshot(id);
     bump();
     reloadSnaps();
     setRollbackId(null);
-    setItems((s) => [...s, { kind: 'assistant', text: '已按快照回退数据。' }]);
+    setItems((s) => [...s, { kind: 'assistant', text: '已按这份成果回退数据。' }]);
   };
 
   const removeSnap = async (id: string) => {
-    if (!window.confirm('删除这份快照？删掉就再也回不去了。')) return;
+    if (!window.confirm('删除这份成果？删掉就再也回不去了。')) return;
     await deleteSnapshot(id);
     reloadSnaps();
   };
@@ -529,7 +588,7 @@ export function LabAiSection() {
           className={tab === 'snap' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
           onClick={() => switchTab('snap')}
         >
-          快照{snaps.length > 0 && <span className="aichat-tab-n">{snaps.length}</span>}
+          成果{snaps.length > 0 && <span className="aichat-tab-n">{snaps.length}</span>}
         </button>
         <button
           role="tab"
@@ -720,34 +779,37 @@ export function LabAiSection() {
         {tab === 'snap' && (
           <div className="aichat-snaps">
             <div className="aichat-subhead">
-              <span className="muted small">AI / CLI 动手前自动拍，也可留作备份。点开看这一轮具体动了什么。</span>
+              <span className="muted small">AI / CLI 动手前会自动记录：做了什么、做成了什么都在这里，点开能看具体结果。</span>
             </div>
             {snaps.length === 0 ? (
-              <p className="muted small aichat-history-empty">还没有快照。</p>
+              <p className="muted small aichat-history-empty">还没有成果。</p>
             ) : (
               <ul className="aichat-snap-list">
                 {snaps.map((s) => (
                   <li key={s.id}>
-                    {/* 整块可点：点开看「这一轮具体做了什么」。恢复/删除是另一组按钮，
-                        点它们别触发详情——所以详情用单独的一块，不包住操作按钮 */}
-                    <button
-                      type="button"
-                      className="aichat-snap-main"
-                      onClick={() => setSnapDetail(s)}
-                      title="查看这份快照对应的具体操作"
-                    >
-                      <span className="aichat-snap-title">{snapTitle(s)}</span>
-                      <span className="aichat-snap-sub">
-                        <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
-                        <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
-                        <span className="aichat-snap-meta">
-                          {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
+                    {/* 主区是一整块按钮：概括标题 + 一行元信息，点开看这份成果对应的具体操作。
+                        具体结果（人名 / 事件名等）放在按钮外侧，单独可点，避免按钮嵌套。 */}
+                    <div className="aichat-snap-block">
+                      <button
+                        type="button"
+                        className="aichat-snap-main"
+                        onClick={() => setSnapDetail(s)}
+                        title="查看这份成果的具体操作"
+                      >
+                        <span className="aichat-snap-title">{snapTitle(s)}</span>
+                        <span className="aichat-snap-sub">
+                          <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
+                          <span className="aichat-snap-src">{SNAP_SRC[s.source] ?? s.source}</span>
+                          <span className="aichat-snap-meta">
+                            {s.persons} 人 / {s.events} 事件 / {fmtBytes(s.bytes)}
+                          </span>
+                          {s.ops?.length ? (
+                            <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
+                          ) : null}
                         </span>
-                        {s.ops?.length ? (
-                          <span className="aichat-snap-more">{s.ops.length} 项操作 ›</span>
-                        ) : null}
-                      </span>
-                    </button>
+                      </button>
+                      <SnapTargetChips targets={targetsIn(s)} />
+                    </div>
                     <span className="aichat-snap-ops">
                       <button className="aichat-linkbtn" onClick={() => rollback(s.id)}>
                         恢复
@@ -775,7 +837,7 @@ export function LabAiSection() {
             </p>
             <p className="muted small">
               顶部四个按钮：<b>聊天</b>是和 AI 对话；<b>历史会话</b>是自动保存的对话记录，可载入继续；
-              <b>快照</b>是数据备份点，可一键恢复或删除；<b>说明</b>是本页。切换不中断 AI 正在做的事。
+              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、记了什么事，也能一键恢复或删除；<b>说明</b>是本页。切换不中断 AI 正在做的事。
             </p>
           </div>
         )}
@@ -790,7 +852,7 @@ export function LabAiSection() {
       )}
 
       {snapDetail && (
-        <Modal title="快照详情" onClose={() => setSnapDetail(null)} wide>
+        <Modal title="成果详情" onClose={() => setSnapDetail(null)} wide>
           <div className="aichat-snap-detail">
             <p className="aichat-snap-detail-title">{snapTitle(snapDetail)}</p>
             <p className="muted small">
@@ -807,13 +869,18 @@ export function LabAiSection() {
                       <span className="aichat-op-tool">{o.tool}</span>
                       <span className="aichat-op-time">{fmtSnapTime(o.at)}</span>
                     </span>
+                    {o.targets?.length ? (
+                      <div className="aichat-op-targets">
+                        <SnapTargetChips targets={o.targets} />
+                      </div>
+                    ) : null}
                     {!o.ok && o.err && <span className="aichat-op-err">{o.err}</span>}
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="muted small">
-                这份快照没有记录具体操作（手动拍的，或是早于操作记录功能之前拍的）。
+                这份成果没有记录具体操作（手动记录的，或是早于操作记录功能之前生成的）。
               </p>
             )}
           </div>
