@@ -10,11 +10,12 @@ import { importLibrary, type ImportResult } from '../io/import';
 import {
   buildPersonShare,
   buildShare,
+  buildShareArchive,
+  exportShareArchive,
   parseShare,
+  readShareBytes,
   planShare,
   applyShare,
-  exportPersonShareFile,
-  exportShareFile,
   NEW_PERSON,
   type ShareLanding,
 } from '../io/share';
@@ -35,16 +36,17 @@ function hasHost(): boolean {
   }
 }
 
-/** 从 path 或 text 里取到分享文件内容 */
-function readShareInput(a: Record<string, unknown>): { share: ReturnType<typeof parseShare>; fromPath: string | null } {
+/** 从 path 或 text 里取到分享内容；path 可能是 zip，也可能玩家给了旧的 json */
+async function readShareInput(
+  a: Record<string, unknown>,
+): Promise<{ share: ReturnType<typeof parseShare>; fromPath: string | null }> {
   const path = a.path as string | undefined;
   const text = a.text as string | undefined;
   if (path) {
-    const raw = requireHostFs().readText(path);
-    return { share: parseShare(raw), fromPath: path };
+    return { share: await readShareBytes(requireHostFs().readBytes(path)), fromPath: path };
   }
   if (text) return { share: parseShare(text), fromPath: null };
-  throw new Error('必须提供 path（CLI）或 text（分享文件 JSON 内容）之一');
+  throw new Error('必须提供 path（CLI）或 text（分享文件内容）之一');
 }
 
 export const IO_TOOLS: ToolDef[] = [
@@ -52,7 +54,7 @@ export const IO_TOOLS: ToolDef[] = [
     name: 'io.exportLibrary',
     group: 'io',
     title: '导出整库',
-    desc: '把整个人物/事件/消息/事件集库导出为 .drp.json。CLI 里给 outPath 落盘；浏览器里会触发下载',
+    desc: '把整库导出为 .drp.json（CLI / 脚本用；网页界面只提供 .drp.zip 备份）。CLI 里给 outPath 落盘；浏览器里会触发下载',
     mutating: false,
     params: [
       { name: 'outPath', type: 'string', desc: '输出文件路径（仅 CLI 有意义）', required: false },
@@ -113,12 +115,20 @@ export const IO_TOOLS: ToolDef[] = [
     name: 'io.shareBuild',
     group: 'io',
     title: '打包事件集分享',
-    desc: '把一个事件集（含子集、事件、聊天消息、相关人物）打包成 .drshare.json。CLI 里给 outPath 落盘',
+    desc:
+      '把选中的事件集（含子集）打包成分享压缩包 .drshare.zip（share.json + 附件原文件）。' +
+      'personIds 只决定带走谁的资料，事件范围始终由 collectionIds 决定',
     mutating: false,
     params: [
-      { name: 'collectionId', type: 'string', desc: '事件集 id', required: true },
-      { name: 'outPath', type: 'string', desc: '输出文件路径（仅 CLI 有意义）', required: false },
-      { name: 'includeAttachments', type: 'boolean', desc: '是否内嵌被引用的附件', required: false, default: true },
+      { name: 'collectionIds', type: 'array', desc: '事件集 id 列表（至少一个，各自含子集）', required: true },
+      {
+        name: 'personIds',
+        type: 'array',
+        desc: '要带走资料的人物 id；省略 = 事件里的人全带，空数组 = 全部只留姓名',
+        required: false,
+      },
+      { name: 'outPath', type: 'string', desc: '输出文件路径，建议 .drshare.zip（仅 CLI 有意义）', required: false },
+      { name: 'includeAttachments', type: 'boolean', desc: '是否带上被引用的附件', required: false, default: true },
       {
         name: 'level',
         type: 'string',
@@ -134,41 +144,45 @@ export const IO_TOOLS: ToolDef[] = [
         attrKeys: (a.attrKeys as string[] | undefined) ?? [],
         includeAttachments: a.includeAttachments !== false,
       };
-      const share = await buildShare(a.collectionId as string, opts);
-      const text = JSON.stringify(share, null, 2);
+      const sel = {
+        collectionIds: (a.collectionIds as string[] | undefined) ?? [],
+        personIds: a.personIds as string[] | undefined,
+      };
+      const share = await buildShare(sel, opts);
       const summary = {
         format: share.format,
         version: share.version,
-        rootName: share.collections.find((c) => c.id === share.rootId)?.name,
+        sourceName: share.sourceName,
         collections: share.collections.length,
         events: share.events.length,
         persons: share.persons.length,
+        pickedPersons: share.pickedPersonIds?.length ?? 0,
         messages: share.messages?.length ?? 0,
         attachments: share.attachments?.length ?? 0,
         missingAttachments: share.missingAttachments,
       };
       const outPath = a.outPath as string | undefined;
       if (outPath) {
-        requireHostFs().writeText(outPath, text);
+        requireHostFs().writeBytes(outPath, await buildShareArchive(share));
         return { ...summary, outPath };
       }
-      if (hasHost()) return { ...summary, text };
-      const name = await exportShareFile(a.collectionId as string, opts);
+      if (hasHost()) return { ...summary, text: JSON.stringify(share) };
+      const name = await exportShareArchive(sel, opts);
       return { ...summary, downloaded: name };
     },
   },
   {
     name: 'io.sharePerson',
     group: 'io',
-    title: '打包人物分享',
+    title: '打包人物分享（旧口径）',
     desc:
-      '把一个人参与过的全部事件（含事件里出现的其他人物、聊天、附件）打包成 .drshare.json。' +
-      '不带事件集结构——对方导入时自己选落到哪个集合',
+      '@deprecated 已被 io.shareBuild 取代：新口径从事件集出发，人物只决定带谁的资料。' +
+      '保留原因：命令行/脚本仍可能需要「按人导出他参与过的全部事件」，行为与 v2 文件一致',
     mutating: false,
     params: [
       { name: 'personId', type: 'string', desc: '人物 id', required: true },
       { name: 'outPath', type: 'string', desc: '输出文件路径（仅 CLI 有意义）', required: false },
-      { name: 'includeAttachments', type: 'boolean', desc: '是否内嵌被引用的附件', required: false, default: true },
+      { name: 'includeAttachments', type: 'boolean', desc: '是否带上被引用的附件', required: false, default: true },
       {
         name: 'level',
         type: 'string',
@@ -185,29 +199,29 @@ export const IO_TOOLS: ToolDef[] = [
         includeAttachments: a.includeAttachments !== false,
       };
       const share = await buildPersonShare(a.personId as string, opts);
-      const text = JSON.stringify(share, null, 2);
       const outPath = a.outPath as string | undefined;
       if (outPath) {
-        requireHostFs().writeText(outPath, text);
+        requireHostFs().writeBytes(outPath, await buildShareArchive(share));
         return { scope: share.scope, level: share.level, events: share.events.length, persons: share.persons.length, outPath };
       }
-      if (hasHost()) return { scope: share.scope, level: share.level, events: share.events.length, text };
-      const name = await exportPersonShareFile(a.personId as string, opts);
-      return { scope: share.scope, level: share.level, events: share.events.length, downloaded: name };
+      if (hasHost()) return { scope: share.scope, level: share.level, events: share.events.length, text: JSON.stringify(share) };
+      return { scope: share.scope, level: share.level, events: share.events.length };
     },
   },
   {
     name: 'io.sharePlan',
     group: 'io',
     title: '分享导入预览',
-    desc: '解析一份 .drshare.json，给出导入计划：会有哪些事件集/事件，以及分享里的人物建议关联到本库的谁（同名自动匹配）',
+    desc:
+      '解析一份 .drshare.zip（旧的 .drshare.json 也认），给出导入计划：会有哪些事件集/事件，' +
+      '以及分享里的人物建议关联到本库的谁（同名自动匹配）',
     mutating: false,
     params: [
-      { name: 'path', type: 'string', desc: '分享文件路径（仅 CLI 有意义）', required: false },
-      { name: 'text', type: 'string', desc: '分享文件 JSON 内容（与 path 二选一）', required: false },
+      { name: 'path', type: 'string', desc: '分享包路径（仅 CLI 有意义）', required: false },
+      { name: 'text', type: 'string', desc: '分享内容（与 path 二选一，仅限旧 json）', required: false },
     ],
-    run: (a) => {
-      const { share } = readShareInput(a);
+    run: async (a) => {
+      const { share } = await readShareInput(a);
       const plan = planShare(share);
       return {
         rootName: plan.rootName,
@@ -252,7 +266,7 @@ export const IO_TOOLS: ToolDef[] = [
       { name: 'collectionId', type: 'string', desc: 'mode=merge 时的目标事件集 id', required: false },
     ],
     run: async (a) => {
-      const { share } = readShareInput(a);
+      const { share } = await readShareInput(a);
       if (a.mode === 'merge' && !a.collectionId) throw new Error('mode=merge 时必须给 collectionId');
       const landing: ShareLanding =
         a.mode === 'merge'

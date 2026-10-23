@@ -36,8 +36,8 @@ CLI 操作的是一个普通的 SQLite 文件：
 node dist-cli/cli.cjs person.list --db ~/my-record.sqlite
 ```
 
-**和网页版的数据是互通的**：把浏览器里导出的 `.drp.json` 用 `io.importLibrary` 灌进来，
-或者用 CLI 建好数据后导出，再在网页版里导入。设备 ID 存在库里的 `meta.cli_device_id`，
+**和网页版的数据是互通的**：把浏览器里导出的 `.drp.zip` 解出 `library.json` 后用 `io.importLibrary` 灌进来，
+或者用 CLI 建好数据后用 `io.exportLibrary` 导出，再转成 `.drp.zip` 从网页版导入。设备 ID 存在库里的 `meta.cli_device_id`，
 所以同一台机器上反复跑 CLI，同步时不会被当成一堆不同的设备。
 
 ## 三条命令
