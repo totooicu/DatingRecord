@@ -54,9 +54,6 @@ export function SettingsNav({
 
   return (
     <div className="settings-nav">
-      <div className="pane-head">
-        <strong>设置目录</strong>
-      </div>
       {groups.map(({ g, items }) => (
         <div className="settings-nav-group" key={g}>
           <div className="settings-nav-group-title">

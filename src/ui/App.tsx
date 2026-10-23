@@ -207,7 +207,7 @@ export default function App() {
         )}
         {view.k === 'settings' && (
           <div className="pane pane-solo">
-            <PageHead title="设置与数据" />
+            {/* 标题由 Settings 自己渲染：子页要把标题换成该设置项的名字 */}
             <Settings />
           </div>
         )}

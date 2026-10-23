@@ -12,13 +12,15 @@ import { LabAiSection } from './LabAiSection';
 import { LabEdgeSection } from './LabEdgeSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
-import { DEFAULT_SETTINGS_KEY, resolveSettingsKey, type SettingsKey } from './sections';
+import { PageHead } from '../common';
+import {
+  DEFAULT_SETTINGS_KEY,
+  SETTINGS_ENTRIES,
+  parentOf,
+  resolveSettingsKey,
+  type SettingsKey,
+} from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
-
-/** 功能体验那一组（入口页 + 子页）：它们内部自带返回，不再叠「返回目录」 */
-function isLabKey(k: SettingsKey): boolean {
-  return k === 'lab' || k === 'labAi' || k === 'labEdge';
-}
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -35,23 +37,24 @@ export function Settings({ initial }: { initial?: string | null }) {
   // resolveSettingsKey 会把它换到合并后的那一页
   const [sub, setSub] = useState<SettingsKey | null>(() => resolveSettingsKey(initial ?? null));
   const active = sub ?? DEFAULT_SETTINGS_KEY;
+  // 子页标题就是该设置项的名字；返回目标优先父入口（功能体验 → 它的子页），否则回目录
+  const entry = SETTINGS_ENTRIES.find((e) => e.key === active);
+  const backTo = sub === null ? null : (parentOf(active) ?? null);
 
   return (
     <div className="settings-panes" data-sub={sub ?? ''}>
+      {/* 顶部条跟着状态走：目录页写「设置与数据」，子页换成本项名字并把返回键放进条里，
+          这样返回键吸在顶部，不随内容滚动 */}
+      <PageHead
+        title={sub === null ? '设置与数据' : (entry?.title ?? '设置')}
+        onBack={sub === null ? undefined : () => setSub(backTo)}
+      />
       <SettingsNav active={active} onPick={setSub} />
 
       <div className="settings-body">
         {/* 构建时间只是排查用的元信息：放在目录首页一眼能看到就够，
             进了具体子页就别再占一行——这一行在手机上等于半个按钮的高度 */}
         {sub === null && <div className="settings-build-time muted small">最后构建：{fmtBuildTime()}</div>}
-
-        {/* 功能体验系列有自己的一层「← 功能体验」，这时不再显示「← 返回目录」，
-            两层返回按钮叠在一起既占高度又容易点错 */}
-        {!isLabKey(active) && (
-          <button className="settings-back" onClick={() => setSub(null)}>
-            ← 返回目录
-          </button>
-        )}
 
         {active === 'backup' && <BackupSection />}
 
@@ -78,11 +81,11 @@ export function Settings({ initial }: { initial?: string | null }) {
 
         {/* 功能体验：入口页只放目录，具体功能各占一页，互不挤占屏幕。
             lab 的返回目标就是「设置目录」，子页的返回目标是 lab——两级，不多不少 */}
-        {active === 'lab' && <LabSection onPick={setSub} onBack={() => setSub(null)} />}
+        {active === 'lab' && <LabSection onPick={setSub} />}
 
-        {active === 'labAi' && <LabAiSection onBack={() => setSub('lab')} />}
+        {active === 'labAi' && <LabAiSection />}
 
-        {active === 'labEdge' && <LabEdgeSection onBack={() => setSub('lab')} />}
+        {active === 'labEdge' && <LabEdgeSection />}
       </div>
     </div>
   );

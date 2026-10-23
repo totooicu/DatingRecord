@@ -74,26 +74,7 @@
   justify-content: center;
 }
 
-/* 返回键浮在头部左上角，不参与纵向居中 */
-.head-back {
-  position: absolute;
-  top: -4px;
-  left: -8px;
-}
 
-/* 宽屏左侧列表常驻，返回没有意义，藏掉避免出现一个点了没反应的箭头 */
-@media (min-width: 1024px) {
-  .head-back {
-    display: none;
-  }
-}
-
-/* 手机上原来靠 PageHead 顶开状态栏，现在那层没了，补回安全距离 */
-@media (max-width: 1023px) {
-  .detail-head-person {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 2px);
-  }
-}
 
 /* 事件集删除确认期间，同行的「移动」先收起，避免和「确认」并排误点 */
 .detail-head:has(.confirm-box) .detail-head-actions > .btn {

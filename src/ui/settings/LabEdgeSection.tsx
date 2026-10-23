@@ -20,12 +20,12 @@ function assetUrl(name: string): string {
   return base.endsWith('/') ? `${base}${name}` : `${base}/${name}`;
 }
 
-export function LabEdgeSection({ onBack }: { onBack: () => void }) {
+export function LabEdgeSection() {
   const src = useMemo(() => assetUrl('edge-split.html'), []);
 
   return (
     <div className="lab-page">
-      <LabHead title="边缘分割" onBack={onBack} subKey="labEdge" />
+      <LabHead title="边缘分割" subKey="labEdge" />
 
       <div className="lab-frame">
         <iframe
@@ -49,21 +49,10 @@ export function LabEdgeSection({ onBack }: { onBack: () => void }) {
   );
 }
 
-/** 子页顶部：返回上一层 + 标题。手机上没有设置目录可退，靠它回「功能体验」 */
-export function LabHead({
-  title,
-  onBack,
-  subKey,
-}: {
-  title: string;
-  onBack: () => void;
-  subKey: SettingsKey;
-}) {
+/** 子页顶部：图标 + 标题。返回键已上移到吸顶的 PageHead 里，这里不再重复一个 */
+export function LabHead({ title, subKey }: { title: string; subKey: SettingsKey }) {
   return (
     <div className="lab-page-head">
-      <button className="lab-back" onClick={onBack}>
-        ← 功能体验
-      </button>
       <span className="lab-page-icon" aria-hidden>
         <SettingsIcon k={subKey === 'labAi' ? 'ai' : 'labEdge'} />
       </span>
