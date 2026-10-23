@@ -31,12 +31,17 @@ function refLabel(raw: string | undefined, nameMap: Record<string, string>, id: 
 /** 抽出正文里所有被引用的文件 id（去重，保持出现顺序） */
 export function extractFileRefs(md: string): string[] {
   const ids: string[] = [];
-  // 匹配 ![名字](file:xxx) 与 [名字](file:xxx)
-  // 方括号里的名字允许转义的 `\]`；名字里允许点（内容寻址后是 sha-xxxx.jpg 这种）
-  const re = /!?\[(?:\\.|[^\\\]])*\]\(\s*file:([A-Za-z0-9._-]+)\s*\)/g;
+  // 两种写法都要认：
+  // 1. markdown 语法 ![名字](file:xxx) / [名字](file:xxx)，方括号里的名字允许转义的 `\]`；
+  // 2. 内嵌 HTML 里的 <a href="file:xxx"> / <img src="file:xxx">。
+  //    这类引用不经过 marked 的 link/image token，不在这里抓出来就不会加载 blob URL。
+  // 名字里允许点（内容寻址后是 sha-xxxx.jpg 这种）。
+  const re =
+    /!?\[(?:\\.|[^\\\]])*\]\(\s*file:([A-Za-z0-9._-]+)\s*\)|(?:href|src)\s*=\s*["']?\s*file:([A-Za-z0-9._-]+)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(md)) !== null) {
-    if (!ids.includes(m[1])) ids.push(m[1]);
+    const id = m[1] ?? m[2];
+    if (!ids.includes(id)) ids.push(id);
   }
   return ids;
 }
@@ -97,6 +102,53 @@ const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
 };
 
 /**
+ * 内嵌 HTML 里的 file: 引用改写成运行时 URL。
+ *
+ * marked 只把 [x](file:id) 当成 link token，正文里直接写
+ * `<a href="file:xxx">` 会原样进入消毒流程；消毒放行 file: 协议后，
+ * 浏览器不知道 file: 指的是本地文件库，点了没反应 / 图片裂开。
+ * 所以在消毒后按 DOM 改写，避免手写正则改 HTML 带来的转义问题。
+ */
+function rewriteHtmlFileRefs(html: string, urlMap: Record<string, string>, nameMap: Record<string, string>): string {
+  // 绝大多数正文没有 file 引用，省掉一次 DOM 解析
+  if (!/file:/i.test(html)) return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  let changed = false;
+  tpl.content.querySelectorAll('a,img').forEach((el) => {
+    const attr = el.tagName === 'A' ? 'href' : 'src';
+    const raw = (el.getAttribute(attr) ?? '').trim();
+    if (!isFileRef(raw)) return;
+    const id = /^file:([A-Za-z0-9._-]+)/.exec(raw)?.[1];
+    if (!id) return;
+    const url = urlMap[id];
+    if (url) {
+      el.setAttribute(attr, url);
+      if (el.tagName === 'A') {
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
+        el.classList.add('md-file-link');
+      } else {
+        el.classList.add('md-img');
+        el.setAttribute('loading', 'lazy');
+      }
+      changed = true;
+      return;
+    }
+    // 文件没加载到 / 已删除：与 markdown 语法保持同样的占位
+    const label =
+      el.tagName === 'A' ? (el.textContent ?? '').trim() : (el.getAttribute('alt') ?? '').trim();
+    const name = label || nameMap[id] || '';
+    const span = document.createElement('span');
+    span.className = 'md-file md-file-missing';
+    span.textContent = name ? `附件已删除：${name}` : '附件已删除';
+    el.replaceWith(span);
+    changed = true;
+  });
+  return changed ? tpl.innerHTML : html;
+}
+
+/**
  * 渲染正文。
  *
  * @param md 原始 markdown
@@ -118,5 +170,6 @@ export function renderMarkdown(
     // 解析失败不该让整页崩：退回纯文本
     return `<p>${escapeHtml(md)}</p>`;
   }
-  return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
+  const clean = DOMPurify.sanitize(raw, SANITIZE_CONFIG);
+  return rewriteHtmlFileRefs(clean, urlMap, nameMap);
 }

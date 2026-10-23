@@ -183,6 +183,114 @@
   text-overflow: ellipsis;
 }
 
+/* ---------- 编辑区语法高亮 ---------- */
+/* textarea 里的文字被设成透明，真正显示的是垫在背后的高亮层。
+   两层的字号/行高/内边距必须完全一致，否则文字会和光标错位。
+   textarea 有 1px 边框，所以高亮层用 7px/10px 的内边距去对齐内容起点。 */
+.md-edit-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.md-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  /* textarea 的 UA 默认行高是 normal，这里必须跟着用 normal */
+  line-height: normal;
+  /* 换行规则与 textarea 保持一致，逐字对齐的前提 */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 正文以换行结尾时，HTML 的最后一行空行不会生成行盒，textarea 却会
+   把它算进高度。塞一个零宽字符占位，两层的行数就一致了。 */
+.md-highlight::after {
+  content: '\200B';
+}
+
+.md-input,
+.md-full-input {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text);
+  /* 原生滚动条会占掉内容宽度，让 textarea 比高亮层少几个字就换行。
+     隐藏滚动条（仍可滚动），两层的可换行宽度才一致。 */
+  scrollbar-width: none;
+}
+
+.md-input::-webkit-scrollbar,
+.md-full-input::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 文字透明后 placeholder 也得单独给颜色，否则会跟着一起隐形 */
+.md-input::placeholder,
+.md-full-input::placeholder {
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+  opacity: 1;
+}
+
+/* 只改颜色 / 背景 / 删除线：任何影响字形宽度的样式都会让两层对不齐 */
+.md-hl-h {
+  color: var(--primary);
+}
+.md-hl-quote {
+  color: var(--muted);
+}
+.md-hl-mark {
+  color: var(--primary-dark);
+}
+.md-hl-dim,
+.md-hl-fence {
+  color: var(--muted);
+}
+.md-hl-codeblock {
+  color: #8a5a44;
+}
+.md-hl-code {
+  color: #8a4b2f;
+  background: rgba(217, 83, 107, 0.1);
+  border-radius: 3px;
+}
+.md-hl-strong {
+  color: #000;
+}
+.md-hl-em {
+  background: rgba(217, 83, 107, 0.07);
+}
+.md-hl-strike {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.md-hl-link {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.md-hl-html {
+  color: #9a6b4f;
+}
+.md-hl-table {
+  color: var(--text);
+}
+
 /* ---------- 正文全屏编辑 ---------- */
 /* 手机上弹窗里的正文框只有六行，写长段落要不停地往回滚；全屏后就地铺满，
    编辑/预览仍用 tab 切换。宽屏改成左右两栏，边写边看。 */
@@ -208,10 +316,21 @@
   flex-direction: column;
 }
 
+.md-full-panes > .md-edit-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
 .md-full-input {
   flex: 1;
   min-height: 0;
   resize: none;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+/* 全屏字号更大，高亮层必须同步 */
+.md-full-highlight {
   font-size: 16px;
   line-height: 1.75;
 }
@@ -227,7 +346,7 @@
   display: none;
 }
 
-.md-full-panes.md-mode-preview .md-full-input {
+.md-full-panes.md-mode-preview .md-edit-wrap {
   display: none;
 }
 
@@ -240,11 +359,11 @@
   }
 
   .md-full-panes.md-mode-edit .md-full-preview,
-  .md-full-panes.md-mode-preview .md-full-input {
-    display: block;
+  .md-full-panes.md-mode-preview .md-edit-wrap {
+    display: flex;
   }
 
-  .md-full-input {
+  .md-full-panes > .md-edit-wrap {
     height: 100%;
   }
 }

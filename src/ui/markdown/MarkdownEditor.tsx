@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { uploadFileQuiet } from '../../core/files';
 import { getSmallLimit } from '../filePrefs';
@@ -8,6 +8,7 @@ import { FilesSection } from '../files';
 import { MarkdownView } from './MarkdownView';
 import { MarkdownToolbar } from './MarkdownToolbar';
 import { caretOf, insertText, type Caret } from './insert';
+import { highlightMarkdown } from './highlight';
 
 /**
  * 正文编辑器：工具栏 + textarea + 预览。
@@ -31,12 +32,25 @@ export function MarkdownEditor({
   autoGrow?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const hlRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [full, setFull] = useState(false);
   const [libOpen, setLibOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // 高亮层：把同一段文字上色后垫在透明文字的 textarea 背后
+  const highlighted = useMemo(() => highlightMarkdown(value), [value]);
+
+  /** 输入框内部滚动时，高亮层跟着滚，否则字会「漂」出编辑框 */
+  const syncScroll = () => {
+    const el = ref.current;
+    const hl = hlRef.current;
+    if (!el || !hl) return;
+    hl.scrollTop = el.scrollTop;
+    hl.scrollLeft = el.scrollLeft;
+  };
 
   /** 变换后立刻同步 DOM 值，避免连续插入时读到未提交的旧文本 */
   const apply = (fn: (c: Caret) => Caret) => {
@@ -72,6 +86,9 @@ export function MarkdownEditor({
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [value, autoGrow]);
+
+  // 切换全屏、程序化插入文字后，textarea 的滚动位置可能变，高亮层补一次
+  useLayoutEffect(syncScroll, [value, full, mode]);
 
   const pick = async (list: FileList | null) => {
     if (!list || list.length === 0) return;
@@ -139,27 +156,46 @@ export function MarkdownEditor({
       {full ? (
         // 全屏：手机按 tab 只显示一半，宽屏左右并排（边写边看）
         <div className={`md-full-panes md-mode-${mode}`}>
-          <textarea
-            ref={ref}
-            className="md-full-input"
-            value={value}
-            autoFocus
-            placeholder={placeholder}
-            onChange={(e) => onChange(e.target.value)}
-          />
+          <div className="md-edit-wrap">
+            <div
+              ref={hlRef}
+              className="md-highlight md-full-highlight"
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: highlighted }}
+            />
+            <textarea
+              ref={ref}
+              className="md-full-input"
+              value={value}
+              autoFocus
+              placeholder={placeholder}
+              onChange={(e) => onChange(e.target.value)}
+              onScroll={syncScroll}
+            />
+          </div>
           <div className="md-full-preview md-preview">
             {value.trim() ? <MarkdownView source={value} /> : <span className="muted">还没有内容</span>}
           </div>
         </div>
       ) : mode === 'edit' ? (
-        <textarea
-          ref={ref}
-          rows={rows}
-          value={value}
-          autoFocus={autoFocus}
-          placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <div className="md-edit-wrap">
+          <div
+            ref={hlRef}
+            className="md-highlight"
+            aria-hidden="true"
+            dangerouslySetInnerHTML={{ __html: highlighted }}
+          />
+          <textarea
+            ref={ref}
+            className="md-input"
+            rows={rows}
+            value={value}
+            autoFocus={autoFocus}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            onScroll={syncScroll}
+          />
+        </div>
       ) : value.trim() ? (
         <div className="md-preview">
           <MarkdownView source={value} />
