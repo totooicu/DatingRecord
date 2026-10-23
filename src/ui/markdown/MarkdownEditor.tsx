@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { uploadFileQuiet } from '../../core/files';
 import { getSmallLimit } from '../filePrefs';
@@ -33,6 +33,7 @@ export function MarkdownEditor({
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [full, setFull] = useState(false);
   const [libOpen, setLibOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -47,6 +48,21 @@ export function MarkdownEditor({
     el.focus();
     onChange(out.text);
   };
+
+  // 全屏时锁定背景滚动，否则手指划到输入框外面会把后面的弹窗带着滚
+  useEffect(() => {
+    if (!full) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFull(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [full]);
 
   // 先归零再按内容撑开，删字时才会跟着缩回去
   useLayoutEffect(() => {
@@ -85,7 +101,7 @@ export function MarkdownEditor({
   };
 
   return (
-    <div className="md-editor">
+    <div className={full ? 'md-editor md-editor-full' : 'md-editor'}>
       <div className="md-editor-head">
         <div className="md-tabs">
           <button
@@ -102,6 +118,14 @@ export function MarkdownEditor({
           >
             预览
           </button>
+          <button
+            type="button"
+            className="md-tab md-full-btn"
+            onClick={() => setFull((v) => !v)}
+            title={full ? '退出全屏（Esc）' : '全屏编辑，一屏放得下更多内容'}
+          >
+            {full ? '退出全屏' : '全屏'}
+          </button>
         </div>
         {mode === 'edit' && (
           <MarkdownToolbar
@@ -112,7 +136,22 @@ export function MarkdownEditor({
         )}
       </div>
 
-      {mode === 'edit' ? (
+      {full ? (
+        // 全屏：手机按 tab 只显示一半，宽屏左右并排（边写边看）
+        <div className={`md-full-panes md-mode-${mode}`}>
+          <textarea
+            ref={ref}
+            className="md-full-input"
+            value={value}
+            autoFocus
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <div className="md-full-preview md-preview">
+            {value.trim() ? <MarkdownView source={value} /> : <span className="muted">还没有内容</span>}
+          </div>
+        </div>
+      ) : mode === 'edit' ? (
         <textarea
           ref={ref}
           rows={rows}

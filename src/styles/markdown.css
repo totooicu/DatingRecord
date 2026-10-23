@@ -180,3 +180,69 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* ---------- 正文全屏编辑 ---------- */
+/* 手机上弹窗里的正文框只有六行，写长段落要不停地往回滚；全屏后就地铺满，
+   编辑/预览仍用 tab 切换。宽屏改成左右两栏，边写边看。 */
+.md-full-btn {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.md-editor-full {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px
+    calc(env(safe-area-inset-bottom, 0px) + 10px);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.md-full-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.md-full-input {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.md-full-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 手机：只显示当前 tab 那一半 */
+.md-full-panes.md-mode-edit .md-full-preview {
+  display: none;
+}
+
+.md-full-panes.md-mode-preview .md-full-input {
+  display: none;
+}
+
+/* 宽屏：左右并排，两个都显示，tab 仍可切换焦点侧 */
+@media (min-width: 900px) {
+  .md-full-panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .md-full-panes.md-mode-edit .md-full-preview,
+  .md-full-panes.md-mode-preview .md-full-input {
+    display: block;
+  }
+
+  .md-full-input {
+    height: 100%;
+  }
+}
