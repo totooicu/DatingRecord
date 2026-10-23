@@ -29,10 +29,17 @@
 **分支与门禁（缺一不可）：**
 
 1. **开工先建分支**：`git fetch origin` → `git switch -c feat/<简短名> origin/main`。**任何改动**（业务代码、bugfix、文档、样式微调，以及 `CLAUDE.md` / `DEVELOPMENT.md` 宪法修订本身）都不得直接在 `main` 上提交，**无例外**。
-2. 分支内可自由提交；`main` 保持随时可发布。
+   - 分支建好立刻推上远端：`git push -u origin feat/<简短名>`。分支必须能在 GitHub 上看到，别人据此知道哪块正在被改；只在本地存在等于没建分支（2026-10-23 用户补充）。
+2. 分支内可自由提交，有进展就 `git push` 一次，远端分支跟着更新；`main` 保持随时可发布。
 3. 任务完成 + **本地构建全绿** + 自测通过 → 才允许合并：`npm run build` + `npm run build:cli`。
 4. **不走 PR**（2026-10-23 用户确认）：本仓库不创建 Pull Request、不等待 CI 通过才合并，直接本地合并。因此**本地构建就是唯一门禁**，跳过构建直接合并视同违规。
-5. 合并后立即删除该分支（本地 + 远端）。
+5. 合并完成后删除该分支，**本地和远端都要删**（顺序：先确认 main 已推送成功，再删分支）：
+   ```bash
+   git push origin main
+   git branch -d feat/<简短名>
+   git push origin --delete feat/<简短名>
+   ```
+   远端分支删干净后，`git ls-remote --heads origin` 应当只剩 `main` 与 `gh-pages`。
 
 **合并前必做（缺一不可）：**
 
@@ -54,7 +61,7 @@
 收尾：
 
 - 合并成功 → `git push origin main` → 校验 `git rev-parse main origin/main` 一致 → 再跑一次构建确认。
-- 合并后删除已并入的功能分支（本地 + 远端），main 保持干净。
+- 确认 main 已推上去之后，删除已并入的功能分支：本地 `git branch -d feat/<名>`，远端 `git push origin --delete feat/<名>`。远端只剩 `main` 与 `gh-pages` 才算收干净。
 - 若 main 推送被拒（远端已被人推新提交），**不 force**；重新 fetch，回到第 3 步。
 - **合并即发布，版本时间必须前进**：合并到 main 后，由 `deploy-pages.yml` 在 Actions 里重新 `pnpm build`，那里注入的 `__BUILD_TIME__` 才是线上时间，同时替换 SW 缓存名。推送后等这个 run 变绿，打开「人物」主页面，「人物」标题上方的「最新版本」时间必须与**这次 Actions 构建**的时间一致（一般比本地门禁构建晚几十秒到几分钟，两者不相等是正常的）。若仍显示旧时间，先确认部署完成，再强制刷新一次，仍不对就查 SW 缓存名。**不许手改 `src/core/buildInfo.ts` 或用常量兜住 BUILD_TIME**，那等于伪造版本号。
 

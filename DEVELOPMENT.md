@@ -75,8 +75,9 @@
 **分支模型：每次改动都开新分支（feature branch per task）**
 
 - **每一次改动都创建新分支**，命名 `feat/<简短名>`、`fix/<简短名>`、`docs/<简短名>`；
+- 分支建好立刻 `git push -u origin <分支名>`：分支必须在 GitHub 上可见，只在本地存在等于没建分支（2026-10-23 用户补充）；
 - 分支任务完成、构建与自测通过**之后**，才合并回 `main`；
-- 合并后立即删除该分支（本地 + 远端），`main` 永远保持可发布状态；
+- 合并后立即删除该分支，**本地与远端都删**（`git branch -d` + `git push origin --delete`），`main` 永远保持可发布状态；
 - `main` 上不直接提交**任何**改动——包括本文档与 `CLAUDE.md` 的宪法修订，**无例外**；
 - 里程碑打 tag：`git tag -a v0.1.0 -m "MVP：三层模型 + 导入导出"`。
 
@@ -93,7 +94,7 @@
 - 只允许 `git merge --ff-only`，禁止在 main 上 rebase / reset / amend / 手改代码；
 - 冲突时**以 main 为准**：main 改动优先，自己改名/挪位适配；无法两全则停手报告用户裁决；
 - 合并前后各跑一次 `npm run build` + `npm run build:cli`；
-- 合并后删掉功能分支（本地 + 远端）。
+- 合并后先推 main，再删功能分支：本地 `git branch -d` + 远端 `git push origin --delete`；远端只剩 `main` 与 `gh-pages`。
 
 **不走 PR，直接合并（2026-10-23 用户确立）**
 
