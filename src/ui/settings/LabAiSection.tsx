@@ -1124,12 +1124,13 @@ export function LabAiSection() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey) {
+                    // Enter 只换行；Cmd/Ctrl+Enter 才发送（用户要求「换行不要触发发送」）
+                    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'Enter') {
                       e.preventDefault();
                       void send(input);
                     }
                   }}
-                  placeholder={busy ? 'AI 正在干活，说不了话…' : '说点什么，Enter 发送，Shift+Enter 换行'}
+                  placeholder={busy ? 'AI 正在干活，说不了话…' : '说点什么，Enter 换行，Cmd/Ctrl+Enter 发送'}
                   rows={2}
                   disabled={busy}
                 />

@@ -313,6 +313,30 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 
 ---
 
+## 1.11 AI「审核后执行」约定（数据安全硬要求）
+
+AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后，改动先"挂起"，用户**审阅并点「执行」**才真正落到真实库；不想要就「放弃」，真实库原样不动。这是用户对数据安全的硬要求（"不小心删错了也没办法了"）。
+
+**机制（回滚式，核心在 `src/core/snapshots/index.ts`）**：整库两份字节——`before` 就是动手前拍的快照，`after` 是 AI 跑完导出的另一份，存在后端 store 里。
+
+| 环节 | 函数 | 做什么 |
+|---|---|---|
+| 动手前留底 | `createSnapshot('ai', …)` | 整库 export 存字节 + 元数据；轮次中算出净变化回写 `diff` |
+| 回合结束暂存 | `stageAiTurn(id, ops, note)` | 导出 after → **立刻把库实例切回 before**（真实库回到动手前）→ after 存 `afterId`，状态置 `review:'pending'` |
+| 用户点「执行」 | `applyPendingSnapshot(id)` | 把 after 换回当前库实例，删 afterId，状态置 `applied` |
+| 用户点「放弃」 | `discardPendingSnapshot(id)` | 库本来就没变，删 before/after 字节和这条成果即可 |
+| 待执行时改名 | `renamePendingRecord(snapId, kind, id, name)` | 只改 after 字节里那一条记录的名字，不碰真实库 |
+
+**为什么是"整库两份字节"而不是别的**：AI 一轮可能触发十几次写，用户不可能连点十几次撤销；且中途任何刷新都会清空内存撤销栈。快照落盘（`store.put` + `flushPersist`）才能管住"整体不对，想回动手前"。`after` 也落盘，所以**刷新页面 pending 不丢**，回来还能执行/放弃。
+
+**与「撤销栈」的分工**：撤销栈在内存、刷新即失效，管"刚才那一下点错了"；快照落盘，管"AI 一顿操作之后整体不对"。两者不替代。
+
+**输入与轮次约定**（在 UI / agent 层）：
+- 对话框 `Enter` **只换行**，`Cmd/Ctrl+Enter` 才发送——换行不能误触发送（见 `LabAiSection.tsx` 的 `onKeyDown`）。
+- `runAgentTurn` 的 `maxRounds` **不硬性封顶**：`const maxRounds = opts.maxRounds; if (maxRounds && rounds > maxRounds)`——没传就一路跑到模型主动收尾，不限制 AI 的思考轮次。
+
+---
+
 # 第二部分 · 功能规格
 
 ## 2.0 优先级总览
