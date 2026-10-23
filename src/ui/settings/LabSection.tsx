@@ -1,51 +1,74 @@
-// 「功能体验」：新功能先在这里落地，稳定了再搬去该去的地方。
+// 「功能体验」入口页。
 //
-// 现在挂着两样：
-//   · AI 对话——能调工具改数据的助手（见 AiChatSection，防误改靠自动快照）
-//   · 边缘分割工具——一份自包含的静态 HTML（public/edge-split.html）
+// 这里只做一件事：把试验中的功能列成目录，点进去各占一页。
+// 以前 AI 对话和边缘分割上下铺在同一页——聊天区被压到 44vh，边缘工具还要
+// 先滚过一大段说明才看得见控件，两个功能互相挤占。
 //
-// 工具本体用 iframe 的 **src** 加载，而不是 srcDoc 拼字符串：
-//   · 它自带全局样式（* { margin:0; padding:0 }）和一堆 id 选择器，
-//     塞进 srcDoc 会连样式一起作用到父文档，把设置页的布局打乱；
-//   · src 指向独立文档，两边各有一套 CSS 作用域，互不干扰。
-//
-// 工具只在本机跑（canvas + FileReader），图片不出浏览器，也不碰本库的数据。
-import { useMemo } from 'react';
+// 拆开之后每个子页都能独占整屏高度，目录这一页也就只剩几行，扫一眼就知道有哪些东西。
+import { SettingsIcon } from './navIcons';
+import type { SettingsKey } from './sections';
+import { getDefaultModel, listModels } from '../../core/ai';
 
-import { Section } from './Section';
-import { AiChatSection } from './AiChatSection';
-
-/** 取 BASE_URL 兜住末尾斜杠——部署到 GitHub Pages 子路径时也要能取到 */
-function assetUrl(name: string): string {
-  const base = import.meta.env.BASE_URL;
-  return base.endsWith('/') ? `${base}${name}` : `${base}/${name}`;
+interface LabEntry {
+  key: SettingsKey;
+  title: string;
+  desc: string;
+  /** 一句「现在是什么样」，和设置目录的 hint 同一套写法 */
+  hint: string;
+  /** 灰色小字的状态行，进来前就知道能不能用 */
+  status: string;
 }
 
-export function LabSection() {
-  const src = useMemo(() => assetUrl('edge-split.html'), []);
+export function LabSection({ onPick, onBack }: { onPick: (k: SettingsKey) => void; onBack: () => void }) {
+  // 这些读数只在打开这一页时取一次：都是同步的本地查询，成本可以忽略
+  const models = listModels();
+  const def = getDefaultModel() ?? models[0];
 
+  const entries: LabEntry[] = [
+    {
+      key: 'labAi',
+      title: 'AI 对话',
+      desc: '能思考、能动手的助手：查数据、建人物、记事件，每次写库前自动备份。',
+      hint: '支持上传文件让它读',
+      status: def ? `模型：${def.alias}` : '还没配模型',
+
+    },
+    {
+      key: 'labEdge',
+      title: '边缘分割',
+      desc: '把一张图里的多个元素自动框出来并裁开，图片只在浏览器里处理。',
+      hint: '自动框选 · 批量裁剪',
+      status: '本地处理，图片不出浏览器',
+    },
+  ];
   return (
-    <>
-      <AiChatSection />
+    <div className="settings-intro">
+      <button className="lab-back" onClick={onBack}>
+        ← 设置目录
+      </button>
+      <p className="muted small">新功能先在这里试用，用顺了会搬去该去的地方。</p>
 
-      <Section
-        title="边缘分割工具"
-        desc="把一张图里的多个元素自动框出来。图片只在你自己浏览器里处理，不上传、不入库。"
-      >
-        <div className="lab-frame">
-          <iframe
-            className="lab-frame-el"
-            src={src}
-            title="边缘分割工具"
-            // 工具里要点文件、要拖滑块，禁掉缩放和滚动条会让它很难用
-            scrolling="auto"
-          />
-        </div>
-        <p className="muted small" style={{ marginTop: 10 }}>
-          边缘分割：灰度化 → 高斯模糊 → Sobel 边缘检测 → 膨胀 → 连通区域分析 → 裁剪。
-          调「边缘阈值」和「模糊强度」通常就能分出干净的结果；想要更多小块就把「最小面积」往下调。
-        </p>
-      </Section>
-    </>
+      <ul className="lab-list">
+        {entries.map((e) => (
+          <li key={e.key}>
+            <button className="lab-item" onClick={() => onPick(e.key)}>
+              <span className="lab-item-icon" aria-hidden>
+                <SettingsIcon k={e.key === 'labAi' ? 'labAi' : 'labEdge'} />
+              </span>
+              <span className="lab-item-text">
+                <span className="lab-item-title">{e.title}</span>
+                <span className="lab-item-desc">{e.desc}</span>
+                <span className="lab-item-hint">
+                  {e.hint} · {e.status}
+                </span>
+              </span>
+              <span className="lab-item-arrow" aria-hidden>
+                ›
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

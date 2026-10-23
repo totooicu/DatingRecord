@@ -21,10 +21,12 @@ export type SettingsKey =
   | 'merge'
   | 'archive'
   | 'files'
-  | 'lab';
+  | 'lab'
+  | 'labAi'
+  | 'labEdge';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
-export type SettingsGroup = 'general' | 'security' | 'people' | 'data';
+export type SettingsGroup = 'general' | 'security' | 'people' | 'data' | 'trial';
 
 export interface SettingsEntry {
   key: SettingsKey;
@@ -42,7 +44,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除', group: 'people' },
   { key: 'files', title: '文件', hint: '正文引用的图片与附件', group: 'people' },
   { key: 'data', title: '数据与统计', hint: '库概览、示例数据与重置', group: 'data' },
-  { key: 'lab', title: '功能体验', hint: 'AI 对话、边缘分割等新功能', group: 'data' },
+  // 功能体验单独成组（trial）：lab 是这一组的入口页，labAi / labEdge 是它的子页。
+  // 以前 AI 对话和边缘分割叠在同一个 lab 页里，聊天区被挤到 44vh。
+  { key: 'lab', title: '功能体验', hint: '新功能试用区', group: 'trial' },
+  { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'trial' },
+  { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -50,7 +56,28 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
   security: '安全',
   people: '人物',
   data: '数据',
+  trial: '功能体验',
 };
+
+/**
+ * 入口页 → 它的子页。
+ *
+ * 只影响目录怎么画：子页不出现在目录里，点入口页先进入口页（那里列着子页），
+ * 在子页里时，目录上亮的是入口页那一行。路由本身还是平铺的 SettingsKey。
+ *
+ * 加新子页只需在 SETTINGS_ENTRIES 里加一条、再挂到这里。
+ */
+export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
+  lab: ['labAi', 'labEdge'],
+};
+
+/** 这个 key 是不是某个入口页的子页 */
+export function parentOf(k: SettingsKey): SettingsKey | null {
+  for (const [parent, subs] of Object.entries(SUB_PAGES)) {
+    if ((subs as SettingsKey[]).includes(k)) return parent as SettingsKey;
+  }
+  return null;
+}
 
 /** 旧入口 → 新入口。旧的深链接、书签、肌肉记忆都能落到该去的那一页 */
 export const LEGACY_KEYS: Record<string, SettingsKey> = {

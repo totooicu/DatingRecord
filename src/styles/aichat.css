@@ -1,20 +1,101 @@
-/* ---------- AI 对话（设置 → 功能体验）----------
+/* ---------- AI 对话（设置 → 功能体验 → AI 对话）----------
    观感朝聊天软件靠，但每一轮的工具调用都摊开给人看——
-   助手不是黑盒，它读了什么、写了什么，用户得能审。 */
+   助手不是黑盒，它读了什么、写了什么，用户得能审。
 
-.aichat {
+   版面：这一页独占屏幕，聊天区 flex:1 吃掉所有剩余高度。
+   高度链 .pane(flex column) → .lab-page → .aichat-log，任一处断了就退化成定高。 */
+
+.aichat-log {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 12px;
+  flex: 1 1 auto;
+  /* 高度交给父级（.lab-page-chat 定高）用 flex 分配：其余块按内容占位，
+     剩下的全给聊天区，提示 / 附件条出现时自动让位 */
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 200px;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfaf8;
+  overscroll-behavior: contain;
+}
+
+/* 宽屏没有底部 TabBar，可用高度更多 */
+@media (min-width: 1024px) {
+  .aichat-log {
+    height: calc(100dvh - 355px);
+  }
+}
+
+/* 让 .pane 变成 flex 容器时，设置子页这一列能一路把 flex 传下去 */
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lab-page-chat {
+  /* 这一页定高，内部各块自己分配：聊天区 flex:1 吃掉剩余，
+     提示 / 附件条 / 输入区出现时自动挤占聊天区，整页永远不会比屏幕高。
+     这样比逐个去「算别的元素多高」稳得多。 */
+  /* 减去的常数 = 顶部导航 + 设置页头 + 子页头 + 工具条之外的外边距。
+     窄屏有 TabBar 与「返回」，宽屏没有，所以分两档。 */
+  height: calc(100dvh - 150px);
+  /* 子块按 flex 分配，自身不再撑高页面；用户要的长内容都在聊天区里滚 */
+  overflow: hidden;
+  min-height: 420px;
 }
 
 .aichat-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.aichat-bar-ops {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 工具条上的小胶囊按钮：快照 / 说明 / 停止 */
+.aichat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.aichat-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.aichat-chip-on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.aichat-chip-n {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.aichat-stop {
+  padding: 4px 10px;
+  font-size: 12.5px;
 }
 
 .aichat-model {
@@ -29,29 +110,38 @@
   max-width: 260px;
 }
 
+/* 折叠的说明：默认不占地方；展开后自己滚，不把整页顶高 */
+.aichat-help {
+  flex: 0 1 auto;
+  max-height: 22vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.aichat-help p {
+  margin: 0 0 6px;
+}
+
+.aichat-help p:last-child {
+  margin-bottom: 0;
+}
+
 .aichat-hint {
   margin: 0;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.7;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
   border: 1px dashed var(--border);
   border-radius: 10px;
   background: var(--panel);
 }
 
 /* ---------- 消息区 ---------- */
-.aichat-log {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  height: 44vh;
-  min-height: 260px;
-  overflow-y: auto;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #fbfaf8;
-}
 
 .aichat-empty {
   margin: auto 0;
@@ -174,21 +264,142 @@
 /* ---------- 输入区 ---------- */
 .aichat-input {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.aichat-input-row {
+  display: flex;
   align-items: flex-end;
   gap: 8px;
 }
 
 .aichat-input textarea {
   flex: 1;
-  resize: vertical;
+  resize: none;
   min-height: 44px;
+  max-height: 30vh;
+}
+
+.aichat-input-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 附件 / 文件库 / 回退：三个轻量按钮排在输入框上方 */
+.aichat-toolbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.aichat-toolbtn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.aichat-toolbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aichat-toolbtn-warn {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  color: var(--primary);
+}
+
+.aichat-send {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 18px;
+}
+
+/* ---------- 附件 ---------- */
+.aichat-atts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aichat-att {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.aichat-att-warn {
+  border-color: #f0c36d;
+  background: #fffbf0;
+}
+
+.aichat-att-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.aichat-att-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aichat-att-warn-text {
+  color: #9a6700;
+}
+
+.aichat-att-x {
+  padding: 0 2px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.aichat-att-x:hover {
+  color: #b42318;
+}
+
+/* 待发送的附件条：贴在输入框上方 */
+.aichat-pending {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--panel);
 }
 
 /* ---------- 快照列表 ---------- */
 .aichat-snaps {
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  max-height: 24vh;
+  overflow-y: auto;
 }
 
 .aichat-snaps-head {
@@ -246,11 +457,23 @@
 }
 
 @media (max-width: 640px) {
-  .aichat-log {
-    height: 50vh;
-  }
-
   .aichat-item {
     max-width: 92%;
+  }
+
+  .aichat-model select {
+    max-width: 160px;
+  }
+
+  .aichat-att-name {
+    max-width: 120px;
+  }
+}
+
+/* 宽屏没有底部 TabBar，「设置与数据」那块头部也更矮，可以再多吃 10px */
+@media (min-width: 1024px) {
+  .lab-page-chat {
+    /* 宽屏 header 更矮（56px），但 .pane 有 24px 底部内边距，都要减掉 */
+    height: calc(100dvh - 56px - 70px - 24px);
   }
 }

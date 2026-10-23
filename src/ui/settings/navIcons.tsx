@@ -15,7 +15,6 @@ export type NavIconKey =
   | 'templates'
   | 'overview'
   | 'sample';
-
 const ICON = {
   width: 20,
   height: 20,
@@ -161,6 +160,23 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M3.4 15.4h13.6" />
           <circle cx="9" cy="8.4" r="1.8" />
           <path d="M17.6 8.6v3.2M15.9 10.2h3.4" />
+        </>,
+      );
+    // AI 对话：带小三角的对话气泡（和「AI 模型」的双气泡区分开）
+    case 'labAi':
+      return wrap(
+        <>
+          <path d="M4.2 6.2h15.6v8.6H9.4l-3.6 2.8v-2.8H4.2z" />
+          <path d="M8.4 10.4h7.2" />
+        </>,
+      );
+    // 边缘分割：虚线框 + 里面的小方块
+    case 'labEdge':
+      return wrap(
+        <>
+          <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2" strokeDasharray="3 2.4" />
+          <rect x="7" y="8" width="4.6" height="4.6" rx="1" />
+          <rect x="13.4" y="12.4" width="3.8" height="3.8" rx="0.9" />
         </>,
       );
     // 库概览：仪表盘

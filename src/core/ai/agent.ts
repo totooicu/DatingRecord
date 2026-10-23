@@ -17,7 +17,12 @@ import { createSnapshot } from '../snapshots';
 
 /** 对话里的一条。tool 角色是喂回去的工具结果 */
 export type AgentMessage =
-  | { role: 'system' | 'user'; content: string }
+  | {
+      role: 'system' | 'user';
+      content: string;
+      /** 随这条消息一起发的图片（data URL）。只有 user 会有 */
+      images?: { name: string; dataUrl: string }[];
+    }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
   | { role: 'tool'; toolCallId: string; name: string; content: string };
 
@@ -91,6 +96,16 @@ function toWire(msgs: AgentMessage[]): AiMessage[] {
           type: 'function',
           function: { name: tc.name, arguments: tc.arguments },
         })),
+      } as unknown as AiMessage;
+    }
+    // 带图的消息走多模态分段：文字和图片各自一段，顺序保持「先文字后图片」
+    if (m.role === 'user' && m.images?.length) {
+      return {
+        role: 'user',
+        content: [
+          ...(m.content ? [{ type: 'text', text: m.content }] : []),
+          ...m.images.map((img) => ({ type: 'image_url', image_url: { url: img.dataUrl } })),
+        ],
       } as unknown as AiMessage;
     }
     return { role: m.role, content: m.content };

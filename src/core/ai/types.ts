@@ -108,9 +108,17 @@ export interface AiModel {
   updatedAt: string;
 }
 
+export type AiContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  /**
+   * 纯文本时是字符串；带图片的多模态消息是分段数组（[text, image_url, …]，
+   * OpenAI 兼容协议的标准形状）。tool 角色由 agent 侧另行拼装，不走这个类型。
+   */
+  content: string | null | AiContentPart[];
 }
 
 export interface AiReply {

@@ -225,18 +225,156 @@
 }
 
 /* 高度给足：工具里上下有两块画布 + 结果网格，太矮就得在 iframe 里滚个不停。
-   下面还挂着 AI 对话，所以从 78vh 收到 56vh，一屏能看见两块的开头 */
+   拆成独立子页后不用再给下面的 AI 对话让位，直接吃掉整屏。 */
 .lab-frame-el {
   display: block;
   width: 100%;
-  height: 56vh;
-  min-height: 420px;
+  height: 72vh;
+  min-height: 460px;
   border: 0;
 }
 
 @media (max-width: 640px) {
   .lab-frame-el {
-    height: 62vh;
-    min-height: 380px;
+    height: 70vh;
+    min-height: 400px;
+  }
+}
+
+/* ---------- 功能体验：入口页与子页 ---------- */
+
+/* 入口页：每个功能一张卡，点进去各占一页 */
+.lab-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lab-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.lab-item-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.lab-item-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lab-item-title {
+  font-weight: 600;
+}
+
+.lab-item-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.lab-item-hint {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+}
+
+.lab-item-arrow {
+  flex: 0 0 auto;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.lab-item:hover {
+  border-color: var(--primary);
+}
+
+/* 子页容器：head 固定，主体吃满剩余高度（聊天页靠这条链） */
+.lab-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.lab-page-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.lab-back {
+  padding: 2px 8px 2px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.lab-page-icon {
+  display: none;
+}
+
+.lab-page-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* 折叠的说明：想看的展开，不想看的永远只占一行 */
+.lab-help {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.lab-help summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.lab-help p {
+  margin: 4px 0 0;
+  line-height: 1.7;
+}
+
+/* 目录里「有子页」的入口右侧加个箭头 */
+.settings-nav-more {
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+/* 手机上子页用「← 功能体验」返回，宽屏可直接点左栏 */
+@media (min-width: 1024px) {
+  .lab-back {
+    visibility: hidden;
+    width: 0;
+    padding: 0;
   }
 }

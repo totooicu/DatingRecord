@@ -9,6 +9,10 @@ import { buildLibrary, exportToFile } from '../io/export';
 import { importLibrary, type ImportResult } from '../io/import';
 import { buildShare, parseShare, planShare, applyShare, exportShareFile, NEW_PERSON } from '../io/share';
 import { createSnapshot } from '../snapshots';
+import { getBlob } from '../db/blob';
+import { getFile } from '../repo/files';
+import { isPrivacyMode } from '../../privacy';
+import { kindOf as kindOfFile } from '../ai/attach';
 import { SCHEMA_VERSION } from '../types';
 
 function hasHost(): boolean {
@@ -186,6 +190,62 @@ export const IO_TOOLS: ToolDef[] = [
         parentId: (a.parentId as string | null | undefined) ?? null,
       });
       return { counts: r.counts, skipped: r.skipped };
+    },
+  },
+  {
+    name: 'io.readFile',
+    group: 'io',
+    title: '读取本地文件内容',
+    desc:
+      '读一个本地文本文件（txt/md/json/csv/代码等）的内容，或拿到任意文件的元信息。' +
+      'CLI 里给 path；浏览器里没有文件系统，只能读文件库（fileId）。' +
+      '内容超过 maxChars 会截断。二进制文件只返回元信息，不返回乱码',
+    mutating: false,
+    params: [
+      { name: 'path', type: 'string', desc: '本地文件路径（仅 CLI 有意义）', required: false },
+      { name: 'fileId', type: 'string', desc: '文件库里的文件 id（浏览器 / CLI 都可以）', required: false },
+      { name: 'maxChars', type: 'number', desc: '最多读多少字符，默认 20000', required: false, default: 20000 },
+    ],
+    run: async (a) => {
+      const maxChars = typeof a.maxChars === 'number' ? a.maxChars : 20000;
+
+      // 文件库：走 getBlob，浏览器（IndexedDB）和 CLI（<db>.blobs/）都通
+      if (a.fileId) {
+        const meta = getFile(String(a.fileId));
+        if (!meta) throw new Error(`文件库里没有 id=${a.fileId}`);
+        if (meta.isPrivate && isPrivacyMode()) throw new Error('这个文件标了隐私，隐私模式下不读');
+        const blob = await getBlob(meta.id);
+        if (!blob) throw new Error(`文件 ${meta.name} 的内容已丢失`);
+        const kind = kindOfFile(meta.name, meta.mime);
+        const base = { name: meta.name, mime: meta.mime, size: meta.size, kind };
+        if (kind === 'unsupported') return { ...base, note: '二进制/不支持的格式，只返回元信息' };
+        if (kind === 'image') return { ...base, note: '图片不转文本；改用「从文件库」在 AI 对话里发送' };
+        const text = await blob.text();
+        return {
+          ...base,
+          truncated: text.length > maxChars,
+          chars: text.length,
+          text: text.slice(0, maxChars),
+        };
+      }
+
+      // 本地路径：只有注入了宿主 fs 的环境（CLI）才行
+      const path = a.path as string | undefined;
+      if (!path) throw new Error('必须提供 path（CLI）或 fileId（文件库）之一');
+      const fs = requireHostFs();
+      if (!fs.exists(path)) throw new Error(`文件不存在：${path}`);
+      const text = fs.readText(path);
+      const name = path.split(/[\\/]/).pop() ?? path;
+      const kind = kindOfFile(name, '');
+      return {
+        name,
+        path,
+        size: text.length,
+        kind,
+        truncated: text.length > maxChars,
+        chars: text.length,
+        text: text.slice(0, maxChars),
+      };
     },
   },
 ];

@@ -3,6 +3,9 @@
 // 每条入口带一个图标 + 标题 + 一句说明。说明不是把标题抄一遍，而是「这一页
 // 现在是什么样」——隐私与安全那条直接显示锁开没开、加密开没开、隐私模式开没开，
 // 光看目录就知道状态，不必进去再出来确认。
+//
+// 带子页的入口（目前只有「功能体验」）在目录里只占一行，右侧带箭头；
+// 子页本身不进目录，在子页里时亮的是父级那一行。
 import { useMemo } from 'react';
 import { getEncStatus } from '../../core/db';
 import { hasPassphrase } from '../../core/lock';
@@ -12,12 +15,14 @@ import { SettingsIcon, GroupIcon } from './navIcons';
 import {
   GROUP_TITLES,
   SETTINGS_ENTRIES,
+  SUB_PAGES,
+  parentOf,
   type SettingsEntry,
   type SettingsGroup,
   type SettingsKey,
 } from './sections';
 
-const GROUP_ORDER: SettingsGroup[] = ['general', 'security', 'people', 'data'];
+const GROUP_ORDER: SettingsGroup[] = ['general', 'security', 'people', 'data', 'trial'];
 
 export function SettingsNav({
   active,
@@ -38,10 +43,14 @@ export function SettingsNav({
     } as Partial<Record<SettingsKey, string>>;
   }, [v, privacy]);
 
+  // 目录里只列「一级入口」：是别人子页的条目跳过（由父级那一行进去）
   const groups = GROUP_ORDER.map((g) => ({
     g,
-    items: SETTINGS_ENTRIES.filter((e) => e.group === g),
+    items: SETTINGS_ENTRIES.filter((e) => e.group === g && !parentOf(e.key)),
   })).filter((x) => x.items.length > 0);
+
+  // 子页高亮时，目录上亮父级
+  const activeTop = parentOf(active) ?? active;
 
   return (
     <div className="settings-nav">
@@ -59,7 +68,7 @@ export function SettingsNav({
               <li key={s.key}>
                 <NavItem
                   entry={s}
-                  active={s.key === active}
+                  active={s.key === activeTop}
                   hint={hints[s.key] ?? s.hint}
                   onPick={onPick}
                 />
@@ -83,6 +92,7 @@ function NavItem({
   hint: string;
   onPick: (k: SettingsKey) => void;
 }) {
+  const hasSub = (SUB_PAGES[entry.key]?.length ?? 0) > 0;
   return (
     <button
       className={active ? 'settings-nav-item settings-nav-item-on' : 'settings-nav-item'}
@@ -95,6 +105,11 @@ function NavItem({
         <span className="settings-nav-title">{entry.title}</span>
         <span className="settings-nav-hint">{hint}</span>
       </span>
+      {hasSub && (
+        <span className="settings-nav-more" aria-hidden>
+          ›
+        </span>
+      )}
     </button>
   );
 }

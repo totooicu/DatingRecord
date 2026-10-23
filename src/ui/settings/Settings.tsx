@@ -8,10 +8,17 @@ import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
 import { LabSection } from './LabSection';
+import { LabAiSection } from './LabAiSection';
+import { LabEdgeSection } from './LabEdgeSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { DEFAULT_SETTINGS_KEY, resolveSettingsKey, type SettingsKey } from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
+
+/** 功能体验那一组（入口页 + 子页）：它们内部自带返回，不再叠「返回目录」 */
+function isLabKey(k: SettingsKey): boolean {
+  return k === 'lab' || k === 'labAi' || k === 'labEdge';
+}
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -34,13 +41,17 @@ export function Settings({ initial }: { initial?: string | null }) {
       <SettingsNav active={active} onPick={setSub} />
 
       <div className="settings-body">
-        <div className="settings-build-time muted small">
-          最后构建：{fmtBuildTime()}
-        </div>
+        {/* 构建时间只是排查用的元信息：放在目录首页一眼能看到就够，
+            进了具体子页就别再占一行——这一行在手机上等于半个按钮的高度 */}
+        {sub === null && <div className="settings-build-time muted small">最后构建：{fmtBuildTime()}</div>}
 
-        <button className="settings-back" onClick={() => setSub(null)}>
-          ← 返回目录
-        </button>
+        {/* 功能体验系列有自己的一层「← 功能体验」，这时不再显示「← 返回目录」，
+            两层返回按钮叠在一起既占高度又容易点错 */}
+        {!isLabKey(active) && (
+          <button className="settings-back" onClick={() => setSub(null)}>
+            ← 返回目录
+          </button>
+        )}
 
         {active === 'backup' && <BackupSection />}
 
@@ -65,7 +76,13 @@ export function Settings({ initial }: { initial?: string | null }) {
 
         {active === 'data' && <DataSection />}
 
-        {active === 'lab' && <LabSection />}
+        {/* 功能体验：入口页只放目录，具体功能各占一页，互不挤占屏幕。
+            lab 的返回目标就是「设置目录」，子页的返回目标是 lab——两级，不多不少 */}
+        {active === 'lab' && <LabSection onPick={setSub} onBack={() => setSub(null)} />}
+
+        {active === 'labAi' && <LabAiSection onBack={() => setSub('lab')} />}
+
+        {active === 'labEdge' && <LabEdgeSection onBack={() => setSub('lab')} />}
       </div>
     </div>
   );

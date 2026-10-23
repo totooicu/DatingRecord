@@ -114,7 +114,7 @@ $ cli.cjs person.create --displayName 张三 --compact
 | `collection.*` | 事件集树、增删改、移动、成员增删、智能集合规则 |
 | `file.*` | 附件列表/详情/重命名/删除/隐私/访问地址 |
 | `snapshot.*` | 快照创建、列表、恢复、删除 |
-| `io.*` | 整库导出/导入、事件集分享的打包/预览/导入 |
+| `io.*` | 整库导出/导入、事件集分享的打包/预览/导入、读取本地文本文件内容（`io.readFile`） |
 | `system.*` | 库概览、只读 SQL、表结构、操作记录、meta 读写 |
 
 完整说明随时用 `cli.cjs tools` 和 `cli.cjs help <工具名>` 查，那是最新的。
