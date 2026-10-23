@@ -9,13 +9,14 @@
   display: none;
 }
 
-/* 子页态（AI 对话等）：整列 flex 撑满，让内部满屏工作区能用 flex:1 吃高度，
-   不再靠 calc(100dvh - Npx) 硬算——硬算总会和实际 tabbar / padding 差出一截。
-   margin-bottom:-24px 抵消父级 pane-solo 的滚动留白 padding，让 AI 对话页贴到 tabbar。 */
+/* 子页态（AI 对话等）：整列 flex 撑满，让内部满屏工作区能用 flex:1 吃高度。
+   pane-solo 已是 flex column，这里 flex:1 直接吃满；margin-bottom:-24px 抵消
+   pane-solo 的滚动留白 padding，让 AI 对话页贴到 tabbar。 */
 .settings-panes:not([data-sub='']) {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   margin-bottom: -24px;
 }
 
