@@ -11,6 +11,7 @@ import { TagInput, PrivacyButton } from '../common';
 import { Avatar } from './Avatar';
 import { IconPicker } from '../collections/IconPicker';
 import { bump } from '../../store';
+import { BUILD_TIME, fmtBuildTime } from '../../core/buildInfo';
 import type { Person } from '../../core/types';
 
 export function PersonHead({
@@ -62,6 +63,11 @@ export function PersonHead({
             }}
             placeholder="添加标签"
           />
+          {/* 线上验证用：打开任意人物就能看到当前部署的构建时间，
+              不用再翻到「设置」里找 */}
+          <div className="detail-build-time muted small" title={BUILD_TIME}>
+            最新版本 · {fmtBuildTime()}
+          </div>
         </div>
         <div className="detail-head-actions">
           {confirming ? (
