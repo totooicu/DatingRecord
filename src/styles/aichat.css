@@ -273,8 +273,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 2px 4px 0;
+  padding: 4px 8px;
   font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
 }
 
 /* 历史会话工具栏：批量删除 / 新会话 / 完成 */
@@ -497,6 +500,11 @@
   flex-direction: column;
   gap: 4px;
   max-width: 82%;
+  cursor: pointer;
+}
+
+.aichat-item:hover .aichat-bubble {
+  border-color: var(--primary);
 }
 
 .aichat-user {
