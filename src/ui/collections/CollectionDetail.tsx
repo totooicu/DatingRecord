@@ -8,6 +8,7 @@ import {
   listMembers,
   listSmartEvents,
   updateCollection,
+  collectionTotalCost,
 } from '../../core/repo/collections';
 import { getEvent } from '../../core/repo/events';
 import { EventForm } from '../event';
@@ -31,6 +32,11 @@ export function CollectionDetail({ id }: { id: string }) {
   // 智能集合的成员是现算的，跟着 version 一起重算
   const smartEvents = useMemo(
     () => (collection && isSmart(collection) ? listSmartEvents(collection) : []),
+    [collection, v],
+  );
+  // 金额合计跟着版本重算：增删事件、改金额、移动成员都会 bump()
+  const totalCost = useMemo(
+    () => (collection ? collectionTotalCost(collection) : 0),
     [collection, v],
   );
 
@@ -89,6 +95,7 @@ export function CollectionDetail({ id }: { id: string }) {
         members={smart ? [] : members}
         children={children}
         smartCount={smart ? smartEvents.length : undefined}
+        totalCost={totalCost}
       />
       <ChildList children={children} />
       {smart ? (
