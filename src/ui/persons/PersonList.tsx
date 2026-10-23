@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { applyTemplate, createPerson, listPersons, listTemplates } from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
+import { BUILD_TIME, fmtBuildTime } from '../../core/buildInfo';
 import { Avatar } from './Avatar';
 
 export function PersonList({
@@ -53,6 +54,10 @@ export function PersonList({
 
   return (
     <div className="pane-body">
+      {/* 构建时间放在「人物」标题上方：主页面一眼就能看到线上是不是最新版 */}
+      <div className="pane-build-time muted small" title={BUILD_TIME}>
+        最新版本 · {fmtBuildTime()}
+      </div>
       <div className="pane-head">
         <strong>人物</strong>
         <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">

@@ -7,6 +7,20 @@
   font-size: 13px;
 }
 
+/* 人物列表标题上方的构建时间：居中、低对比，不跟标题抢注意力 */
+.pane-build-time {
+  text-align: center;
+  padding: 10px 14px 0;
+  font-size: 11px;
+}
+
+/* 手机上顶栏是隐藏的，这里就是页面最顶，需要自己让开状态栏 */
+@media (max-width: 1023px) {
+  .pane-build-time {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  }
+}
+
 .list-item {
   display: flex;
   align-items: center;

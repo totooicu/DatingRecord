@@ -56,7 +56,7 @@
 
 - 版本时间 = `vite.config.ts` 中 `__BUILD_TIME__: new Date().toISOString()` 在构建那一刻取的值；不构建就不会变。
 - **线上时间由 CI 产生**：`deploy-pages.yml` 在 push 到 main 后执行 `pnpm build` 并覆盖 `gh-pages`。本机 `npm run build` 只作为合并门禁，它的时间不会出现在线上。
-- 合并推送后等该 run 变绿，打开任意人物详情，头部「最新版本 · …」应与**这次 Actions 构建**的时间一致（比本地门禁构建晚几十秒属正常）。
+- 合并推送后等该 run 变绿，打开「人物」主页面，标题上方的「最新版本 · …」应与**这次 Actions 构建**的时间一致（比本地门禁构建晚几十秒属正常）。
 - 时间没前进 = 发布没生效（部署未完成或浏览器仍命中旧 SW），此时不要判断成功能没写对。
 - **禁止**手改 `src/core/buildInfo.ts`、禁止把 `BUILD_TIME` 写成常量，那等于伪造版本号。
 
