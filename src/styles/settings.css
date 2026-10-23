@@ -424,3 +424,17 @@
   border-radius: 9px;
   background: #fffaf4;
 }
+
+.draft-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.draft-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}

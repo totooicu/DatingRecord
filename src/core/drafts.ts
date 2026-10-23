@@ -86,3 +86,15 @@ export function clearAllDrafts(): void {
   }
   for (const k of keys) localStorage.removeItem(k);
 }
+
+/** 草稿时间的人话版：一小时以内给分钟，超过按天说 */
+export function draftTimeLabel(ts: number): string {
+  if (!ts) return '时间未知';
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? '昨天' : `${days} 天前`;
+}

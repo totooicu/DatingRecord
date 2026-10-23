@@ -104,7 +104,7 @@ export function Settings({ initial }: { initial?: string | null }) {
 
         {active === 'labEdge' && <LabEdgeSection />}
 
-        {active === 'labDraft' && <LabDraftSection />}
+        {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>
     </div>
   );
