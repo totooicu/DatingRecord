@@ -12,10 +12,15 @@
             padding: 20px;
         }
         .container { max-width: 1200px; margin: 0 auto; }
-        h1 { text-align: center; margin-bottom: 20px; color: #333; }
+        /* 标题只作为上下文：它上面已经有「功能体验 → 边缘分割」，这里再摆一行大字
+           在手机上要占掉两行，把控件推下去。压成一行小字，把高度让给画布 */
+        h1 {
+            text-align: center; margin: 0 0 10px; color: #666;
+            font-size: 13px; font-weight: 600; letter-spacing: 0.5px;
+        }
         .controls {
-            background: #fff; padding: 20px; border-radius: 10px;
-            margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            background: #fff; padding: 14px; border-radius: 10px;
+            margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .control-row {
             display: flex; flex-wrap: wrap; gap: 15px;
@@ -69,7 +74,7 @@ button {
 </head>
 <body>
     <div class="container">
-        <h1>🖼️ 边缘分割工具 (纯JS版，无依赖)</h1>
+        <h1>边缘分割 · 纯 JS，无依赖</h1>
 
         <div class="controls">
             <div class="control-row">
@@ -100,7 +105,7 @@ button {
             </div>
         </div>
 
-        <div id="status">✅ 就绪，请选择图片</div>
+        <div id="status">就绪，请选择图片</div>
 
         <div class="preview-area">
             <div class="preview-box">
@@ -155,7 +160,7 @@ img.onload = () => {
                     canvas.width = img.width;
                     canvas.height = img.height;
                     canvas.getContext('2d').drawImage(img, 0, 0);
-                    setStatus(`✅ 图片已加载: ${img.width}x${img.height}`);
+                    setStatus(`图片已加载：${img.width}×${img.height}`);
                     log(`[信息] 原图尺寸: ${img.width}x${img.height}`);
                     document.getElementById('segmentBtn').disabled = false;
                 };
@@ -413,7 +418,7 @@ cropCanvas.width = x2 - x1;
                     });
 document.getElementById('resultCount').textContent = candidates.length;
                     document.getElementById('downloadAllBtn').disabled = candidates.length === 0;
-                    setStatus(`✅ 分割完成，共 ${candidates.length} 个元素`);
+                    setStatus(`分割完成，共 ${candidates.length} 个元素`);
                     log(`\n[完成] 共分割出 ${candidates.length} 个元素`);
 
                 } catch (err) {
