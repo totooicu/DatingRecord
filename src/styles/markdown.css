@@ -146,6 +146,20 @@
 .md-body a {
   color: var(--primary);
 }
+/* 内嵌 HTML 的 a 指向图片附件时，图片外面还套着这个链接 */
+.md-body a.md-img-link {
+  display: inline-block;
+  max-width: 100%;
+}
+.md-body mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #ffe9a8;
+  color: var(--text);
+}
+.md-body u {
+  text-decoration: underline;
+}
 .md-body hr {
   margin: 14px 0;
   border: none;

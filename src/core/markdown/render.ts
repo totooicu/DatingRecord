@@ -51,6 +51,13 @@ function missingFile(name: string): string {
   return `<span class="md-file md-file-missing">附件已删除${name ? '：' + escapeHtml(name) : ''}</span>`;
 }
 
+const IMAGE_EXT = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+
+/** 附件是不是图片：优先看文件库里的当前名字，老 id 没扩展名时再看 id 本身 */
+function isImageFile(id: string, name: string | undefined): boolean {
+  return IMAGE_EXT.test(name ?? '') || IMAGE_EXT.test(id);
+}
+
 function buildMarked(urlMap: Record<string, string>, nameMap: Record<string, string>): Marked {
   return new Marked({
     gfm: true,
@@ -90,7 +97,7 @@ function buildMarked(urlMap: Record<string, string>, nameMap: Record<string, str
 const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
   ALLOWED_TAGS: [
     'p', 'br', 'hr', 'strong', 'em', 'del', 's', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img', 'span',
+    'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img', 'span', 'mark', 'u',
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
   ],
   ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'loading', 'colspan', 'rowspan'],
@@ -125,9 +132,21 @@ function rewriteHtmlFileRefs(html: string, urlMap: Record<string, string>, nameM
     if (url) {
       el.setAttribute(attr, url);
       if (el.tagName === 'A') {
+        const label = (el.textContent ?? '').trim();
         el.setAttribute('target', '_blank');
         el.setAttribute('rel', 'noopener noreferrer');
         el.classList.add('md-file-link');
+        // 内嵌 HTML 的 a 指向图片时直接把图显示出来：日记里这么写基本是想看图，
+        // 只留一行链接等于「没有渲染」。图片外面仍套着链接，点开能看原图。
+        if (isImageFile(id, nameMap[id])) {
+          const img = document.createElement('img');
+          img.className = 'md-img';
+          img.setAttribute('src', url);
+          img.setAttribute('loading', 'lazy');
+          img.setAttribute('alt', label || nameMap[id] || '图片附件');
+          el.replaceChildren(img);
+          el.classList.add('md-img-link');
+        }
       } else {
         el.classList.add('md-img');
         el.setAttribute('loading', 'lazy');
