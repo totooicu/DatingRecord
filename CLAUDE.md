@@ -113,6 +113,6 @@
 - 远程仓库：已配置 `origin → git@github.com:totooicu/DatingRecord.git`，`git-sync.sh` 会自动推送。
 - **网络**：沙箱到 github.com 的 **HTTPS 与 SSH(22/443) 均可用**（2026-10-20 实测：HTTPS clone 成功、SSH 认证成功）。远程按约定走 SSH：`ssh-ed25519` 密钥在 `~/.ssh/id_ed25519_github`，`~/.ssh/config` 已指定。
 - **密钥随沙箱重置丢失**：这是常态，不是故障。恢复流程：`ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_github -N ""` → 把 `.pub` 交给用户添加到 GitHub → `ssh -T git@github.com` 验证。不要把私钥贴进对话。
-- **不用 PR / 不等 CI**：本仓库已摒弃 Pull Request 流程，直接本地合并（见铁律五）。`.github/workflows/ci.yml` 保留但只作兜底，合并门槛是本地 `npm run build` + `npm run build:cli`。
+- **不用 PR / 不等 CI**：本仓库已摒弃 Pull Request 流程，直接本地合并（见铁律五）。`ci/pr-workflow` 分支与 `ci.yml` 已于 2026-10-23 删除，合并门槛是本地 `npm run build` + `npm run build:cli`。`.github/workflows/deploy-pages.yml` 是另一回事（main 推送后自动部署 Pages），保留。
 - **GitHub Actions 状态查不了**：`gh` 未登录（也没有 token），如确需看运行结果，改用公开 API：`curl -s https://api.github.com/repos/totooicu/DatingRecord/actions/runs?per_page=5`，再取 `<run_id>/jobs` 看是哪一步失败。
 - **发布到 Pages**：`bash scripts/deploy-pages.sh`（SSH 需带 `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_github -o IdentitiesOnly=yes"`）。Pages 源是 gh-pages 分支，别用 `actions/deploy-pages`。

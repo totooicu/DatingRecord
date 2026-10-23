@@ -49,7 +49,7 @@
 
 - 本仓库**不使用 Pull Request 流程**，也不再等待 CI 通过才合并；
 - 合并前的前置闸门由**本地**承担：`npm run build` + `npm run build:cli` 必须全绿，自测通过；
-- 保留了 `.github/workflows/ci.yml`，但它只在有人手动开 PR 时兜底，不作为合并门槛；
+- 仓库里**没有任何 CI 兜底**：`ci.yml` 与 `ci/pr-workflow` 分支已于 2026-10-23 一并删除，合并门槛完全由本地构建承担；
 - 因此**本地构建就是唯一门禁**，跳过构建直接合并视同违规。
 
 **提交规范：Conventional Commits**
