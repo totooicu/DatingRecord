@@ -205,6 +205,10 @@ export function LabAiSection() {
   const [sessions, setSessions] = useState<AiSession[]>(() => listSessions());
   const [libOpen, setLibOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
+  /** 历史会话点开后的操作菜单（继续 / 复制 / 删除） */
+  const [sessionMenu, setSessionMenu] = useState<string | null>(null);
+  /** 顶部四个键：长时间没人点就收矮，点一下恢复正常高度 */
+  const [tabsTight, setTabsTight] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -227,6 +231,15 @@ export function LabAiSection() {
     if (t === 'snap') reloadSnaps();
     if (t === 'history') reloadSessions();
   };
+
+  // 顶部四个键闲置 8 秒后收成一条细带；点任意一个就恢复，再重新计时
+  useEffect(() => {
+    if (tabsTight) return;
+    const t = window.setTimeout(() => setTabsTight(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [tabsTight, tab]);
+
+  const wakeTabs = () => setTabsTight(false);
 
   // 忙的时候两道防线，都是防「手滑一下，一轮工具调用全白跑」——
   // 会话还在组件 state 里，刷新更是连记录都不剩：
@@ -278,7 +291,34 @@ export function LabAiSection() {
     setItems(s.items as Item[]);
     setRollbackId(null);
     setErr(null);
+    setSessionMenu(null);
     switchTab('chat');
+  };
+
+  /**
+   * 把一段历史对话复制回输入框（连附件一起），改完再发。
+   * 不是「继续」：继续是接上原来的上下文；复制是拿旧内容当草稿，开一段新的。
+   */
+  const copySession = (s: AiSession) => {
+    const text = s.items
+      .map((it) => `${it.kind === 'user' ? '我' : 'AI'}：${it.text}`)
+      .join('\n\n')
+      .trim();
+    const seen = new Set<string>();
+    const files = s.items
+      .flatMap((it) => (it.kind === 'user' ? ((it.attachments ?? []) as Attachment[]) : []))
+      .filter((a) => (seen.has(a.key) ? false : (seen.add(a.key), true)))
+      .slice(-MAX_ATTACHMENTS);
+    setSessionId(null);
+    setHistory([]);
+    setItems([]);
+    setRollbackId(null);
+    setErr(null);
+    setInput(text);
+    setAtts(files);
+    setSessionMenu(null);
+    switchTab('chat');
+    showToast('已复制到对话框，改完可以直接发');
   };
 
   /** 开一段新对话：清空上下文（不删历史会话里的旧记录） */
@@ -385,6 +425,15 @@ export function LabAiSection() {
         signal: ac.signal,
         onEvent,
       });
+      // 失败不算「发过」：把这条气泡撤掉，原文和附件退回输入框，
+      // 用户改一改就能重发，不会在记录里留下一条永远没有回应的提问。
+      if (res.error) {
+        setItems((s) => s.filter((x) => x !== userItem));
+        setInput(t);
+        setAtts(sent);
+        setErr(res.error);
+        return;
+      }
       const hist = res.messages;
       setHistory(hist);
       if (res.snapshotId) setRollbackId(res.snapshotId);
@@ -408,6 +457,10 @@ export function LabAiSection() {
       persistSession(hist, nextItems);
       reloadSessions();
     } catch (e) {
+      // 抛异常同样按失败处理：撤掉气泡、把内容退回输入框
+      setItems((s) => s.filter((x) => x !== userItem));
+      setInput(t);
+      setAtts(sent);
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -449,7 +502,11 @@ export function LabAiSection() {
 
       {/* 四个全屏切换按钮：点哪个哪个铺满下面整块。切换不卸载组件，
           所以 agent 循环、busy 状态、聊天记录都还在，会话不会被打断。 */}
-      <div className="aichat-tabs" role="tablist">
+      <div
+        className={tabsTight ? 'aichat-tabs aichat-tabs-tight' : 'aichat-tabs'}
+        role="tablist"
+        onPointerDown={wakeTabs}
+      >
         <button
           role="tab"
           aria-selected={tab === 'chat'}
@@ -484,42 +541,10 @@ export function LabAiSection() {
         </button>
       </div>
 
-      {/* 状态条：忙不忙、第几轮、正在干什么，一眼可见。跨 tab 不掉——
-          你在「快照」tab 看备份，AI 仍在后台跑，这条始终钉在眼前。 */}
-      {busy && (
-        <div className="aichat-status" role="status">
-          <span className="aichat-status-dot" aria-hidden />
-          <span className="aichat-status-text">
-            <b>AI 正在干活{roundNo > 1 ? `（第 ${roundNo} 轮）` : ''}</b>
-            {' · '}
-            {activity[activity.length - 1] ?? '思考中'}
-          </span>
-          <button className="aichat-status-stop" onClick={stop}>
-            停止
-          </button>
-        </div>
-      )}
-
       {/* 内容区：吃掉剩余高度，四个 tab 共用这块，切换只换里面的视图 */}
       <div className="aichat-body">
         {tab === 'chat' && (
           <div className="aichat-chat">
-            <div className="aichat-bar">
-              <label className="aichat-model">
-                <select value={alias} onChange={(e) => setAlias(e.target.value)} disabled={busy}>
-                  {models.length === 0 && <option value="">（未配置模型）</option>}
-                  {models.map((m) => (
-                    <option key={m.id} value={m.alias}>
-                      {m.alias} · {m.model}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="aichat-chip" onClick={newSession} disabled={busy} title="开一段新对话">
-                ＋ 新会话
-              </button>
-            </div>
-
             <div className="aichat-log" ref={logRef}>
               {items.length === 0 && (
                 <div className="aichat-empty">
@@ -596,6 +621,25 @@ export function LabAiSection() {
                 >
                   <LibIcon /> 文件库
                 </button>
+                <label className="aichat-model aichat-model-inline" title="选择模型">
+                  <select value={alias} onChange={(e) => setAlias(e.target.value)} disabled={busy}>
+                    {models.length === 0 && <option value="">（未配置模型）</option>}
+                    {models.map((m) => (
+                      <option key={m.id} value={m.alias}>
+                        {m.alias} · {m.model}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {busy && (
+                  <span className="aichat-busy-chip" role="status">
+                    <span className="aichat-status-dot" aria-hidden />
+                    AI 干活中{roundNo > 1 ? ` · 第 ${roundNo} 轮` : ''}
+                    <button className="aichat-busy-stop" onClick={stop}>
+                      停止
+                    </button>
+                  </span>
+                )}
                 {rollbackId && (
                   <button className="aichat-toolbtn aichat-toolbtn-warn" onClick={() => rollback(rollbackId)}>
                     回退本轮
@@ -641,8 +685,8 @@ export function LabAiSection() {
                     <button
                       type="button"
                       className="aichat-session-main"
-                      onClick={() => loadSession(s.id)}
-                      title="载入这段对话，切回聊天继续"
+                      onClick={() => setSessionMenu(sessionMenu === s.id ? null : s.id)}
+                      title="点一下：继续 / 复制 / 删除"
                     >
                       <span className="aichat-session-title">{s.title}</span>
                       <span className="aichat-session-sub">
@@ -650,13 +694,22 @@ export function LabAiSection() {
                         <span className="aichat-session-meta">{s.items.length} 条消息</span>
                       </span>
                     </button>
-                    <button
-                      className="aichat-linkbtn aichat-linkbtn-dim"
-                      onClick={() => removeSession(s.id)}
-                      aria-label="删除这段历史会话"
-                    >
-                      删除
-                    </button>
+                    {sessionMenu === s.id && (
+                      <div className="aichat-session-menu">
+                        <button className="aichat-linkbtn" onClick={() => loadSession(s.id)}>
+                          继续
+                        </button>
+                        <button className="aichat-linkbtn" onClick={() => copySession(s)}>
+                          复制
+                        </button>
+                        <button
+                          className="aichat-linkbtn aichat-linkbtn-dim"
+                          onClick={() => removeSession(s.id)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

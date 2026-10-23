@@ -42,9 +42,14 @@
 /* 顶部四个全屏切换按钮：聊天 / 历史会话 / 快照 / 说明 */
 .aichat-tabs {
   display: flex;
-  gap: 6px;
+  gap: 0;
   flex: 0 0 auto;
   margin-bottom: 8px;
+  /* 四个键连成一条：一体化的分段控件，不再像四颗散落的胶囊 */
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
 }
 
 .aichat-tab {
@@ -53,23 +58,38 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 8px 6px;
+  height: 34px;
+  padding: 0 6px;
   font-size: 13.5px;
   font-weight: 600;
   white-space: nowrap;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
+  border: none;
+  border-right: 1px solid var(--border);
+  background: transparent;
   color: var(--muted);
   cursor: pointer;
+  transition: height 0.16s ease, font-size 0.16s ease;
+}
+
+.aichat-tab:last-child {
+  border-right: none;
+}
+
+/* 闲置 8 秒后收成一条细带；点任意一个键立刻恢复正常高度 */
+.aichat-tabs-tight .aichat-tab {
+  height: 22px;
+  font-size: 11.5px;
 }
 
 /* 窄屏四个 tab 平分一行，字和留白都得收一收，不然「历史会话」会换行 */
 @media (max-width: 480px) {
   .aichat-tab {
-    padding: 8px 3px;
+    padding: 0 3px;
     font-size: 12.5px;
     gap: 3px;
+  }
+  .aichat-tabs-tight .aichat-tab {
+    font-size: 11px;
   }
   .aichat-tab-n {
     min-width: 15px;
@@ -85,7 +105,6 @@
 
 .aichat-tab-on {
   background: var(--primary);
-  border-color: var(--primary);
   color: #fff;
 }
 
@@ -191,6 +210,55 @@
 
 .aichat-model select {
   max-width: 260px;
+}
+
+/* 输入区里的紧凑模型选择：放在「文件库」右边，只占一小格 */
+.aichat-model-inline select {
+  max-width: 132px;
+  height: 24px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+/* 忙不忙收成小胶囊，紧挨模型选择；不再单独占一整条 */
+.aichat-busy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  background: rgba(217, 83, 107, 0.08);
+  font-size: 11.5px;
+  color: var(--primary-dark);
+  white-space: nowrap;
+}
+
+.aichat-busy-stop {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.aichat-busy-stop:hover {
+  background: var(--primary-dark);
+}
+
+/* 历史会话点开后的操作菜单：继续 / 复制 / 删除 */
+.aichat-session-menu {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding-left: 2px;
 }
 
 /* 折叠的说明：默认不占地方；展开后自己滚，不把整页顶高 */
