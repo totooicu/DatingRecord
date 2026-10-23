@@ -25,6 +25,7 @@ export type SettingsKey =
   | 'lab'
   | 'labAi'
   | 'labEdge'
+  | 'labChat'
   | 'labDraft';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
@@ -54,6 +55,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'lab', title: '功能体验', hint: '新功能试用区', group: 'trial' },
   { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'trial' },
   { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
+  { key: 'labChat', title: '聊天提取', hint: '截图 → 聊天事件', group: 'trial' },
   // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
 ];
@@ -75,7 +77,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  * 加新子页只需在 SETTINGS_ENTRIES 里加一条、再挂到这里。
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
-  lab: ['labAi', 'labEdge', 'labDraft'],
+  lab: ['labAi', 'labEdge', 'labChat', 'labDraft'],
   backup: ['backupData', 'sync', 'share'],
 };
 

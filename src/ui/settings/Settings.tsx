@@ -12,6 +12,7 @@ import { DataSection } from './DataSection';
 import { LabSection } from './LabSection';
 import { LabAiSection } from './LabAiSection';
 import { LabEdgeSection } from './LabEdgeSection';
+import { LabExtractSection } from './LabExtractSection';
 import { LabDraftSection } from './LabDraftSection';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
@@ -105,6 +106,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'labAi' && <LabAiSection />}
 
         {active === 'labEdge' && <LabEdgeSection />}
+
+        {active === 'labChat' && <LabExtractSection />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>
