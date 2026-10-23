@@ -19,7 +19,7 @@ import {
 } from './rowIcons';
 import { bump } from '../../store';
 import type { StoredFile } from '../../core/repo/files';
-import { kindLabel, kindOf } from '../preview';
+import { extOf, kindLabel, kindOf } from '../preview';
 import { fmtDate, fmtSize } from './fileFormat';
 
 /** 文件名折行：优先在 _ - . / 空格后断行，避免把单词从中间劈开 */
@@ -68,6 +68,11 @@ export function FileRow({
   const avatars = personsUsingFile(file);
   const icons = collectionsUsingFile(file);
   const kind = kindOf(file.name, file.mime);
+  /** 缩略图兜底：未知类型不写「其」（来自「其他」），直接把扩展名亮出来 */
+  const thumbText =
+    kind === 'unknown'
+      ? (extOf(file.name) || '?').toUpperCase().slice(0, 4)
+      : kindLabel(kind).slice(0, 1);
 
   /** 批量模式勾选、挑选模式插入，其余情况预览 */
   const openOrSelect = () => {
@@ -112,7 +117,7 @@ export function FileRow({
         {thumb ? (
           <img className="file-thumb" src={thumb} alt="" />
         ) : (
-          <span className="file-thumb file-thumb-icon">{kindLabel(kind).slice(0, 1)}</span>
+          <span className="file-thumb file-thumb-icon">{thumbText}</span>
         )}
       </button>
 
