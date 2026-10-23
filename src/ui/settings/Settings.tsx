@@ -68,7 +68,7 @@ export function Settings({ initial }: { initial?: string | null }) {
         {/* 备份与分享：入口页只放三个子页的目录，各自一页。
             三件事都是搬数据，但「整库后路 / 增量同步 / 给别人看」的取舍完全不同，
             挤在一屏会让每一块都想省一半说明 */}
-        {active === 'backup' && <BackupHubSection onPick={setSub} />}
+        {active === 'backup' && <BackupHubSection onPick={go} />}
 
         {active === 'backupData' && <BackupSection />}
 
