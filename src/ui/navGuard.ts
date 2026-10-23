@@ -32,23 +32,3 @@ export function canLeave(): boolean {
   }
   return true;
 }
-
-/**
- * 系统返回键（popstate）拦截器。
- *
- * 返回 true = 我已经在应用内后退了一层，App 要 pushState 把历史钉回当前页；
- * 返回 false = 我没处理，让浏览器真的退（即退出网页）。
- *
- * 同一时刻只有一个页面登记，一般是设置页在管自己的「目录 / 子页」两级。
- */
-type BackHandler = () => boolean;
-
-let backHandler: BackHandler | null = null;
-
-export function setBackHandler(h: BackHandler | null): void {
-  backHandler = h;
-}
-
-export function runBackHandler(): boolean {
-  return backHandler?.() ?? false;
-}
