@@ -122,3 +122,29 @@ export function listChildren(parentId: string): Collection[] {
   ).map(collectionFromRow);
 }
 
+/**
+ * 事件集总金额：把集合（含所有子集合）里事件的 metrics.cost 加起来。
+ *
+ * 智能集合不落成员，只能按规则现算；隐私模式下的私有事件不计入，
+ * 与「含子集合的事件数」保持同一套过滤条件。
+ */
+export function collectionTotalCost(collection: Collection): number {
+  if (isSmart(collection)) {
+    return listSmartEvents(collection).reduce((sum, e) => sum + (Number(e.metrics?.cost) || 0), 0);
+  }
+  const row = queryOne<{ cost: number | null }>(
+    `SELECT COALESCE(SUM(c), 0) AS cost FROM (
+       SELECT MAX(json_extract(e.metrics_json, '$.cost')) AS c
+       FROM collection_closure cl
+       JOIN collection_members m ON m.collection_id = cl.descendant_id
+       JOIN events e ON e.id = m.member_id
+       WHERE cl.ancestor_id = ? AND m.member_type = 'event' AND m.deleted_at IS NULL
+         AND e.deleted_at IS NULL
+         ${isPrivacyMode() ? 'AND e.is_private = 0' : ''}
+       GROUP BY e.id
+     )`,
+    [collection.id],
+  );
+  return Number(row?.cost ?? 0);
+}
+

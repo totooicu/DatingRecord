@@ -13,6 +13,7 @@ export {
   listChildren,
   listArchivedCollections,
   descendantIdsOf,
+  collectionTotalCost,
   type TreeNode,
 } from './read';
 export {
