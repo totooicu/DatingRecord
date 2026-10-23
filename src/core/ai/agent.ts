@@ -41,8 +41,10 @@ export interface AgentOpts {
   history: AgentMessage[];
   signal?: AbortSignal;
   onEvent?: (e: AgentEvent) => void;
-  /** 最多几轮模型↔工具往返，默认 8 */
+  /** 最多几轮模型↔工具往返，默认 20（复杂任务建人+记事件+整理常常超 8 轮） */
   maxRounds?: number;
+  /** 复用上一轮的快照 id：连续对话里，后续写操作归到同一条成果，不另拍新快照 */
+  resumeSnapshotId?: string | null;
 }
 
 export interface AgentTurnResult {
@@ -192,11 +194,11 @@ function targetsOf(tool: string, args: Record<string, unknown>, data: unknown): 
 /** 跑一轮：模型可以调多次工具，直到它给出最终文本回复 */
 export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
   const { model, signal, onEvent } = opts;
-  const maxRounds = opts.maxRounds ?? 8;
+  const maxRounds = opts.maxRounds ?? 20;
   const messages: AgentMessage[] = [...opts.history];
   const usedTools: string[] = [];
   const ops: SnapOp[] = [];
-  let snapshotId: string | null = null;
+  let snapshotId = opts.resumeSnapshotId ?? null;
   let rounds = 0;
   let aborted = false;
 

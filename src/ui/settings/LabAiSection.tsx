@@ -584,11 +584,15 @@ export function LabAiSection() {
     };
 
     try {
+      // 连续对话里复用上一轮的快照：建人→记事件→整理这种多步任务跨几轮时，
+      // 所有改动归到同一条成果，而不是每发一条消息就拍一条新快照。
+      const lastSnap = [...items].reverse().find((x) => x.kind === 'assistant' && x.snapshotId);
       const res = await runAgentTurn({
         model,
         history: [...base, userMsg],
         signal: ac.signal,
         onEvent,
+        resumeSnapshotId: lastSnap?.snapshotId ?? null,
       });
       // 失败不算「发过」：把这条气泡撤掉，原文和附件退回输入框，
       // 用户改一改就能重发，不会在记录里留下一条永远没有回应的提问。
