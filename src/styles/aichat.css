@@ -37,14 +37,16 @@
   min-height: 420px;
   display: flex;
   flex-direction: column;
+  /* 标题、选择条、内容区之间收紧：三层叠起来原来有 16px 的空隙，太散 */
+  gap: 3px;
 }
 
-/* 顶部四个全屏切换按钮：聊天 / 历史会话 / 快照 / 说明 */
+/* 顶部四个全屏切换按钮：聊天 / 历史会话 / 成果 / 说明 */
 .aichat-tabs {
   display: flex;
   gap: 0;
   flex: 0 0 auto;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   /* 四个键连成一条：一体化的分段控件，不再像四颗散落的胶囊 */
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -58,9 +60,9 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 34px;
+  height: 28px;
   padding: 0 6px;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
   border: none;
@@ -77,25 +79,25 @@
 
 /* 闲置 8 秒后收成一条细带；点任意一个键立刻恢复正常高度 */
 .aichat-tabs-tight .aichat-tab {
-  height: 22px;
-  font-size: 11.5px;
+  height: 20px;
+  font-size: 11px;
 }
 
 /* 窄屏四个 tab 平分一行，字和留白都得收一收，不然「历史会话」会换行 */
 @media (max-width: 480px) {
   .aichat-tab {
     padding: 0 3px;
-    font-size: 12.5px;
+    font-size: 12px;
     gap: 3px;
   }
   .aichat-tabs-tight .aichat-tab {
-    font-size: 11px;
+    font-size: 10.5px;
   }
   .aichat-tab-n {
-    min-width: 15px;
+    min-width: 14px;
     padding: 0 4px;
-    font-size: 10px;
-    line-height: 15px;
+    font-size: 9.5px;
+    line-height: 14px;
   }
   .aichat-subhead button {
     white-space: nowrap;
@@ -260,6 +262,95 @@
   justify-content: center;
   gap: 2px;
   padding-left: 2px;
+}
+
+/* 聊天页：点一条已完成的对话，气泡下方浮出「复制到对话框 / 删除」 */
+.aichat-item-open .aichat-bubble {
+  border-color: var(--primary);
+}
+
+.aichat-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 4px 0;
+  font-size: 12px;
+}
+
+/* 历史会话工具栏：批量删除 / 新会话 / 完成 */
+.aichat-subhead-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+/* 批量模式下的勾选圈 */
+.aichat-pick {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.aichat-pick-on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.aichat-session-picked .aichat-session-main {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+/* 每行的改名按钮：和主体同高，但只占一个小方块 */
+.aichat-session-edit {
+  flex: 0 0 auto;
+  width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.aichat-session-edit:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 行内改名：输入框 + 保存 / 取消 */
+.aichat-session-rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.aichat-session-rename input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
 }
 
 /* 折叠的说明：默认不占地方；展开后自己滚，不把整页顶高 */

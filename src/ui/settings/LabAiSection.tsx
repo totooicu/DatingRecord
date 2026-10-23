@@ -46,8 +46,9 @@ import {
 } from '../../core/ai/attach';
 import {
   createSession,
-  deleteSession,
+  deleteSessions,
   listSessions,
+  renameSession,
   saveSession,
   titleOf,
   type AiSession,
@@ -71,6 +72,7 @@ import { CollectionIconView } from '../collections/CollectionIcon';
 import { openPerson } from '../openPerson';
 import { openEvent } from '../openEvent';
 import { openCollection } from '../openCollection';
+import { PencilIcon } from '../files/rowIcons';
 import { Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
@@ -280,7 +282,14 @@ export function LabAiSection() {
   const [libOpen, setLibOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
   /** 历史会话点开后的操作菜单（继续 / 复制 / 删除） */
-  const [sessionMenu, setSessionMenu] = useState<string | null>(null);
+  /** 聊天页点开的那条对话（显示删除 / 复制到对话框） */
+  const [itemMenu, setItemMenu] = useState<number | null>(null);
+  /** 历史会话：批量管理（勾选删除） */
+  const [manage, setManage] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  /** 正在改名的会话 + 草稿 */
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
   /** 顶部四个键：长时间没人点就收矮，点一下恢复正常高度 */
   const [tabsTight, setTabsTight] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -365,34 +374,7 @@ export function LabAiSection() {
     setItems(s.items as Item[]);
     setRollbackId(null);
     setErr(null);
-    setSessionMenu(null);
     switchTab('chat');
-  };
-
-  /**
-   * 把一段历史对话复制回输入框（连附件一起），改完再发。
-   * 不是「继续」：继续是接上原来的上下文；复制是拿旧内容当草稿，开一段新的。
-   */
-  const copySession = (s: AiSession) => {
-    const text = s.items
-      .map((it) => `${it.kind === 'user' ? '我' : 'AI'}：${it.text}`)
-      .join('\n\n')
-      .trim();
-    const seen = new Set<string>();
-    const files = s.items
-      .flatMap((it) => (it.kind === 'user' ? ((it.attachments ?? []) as Attachment[]) : []))
-      .filter((a) => (seen.has(a.key) ? false : (seen.add(a.key), true)))
-      .slice(-MAX_ATTACHMENTS);
-    setSessionId(null);
-    setHistory([]);
-    setItems([]);
-    setRollbackId(null);
-    setErr(null);
-    setInput(text);
-    setAtts(files);
-    setSessionMenu(null);
-    switchTab('chat');
-    showToast('已复制到对话框，改完可以直接发');
   };
 
   /** 开一段新对话：清空上下文（不删历史会话里的旧记录） */
@@ -404,7 +386,62 @@ export function LabAiSection() {
     setErr(null);
     setInput('');
     setAtts([]);
+    setItemMenu(null);
     switchTab('chat');
+  };
+
+  /** 聊天页单条对话：复制到输入框，改完可重发 */
+  const copyItem = (it: Item) => {
+    setInput(it.text);
+    setAtts(it.kind === 'user' ? (it.attachments ?? []) : []);
+    setItemMenu(null);
+    showToast('已复制到对话框，改完可以直接发');
+  };
+
+  /** 聊天页单条对话：从界面与会话记录里删掉这条 */
+  const removeItem = (index: number) => {
+    const next = items.filter((_, i) => i !== index);
+    setItems(next);
+    setItemMenu(null);
+    if (sessionId) persistSession(history, next);
+    showToast('已删除这条消息');
+  };
+
+  const togglePick = (id: string) => {
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const removePicked = () => {
+    const ids = [...picked];
+    if (!ids.length) return;
+    if (!window.confirm(`删除选中的 ${ids.length} 个会话？聊天记录会一起删掉，但它们建过的人物事件还在。`)) return;
+    deleteSessions(ids);
+    if (sessionId && ids.includes(sessionId)) newSession();
+    setPicked(new Set());
+    setManage(false);
+    reloadSessions();
+    showToast(`已删除 ${ids.length} 个会话`);
+  };
+
+  const startRename = (s: AiSession) => {
+    setRenameId(s.id);
+    setRenameText(s.title);
+  };
+
+  const commitRename = () => {
+    if (!renameId) return;
+    const title = renameText.trim();
+    if (!title) return;
+    renameSession(renameId, title);
+    setRenameId(null);
+    setRenameText('');
+    reloadSessions();
+    showToast('会话名已修改');
   };
 
   // 忙的时候两道闸之外的第三道：离开 AI 对话页（设置返回 / 切到别的设置项）
@@ -574,13 +611,6 @@ export function LabAiSection() {
     reloadSnaps();
   };
 
-  const removeSession = async (id: string) => {
-    if (!window.confirm('删除这段历史会话？只删聊天记录，不影响库里的人物和事件。')) return;
-    deleteSession(id);
-    if (sessionId === id) newSession();
-    reloadSessions();
-  };
-
   const canSend = !busy && !!model && (!!input.trim() || atts.length > 0);
 
   return (
@@ -657,7 +687,19 @@ export function LabAiSection() {
               )}
 
               {items.map((it, i) => (
-                <div key={i} className={`aichat-item aichat-${it.kind}`}>
+                <div
+                  key={i}
+                  className={
+                    itemMenu === i
+                      ? `aichat-item aichat-${it.kind} aichat-item-open`
+                      : `aichat-item aichat-${it.kind}`
+                  }
+                  onClick={(e) => {
+                    // 气泡里的链接 / 按钮自己有事要做，别顺手把操作菜单也切出来
+                    if ((e.target as HTMLElement).closest('a,button')) return;
+                    setItemMenu(itemMenu === i ? null : i);
+                  }}
+                >
                   {it.attachments && it.attachments.length > 0 && <AttachmentChips atts={it.attachments} />}
                   {/* 气泡内容按 Markdown 渲染：模型的回复天生带标题/列表/代码块，
                       当纯文本显示就是把 ** 和 # 原样甩给用户。安全性由 core/markdown
@@ -666,10 +708,32 @@ export function LabAiSection() {
                     <MarkdownView source={it.text} />
                   </div>
                   {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
-                  {it.snapshotId && (
+                  {it.snapshotId && !busy && (
                     <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
                       回退本轮改动
                     </button>
+                  )}
+                  {itemMenu === i && !busy && (
+                    <div className="aichat-item-actions">
+                      <button
+                        className="aichat-linkbtn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyItem(it);
+                        }}
+                      >
+                        复制到对话框
+                      </button>
+                      <button
+                        className="aichat-linkbtn aichat-linkbtn-dim"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeItem(i);
+                        }}
+                      >
+                        删除
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -782,44 +846,102 @@ export function LabAiSection() {
         {tab === 'history' && (
           <div className="aichat-history">
             <div className="aichat-subhead">
-              <span className="muted small">聊过的对话会自动存到这里，刷新或中断后都能回来继续。</span>
-              <button className="aichat-linkbtn" onClick={newSession}>
-                ＋ 新会话
-              </button>
+              <span className="muted small">点一个会话就打开继续；改名、批量删除在右边。</span>
+              <span className="aichat-subhead-actions">
+                {manage ? (
+                  <>
+                    <button className="aichat-linkbtn" onClick={removePicked} disabled={picked.size === 0}>
+                      删除选中{picked.size > 0 ? `（${picked.size}）` : ''}
+                    </button>
+                    <button
+                      className="aichat-linkbtn aichat-linkbtn-dim"
+                      onClick={() => {
+                        setManage(false);
+                        setPicked(new Set());
+                      }}
+                    >
+                      完成
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="aichat-linkbtn" onClick={() => setManage(true)}>
+                      批量删除
+                    </button>
+                    <button className="aichat-linkbtn" onClick={newSession}>
+                      ＋ 新会话
+                    </button>
+                  </>
+                )}
+              </span>
             </div>
             {sessions.length === 0 ? (
               <p className="muted small aichat-history-empty">还没有历史会话。在「聊天」里说点什么，会自动存下来。</p>
             ) : (
               <ul className="aichat-session-list">
                 {sessions.map((s) => (
-                  <li key={s.id} className="aichat-session">
-                    <button
-                      type="button"
-                      className="aichat-session-main"
-                      onClick={() => setSessionMenu(sessionMenu === s.id ? null : s.id)}
-                      title="点一下：继续 / 复制 / 删除"
-                    >
-                      <span className="aichat-session-title">{s.title}</span>
-                      <span className="aichat-session-sub">
-                        <span className="aichat-session-time">{fmtSnapTime(s.updatedAt)}</span>
-                        <span className="aichat-session-meta">{s.items.length} 条消息</span>
-                      </span>
-                    </button>
-                    {sessionMenu === s.id && (
-                      <div className="aichat-session-menu">
-                        <button className="aichat-linkbtn" onClick={() => loadSession(s.id)}>
-                          继续
+                  <li
+                    key={s.id}
+                    className={
+                      manage && picked.has(s.id) ? 'aichat-session aichat-session-picked' : 'aichat-session'
+                    }
+                  >
+                    {manage && (
+                      <button
+                        type="button"
+                        className={picked.has(s.id) ? 'aichat-pick aichat-pick-on' : 'aichat-pick'}
+                        onClick={() => togglePick(s.id)}
+                        aria-pressed={picked.has(s.id)}
+                        aria-label={picked.has(s.id) ? '取消选择' : '选择这个会话'}
+                      >
+                        {picked.has(s.id) ? '✓' : ''}
+                      </button>
+                    )}
+                    {renameId === s.id ? (
+                      <div className="aichat-session-rename">
+                        <input
+                          value={renameText}
+                          autoFocus
+                          onChange={(e) => setRenameText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitRename();
+                            if (e.key === 'Escape') setRenameId(null);
+                          }}
+                          aria-label="会话名"
+                        />
+                        <button className="aichat-linkbtn" onClick={commitRename}>
+                          保存
                         </button>
-                        <button className="aichat-linkbtn" onClick={() => copySession(s)}>
-                          复制
-                        </button>
-                        <button
-                          className="aichat-linkbtn aichat-linkbtn-dim"
-                          onClick={() => removeSession(s.id)}
-                        >
-                          删除
+                        <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => setRenameId(null)}>
+                          取消
                         </button>
                       </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="aichat-session-main"
+                          onClick={() => (manage ? togglePick(s.id) : loadSession(s.id))}
+                          title={manage ? '选中这个会话' : '打开这个会话'}
+                        >
+                          <span className="aichat-session-title">{s.title}</span>
+                          <span className="aichat-session-sub">
+                            <span className="aichat-session-time">{fmtSnapTime(s.updatedAt)}</span>
+                            <span className="aichat-session-meta">{s.items.length} 条消息</span>
+                          </span>
+                        </button>
+                        {!manage && (
+                          <button
+                            type="button"
+                            className="aichat-session-edit"
+                            title="修改会话名"
+                            aria-label="修改会话名"
+                            onClick={() => startRename(s)}
+                          >
+                            <PencilIcon />
+                          </button>
+                        )}
+                      </>
                     )}
                   </li>
                 ))}

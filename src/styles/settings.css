@@ -16,6 +16,12 @@
   padding: 14px 14px 8px;
 }
 
+/* AI 对话是满屏工作区，页面头下面那 14px 留白只会让选择条显得悬空 */
+.settings-body-tight {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
 /* 应用副名（长文 slogan）：放在设置目录最下方居中，只当气质，不抢入口 */
 .settings-slogan {
   margin: 20px 0 4px;

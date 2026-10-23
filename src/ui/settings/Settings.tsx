@@ -60,7 +60,7 @@ export function Settings({ initial }: { initial?: string | null }) {
       />
       <SettingsNav active={active} onPick={go} />
 
-      <div className="settings-body">
+      <div className={active === 'labAi' ? 'settings-body settings-body-tight' : 'settings-body'}>
         {/* 构建时间只是排查用的元信息：放在目录首页一眼能看到就够，
             进了具体子页就别再占一行——这一行在手机上等于半个按钮的高度 */}
         {sub === null && <div className="settings-build-time muted small">最后构建：{fmtBuildTime()}</div>}
