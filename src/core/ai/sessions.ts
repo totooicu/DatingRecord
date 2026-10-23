@@ -127,3 +127,18 @@ export function createSession(): AiSession {
 export function deleteSession(id: string): void {
   writeAll(readAll().filter((s) => s.id !== id));
 }
+
+/** 批量删除：一次写盘，避免逐条 flush */
+export function deleteSessions(ids: string[]): void {
+  const gone = new Set(ids);
+  writeAll(readAll().filter((s) => !gone.has(s.id)));
+}
+
+/** 改会话名（只动标题，上下文不动） */
+export function renameSession(id: string, title: string): AiSession | null {
+  const s = getSession(id);
+  if (!s) return null;
+  const next: AiSession = { ...s, title, updatedAt: new Date().toISOString() };
+  saveSession(next);
+  return next;
+}
