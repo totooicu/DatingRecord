@@ -57,7 +57,6 @@ export function SettingsNav({
       <div className="pane-head">
         <strong>设置目录</strong>
       </div>
-      <p className="settings-slogan">朝汇生活碎片，夕拾旧日回想</p>
       {groups.map(({ g, items }) => (
         <div className="settings-nav-group" key={g}>
           <div className="settings-nav-group-title">
@@ -78,6 +77,8 @@ export function SettingsNav({
           </ul>
         </div>
       ))}
+      {/* 副名放在目录最下方居中：它只是气质，不该挤占「设置目录」和第一组入口之间的视线 */}
+      <p className="settings-slogan">朝汇生活碎片，夕拾旧日回想</p>
     </div>
   );
 }
