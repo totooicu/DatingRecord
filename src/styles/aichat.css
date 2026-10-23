@@ -210,6 +210,51 @@
   color: #fff;
 }
 
+/* ---------- 气泡里的 Markdown ---------- */
+
+/* 必须把 white-space 改回 normal：.aichat-bubble 为了纯文本时代的换行设了
+   pre-wrap，它会继承进 .md-body，把 marked 产出 HTML 里的源码换行也当成
+   内容渲染，结果每个块级元素之间都多出一行空白。 */
+.aichat-bubble .md-body {
+  white-space: normal;
+}
+
+/* 长回复首尾不该再顶出一圈外边距 */
+.aichat-bubble .md-body > :first-child {
+  margin-top: 0;
+}
+.aichat-bubble .md-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* 用户气泡是「白字 + 主题色底」，而 markdown 的 code/pre/blockquote/链接
+   都按浅底深字设计，原样放进去会看不见或对比度不足，统一改成深底白字。 */
+.aichat-user .aichat-bubble .md-body code,
+.aichat-user .aichat-bubble .md-body pre {
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+}
+
+.aichat-user .aichat-bubble .md-body pre code {
+  background: none;
+}
+
+.aichat-user .aichat-bubble .md-body blockquote {
+  background: rgba(0, 0, 0, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.aichat-user .aichat-bubble .md-body a {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.aichat-user .aichat-bubble .md-body hr,
+.aichat-user .aichat-bubble .md-body th,
+.aichat-user .aichat-bubble .md-body td {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
 .aichat-tools {
   font-size: 11.5px;
   color: var(--muted);

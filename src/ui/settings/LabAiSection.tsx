@@ -35,6 +35,7 @@ import { deleteSnapshot, listSnapshots, restoreSnapshot, fmtSnapTime, fmtBytes }
 import type { StoredFile } from '../../core/repo/files';
 import { Modal } from '../common';
 import { FilesSection } from '../files';
+import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
 
 interface Item {
@@ -396,7 +397,12 @@ export function LabAiSection() {
         {items.map((it, i) => (
           <div key={i} className={`aichat-item aichat-${it.kind}`}>
             {it.attachments && it.attachments.length > 0 && <AttachmentChips atts={it.attachments} />}
-            <div className="aichat-bubble">{it.text}</div>
+            {/* 气泡内容按 Markdown 渲染：模型的回复天生带标题/列表/代码块，
+                当纯文本显示就是把 ** 和 # 原样甩给用户。安全性由 core/markdown
+                （marked 解析 + DOMPurify 白名单）保证，这里只管展示。 */}
+            <div className="aichat-bubble">
+              <MarkdownView source={it.text} />
+            </div>
             {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
             {it.snapshotId && (
               <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
