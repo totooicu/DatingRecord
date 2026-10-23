@@ -21,7 +21,7 @@ export function BackupHubSection({ onPick }: { onPick: (k: SettingsKey) => void 
     {
       key: 'backupData',
       title: '数据备份',
-      desc: '整库导出成 .zip 或 JSON，附件可一起打包；导入时合并或整体替换。',
+      desc: '整库导出成 .drp.zip，附件可一起打包；导入时合并或整体替换。',
       hint: `上次导入：${fmtMeta(getMeta('last_import_at'))}`,
     },
     {
@@ -33,7 +33,7 @@ export function BackupHubSection({ onPick }: { onPick: (k: SettingsKey) => void 
     {
       key: 'share',
       title: '分享',
-      desc: '把某个事件集或某个人导出成 .drshare.json，人物资料按分享程度裁剪。',
+      desc: '用四步向导挑事件集、人物和分享程度，导出 .drshare.zip。',
       hint: '导出前选程度 · 导入前先预览',
     },
   ];

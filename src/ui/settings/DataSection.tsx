@@ -12,7 +12,7 @@ export function DataSection() {
       <div className="settings-intro">
         <p className="muted small">
           上半部分是整个库的家底（数量、体积、操作日志），下半部分是用来试手和推倒重来的开关。
-          <strong>清空全部数据不可撤销</strong>，动手前请先到「备份与分享 → 数据备份」导出 JSON。
+          <strong>清空全部数据不可撤销</strong>，动手前请先到「备份与分享 → 数据备份」导出备份。
         </p>
       </div>
       <OverviewSection />

@@ -26,7 +26,7 @@ export function ArchiveSection() {
     <>
       <Section
         title="归档数据统一处理"
-        desc="被删除或归档的数据仍然保存在库里（不占列表位置），都在这里集中恢复或彻底删除。彻底删除不可撤销，做之前建议先到「备份与分享 → 数据备份」导出 JSON。"
+        desc="被删除或归档的数据仍然保存在库里（不占列表位置），都在这里集中恢复或彻底删除。彻底删除不可撤销，做之前建议先到「备份与分享 → 数据备份」导出备份。"
       >
         <div className="chip-group">
           <span className="chip">事件回收站 {events.length}</span>

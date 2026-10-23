@@ -14,16 +14,22 @@ export {
 export { importLibrary, type ImportResult } from './import';
 export {
   NEW_PERSON,
+  SHARE_ARCHIVE_FORMAT,
   applyShare,
   buildPersonShare,
   buildShare,
-  exportPersonShareFile,
-  exportShareFile,
+  buildShareArchive,
+  eventsOfCollections,
+  exportShareArchive,
   parseShare,
+  personsInCollections,
   planShare,
+  readShareBytes,
+  shareTextFromArchive,
   type ShareLanding,
   type ShareOptions,
   type SharePersonRow,
   type SharePlan,
+  type ShareSelection,
 } from './share';
 export { clearAllData, dbSizeBytes } from './maintenance';

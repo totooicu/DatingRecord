@@ -1,7 +1,7 @@
-// 导入 / 导出：默认导出 .drp.zip（library.json + 附件原文件 + manifest），
-// 也保留 .drp.json（纯文本可 diff）。导入两种格式都认。
+// 导入 / 导出：只走 .drp.zip（library.json + 附件原文件 + manifest）。
+// 纯文本 JSON 不再产出；旧的 .json 备份只能走 CLI 导入，迁移老文件用。
 import { useRef, useState } from 'react';
-import { exportToFile, importFromFile } from '../../core/io';
+import { importFromFile } from '../../core/io';
 import { exportArchiveToFile } from '../../core/io';
 import { getMeta } from '../../core/db';
 import { Section, fmtMeta } from './Section';
@@ -48,7 +48,7 @@ export function BackupSection() {
   return (
     <Section
       title="数据备份（导入 / 导出）"
-      desc="默认导出 .drp.zip：库数据 + 附件原文件打包，比内联 JSON 小得多，方便传网盘/同步。也保留纯文本 JSON（可 diff、可进 git）。"
+      desc="导出 .drp.zip：库数据 + 附件原文件打包，方便传网盘 / 同步。"
     >
       <div className="row-actions">
         <label className="checkbox">
@@ -66,14 +66,6 @@ export function BackupSection() {
         >
           {busy ? '打包中…' : '导出备份（.zip）'}
         </button>
-        <button
-          className="btn"
-          disabled={busy}
-          onClick={() => void runExport(() => exportToFile({ includeAttachments: withAttachments }))}
-          title="纯文本、可 diff；附件会以 base64 内联，文件较大"
-        >
-          导出 JSON
-        </button>
       </div>
 
       <div className="row-actions">
@@ -87,7 +79,7 @@ export function BackupSection() {
         <input
           ref={fileRef}
           type="file"
-          accept=".zip,.drp.zip,.json,.drp.json,application/zip,application/json"
+          accept=".zip,.drp.zip,application/zip"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0];

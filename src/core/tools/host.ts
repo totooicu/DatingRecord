@@ -10,6 +10,9 @@
 export interface HostFs {
   readText(path: string): string;
   writeText(path: string, text: string): void;
+  /** 二进制读写：分享包、备份包都是 zip，不能当文本处理 */
+  readBytes(path: string): Uint8Array;
+  writeBytes(path: string, bytes: Uint8Array): void;
   exists(path: string): boolean;
 }
 
