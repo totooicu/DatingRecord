@@ -176,7 +176,7 @@ export function LabExtractSection() {
             )}
           </div>
           <p className="muted small extract-hint">
-            最多 {MAX_SHOTS} 张，按顺序发。只截对话区域最好；整屏截图也能认，但输入框和状态栏会被忽略。
+            最多 {MAX_SHOTS} 张，按顺序发。只截对话区域最好；整屏截图也能认，但输入框和状态栏会被忽略。表情包和头像会借用边缘分割自动找边界。
           </p>
         </div>
 

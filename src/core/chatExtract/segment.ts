@@ -1,11 +1,15 @@
 // 用「边缘分割」那套算法把模型给的图片框收一收。
 //
-// 视觉模型偶尔会把引用卡片、文字气泡当成图片，或者框得比实际内容大一圈；
-// 边缘分割工具（public/edge-split.html）对这种截图更可靠，所以这里把它的
-// 灰度 → 模糊 → Sobel → 膨胀 → 连通区域搬过来，在模型框附近找更像照片的那块。
+// public/edge-split.html 里那套流程（灰度 → 模糊 → Sobel → 膨胀 → 连通区域）
+// 对聊天截图里的表情包、头像很有效，这里搬的是同一份算法、同一组默认参数：
+//   threshold=80, blur=2, 膨胀 2 次, minArea=3000, margin=5
+// 唯一的变化是 minArea / maxArea / margin 会按截图面积等比缩放，
+// 否则小截图上的头像会被 3000 这个绝对阈值全部过滤掉。
 //
-// 只在模型框「不像照片」时才替换：框里本来就色彩丰富、纹理密，就原样用，
-// 免得把一张已经裁好的表情包又切碎了。全部在本机 canvas 里算，不上传。
+// 用法不是「重新发明一个框」：先把同一张截图切成候选区域，再拿模型框去对，
+// 在明显更像照片的候选里挑和模型框最贴的那个。这样分割信息是真的参与决策的。
+//
+// 全部在本机 canvas 里算，不上传；同一张截图只算一次，多张图片消息共用结果。
 
 import type { ImageBox, Shot } from './index';
 
@@ -17,7 +21,25 @@ interface Region {
   area: number;
 }
 
-const DETECT_MAX = 640;
+interface Analysis {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  regions: Region[];
+  /** minArea 等参数按截图面积缩放的比例 */
+  scale: number;
+}
+
+/** edge-split.html 的默认参数（1080×2378 原图下） */
+const EDGE_THRESHOLD = 80;
+const EDGE_BLUR = 2;
+const EDGE_DILATE = 2;
+const EDGE_MIN_AREA = 3000;
+const EDGE_MAX_AREA = 500000;
+const EDGE_MARGIN = 5;
+/** 参数基准：edge-split.html 里那张 1080×2378 截图 */
+const BASE_AREA = 1080 * 2378;
+
+const cache = new WeakMap<Shot, Promise<Analysis | null>>();
 
 function toGray(data: Uint8ClampedArray): Uint8ClampedArray {
   const gray = new Uint8ClampedArray(data.length / 4);
@@ -235,29 +257,51 @@ function photoScore(ctx: CanvasRenderingContext2D, box: BoxPx): number {
   return satMean * 1.25 + lumStd / 90 + edgeFrac * 1.5 - darkFrac * 0.55 - flatFrac * 0.35;
 }
 
-function composeDetectImage(img: HTMLImageElement): { canvas: HTMLCanvasElement; scale: number } | null {
-  const longest = Math.max(img.naturalWidth, img.naturalHeight);
-  const scale = Math.min(1, DETECT_MAX / longest);
-  const w = Math.max(1, Math.round(img.naturalWidth * scale));
-  const h = Math.max(1, Math.round(img.naturalHeight * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, w, h);
-  return { canvas, scale };
+/** 对一张截图做一次完整分割，结果按 Shot 对象缓存 */
+function analyze(shot: Shot): Promise<Analysis | null> {
+  const hit = cache.get(shot);
+  if (hit) return hit;
+  const task = (async (): Promise<Analysis | null> => {
+    const img = await loadImage(shot.dataUrl);
+    const width = img.naturalWidth;
+    const height = img.naturalHeight;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+
+    const total = width * height;
+    const scale = total / BASE_AREA;
+    const minArea = Math.max(400, Math.round(EDGE_MIN_AREA * scale));
+    const maxArea = Math.max(minArea * 2, Math.round(EDGE_MAX_AREA * scale));
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const gray = toGray(imageData.data);
+    const blurred = gaussianBlur(gray, width, height, EDGE_BLUR);
+    const edges = sobelEdge(blurred, width, height, EDGE_THRESHOLD);
+    const dilated = dilate(edges, width, height, EDGE_DILATE);
+    const raw = findContours(dilated, width, height);
+
+    const regions = raw.filter((r) => {
+      const aspect = r.w / r.h;
+      return r.area >= minArea && r.area <= maxArea && aspect >= 0.4 && aspect <= 2.5;
+    });
+    regions.sort((a, b) => b.area - a.area);
+    return { canvas, ctx, regions, scale };
+  })();
+  cache.set(shot, task);
+  task.catch(() => cache.delete(shot));
+  return task;
 }
 
 /** 找「比模型框更像照片」的那块；找不到就原样返回 */
 export async function refineImageBox(shot: Shot, box: ImageBox): Promise<ImageBox> {
   try {
-    const img = await loadImage(shot.dataUrl);
-    const composed = composeDetectImage(img);
-    if (!composed) return box;
-    const { canvas, scale } = composed;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return box;
+    const analysis = await analyze(shot);
+    if (!analysis) return box;
+    const { canvas, ctx, regions, scale } = analysis;
 
     const detectBox: BoxPx = {
       x: box.x * canvas.width,
@@ -266,47 +310,48 @@ export async function refineImageBox(shot: Shot, box: ImageBox): Promise<ImageBo
       h: Math.max(1, box.h * canvas.height),
     };
     const baseScore = photoScore(ctx, detectBox);
-
     // 模型框本身已经像照片（色彩 / 纹理足够），就完全不动它：
     // 否则边缘候选只会在四周多切或少切一点，反而把一张好图改坏。
     if (baseScore >= 0.65) return box;
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const gray = toGray(imageData.data);
-    const blurred = gaussianBlur(gray, canvas.width, canvas.height, 1);
-    const edges = sobelEdge(blurred, canvas.width, canvas.height, 55);
-    const dilated = dilate(edges, canvas.width, canvas.height, 2);
-    const regions = findContours(dilated, canvas.width, canvas.height);
+    // 先只看「像照片」的候选（表情包 / 头像 / 照片），文字气泡和引用卡片会被筛掉；
+    // 如果这张截图里一个都没有，再退回全部候选里按重合度挑。
+    // overlap 用「候选面积 / 候选自身面积」在框内的小区域上会全是 1，
+    // 于是鼻子眼睛这种小块反而占便宜。这里另算 coverage：候选覆盖了模型框的多少。
+    const boxArea = Math.max(1, detectBox.w * detectBox.h);
+    const withScore = regions
+      .filter((r) => overlapOf(r, detectBox) >= 0.08)
+      .map((r) => {
+        const ix = Math.max(0, Math.min(r.x + r.w, detectBox.x + detectBox.w) - Math.max(r.x, detectBox.x));
+        const iy = Math.max(0, Math.min(r.y + r.h, detectBox.y + detectBox.h) - Math.max(r.y, detectBox.y));
+        return {
+          region: r,
+          score: photoScore(ctx, r),
+          overlap: overlapOf(r, detectBox),
+          coverage: (ix * iy) / boxArea,
+        };
+      });
+    const photoLike = withScore.filter((c) => c.score >= 0.6);
+    const pool = photoLike.length ? photoLike : withScore;
+    if (!pool.length) return box;
 
-    const total = canvas.width * canvas.height;
-    let best: { region: Region; score: number } | null = null;
-    for (const r of regions) {
-      // 太小的候选多半是表情包里的眼睛 / 文字笔画，换上去只会把图裁碎
-      if (r.area < total * 0.0008 || r.area < detectBox.w * detectBox.h * 0.03) continue;
-      if (r.area > total * 0.35 || r.area > detectBox.w * detectBox.h * 1.2) continue;
-      const aspect = r.w / r.h;
-      if (aspect < 0.25 || aspect > 4) continue;
-      const overlap = overlapOf(r, detectBox);
-      if (overlap < 0.12) continue;
-      const score = photoScore(ctx, r);
-      if (!best || score > best.score) best = { region: r, score };
-    }
+    pool.sort((a, b) => b.coverage * (0.6 + b.score * 0.4) - a.coverage * (0.6 + a.score * 0.4));
+    const best = pool[0];
 
-    // 模型框本身已经像照片，就别再动它；只有明显更像照片的候选才替换
-    if (!best || best.score < 0.6 || best.score < baseScore + 0.08) return box;
+    // 重合度太低说明模型框和候选根本不在同一块，宁可用原框
+    if (best.overlap < 0.15 || best.coverage < 0.02) return box;
 
-    const margin = Math.max(1, Math.round(Math.min(best.region.w, best.region.h) * 0.03));
+    const margin = Math.max(2, Math.round(EDGE_MARGIN * Math.sqrt(scale)));
     const x = Math.max(0, best.region.x - margin);
     const y = Math.max(0, best.region.y - margin);
     const w = Math.min(canvas.width - x, best.region.w + margin * 2);
     const h = Math.min(canvas.height - y, best.region.h + margin * 2);
-    const inv = 1 / scale;
     return {
       page: box.page,
-      x: (x * inv) / img.naturalWidth,
-      y: (y * inv) / img.naturalHeight,
-      w: (w * inv) / img.naturalWidth,
-      h: (h * inv) / img.naturalHeight,
+      x: x / canvas.width,
+      y: y / canvas.height,
+      w: w / canvas.width,
+      h: h / canvas.height,
     };
   } catch {
     return box;
