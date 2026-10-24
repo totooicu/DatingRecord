@@ -4,7 +4,7 @@
 // 现在是什么样」——隐私与安全那条直接显示锁开没开、加密开没开、隐私模式开没开，
 // 光看目录就知道状态，不必进去再出来确认。
 //
-// 带子页的入口（目前只有「功能体验」）在目录里只占一行，右侧带箭头；
+// 带子页的入口（功能体验 / 备份与分享）在目录里只占一行，右侧带箭头；
 // 子页本身不进目录，在子页里时亮的是父级那一行。
 import { useMemo } from 'react';
 import { getEncStatus } from '../../core/db';
@@ -22,7 +22,7 @@ import {
   type SettingsKey,
 } from './sections';
 
-const GROUP_ORDER: SettingsGroup[] = ['general', 'security', 'people', 'data', 'trial'];
+const GROUP_ORDER: SettingsGroup[] = ['general', 'ai', 'security', 'people', 'data', 'trial'];
 
 export function SettingsNav({
   active,

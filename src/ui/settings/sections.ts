@@ -9,6 +9,10 @@
 //   · 属性字典 + 属性模板是「字段长什么样」和「一组字段打包」，拆开反而找不到；
 //   · 库概览 + 示例数据与重置都属于「这个库整体」。
 // 合并只动「进哪一页」，各组内部仍是独立卡片，状态互不影响。
+//
+// AI 组（对话 / 聊天提取 / 模型）是 2026-10-24 从「功能体验」抽出来的：
+// 这三个功能已经用顺了，不该继续和试验功能挤在一组；模型配置也不再挂在
+// AI 对话页的标签里——配密钥是低频动作，占住聊天页的一条标签不值。
 
 export type SettingsKey =
   | 'backup'
@@ -26,10 +30,11 @@ export type SettingsKey =
   | 'labAi'
   | 'labEdge'
   | 'labChat'
-  | 'labDraft';
+  | 'labDraft'
+  | 'aiModel';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
-export type SettingsGroup = 'general' | 'security' | 'people' | 'data' | 'trial';
+export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
 
 export interface SettingsEntry {
   key: SettingsKey;
@@ -45,23 +50,26 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.zip', group: 'general' },
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
+  // AI 单独成组：对话、聊天提取、模型配置是同一件事的三步，放在一起才不会
+  // 让人为了配个密钥去「功能体验」里翻。三页都可直接进，不再套一层入口页。
+  { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'ai' },
+  { key: 'labChat', title: '聊天提取', hint: '截图 → 聊天事件', group: 'ai' },
+  { key: 'aiModel', title: '模型', hint: '别名、服务商与密钥', group: 'ai' },
   { key: 'security', title: '隐私与安全', hint: '应用锁、本地库加密、隐私模式', group: 'security' },
   { key: 'people', title: '人物与属性', hint: '属性字典、属性模板、重复合并', group: 'people' },
   { key: 'archive', title: '归档与回收', hint: '统一恢复 / 彻底删除', group: 'people' },
   { key: 'files', title: '文件', hint: '正文引用的图片与附件', group: 'people' },
   { key: 'data', title: '数据与统计', hint: '库概览、示例数据与重置', group: 'data' },
-  // 功能体验单独成组（trial）：lab 是这一组的入口页，labAi / labEdge / labDraft 是它的子页。
-  // 以前 AI 对话和边缘分割叠在同一个 lab 页里，聊天区被挤到 44vh。
+  // 功能体验（trial）：只剩还没毕业的试验功能；AI 对话与聊天提取已搬到 AI 组。
   { key: 'lab', title: '功能体验', hint: '新功能试用区', group: 'trial' },
-  { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'trial' },
   { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
-  { key: 'labChat', title: '聊天提取', hint: '截图 → 聊天事件', group: 'trial' },
   // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
   general: '通用',
+  ai: 'AI',
   security: '安全',
   people: '人物',
   data: '数据',
@@ -77,7 +85,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  * 加新子页只需在 SETTINGS_ENTRIES 里加一条、再挂到这里。
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
-  lab: ['labAi', 'labEdge', 'labChat', 'labDraft'],
+  lab: ['labEdge', 'labDraft'],
   backup: ['backupData', 'sync', 'share'],
 };
 
@@ -96,8 +104,8 @@ export const LEGACY_KEYS: Record<string, SettingsKey> = {
   templates: 'attrs',
   overview: 'data',
   sample: 'data',
-  // 顶级「AI 模型」入口已并入「功能体验 → AI 对话」页的「模型」标签
-  ai: 'labAi',
+  // 顶级「AI 模型」入口 → 现在的「AI → 模型」页
+  ai: 'aiModel',
 };
 
 /** 某个 key 在目录里的标题；子页也有标题，用来拼「← 返回 xxx」 */

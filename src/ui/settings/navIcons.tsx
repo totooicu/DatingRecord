@@ -174,12 +174,22 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M17.6 8.6v3.2M15.9 10.2h3.4" />
         </>,
       );
-    // AI 对话：带小三角的对话气泡（和「AI 模型」的双气泡区分开）
+    // AI 对话：带小三角的对话气泡（和「模型」的滑杆区分开）
     case 'labAi':
       return wrap(
         <>
           <path d="M4.2 6.2h15.6v8.6H9.4l-3.6 2.8v-2.8H4.2z" />
           <path d="M8.4 10.4h7.2" />
+        </>,
+      );
+    // 模型：三根滑杆，调的是这条别名的参数
+    case 'aiModel':
+      return wrap(
+        <>
+          <path d="M4.6 7.2h14.8M4.6 12h14.8M4.6 16.8h14.8" />
+          <circle cx="9.2" cy="7.2" r="2" />
+          <circle cx="15" cy="12" r="2" />
+          <circle cx="8" cy="16.8" r="2" />
         </>,
       );
     // 边缘分割：虚线框 + 里面的小方块
@@ -240,6 +250,14 @@ export function GroupIcon({ g }: { g: SettingsGroup }) {
       return <SettingsIcon k="people" />;
     case 'data':
       return <SettingsIcon k="data" />;
+    case 'ai':
+      // 星芒：AI 组的标题图标，和具体功能图标拉开层次
+      return wrap(
+        <>
+          <path d="M11 3.4l1.7 4.4 4.4 1.7-4.4 1.7L11 15.6l-1.7-4.4L4.9 9.5l4.4-1.7z" />
+          <path d="M17.8 14.6l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8z" />
+        </>,
+      );
     default:
       return wrap(
         <>
