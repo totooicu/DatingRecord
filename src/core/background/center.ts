@@ -91,6 +91,33 @@ export function toggleService(id: string): void {
   const s = services.find((x) => x.id === id);
   if (!s) return;
   if (s.running) s.onStop?.(); else s.onStart?.();
-  // running 状态由调用方通过 upsertService 更新
   emit();
+}
+
+// ===== 全局自动打点定时器（不随组件卸载） =====
+let locationTimer: number | null = null;
+
+export function startLocationLoop(tick: () => void): void {
+  stopLocationLoop();
+  tick();
+  locationTimer = window.setInterval(tick, 1000);
+}
+
+export function stopLocationLoop(): void {
+  if (locationTimer) { clearInterval(locationTimer); locationTimer = null; }
+}
+
+export function isLocationLoopRunning(): boolean {
+  return locationTimer !== null;
+}
+
+// ===== 自启动持久化 =====
+export function getAutostart(id: string): boolean {
+  try { return localStorage.getItem(`dr.autostart.${id}`) === '1'; } catch { return false; }
+}
+export function setAutostart(id: string, on: boolean): void {
+  try {
+    if (on) localStorage.setItem(`dr.autostart.${id}`, '1');
+    else localStorage.removeItem(`dr.autostart.${id}`);
+  } catch {}
 }

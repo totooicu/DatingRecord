@@ -1,4 +1,4 @@
-// head 右侧：运行中的服务图标 + 任务通知图标。
+// 全局浮动：运行中的服务图标 + 任务通知图标，固定在右上角。
 
 import { useBackground } from './useBackground';
 import { dismissTask } from '../../core/background/center';
@@ -8,12 +8,16 @@ export function BackgroundIcons() {
   const runningServices = services.filter((s) => s.running);
   if (runningServices.length === 0 && tasks.length === 0) return null;
   return (
-    <div className="bg-icons" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    <div style={{
+      position: 'fixed', top: 8, right: 8, zIndex: 9999,
+      display: 'flex', gap: 6, alignItems: 'center',
+    }}>
       {runningServices.map((s) => (
         <span key={s.id} title={`服务运行中：${s.name}`}
           style={{
-            fontSize: 16, padding: '2px 6px', borderRadius: 6,
-            background: 'rgba(33,150,243,0.12)', border: '1px solid rgba(33,150,243,0.3)',
+            fontSize: 16, padding: '4px 8px', borderRadius: 8,
+            background: 'rgba(33,150,243,0.9)', color: '#fff',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           }}>
           {s.icon}
         </span>
@@ -25,9 +29,9 @@ export function BackgroundIcons() {
             if (t.status === 'done') dismissTask(t.id);
           }}
           style={{
-            fontSize: 16, padding: '2px 6px', borderRadius: 6, cursor: 'pointer',
-            background: t.status === 'running' ? 'rgba(217,83,107,0.15)' : 'rgba(76,175,80,0.15)',
-            border: `1px solid ${t.status === 'running' ? 'rgba(217,83,107,0.4)' : 'rgba(76,175,80,0.4)'}`,
+            fontSize: 16, padding: '4px 8px', borderRadius: 8, cursor: 'pointer',
+            background: t.status === 'running' ? 'rgba(217,83,107,0.95)' : 'rgba(76,175,80,0.95)',
+            color: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           }}>
           {t.icon}
         </span>

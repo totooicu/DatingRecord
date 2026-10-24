@@ -11,7 +11,7 @@ import { getBlob } from '../../core/db/blob';
 import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
-import { upsertService } from '../../core/background/center';
+import { upsertService, startLocationLoop, stopLocationLoop, getAutostart, setAutostart, isLocationLoopRunning } from '../../core/background/center';
 
 function getAmapKey(): string {
   try { return localStorage.getItem('dr.amapKey') || ''; } catch { return ''; }
@@ -161,7 +161,6 @@ export function LocationPanel() {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<number | null>(null);
   // 用 ref 存最新 rows/fileId，避免 setInterval 闭包拿旧值
   const rowsRef = useRef<Row[]>([]);
   const fileIdRef = useRef<string | null>(null);
@@ -305,28 +304,31 @@ export function LocationPanel() {
   const startAuto = () => {
     if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
     setAuto(true);
-    tick();
-    timerRef.current = window.setInterval(tick, 1000);
+    startLocationLoop(tick);
     upsertService({
       id: 'location-auto', name: '自动打点', icon: '📍',
-      running: true, autostart: false,
+      running: true, autostart: getAutostart('location-auto'),
       onStop: () => stopAuto(),
+      onToggleAuto: (on) => setAutostart('location-auto', on),
     });
     toast('自动打点已开始（每秒）');
   };
 
   const stopAuto = () => {
     setAuto(false);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    stopLocationLoop();
     upsertService({
       id: 'location-auto', name: '自动打点', icon: '📍',
-      running: false, autostart: false,
+      running: false, autostart: getAutostart('location-auto'),
       onStart: () => startAuto(),
+      onToggleAuto: (on) => setAutostart('location-auto', on),
     });
   };
 
-  // 卸载时清定时器
-  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+  // 组件挂载时：如果全局定时器在跑，同步状态
+  useEffect(() => {
+    if (isLocationLoopRunning()) setAuto(true);
+  }, []);
 
   // 记住上次选的文件
   useEffect(() => {

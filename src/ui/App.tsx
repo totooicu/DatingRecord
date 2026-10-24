@@ -3,6 +3,7 @@ import { Timeline, TimelineFilters, defaultFilter, type TimelineFilter } from '.
 import { Settings } from './settings/Settings';
 import { EventForm } from './event';
 import { PageHead, useModalOpenCount } from './common';
+import { BackgroundIcons } from './background/BackgroundIcons';
 import { PersonsPane, CollectionsPane } from './Panes';
 import { Welcome } from './Welcome';
 import { TopBar } from './TopBar';
@@ -241,6 +242,7 @@ export default function App() {
 
       <UndoSnackbar />
       <ToastHost />
+      <BackgroundIcons />
 
       {/* 设置页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
       {modalCount === 0 && section !== 'settings' && (
