@@ -67,6 +67,26 @@ export type ClientMessage = ClientHello | ClientApply | BlobGet | BlobPut | Blob
 /** 两个方向的消息并集：传输层不关心方向，路由层按 k 分派 */
 export type RemotePayload = RemoteMessage | ClientMessage;
 
+/** 传输方式：中继（局域网 ws）还是 WebRTC 直连 */
+export type LinkKind = 'relay' | 'direct';
+
+/**
+ * 路由器眼里的「一条连接」。
+ * 中继和 WebRTC 各自实现它，路由层不关心底下是 ws 还是 DataChannel。
+ */
+export interface RemoteLink {
+  readonly id: string;
+  readonly closed: boolean;
+  /** 连着的对端（直连只有一个，中继是多个客户端） */
+  readonly clients: PeerInfo[];
+  send(msg: RemotePayload | object): void;
+  sendTo(to: string, msg: RemotePayload | object): void;
+  broadcast(msg: RemotePayload | object): void;
+  close(): void;
+  /** 直连：通道可能先于路由层打开，用它补挂 handler 并补发排队消息 */
+  attach?(handlers: import('./transport').TransportHandlers): void;
+}
+
 export interface RemoteConfig {
   /** ws://host:port/remote */
   url: string;

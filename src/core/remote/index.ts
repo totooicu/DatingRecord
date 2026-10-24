@@ -2,6 +2,8 @@
 
 export * from './types';
 export * from './url';
+export { createDirectHost, createDirectClient, parseStun } from './direct';
+export type { DirectClientSession, DirectHostSession, DirectChannel } from './direct';
 export {
   getRemoteState,
   subscribeRemote,
@@ -9,10 +11,13 @@ export {
   savedHostConfig,
   prepareClientBoot,
   bootClient,
+  adoptDirectClient,
+  adoptDirectHost,
   leaveRemoteAndReload,
   takeRemoteTip,
   startHost,
   stopHost,
+  localDeviceName,
   relayInfo,
   ensureRelayListener,
   probeRemote,

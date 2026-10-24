@@ -1,22 +1,32 @@
 // 跨设备操作：服务端 / 客户端两块面板。
 //
-// 浏览器本身不能监听端口，所以「服务端」真正监听的是项目自带的小中继
-// （tools/remote-relay）。这个页面负责：开启/停止数据服务、看有哪些客户端；
-// 客户端则填地址和 token 连上去，连上后整页换成服务端的数据。
+// 两条连接方式：
+//   中继 —— 局域网里跑 tools/remote-relay，页面由中继托管，ws 明文转发
+//   直连 —— WebRTC DataChannel，两个浏览器直接传，靠复制配对码完成信令
+//
+// 不管哪条，切数据都由 core/remote/router 统一负责，这个页面只管配对和展示。
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   addressForHostPort,
+  adoptDirectClient,
+  adoptDirectHost,
   configOf,
   connectClient,
+  createDirectClient,
+  createDirectHost,
   ensureRelayListener,
   getRemoteState,
   leaveRemoteAndReload,
+  localDeviceName,
   probeRemote,
   relayInfo,
   startHost,
   stopHost,
   subscribeRemote,
+  type DirectClientSession,
+  type DirectHostSession,
+  type LinkKind,
 } from '../../core/remote';
 import { Field } from '../common';
 
@@ -34,6 +44,8 @@ function randomToken(): string {
 
 export function RemoteSection() {
   const remote = useRemote();
+  /** 空闲时选连接方式；已连上则沿用当前那条 */
+  const [link, setLink] = useState<LinkKind>('relay');
   const [port, setPort] = useState('4173');
   const [token, setToken] = useState(() => randomToken());
   const [addr, setAddr] = useState('');
@@ -43,11 +55,20 @@ export function RemoteSection() {
   const [err, setErr] = useState('');
   const [relay, setRelay] = useState<Awaited<ReturnType<typeof relayInfo>>>(null);
 
+  // 直连配对
+  const [stun, setStun] = useState('');
+  const [inviteIn, setInviteIn] = useState('');
+  const [answerIn, setAnswerIn] = useState('');
+  const [hostSession, setHostSession] = useState<{ s: DirectHostSession; invite: string } | null>(null);
+  const [clientSession, setClientSession] = useState<{ s: DirectClientSession; answer: string } | null>(null);
+
   useEffect(() => {
     void relayInfo().then(setRelay);
   }, []);
 
   const hostCfg = remote.mode === 'host' ? remote.label : '';
+  const isDirect = remote.transport === 'direct';
+  const choose = remote.mode === 'local';
 
   // 给客户端的连接串：地址用当前页面的主机名，换设备时把这段抄过去。
   // 页面在本机用 localhost / 127.0.0.1 打开时，抄到手机上连的是手机自己，
@@ -62,6 +83,16 @@ export function RemoteSection() {
     if (!hostCfg) return '';
     return `${shareHost}:${port}?token=${token}`;
   }, [hostCfg, shareHost, port, token]);
+
+  const copy = async (text: string, what: string) => {
+    setErr('');
+    try {
+      await navigator.clipboard.writeText(text);
+      setMsg(`已复制${what}`);
+    } catch {
+      setErr('复制失败：请长按文本框手动全选复制');
+    }
+  };
 
   const start = async () => {
     setErr('');
@@ -110,6 +141,83 @@ export function RemoteSection() {
     }
   };
 
+  // ---------------- 直连：服务端 ----------------
+
+  const makeInvite = async () => {
+    setErr('');
+    setMsg('');
+    setBusy('host');
+    try {
+      const s = createDirectHost({ stun, name: localDeviceName() });
+      const invite = await s.invite;
+      setHostSession({ s, invite });
+      setMsg('邀请码已生成：用聊天工具发给另一台设备。');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const acceptAnswer = async () => {
+    if (!hostSession) return;
+    setErr('');
+    setMsg('');
+    setBusy('host');
+    try {
+      await hostSession.s.complete(answerIn);
+      setMsg('应答码已接受，正在建立直连…');
+      await adoptDirectHost(hostSession.s);
+      setHostSession(null);
+      setAnswerIn('');
+      setMsg('直连已建立，客户端正在读取数据。');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const cancelHost = () => {
+    hostSession?.s.close();
+    setHostSession(null);
+    setAnswerIn('');
+    setMsg('已取消配对');
+  };
+
+  // ---------------- 直连：客户端 ----------------
+
+  const makeAnswer = async () => {
+    setErr('');
+    setMsg('');
+    setBusy('client');
+    try {
+      const s = createDirectClient(inviteIn, localDeviceName());
+      const answer = await s.answer;
+      setClientSession({ s, answer });
+      setMsg('应答码已生成：把它发回服务端页面。');
+      void adoptDirectClient(s)
+        .then(() => {
+          setClientSession(null);
+          setBusy('');
+        })
+        .catch((e) => {
+          setErr(e instanceof Error ? e.message : String(e));
+          setClientSession(null);
+          setBusy('');
+        });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy('');
+    }
+  };
+
+  const cancelClient = () => {
+    clientSession?.s.close();
+    setClientSession(null);
+    setBusy('');
+  };
+
   return (
     <div className="remote-section">
       <p className="muted small">
@@ -117,25 +225,52 @@ export function RemoteSection() {
         服务端自身的数据照常保存在本机。
       </p>
 
+      {choose && !hostSession && !clientSession && (
+        <div className="remote-switch" role="tablist" aria-label="连接方式">
+          <button
+            role="tab"
+            aria-selected={link === 'relay'}
+            className={link === 'relay' ? 'on' : ''}
+            onClick={() => setLink('relay')}
+          >
+            中继（局域网）
+          </button>
+          <button
+            role="tab"
+            aria-selected={link === 'direct'}
+            className={link === 'direct' ? 'on' : ''}
+            onClick={() => setLink('direct')}
+          >
+            直连（WebRTC）
+          </button>
+        </div>
+      )}
+
       <section className="card">
         <div className="card-head">
           <h4 className="card-title">作为服务端</h4>
-          {remote.mode === 'host' && <span className="remote-badge remote-badge-on">已开启</span>}
+          {remote.mode === 'host' && (
+            <span className="remote-badge remote-badge-on">{isDirect ? '直连中' : '已开启'}</span>
+          )}
         </div>
 
         {remote.mode === 'host' ? (
           <>
             <p className="remote-line">
-              <span className="muted small">监听</span> <code>{remote.label}</code>
+              <span className="muted small">{isDirect ? '方式' : '监听'}</span> <code>{remote.label}</code>
             </p>
-            <p className="remote-line">
-              <span className="muted small">客户端连接串</span>
-            </p>
-            <textarea className="remote-share" readOnly value={shareText} rows={2} />
-            {loopback && lanAddr && (
-              <p className="muted small">
-                已把地址换成本机局域网 IP；<code>127.0.0.1</code> 只在本机有效，手机连不上。
-              </p>
+            {!isDirect && (
+              <>
+                <p className="remote-line">
+                  <span className="muted small">客户端连接串</span>
+                </p>
+                <textarea className="remote-share" readOnly value={shareText} rows={2} />
+                {loopback && lanAddr && (
+                  <p className="muted small">
+                    已把地址换成本机局域网 IP；<code>127.0.0.1</code> 只在本机有效，手机连不上。
+                  </p>
+                )}
+              </>
             )}
             <p className="muted small">
               当前 {remote.clients.length} 个客户端
@@ -147,7 +282,7 @@ export function RemoteSection() {
               </button>
             </div>
           </>
-        ) : (
+        ) : link === 'relay' ? (
           <>
             <label className="field">
               <span className="field-label">端口号</span>
@@ -185,13 +320,80 @@ export function RemoteSection() {
               </div>
             )}
           </>
+        ) : hostSession ? (
+          <>
+            <p className="muted small">邀请码（发给另一台设备，在它的「作为客户端」里粘贴）</p>
+            <textarea
+              className="remote-share"
+              readOnly
+              rows={4}
+              value={hostSession.invite}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <div className="remote-actions">
+              <button className="btn btn-sm" onClick={() => void copy(hostSession.invite, '邀请码')}>
+                复制邀请码
+              </button>
+            </div>
+            <label className="field">
+              <span className="field-label">
+                对方的应答码
+                <em>对方生成后发回来，粘贴到这里</em>
+              </span>
+              <textarea
+                className="remote-share remote-share-in"
+                rows={4}
+                value={answerIn}
+                onChange={(e) => setAnswerIn(e.target.value)}
+                placeholder="DR1A:…"
+              />
+            </label>
+            <div className="remote-actions">
+              <button
+                className="btn btn-primary"
+                onClick={() => void acceptAnswer()}
+                disabled={busy !== '' || !answerIn.trim()}
+              >
+                {busy === 'host' ? '正在配对…' : '完成配对'}
+              </button>
+              <button className="btn btn-sm" onClick={cancelHost}>
+                取消
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="muted small">
+              直连不需要中继和端口：两个浏览器交换一次配对码后直接传数据，适合同一局域网，也适合都能访问的
+              http(s) 页面。
+            </p>
+            <label className="field">
+              <span className="field-label">
+                STUN（可选）
+                <em>留空 = 只走局域网；跨公网可填 stun:host:port</em>
+              </span>
+              <input
+                value={stun}
+                onChange={(e) => setStun(e.target.value)}
+                placeholder="stun:stun.l.google.com:19302"
+                autoComplete="off"
+              />
+            </label>
+            <div className="remote-actions">
+              <button className="btn btn-primary" onClick={() => void makeInvite()} disabled={busy !== ''}>
+                {busy === 'host' ? '正在生成…' : '生成邀请码'}
+              </button>
+            </div>
+          </>
         )}
       </section>
 
       <section className="card">
         <div className="card-head">
           <h4 className="card-title">作为客户端</h4>
-          {remote.mode === 'client' && <span className="remote-badge remote-badge-on">使用服务端数据</span>}
+          {remote.mode === 'client' && (
+            <span className="remote-badge remote-badge-on">{isDirect ? '直连数据' : '使用服务端数据'}</span>
+          )}
         </div>
 
         {remote.mode === 'client' ? (
@@ -206,7 +408,7 @@ export function RemoteSection() {
               </button>
             </div>
           </>
-        ) : (
+        ) : link === 'relay' ? (
           <>
             <label className="field">
               <span className="field-label">
@@ -241,6 +443,54 @@ export function RemoteSection() {
               {remote.mode === 'host'
                 ? '本页正在作为服务端，要连接请换一台设备或新开一个标签页。'
                 : '客户端页面必须由服务端中继托管（同一局域网的 http 地址），否则 https 页面连不上 ws://。'}
+            </p>
+          </>
+        ) : clientSession ? (
+          <>
+            <p className="muted small">应答码（发回服务端页面）</p>
+            <textarea
+              className="remote-share"
+              readOnly
+              rows={4}
+              value={clientSession.answer}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <div className="remote-actions">
+              <button className="btn btn-sm" onClick={() => void copy(clientSession.answer, '应答码')}>
+                复制应答码
+              </button>
+              <button className="btn btn-sm" onClick={cancelClient}>
+                取消
+              </button>
+            </div>
+            <p className="muted small">等待服务端粘贴应答码…两边都要保持这个页面开着。</p>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              <span className="field-label">
+                邀请码
+                <em>服务端点「生成邀请码」后得到，以 DR1H: 开头</em>
+              </span>
+              <textarea
+                className="remote-share remote-share-in"
+                rows={4}
+                value={inviteIn}
+                onChange={(e) => setInviteIn(e.target.value)}
+                placeholder="DR1H:…"
+              />
+            </label>
+            <div className="remote-actions">
+              <button
+                className="btn btn-primary"
+                onClick={() => void makeAnswer()}
+                disabled={busy !== '' || !inviteIn.trim() || remote.mode === 'host' || !!hostSession}
+              >
+                {busy === 'client' ? '正在生成…' : '生成应答码'}
+              </button>
+            </div>
+            <p className="muted small">
+              直连不需要中继，也不需要 token；两台设备都先打开这个页面即可。跨公网时可能需要 STUN，网络严格时仍建议用中继。
             </p>
           </>
         )}

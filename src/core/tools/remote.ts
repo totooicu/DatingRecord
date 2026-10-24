@@ -14,7 +14,7 @@ export const REMOTE_TOOLS: ToolDef[] = [
     title: '跨设备操作状态',
     desc:
       '查看当前数据路由器指向哪里：local=本机数据；host=本机作为服务端；client=正在读写另一台设备的数据。' +
-      '同时返回客户端数量、版本号/连接地址，以及中继启动命令（浏览器不能自己监听端口）。',
+      '同时返回传输方式（relay 中继 / direct WebRTC 直连）、客户端数量、版本号/连接地址，以及中继启动命令。',
     mutating: false,
     params: [],
     run: () => {
@@ -25,6 +25,7 @@ export const REMOTE_TOOLS: ToolDef[] = [
       return {
         mode: s.mode,
         status: s.status,
+        transport: s.transport,
         address: s.label || null,
         clients: s.clients.map((c) => ({ id: c.id, name: c.name })),
         version: s.version,
@@ -37,7 +38,7 @@ export const REMOTE_TOOLS: ToolDef[] = [
         note:
           s.mode === 'client'
             ? '当前所有读写都发往服务端，不写入本机；断开后回到本机数据。'
-            : '当前使用本机数据库。跨设备连接请在「设置 → 备份与分享 → 跨设备操作」里操作。',
+            : '当前使用本机数据库。跨设备连接请在「设置 → 备份与分享 → 跨设备操作」里操作（可选择中继或 WebRTC 直连）。',
       };
     },
   },

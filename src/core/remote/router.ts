@@ -26,9 +26,10 @@ import {
 } from '../db/blob';
 import { getDeviceId } from '../db/device';
 import { bump } from '../../store';
-import { RemoteTransport } from './transport';
+import { RemoteTransport, type TransportHandlers } from './transport';
 import { parseRemoteAddress, type ParsedAddress } from './url';
-import type { ClientMessage, PeerInfo, RemoteConfig, RemotePayload } from './types';
+import type { DirectClientSession, DirectHostSession } from './direct';
+import type { ClientMessage, LinkKind, PeerInfo, RemoteConfig, RemoteLink, RemotePayload } from './types';
 
 const CLIENT_KEY = 'dr.remote.client';
 const HOST_KEY = 'dr.remote.host';
@@ -38,14 +39,24 @@ export type RemoteMode = 'local' | 'host' | 'client';
 export interface RemoteState {
   mode: RemoteMode;
   status: 'idle' | 'connecting' | 'connected' | 'error';
-  /** 展示用地址 host:port */
+  /** 展示用地址 host:port，或「直连 · 设备名」 */
   label: string;
   clients: PeerInfo[];
   error: string;
   version: number;
+  /** 当前这条连接是走中继还是 WebRTC 直连 */
+  transport: LinkKind | null;
 }
 
-let state: RemoteState = { mode: 'local', status: 'idle', label: '', clients: [], error: '', version: 0 };
+let state: RemoteState = {
+  mode: 'local',
+  status: 'idle',
+  label: '',
+  clients: [],
+  error: '',
+  version: 0,
+  transport: null,
+};
 const listeners = new Set<() => void>();
 
 function publish(patch: Partial<RemoteState>): void {
@@ -194,9 +205,11 @@ const remoteBlobStore = {
 
 // ---------------- 客户端 ----------------
 
-let clientTransport: RemoteTransport | null = null;
+let clientTransport: RemoteLink | null = null;
 let clientVersion = 0;
 let clientConnected = false;
+/** 收到过快照的次数：判断「换库是否已经发生」，不依赖具体传输层的回调 */
+let snapshotSeq = 0;
 
 function clientSend(msg: ClientMessage): void {
   if (!clientTransport) throw new Error('尚未连接到服务端');
@@ -221,66 +234,20 @@ export function prepareClientBoot(): RemoteConfig | null {
 
 /** 客户端启动：连上服务端、拿快照换库，成功后才允许渲染业务界面 */
 export async function bootClient(cfg: RemoteConfig, onProgress?: (msg: string) => void): Promise<void> {
-  publish({ mode: 'client', status: 'connecting', label: cfg.label, error: '', clients: [] });
-  onProgress?.('正在连接服务端…');
-  let firstSnapshot: { version: number; db: string } | null = null;
   const transport = new RemoteTransport(cfg.url, cfg.token, 'client', deviceName(), {
-    onMessage(msg) {
-      if (msg.k === 'snapshot') {
-        const wasConnected = clientConnected;
-        clientVersion = msg.version;
-        replaceDb(msg.db);
-        if (!wasConnected) {
-          clientConnected = true;
-          installClientRouting(transport);
-          publish({ status: 'connected', version: msg.version });
-        } else {
-          publish({ version: msg.version });
-        }
-        firstSnapshot = firstSnapshot ?? { version: msg.version, db: msg.db };
-      } else if (msg.k === 'blob') {
-        const p = pending.get(msg.reqId);
-        if (p) {
-          clearTimeout(p.timer);
-          pending.delete(msg.reqId);
-          p.resolve(msg.data);
-        }
-      } else if (msg.k === 'error') {
-        publish({ status: 'error', error: msg.error });
-      }
+    onMessage(msg, from) {
+      handleClientPayload(msg, from);
     },
     onClose() {
       // 服务端断开：按需求回到自己的数据（本地库从未被覆盖）
       leaveRemoteAndReload('服务端已断开，已切回本地数据');
     },
   });
-  clientTransport = transport;
-  try {
-    await transport.connect();
-    onProgress?.('正在读取服务端数据…');
-    transport.send({ k: 'request-snapshot' });
-    // 等第一份快照；超时说明服务端在线但没响应
-    const started = Date.now();
-    while (!firstSnapshot) {
-      if (transport.closed) throw new Error('连接已断开');
-      if (Date.now() - started > 15000) throw new Error('服务端没有返回数据（服务端页面可能已关闭）');
-      await new Promise((r) => setTimeout(r, 80));
-    }
-  } catch (err) {
-    transport.close();
-    clientTransport = null;
-    setPersistSink(null);
-    setBlobStore(null);
-    clearKey(CLIENT_KEY);
-    const msg = err instanceof Error ? err.message : String(err);
-    publish({ mode: 'local', status: 'error', label: '', error: `连接失败：${msg}` });
-    throw err;
-  }
-  writeJson(CLIENT_KEY, cfg);
+  await attachClient(transport, cfg.label, 'relay', cfg, onProgress);
 }
 
 /** 客户端接管落盘与附件：此后再也不碰本地 IndexedDB */
-function installClientRouting(transport: RemoteTransport): void {
+function installClientRouting(transport: RemoteLink): void {
   setPersistSink(async (bytes) => {
     try {
       transport.send({ k: 'apply', baseVersion: clientVersion, db: toBase64(bytes) });
@@ -289,6 +256,126 @@ function installClientRouting(transport: RemoteTransport): void {
     }
   });
   setBlobStore(remoteBlobStore);
+}
+
+/** 客户端侧收到服务端消息：快照换库 / 附件回包 / 错误 */
+function handleClientPayload(msg: RemotePayload, _from: string): void {
+  if (msg.k === 'snapshot') {
+    snapshotSeq += 1;
+    clientVersion = msg.version;
+    replaceDb(msg.db);
+    if (!clientConnected) {
+      clientConnected = true;
+      if (clientTransport) installClientRouting(clientTransport);
+      publish({ status: 'connected', version: msg.version });
+    } else {
+      publish({ version: msg.version });
+    }
+  } else if (msg.k === 'blob') {
+    const p = pending.get(msg.reqId);
+    if (p) {
+      clearTimeout(p.timer);
+      pending.delete(msg.reqId);
+      p.resolve(msg.data);
+    }
+  } else if (msg.k === 'error') {
+    publish({ status: 'error', error: msg.error });
+  }
+}
+
+/**
+ * 把一条已经打通（或即将打通）的连接当成「服务端数据」接过来。
+ *
+ * 中继和 WebRTC 走同一个函数：挂 handler → 要快照 → 换库 → 装 sink。
+ * 失败时把落盘/附件还回本地，页面仍停在原来的位置。
+ */
+async function attachClient(
+  link: RemoteLink,
+  label: string,
+  kind: LinkKind,
+  remember: RemoteConfig | null,
+  onProgress?: (msg: string) => void,
+): Promise<void> {
+  publish({
+    mode: 'client',
+    status: 'connecting',
+    label,
+    transport: kind,
+    error: '',
+    clients: [],
+  });
+  onProgress?.('正在连接服务端…');
+  // 每次接管都从头计数：上一个会话的快照不能被当成本次的首帧
+  clientConnected = false;
+  const before = snapshotSeq;
+  const handlers: TransportHandlers = {
+    onMessage(msg) {
+      handleClientPayload(msg, '');
+    },
+    onPeer(ev, peer) {
+      if (ev === 'join' && kind === 'direct') publish({ label: `直连 · ${peer.name}` });
+    },
+    onClose() {
+      leaveRemoteAndReload('服务端已断开，已切回本地数据');
+    },
+  };
+  link.attach?.(handlers);
+  clientTransport = link;
+
+  const connectable = link as RemoteLink & { connect?: (timeoutMs?: number) => Promise<void> };
+  try {
+    if (connectable.connect) await connectable.connect();
+    onProgress?.('正在读取服务端数据…');
+    link.send({ k: 'request-snapshot' });
+    const started = Date.now();
+    while (snapshotSeq === before) {
+      if (link.closed) throw new Error('连接已断开');
+      if (Date.now() - started > 15000) throw new Error('服务端没有返回数据（服务端页面可能已关闭）');
+      await new Promise((r) => setTimeout(r, 80));
+    }
+  } catch (err) {
+    link.close();
+    clientTransport = null;
+    setPersistSink(null);
+    setBlobStore(null);
+    if (remember) clearKey(CLIENT_KEY);
+    const msg = err instanceof Error ? err.message : String(err);
+    publish({ mode: 'local', status: 'error', label: '', transport: null, error: `连接失败：${msg}` });
+    // 快照已经换过库了：页面里的数据是服务端的，必须重载回本地，不能就这么留在界面上
+    if (snapshotSeq !== before) {
+      try {
+        sessionStorage.setItem('dr.remote.tip', `连接失败：${msg}`);
+      } catch {
+        /* ignore */
+      }
+      location.reload();
+    }
+    throw err;
+  }
+  if (remember) writeJson(CLIENT_KEY, remember);
+}
+
+/**
+ * WebRTC 直连客户端：配对成功后原地换库（不刷新页面）。
+ *
+ * 刷新会关掉 RTCPeerConnection，所以直连不能像中继那样「存标记再 reload」。
+ * 开关过程中本地库只被替换、不会被写回 IndexedDB；断开时 reload 回来的还是自己的数据。
+ */
+export async function adoptDirectClient(session: DirectClientSession): Promise<void> {
+  // 配对期间就堵住本地落盘：此时用户如果还在操作，写的是本地库，不能落盘
+  setPersistSink(async () => {
+    /* 直连模式：本地落盘一律丢弃 */
+  });
+  try {
+    const link = await session.open;
+    await attachClient(link, '直连会话', 'direct', null);
+  } catch (err) {
+    setPersistSink(null);
+    session.close();
+    const msg = err instanceof Error ? err.message : String(err);
+    publish({ mode: 'local', status: 'error', label: '', transport: null, error: `直连失败：${msg}` });
+    throw err;
+  }
 }
 
 /** 断开并 reload：本地库一直在盘上，重载后就是自己的数据 */
@@ -323,7 +410,7 @@ export function takeRemoteTip(): string {
 
 // ---------------- 服务端 ----------------
 
-let hostTransport: RemoteTransport | null = null;
+let hostTransport: RemoteLink | null = null;
 let hostVersion = 1;
 let stopHostObserver: (() => void) | null = null;
 
@@ -335,45 +422,67 @@ function broadcastSnapshot(reason: 'init' | 'update' | 'conflict' = 'update', to
   publish({ version: hostVersion });
 }
 
-export async function startHost(cfg: RemoteConfig): Promise<void> {
-  if (hostTransport) return;
-  publish({ mode: 'host', status: 'connecting', label: cfg.label, error: '', clients: [] });
-  const transport = new RemoteTransport(cfg.url, cfg.token, 'host', deviceName(), {
-    onMessage(msg, from) {
-      void handleClientMessage(msg, from);
-    },
-    onPeer(ev, peer) {
-      if (ev === 'join') {
-        publish({ clients: [...(hostTransport?.clients ?? [])] });
-        // 新客户端一进来就给一份快照，不必等它再问
-        try {
-          broadcastSnapshot('init', peer.id);
-        } catch {
-          /* 导出失败（库没初始化）时交给客户端自己重试 */
-        }
-      } else {
-        publish({ clients: [...(hostTransport?.clients ?? [])] });
-      }
-    },
-    onClose() {
-      teardownHost();
-      publish({
-        mode: 'local',
-        status: 'error',
-        label: '',
-        clients: [],
-        error: '服务端连接已断开：客户端将看不到数据，本机数据不受影响',
-      });
-    },
+function handleHostPeer(ev: 'join' | 'leave', peer: PeerInfo): void {
+  const clients = [...(hostTransport?.clients ?? [])];
+  const label = state.transport === 'direct' && ev === 'join' ? `直连 · ${peer.name}` : state.label;
+  if (ev === 'join') {
+    publish({ clients, label });
+    // 新客户端一进来就给一份快照，不必等它再问
+    try {
+      broadcastSnapshot('init', peer.id);
+    } catch {
+      /* 导出失败（库没初始化）时交给客户端自己重试 */
+    }
+  } else {
+    publish({ clients, label });
+  }
+}
+
+function handleHostClose(): void {
+  const direct = state.transport === 'direct';
+  teardownHost();
+  publish({
+    mode: 'local',
+    status: 'error',
+    label: '',
+    clients: [],
+    transport: null,
+    error: direct
+      ? '客户端已断开，直连结束。要再连请重新生成邀请码；本机数据不受影响。'
+      : '服务端连接已断开：客户端将看不到数据，本机数据不受影响',
   });
-  hostTransport = transport;
+}
+
+const HOST_HANDLERS: TransportHandlers = {
+  onMessage(msg, from) {
+    void handleClientMessage(msg, from);
+  },
+  onPeer: handleHostPeer,
+  onClose: handleHostClose,
+};
+
+/**
+ * 把一条连接当服务端用（中继 / 直连共用）。
+ * 中继要先 connect() 拿 welcome；WebRTC 的通道在配对完成时已经打开。
+ */
+async function attachHost(
+  link: RemoteLink,
+  label: string,
+  kind: LinkKind,
+  remember: RemoteConfig | null,
+): Promise<void> {
+  if (hostTransport) return;
+  publish({ mode: 'host', status: 'connecting', label, transport: kind, error: '', clients: [] });
+  link.attach?.(HOST_HANDLERS);
+  hostTransport = link;
+  const connectable = link as RemoteLink & { connect?: (timeoutMs?: number) => Promise<void> };
   try {
-    await transport.connect();
+    if (connectable.connect) await connectable.connect();
   } catch (err) {
     hostTransport = null;
-    transport.close();
+    link.close();
     const msg = err instanceof Error ? err.message : String(err);
-    publish({ mode: 'local', status: 'error', label: '', error: `开启失败：${msg}` });
+    publish({ mode: 'local', status: 'error', label: '', transport: null, error: `开启失败：${msg}` });
     throw err;
   }
   hostVersion = Math.max(1, hostVersion);
@@ -386,15 +495,39 @@ export async function startHost(cfg: RemoteConfig): Promise<void> {
       /* 导出失败不阻塞落盘 */
     }
   });
-  writeJson(HOST_KEY, cfg);
+  if (remember) writeJson(HOST_KEY, remember);
   publish({
     mode: 'host',
     status: 'connected',
-    label: cfg.label,
-    clients: [...transport.clients],
+    label,
+    clients: [...link.clients],
+    transport: kind,
     error: '',
     version: hostVersion,
   });
+}
+
+export async function startHost(cfg: RemoteConfig): Promise<void> {
+  if (hostTransport) return;
+  const transport = new RemoteTransport(cfg.url, cfg.token, 'host', deviceName(), HOST_HANDLERS);
+  await attachHost(transport, cfg.label, 'relay', cfg);
+}
+
+/**
+ * WebRTC 直连服务端：配对码交换完成后调用。
+ *
+ * 直连不能像中继那样刷新恢复（刷新就丢了 PeerConnection），所以不写会话标记。
+ */
+export async function adoptDirectHost(session: DirectHostSession): Promise<void> {
+  try {
+    const link = await session.open;
+    await attachHost(link, '直连会话', 'direct', null);
+  } catch (err) {
+    session.close();
+    const msg = err instanceof Error ? err.message : String(err);
+    publish({ mode: 'local', status: 'error', label: '', transport: null, error: `直连失败：${msg}` });
+    throw err;
+  }
 }
 
 async function handleClientMessage(msg: RemotePayload, from: string): Promise<void> {
@@ -458,7 +591,7 @@ async function handleClientMessage(msg: RemotePayload, from: string): Promise<vo
 export function stopHost(reload = false): void {
   teardownHost();
   clearKey(HOST_KEY);
-  publish({ mode: 'local', status: 'idle', label: '', clients: [], error: '' });
+  publish({ mode: 'local', status: 'idle', label: '', clients: [], transport: null, error: '' });
   if (reload) location.reload();
 }
 
@@ -530,6 +663,11 @@ function deviceName(): string {
   } catch {
     return '未命名设备';
   }
+}
+
+/** 给配对码用的本机称呼（「设备 ABC123」） */
+export function localDeviceName(): string {
+  return deviceName();
 }
 
 /**
