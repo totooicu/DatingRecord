@@ -140,8 +140,7 @@
   flex-direction: column;
 }
 
-/* 模型 / 历史会话 / 快照 / 说明：整屏滚动 */
-.aichat-models,
+/* 历史会话 / 快照 / 说明：整屏滚动 */
 .aichat-history,
 .aichat-snaps,
 .aichat-help {

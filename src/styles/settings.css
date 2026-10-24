@@ -186,12 +186,21 @@
 }
 
 @media (min-width: 1024px) {
-  /* 桌面：左目录右内容同屏，目录常驻，返回按钮没有意义 */
-  .settings-panes {
+  /* 桌面：左目录右内容同屏，目录常驻，返回按钮没有意义。
+     选择器必须把 :not([data-sub='']) 也写进来：手机上那条同名的纵向 flex
+     规则特异性是 0-2-0，只写 .settings-panes（0-1-0）会被它压掉，
+     子页就退化成「目录在上、内容在下」的单列。 */
+  .settings-panes,
+  .settings-panes:not([data-sub='']) {
     display: grid;
     grid-template-columns: 240px minmax(0, 1fr);
+    /* 一整行占满可用高度：AI 对话要在这条确定高度的链上继续 flex */
+    grid-template-rows: minmax(0, 1fr);
     gap: 16px;
-    align-items: start;
+    /* 拉满是给 AI 对话用的：它的高度链（settings-body-tight → lab-page →
+       aichat-log）要求每一层都有确定高度，start 会让正文变成 0 高 */
+    align-items: stretch;
+    width: 100%;
     max-width: 1100px;
     margin: 0 auto;
     padding: 14px 18px 8px;
@@ -215,8 +224,13 @@
   .settings-nav {
     position: sticky;
     top: 8px;
+    align-self: start;
   }
 
+  /* 子页给目录留出左边 240px，正文自己滚（.pane 已有 overflow-y） */
+  .settings-body {
+    min-width: 0;
+  }
 }
 
 /* ---------- 隐私模式开关卡（设置正文顶部，始终可见） ---------- */
