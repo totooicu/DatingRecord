@@ -158,7 +158,6 @@ export function LocationPanel() {
   const [threshold, setThreshold] = useState(5); // 米
   const [amapKey, setAmapKey] = useState(() => getAmapKey());
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
