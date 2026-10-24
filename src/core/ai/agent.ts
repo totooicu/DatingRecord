@@ -318,7 +318,9 @@ export async function runAgentTurn(opts: AgentOpts): Promise<AgentTurnResult> {
         const { diffSnapshot } = await import('../snapshots/diff');
         const { patchSnapshotDiff } = await import('../snapshots');
         const d = await diffSnapshot(snapshotId);
-        if (d && (d.created.length || d.updated.length || d.deleted.length)) {
+        // reverted 也要存：建了又删的轮次三组都为空，不存 diff 的话
+        // 成果详情里什么都不显示，用户看不出这一轮到底动过什么。
+        if (d && (d.created.length || d.updated.length || d.deleted.length || d.reverted.length)) {
           patchSnapshotDiff(snapshotId, d);
         }
       } catch { /* diff 失败不影响主流程 */ }

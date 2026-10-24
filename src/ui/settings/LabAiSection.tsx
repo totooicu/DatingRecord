@@ -769,9 +769,11 @@ export function LabAiSection() {
       showToast(
         staged
           ? '改动已暂存，去「成果」确认后执行'
-          : res.aborted
-            ? '已停止本轮'
-            : 'AI 已完成，可以继续提问或离开',
+          : res.snapshotId
+            ? '这一轮库没有变化，自动备份已留在「成果」里'
+            : res.aborted
+              ? '已停止本轮'
+              : 'AI 已完成，可以继续提问或离开',
       );
       // 落盘：被中断也能从历史会话里找回并继续
       persistSession(hist, nextItems);
@@ -795,7 +797,13 @@ export function LabAiSection() {
   const rollback = async (id: string) => {
     if (!window.confirm('拒绝这次改动？\n数据会回退到 AI 动手之前。当前状态会自动留底，踩错了还能再退回来。')) return;
     clearSnapReturn();
-    await restoreSnapshot(id);
+    const ok = await restoreSnapshot(id);
+    if (!ok) {
+      // 备份字节丢失时不能假装成功：数据没变，提示条却关掉了，用户以为回退过
+      setErr('回退失败：这份备份的数据不见了，可能已被清理。');
+      reloadSnaps();
+      return;
+    }
     bump();
     reloadSnaps();
     setRollbackId(null);
@@ -823,6 +831,8 @@ export function LabAiSection() {
     persistSession(history, nextItems);
     reloadSnaps();
     setSnapDetail(null);
+    // 成果已执行：还开着的记录详情弹窗跟着关，否则保存改名会扑空
+    setRecordView(null);
     showToast('已执行，改动已进库');
   };
 
@@ -835,6 +845,7 @@ export function LabAiSection() {
     persistSession(history, nextItems);
     reloadSnaps();
     setSnapDetail(null);
+    setRecordView(null);
     showToast('已放弃，库没有变');
   };
 
@@ -1310,7 +1321,7 @@ export function LabAiSection() {
             </p>
             <p className="muted small">
               顶部四个按钮：<b>聊天</b>是和 AI 对话；<b>历史会话</b>是自动保存的对话记录，可载入继续；
-              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、删了谁、记了什么事；点进去核对后，<b>接受</b>保留改动并关掉记录，<b>放弃改动</b>则整轮回退到 AI 动手前。<b>说明</b>是本页。切换不中断 AI 正在做的事。
+              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、删了谁、记了什么事。AI 写完先暂存、不动你的库：点进去核对后，<b>执行</b>才让改动真正进库，<b>放弃</b>则当什么都没发生；已执行的成果也能<b>放弃改动</b>整轮回退到动手前。一份成果处理完才能继续下一轮对话。<b>说明</b>是本页。切换不中断 AI 正在做的事。
             </p>
           </div>
         )}

@@ -130,6 +130,21 @@ export function bulkAction<T>(label: string, fn: () => T): T {
 }
 
 /**
+ * 整个栈作废：换库之后调用。
+ *
+ * 快照式撤销存的是「旧库实例的整库字节」。凡是把库实例整个换掉的地方
+ * （AI 成果暂存/执行/放弃、快照恢复、回退），旧步骤指向的字节就已经不是
+ * 这条时间线上的状态了——留着它们，用户一按撤销就会把「还没落地的改动」
+ * 放回来，或把「刚执行掉的成果」再撤掉。所以换库 == 撤销历史清零。
+ */
+export function resetUndo(): void {
+  undoStack = [];
+  redoStack = [];
+  stepOpen = false;
+  emit('reset');
+}
+
+/**
  * 只记账、不包执行：给「马上要开始一大串写」的调用方用，
  * 配合 suspendUndo()/resumeUndo()。比 bulkAction 少一层嵌套，
  * 免得为了包一个函数把上百行重新缩进。

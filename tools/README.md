@@ -20,8 +20,10 @@
 | `nutstore-proxy/` | 坚果云 WebDAV 反向代理，绕开它不返回 CORS 头的问题 | 见该目录的 `README.md` |
 | `e2e/wasm-cache-check.mjs` | 验证数据库引擎只下一次：连开三次页面，统计 `sql-wasm.wasm` 的网络响应次数 | 先 `npm run build` + `npx vite preview --port 4173`，再 `node tools/e2e/wasm-cache-check.mjs [url]`；正常结果 = 1 次。依赖全局 playwright |
 | `e2e/fake-ai-flow.mjs` | 假 OpenAI 服务，喂一条「建 P1/Es1/E1 → 改 E1 → 删 E2、归档 P2 → 改 Es1 → 建 E3 → 删 E3 → 改 P3」的操作流 | `node tools/e2e/fake-ai-flow.mjs`（PORT 可改）。配合下面的 e2e 脚本，不需要真密钥 |
-| `e2e/snap-flow-e2e.mjs` | 端到端跑上面那条操作流，检查成果只有 1 条、分组正确、能点开真实详情页、能拒绝单条改动、从详情页跳出去还能回成果 | 需要 dev/preview 服务 + 上面的假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/snap-flow-e2e.mjs [url]`。控制台的 error/warning 会连同源码位置一起打印 |
+| `e2e/snap-flow-e2e.mjs` | 端到端跑上面那条操作流：暂存态核对 新增/修改/删除 分组 → 点「执行这轮改动」→ 落地后拒绝修改组单项（该项从分组消失）→ 点开新增组对象跳真实详情页 → 按返回键原路回成果 → 事件跳转后点设置仍能回成果 | 需要 dev/preview 服务 + 上面的假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/snap-flow-e2e.mjs [url]`。控制台的 error/warning 会连同源码位置一起打印 |
 | `e2e/input-review-e2e.mjs` | 验证两项：① AI 对话框 Enter 只换行不发送、Ctrl+Enter 才发送；② 「审核后执行」——AI 跑完改动先挂起，点「执行」前真实人物列表看不到新建的 P1、点「执行」后才看得到 | 需要 preview 服务 + 假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/input-review-e2e.mjs http://localhost:4173/`。依赖全局 playwright |
+| `e2e/fake-ai-matrix.mjs` | 多变种假 OpenAI 服务：按用户消息关键词走不同操作流——纯新增 / 纯修改 / 纯删除 / 建了又删（净零）/ 混合 / 无改动（不调写工具） | `PORT=8794 node tools/e2e/fake-ai-matrix.mjs`。配合下面的矩阵 e2e |
+| `e2e/review-matrix-e2e.mjs` | 11 个场景 × 三时间点核对（AI 动手前 → 暂存待执行 → 点执行后）：新增/修改/删除/净零各自落地行为；pending 时真实库必须还是原样、执行后才变；撤销放不回未落地改动也撤不掉已执行成果；放弃/刷新保持/多 pending 拦截；已执行后「放弃改动」整轮回退且列表保留 auto 留底 | 需要 preview 服务 + 矩阵假服务：`FAKE=http://localhost:8794/v1 node tools/e2e/review-matrix-e2e.mjs http://localhost:4173/`。结尾汇总通过/失败数，失败时 exit 1 |
 
 ## src/core/tools/
 

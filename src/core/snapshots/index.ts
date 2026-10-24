@@ -12,6 +12,7 @@
 
 import { getDbInstance, getSql, setDbInstance } from '../db/state';
 import { flushPersist } from '../db/persist';
+import { resetUndo } from '../db/undo';
 import { bump } from '../../store';
 import { newId } from '../id';
 import { getSnapStore, type SnapBytes } from './store';
@@ -165,26 +166,35 @@ export async function restoreSnapshot(id: string): Promise<boolean> {
     const bakId = newId('snap');
     await store.put(bakId, cur);
     const c = counts();
-    writeMeta([
-      {
-        id: bakId,
-        source: 'auto',
-        persons: c.persons,
-        events: c.events,
-        bytes: cur.length,
-        createdAt: new Date().toISOString(),
-        note: '恢复快照前的自动留底',
-      },
-      ...readMeta(),
-    ]);
+    // 当前库的 meta 列表要「带着换」：快照字节是恢复目标时刻导出的，那个
+    // 时刻的 meta 里既没有这条 auto 留底，也不包含之后新建的快照。不在
+    // 换库后补写，成果列表就会直接退回目标时刻的旧样子，auto 留底也消失。
+    const carried = readMeta();
+    const bakMeta: SnapMeta = {
+      id: bakId,
+      source: 'auto',
+      persons: c.persons,
+      events: c.events,
+      bytes: cur.length,
+      createdAt: new Date().toISOString(),
+      note: '恢复快照前的自动留底',
+    };
+    const next = new sql.Database(bytes);
+    next.run('PRAGMA foreign_keys = ON');
+    db.close();
+    setDbInstance(next);
+    writeMeta([bakMeta, ...carried]);
+  } else {
+    const next = new sql.Database(bytes);
+    next.run('PRAGMA foreign_keys = ON');
+    setDbInstance(next);
   }
 
-  const next = new sql.Database(bytes);
-  next.run('PRAGMA foreign_keys = ON');
-  db?.close();
-  setDbInstance(next);
   flushPersist();
   bump();
+  // 换库 = 旧撤销栈全部作废：那些步骤存的是这次替换掉的实例的字节，
+  // 留着会让用户一按撤销就把恢复前的状态翻回来。
+  resetUndo();
   return true;
 }
 
@@ -219,6 +229,9 @@ export async function stageAiTurn(
   if (!db || !sql) return null;
   const store = getSnapStore();
   const beforeBytes = await store.get(id);
+  // before 字节丢失（被 prune 淘汰 / 存储损坏）时没法暂存。此时库停在
+  // 「AI 改过」的状态，快照卡留着——用户至少看得见这一轮动过，可以尝试
+  // 回退。prune 已保护 pending，这条路径正常情况下走不到。
   if (!beforeBytes) return null;
   const afterBytes = new Uint8Array(db.export());
   // 全是失败的工具调用时库没变，不必生成一张空成果
@@ -250,6 +263,9 @@ export async function stageAiTurn(
   writeMeta(list);
   flushPersist();
   bump();
+  // AI 写库期间记下的一大串撤销步骤，指向的是「改过」的中间状态——
+  // 现在库已切回动手前，不清栈的话用户一按撤销就会把没落地的改动放回来。
+  resetUndo();
   return staged;
 }
 
@@ -277,6 +293,9 @@ export async function applyPendingSnapshot(id: string): Promise<boolean> {
   }
   flushPersist();
   bump();
+  // 执行也是一次换库：撤销栈里那些「AI 写真实库期间」的步骤一起作废，
+  // 否则用户按撤销会把刚执行进库的成果再撤掉。
+  resetUndo();
   return true;
 }
 
@@ -285,6 +304,9 @@ export async function discardPendingSnapshot(id: string): Promise<void> {
   const meta = readMeta().find((s) => s.id === id);
   if (meta?.afterId) await getSnapStore().del(meta.afterId);
   await deleteSnapshot(id);
+  // 库实例没换，但 AI 写库期间的撤销步骤还挂着——不清栈，用户一按撤销
+  // 就会把刚放弃掉的改动放回库里。
+  resetUndo();
 }
 
 /** 待执行时改一条新增记录的名字（只改暂存的那份 after 字节） */
@@ -353,6 +375,8 @@ export async function revertAiTurn(id: string): Promise<boolean> {
   setDbInstance(next);
   db?.close();
   await deleteSnapshot(id);
+  // 同 stageAiTurn：退回动手前后，AI 写库期间的撤销步骤一并作废
+  resetUndo();
   return true;
 }
 
@@ -404,14 +428,24 @@ export function patchSnapshotDiff(id: string, diff: SnapDiff): SnapMeta | null {
 
 /** 超量就扔最旧的。保留最新的 MAX_SNAPS 个，且总字节不超上限 */
 async function prune(store: SnapBytes, list: SnapMeta[]): Promise<void> {
-  let keep = list.slice(0, MAX_SNAPS);
+  // 待执行的成果优先保留：它的 before 字节一旦被淘汰，这份成果就再也
+  // 无法执行 / 放弃（afterId 变成孤儿字节），而 pending 往往正是用户
+  // 还没顾上处理的最新一轮——扔它等于把用户正要审的东西删了。
+  const order = [...list].sort(
+    (a, b) => Number(b.review === 'pending') - Number(a.review === 'pending'),
+  );
+  let keep = order.slice(0, MAX_SNAPS);
   let total = keep.reduce((s, x) => s + x.bytes, 0);
   while (keep.length > 1 && total > MAX_TOTAL_BYTES) {
     const dropped = keep.pop()!;
     total -= dropped.bytes;
     await store.del(dropped.id);
   }
-  if (keep.length !== list.length) writeMeta(keep);
+  if (keep.length !== list.length) {
+    // 写回时保持原顺序（新的在前），别把 pending 顶到列表最上面
+    const ids = new Set(keep.map((x) => x.id));
+    writeMeta(list.filter((x) => ids.has(x.id)));
+  }
 }
 
 /** 人类可读的体积 */
