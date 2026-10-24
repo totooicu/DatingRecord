@@ -17,9 +17,10 @@ import {
   type Shot,
 } from '../../core/chatExtract';
 import { listPersons } from '../../core/repo/persons';
-import { listEvents } from '../../core/repo/events';
+import { getEvent, listEvents } from '../../core/repo/events';
+import type { DREvent } from '../../core/types';
 import { bump, useVersion } from '../../store';
-import { openEvent } from '../openEvent';
+import { EventForm } from '../event';
 import { LabHead } from './LabEdgeSection';
 import { showToast } from '../toast';
 
@@ -65,6 +66,7 @@ export function LabExtractSection() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<SavedExtraction | null>(null);
+  const [opened, setOpened] = useState<DREvent | null>(null);
   const [persons, setPersons] = useState(() => listPersons());
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -246,7 +248,14 @@ export function LabExtractSection() {
                 {result.avatarCount ? ` · ${result.avatarCount} 个新头像` : ''}
               </span>
             </div>
-            <button type="button" className="btn btn-sm" onClick={() => openEvent(result.eventId)}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => {
+                const ev = getEvent(result.eventId);
+                if (ev) setOpened(ev);
+              }}
+            >
               打开事件
             </button>
           </div>
@@ -301,7 +310,13 @@ export function LabExtractSection() {
           <ul>
             {recent.map((e) => (
               <li key={e.id}>
-                <button type="button" onClick={() => openEvent(e.id)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ev = getEvent(e.id);
+                    if (ev) setOpened(ev);
+                  }}
+                >
                   <span className="extract-recent-title">{e.title}</span>
                   <span className="muted small">{fmtDay(e.startTs ? new Date(e.startTs).toISOString() : e.createdAt)}</span>
                 </button>
@@ -312,6 +327,17 @@ export function LabExtractSection() {
       )}
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => void addFiles(e.target.files)} />
+
+      {/* 就地打开事件：关掉弹窗仍停在聊天提取页，不会把人甩到时间线后回不来 */}
+      {opened && (
+        <EventForm
+          event={opened}
+          onClose={() => {
+            setOpened(null);
+            bump();
+          }}
+        />
+      )}
     </div>
   );
 }

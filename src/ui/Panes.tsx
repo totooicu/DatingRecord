@@ -53,7 +53,8 @@ export function PersonsPane({
           <>
             {/* 顶部条与事件集详情、其它主页保持一致：吸顶、标题居中、返回键常驻 */}
             <PageHead title={title} onBack={detailMode ? onBack : undefined} />
-            <PersonDetail id={showId} onArchived={onArchived} />
+            {/* key：换人物时整块详情重置，否则归档确认态、弹窗等会带到下一个人身上 */}
+            <PersonDetail key={showId} id={showId} onArchived={onArchived} />
           </>
         ) : (
           <>
