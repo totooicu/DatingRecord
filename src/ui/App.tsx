@@ -4,6 +4,8 @@ import { Settings } from './settings/Settings';
 import { EventForm } from './event';
 import { PageHead, useModalOpenCount } from './common';
 import { BackgroundIcons } from './background/BackgroundIcons';
+import { startLocationService, stopLocationService } from '../core/background/locationService';
+import { upsertService } from '../core/background/center';
 import { PersonsPane, CollectionsPane } from './Panes';
 import { Welcome } from './Welcome';
 import { TopBar } from './TopBar';
@@ -59,6 +61,23 @@ export default function App() {
   const scrollMemo = useRef<Record<string, number>>({});
   // 弹窗打开时收起 FAB，避免浮层压住弹窗内容
   const modalCount = useModalOpenCount();
+
+  // 应用启动：检查自启动服务
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('dr.autostart.location-auto') === '1') {
+        startLocationService().then((ok) => {
+          if (ok) {
+            upsertService({
+              id: 'location-auto', name: '自动打点', icon: '📍',
+              running: true, autostart: true,
+              onStop: () => { stopLocationService(); upsertService({ id: 'location-auto', name: '自动打点', icon: '📍', running: false, autostart: true }); },
+            });
+          }
+        });
+      }
+    } catch {}
+  }, []);
 
   // 文件库里点「引用它的事件」→ 切到时间线并打开那条事件
   useEffect(() => {
