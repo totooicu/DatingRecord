@@ -12,7 +12,7 @@ import { flattenTree, getRoot, getTree } from '../../core/repo/collections';
 import { listPersons } from '../../core/repo/persons';
 import { formatTime } from '../../core/time';
 import { bump } from '../../store';
-import { Modal } from '../common';
+import { FilePickInput, Modal } from '../common';
 import { Avatar } from '../persons/Avatar';
 import { SHARE_LEVELS, type ShareFile } from '../../core/types';
 
@@ -127,16 +127,10 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
             选择分享文件
           </button>
-          <input
-            ref={fileRef}
-            type="file"
+          <FilePickInput
+            inputRef={fileRef}
             accept=".zip,.drshare.zip,application/zip"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void load(f);
-              e.target.value = '';
-            }}
+            onFiles={(files) => void load(files[0])}
           />
         </div>
       )}

@@ -21,10 +21,6 @@ export function useUploader(onNote: (text: string) => void) {
   const [ask, setAsk] = useState<PendingAsk | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const clearInput = () => {
-    if (inputRef.current) inputRef.current.value = '';
-  };
-
   /**
    * 逐个 await，不能并发：同一批里传两张一样的小图，
    * 第一张必须落库后第二张才能查重命中，并发会把两份都插进去。
@@ -63,7 +59,6 @@ export function useUploader(onNote: (text: string) => void) {
         return done;
       } finally {
         setBusy(false);
-        clearInput();
       }
     },
     [onNote],

@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { importFromFile } from '../../core/io';
 import { exportArchiveToFile } from '../../core/io';
 import { getMeta } from '../../core/db';
+import { FilePickInput } from '../common';
 import { Section, fmtMeta } from './Section';
 import { bump } from '../../store';
 
@@ -76,16 +77,10 @@ export function BackupSection() {
         <button className="btn" onClick={() => fileRef.current?.click()}>
           选择文件导入
         </button>
-        <input
-          ref={fileRef}
-          type="file"
+        <FilePickInput
+          inputRef={fileRef}
           accept=".zip,.drp.zip,application/zip"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void doImport(f);
-            e.target.value = '';
-          }}
+          onFiles={(files) => void doImport(files[0])}
         />
       </div>
 

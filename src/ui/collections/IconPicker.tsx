@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { uploadFileQuiet } from '../../core/files';
 import { listFiles, urlForFile, type StoredFile } from '../../core/repo/files';
-import { ConfirmButton, Modal } from '../common';
+import { ConfirmButton, FilePickInput, Modal } from '../common';
 import { useVersion, bump } from '../../store';
 import { getSmallLimit } from '../filePrefs';
 import type { CollectionIcon, CollectionIconType } from '../../core/types';
@@ -97,7 +97,7 @@ export function IconPicker({
         ? { type, fileId, fg, bg }
         : { type, fg, bg };
 
-  const upload = async (list: FileList | null) => {
+  const upload = async (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
     setBusy(true);
     setErr('');
@@ -109,7 +109,6 @@ export function IconPicker({
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
-      if (fileInput.current) fileInput.current.value = '';
     }
   };
 
@@ -221,12 +220,10 @@ export function IconPicker({
                 {type === 'svg' ? '仅 .svg，按矢量渲染不裁边' : 'png / jpg / webp / gif，按缩略图铺满'}
               </span>
             </div>
-            <input
-              ref={fileInput}
-              type="file"
+            <FilePickInput
+              inputRef={fileInput}
               accept={type === 'svg' ? '.svg,image/svg+xml' : 'image/*'}
-              hidden
-              onChange={(e) => void upload(e.target.files)}
+              onFiles={(files) => void upload(files)}
             />
 
             <p className="muted small icon-lib-title">或从图库选择（已有的文件不重复占空间）</p>

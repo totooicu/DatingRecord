@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -66,6 +66,41 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
       </span>
       {children}
     </label>
+  );
+}
+
+/**
+ * 所有「从本地选文件」共用的 input。
+ *
+ * 统一两件事：只在真正选到文件时回调；回调前先把 value 清空，
+ * 这样处理失败、提前 return、连续选同一个文件时都不会卡住不动。
+ */
+export function FilePickInput({
+  accept = '*/*',
+  multiple = false,
+  onFiles,
+  inputRef,
+}: {
+  accept?: string;
+  multiple?: boolean;
+  onFiles: (files: File[]) => void;
+  inputRef?: RefObject<HTMLInputElement>;
+}) {
+  const localRef = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? localRef;
+  return (
+    <input
+      ref={ref}
+      type="file"
+      accept={accept}
+      multiple={multiple}
+      hidden
+      onChange={(e) => {
+        const files = Array.from(e.currentTarget.files ?? []);
+        e.currentTarget.value = '';
+        if (files.length) onFiles(files);
+      }}
+    />
   );
 }
 

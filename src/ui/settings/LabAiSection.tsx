@@ -68,7 +68,7 @@ import { openPerson } from '../openPerson';
 import { openEvent } from '../openEvent';
 import { openCollection } from '../openCollection';
 import { PencilIcon } from '../files/rowIcons';
-import { Modal } from '../common';
+import { FilePickInput, Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
@@ -584,8 +584,8 @@ export function LabAiSection() {
     });
   };
 
-  const pickFiles = async (list: FileList | null) => {
-    if (!list || list.length === 0) return;
+  const pickFiles = async (list: FileList | File[]) => {
+    if (list.length === 0) return;
     setAiErr(null);
     const out: Attachment[] = [];
     for (const f of Array.from(list)) {
@@ -593,7 +593,6 @@ export function LabAiSection() {
       out.push(await fromFile(f, `f${seq.current}`));
     }
     addAtts(out);
-    if (fileRef.current) fileRef.current.value = '';
   };
 
   // 输入变化就落一份草稿：打了一大段手滑刷新，回来原样还在。
@@ -1185,7 +1184,7 @@ export function LabAiSection() {
         )}
       </div>
 
-      <input ref={fileRef} type="file" multiple hidden accept="*/*" onChange={(e) => void pickFiles(e.target.files)} />
+      <FilePickInput inputRef={fileRef} multiple onFiles={(files) => void pickFiles(files)} />
 
       {libOpen && (
         <Modal title="文件库 · 选一个发给 AI" wide onClose={() => setLibOpen(false)}>

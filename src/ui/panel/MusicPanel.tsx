@@ -11,6 +11,7 @@ import { useMusic, syncTracks, addTracks, removeTrack, playAt, toggle, next, pre
 import { FilesPanel } from '../files';
 import { CollisionModal } from '../files/CollisionModal';
 import { showToast as toast } from '../toast';
+import { FilePickInput } from '../common';
 
 const LOOP_LABEL: Record<LoopMode, string> = {
   list: '列表循环',
@@ -62,15 +63,19 @@ export function MusicPanel() {
 
   return (
     <div className="music-panel">
-      <input ref={inputRef} type="file" accept="audio/*" multiple hidden
-        onChange={(e) => {
-          upload(e.target.files).then((files) => {
+      <FilePickInput
+        inputRef={inputRef}
+        accept="audio/*"
+        multiple
+        onFiles={(files) => {
+          void upload(files).then((saved) => {
             // 上传成功的文件直接加进歌单：歌单可能被用户清空过（播种逻辑
             // 不会兜这种场景），这里显式加，传完立刻看得到。
-            if (files.length) addTracks(files);
+            if (saved.length) addTracks(saved);
             refresh();
           });
-        }} />
+        }}
+      />
 
       <div className="music-now">
         <div className="music-disc">{m.current ? '♪' : '♫'}</div>

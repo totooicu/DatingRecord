@@ -14,6 +14,7 @@ import {
   type StoredFile,
 } from '../../core/repo/files';
 import { useVersion, bump } from '../../store';
+import { FilePickInput } from '../common';
 import { PreviewModal } from '../preview';
 import { CollisionModal } from './CollisionModal';
 import { MergeModal } from './MergeModal';
@@ -128,14 +129,7 @@ export function FilesSection({ onPick, pickedIds }: { onPick?: (f: StoredFile) =
           {visible.length ? ` · ${fmtSize(totalSize)}` : ''}
         </span>
       </div>
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        hidden
-        accept="*/*"
-        onChange={(e) => void upload(e.target.files)}
-      />
+      <FilePickInput inputRef={inputRef} accept="*/*" multiple onFiles={(files) => void upload(files)} />
 
       <FileFilters
         filter={filter}

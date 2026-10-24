@@ -7,6 +7,7 @@
 // 图片为什么必须裁：整张截图里混着状态栏、输入框、时间和别人的头像，
 // 直接贴进去既难看又会把无关内容一起存下来。裁图用 canvas 完成，不额外上传。
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { FilePickInput } from '../common';
 
 import { getDefaultModel, listModels, type AiModel } from '../../core/ai';
 import {
@@ -87,8 +88,8 @@ export function LabExtractSection() {
     [v, result],
   );
 
-  const addFiles = async (list: FileList | File[] | null) => {
-    if (!list) return;
+  const addFiles = async (list: FileList | File[]) => {
+    if (list.length === 0) return;
     setErr(null);
     const files = Array.from(list).filter((f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name));
     if (!files.length) {
@@ -110,7 +111,6 @@ export function LabExtractSection() {
       }
     }
     if (next.length) setShots((s) => [...s, ...next]);
-    if (fileRef.current) fileRef.current.value = '';
   };
 
   const removeShot = (key: string) => setShots((s) => s.filter((x) => x.key !== key));
@@ -326,7 +326,7 @@ export function LabExtractSection() {
         </div>
       )}
 
-      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => void addFiles(e.target.files)} />
+      <FilePickInput inputRef={fileRef} accept="image/*" multiple onFiles={(files) => void addFiles(files)} />
 
       {/* 就地打开事件：关掉弹窗仍停在聊天提取页，不会把人甩到时间线后回不来 */}
       {opened && (
