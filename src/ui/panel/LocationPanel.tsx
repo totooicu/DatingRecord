@@ -12,14 +12,17 @@ import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
 
-const AMAP_KEY = 'bcef4f0dba2304c70d46d54c7aa9828e';
+const DEFAULT_AMAP_KEY = 'bcef4f0dba2304c70d46d54c7aa9828e';
+function getAmapKey(): string {
+  try { return localStorage.getItem('dr.amapKey') || DEFAULT_AMAP_KEY; } catch { return DEFAULT_AMAP_KEY; }
+}
 let amapLoading: Promise<any> | null = null;
 function loadAmap(): Promise<any> {
   if ((window as any).AMap) return Promise.resolve((window as any).AMap);
   if (amapLoading) return amapLoading;
   amapLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = `https://webapi.amap.com/maps?v=2.0&key=${AMAP_KEY}`;
+    s.src = `https://webapi.amap.com/maps?v=2.0&key=${getAmapKey()}`;
     s.onload = () => resolve((window as any).AMap);
     s.onerror = reject;
     document.head.appendChild(s);
@@ -112,6 +115,7 @@ export function LocationPanel() {
   const [picking, setPicking] = useState(false);
   const [auto, setAuto] = useState(false);
   const [threshold, setThreshold] = useState(5); // 米
+  const [amapKey, setAmapKey] = useState(() => getAmapKey());
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -292,6 +296,15 @@ export function LocationPanel() {
             ) : (
               <button className="music-add-btn primary" onClick={startAuto}>▶ 自动打点（1秒/次）</button>
             )}
+          </div>
+          <div className="music-add" style={{ marginTop: 8 }}>
+            <input className="music-name-input" value={amapKey}
+              onChange={(e) => setAmapKey(e.target.value)}
+              placeholder="高德 Web key（默认已填，可改）" />
+            <button className="music-add-btn" onClick={() => {
+              try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
+              toast('key 已保存，刷新页生效');
+            }}>保存 key</button>
           </div>
         </>
       )}
