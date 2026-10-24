@@ -37,7 +37,7 @@ export type SettingsKey =
   | 'panelMusic';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
-export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial' | 'panel';
+export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
 
 export interface SettingsEntry {
   key: SettingsKey;
@@ -70,8 +70,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
   // 功能面板（panel）：独立小组件空间，挂歌单、数据分析板等。
-  { key: 'panel', title: '功能面板', hint: '背景音乐 · 数据分析', group: 'panel' },
-  { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'panel' },
+  // 放在功能体验组里：还在试验期，用顺了再搬去该去的地方。
+  { key: 'panel', title: '功能面板', hint: '背景音乐 · 数据分析', group: 'trial' },
+  { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -81,7 +82,6 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
   people: '人物',
   data: '数据',
   trial: '功能体验',
-  panel: '功能面板',
 };
 
 /**
