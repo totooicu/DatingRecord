@@ -10,7 +10,7 @@
 //   hash_shared 1 = 与别的行同 hash 但内容不同（用户确认过碰撞）
 // 上传判重、迁移、合并的逻辑都在 core/files/ 下，这里只负责读写库。
 
-import { queryAll, queryOne, run, transact, appendOplog } from '../db';
+import { queryAll, queryOne, run, transact, appendOplog, suspendUndo, resumeUndo } from '../db';
 import { isPrivacyMode } from '../../privacy';
 import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
@@ -386,13 +386,17 @@ export function renameFile(id: string, name: string): void {
   });
 }
 
-/** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录这类追加写场景用。 */
+/** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录每秒追加写，不记 undo。 */
 export async function overwriteFileContent(id: string, blob: Blob): Promise<void> {
-  await putBlob(id, blob);
-  transact(() => {
-    run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
-    appendOplog('attachment', id, 'update', { size: blob.size });
-  });
+  suspendUndo();
+  try {
+    await putBlob(id, blob);
+    transact(() => {
+      run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
+    });
+  } finally {
+    resumeUndo();
+  }
 }
 
 /** 方括号里的名字只做最小转义：别让文件名里的 `[` `]` 破坏链接语法 */
