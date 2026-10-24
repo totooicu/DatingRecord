@@ -1,10 +1,11 @@
-// 功能面板 · 定位地图。
+// 功能面板 · 定位地图（Leaflet + OpenStreetMap）。
 //
-// 从文件库选一个 CSV（LocationPanel 存的那种），解析经纬度，
-// 用 Canvas 画散点 + 时间连线。完全离线，不依赖外部地图 tiles。
-// 点某个点显示时间/备注。
+// 从文件库选一个定位 CSV，用 Leaflet 画 marker + 轨迹连线。
+// 底图走 OSM tiles（联网），离线时 marker 仍能在灰底上看到。
 
 import { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { getBlob } from '../../core/db/blob';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
@@ -22,7 +23,6 @@ function parseCsv(text: string): Row[] {
   if (lines.length < 2) return [];
   const out: Row[] = [];
   for (let i = 1; i < lines.length; i++) {
-    // 简易 CSV 解析：字段可能带引号
     const parts = lines[i].match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.map((p) => p.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim()) ?? [];
     if (parts.length < 3) continue;
     const lat = Number(parts[1]);
@@ -43,8 +43,8 @@ export function LocationMapPanel() {
   const [picking, setPicking] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [fileName, setFileName] = useState('');
-  const [hover, setHover] = useState<Row | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const onPickFile = async (f: { id: string; name: string }) => {
     const blob = await getBlob(f.id);
@@ -58,50 +58,44 @@ export function LocationMapPanel() {
     toast(`读入 ${parsed.length} 个点`);
   };
 
+  // 初始化地图（只一次）
   useEffect(() => {
-    if (rows.length === 0 || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const dpr = window.devicePixelRatio || 1;
-    const W = canvas.clientWidth;
-    const H = canvas.clientHeight;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, W, H);
-
-    const lats = rows.map((r) => r.lat);
-    const lngs = rows.map((r) => r.lng);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-    const pad = 40;
-    const spanLat = maxLat - minLat || 1;
-    const spanLng = maxLng - minLng || 1;
-
-    const x = (lng: number) => pad + ((lng - minLng) / spanLng) * (W - pad * 2);
-    const y = (lat: number) => H - pad - ((lat - minLat) / spanLat) * (H - pad * 2);
-
-    // 连线
-    ctx.strokeStyle = 'rgba(217, 83, 107, 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    rows.forEach((r, i) => {
-      if (i === 0) ctx.moveTo(x(r.lng), y(r.lat));
-      else ctx.lineTo(x(r.lng), y(r.lat));
+    if (!containerRef.current || mapRef.current) return;
+    // 打包后默认 marker 图标路径会 404，用 divIcon 自己画
+    const icon = L.divIcon({
+      className: '',
+      html: '<div style="width:14px;height:14px;border-radius:50%;background:#d9536b;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
     });
-    ctx.stroke();
+    mapRef.current = L.map(containerRef.current).setView([30.2741, 120.1551], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    }).addTo(mapRef.current);
+    (mapRef.current as any)._drIcon = icon;
+  }, []);
 
-    // 点
-    rows.forEach((r, i) => {
-      ctx.beginPath();
-      ctx.arc(x(r.lng), y(r.lat), 5, 0, Math.PI * 2);
-      ctx.fillStyle = i === 0 ? '#2d5a5a' : '#d9536b';
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+  // 数据变化时重画
+  useEffect(() => {
+    if (!mapRef.current || rows.length === 0) return;
+    const map = mapRef.current;
+    map.eachLayer((layer) => {
+      if (!(layer instanceof L.TileLayer)) map.removeLayer(layer);
     });
+
+    const latlngs = rows.map((r) => [r.lat, r.lng] as [number, number]);
+    L.polyline(latlngs, { color: '#d9536b', weight: 2, opacity: 0.7 }).addTo(map);
+
+    rows.forEach((r) => {
+      const icon = (map as any)._drIcon as L.DivIcon;
+      const marker = L.marker([r.lat, r.lng], { icon }).addTo(map);
+      marker.bindPopup(
+        `<div><strong>${r.ts}</strong><br/>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.note ? `<br/>${r.note}` : ''}</div>`,
+      );
+    });
+
+    map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
   }, [rows]);
 
   if (picking) {
@@ -131,51 +125,19 @@ export function LocationMapPanel() {
       </div>
 
       {rows.length > 0 && (
-        <div className="map-wrap">
-          <canvas ref={canvasRef} className="map-canvas"
-            onClick={(e) => {
-              // 简单点选：找最近的点
-              const rect = canvasRef.current!.getBoundingClientRect();
-              const mx = e.clientX - rect.left;
-              const my = e.clientY - rect.top;
-              const lats = rows.map((r) => r.lat);
-              const lngs = rows.map((r) => r.lng);
-              const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-              const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-              const pad = 40;
-              const W = rect.width, H = rect.height;
-              const spanLat = maxLat - minLat || 1;
-              const spanLng = maxLng - minLng || 1;
-              const x = (lng: number) => pad + ((lng - minLng) / spanLng) * (W - pad * 2);
-              const y = (lat: number) => H - pad - ((lat - minLat) / spanLat) * (H - pad * 2);
-              let best: Row | null = null;
-              let bestD = 20;
-              for (const r of rows) {
-                const d = Math.hypot(x(r.lng) - mx, y(r.lat) - my);
-                if (d < bestD) { best = r; bestD = d; }
-              }
-              setHover(best);
-            }}
-          />
-          {hover && (
-            <div className="map-toast">
-              <div><strong>{hover.ts}</strong></div>
-              <div className="muted small">{hover.lat.toFixed(5)}, {hover.lng.toFixed(5)}</div>
-              {hover.note && <div>{hover.note}</div>}
-            </div>
-          )}
+        <div className="music-list">
+          {rows.slice().reverse().map((r, i) => (
+            <li key={i} className="music-row" onClick={() => {
+              mapRef.current?.setView([r.lat, r.lng], 16);
+            }}>
+              <span className="music-row-idx">{rows.length - i}</span>
+              <span className="music-row-name">{r.ts} · {r.lat.toFixed(4)},{r.lng.toFixed(4)}{r.note ? ` · ${r.note}` : ''}</span>
+            </li>
+          ))}
         </div>
       )}
 
-      <ul className="music-list">
-        {rows.length === 0 && <li className="muted small">还没选文件。点上面按钮从文件库选一个 CSV。</li>}
-        {rows.slice().reverse().map((r, i) => (
-          <li key={i} className="music-row" onClick={() => setHover(r)}>
-            <span className="music-row-idx">{rows.length - i}</span>
-            <span className="music-row-name">{r.ts} · {r.lat.toFixed(4)},{r.lng.toFixed(4)}{r.note ? ` · ${r.note}` : ''}</span>
-          </li>
-        ))}
-      </ul>
+      <div ref={containerRef} className="map-leaflet" />
     </div>
   );
 }
