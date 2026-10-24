@@ -12,17 +12,18 @@ import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
 
-const DEFAULT_AMAP_KEY = 'bcef4f0dba2304c70d46d54c7aa9828e';
 function getAmapKey(): string {
-  try { return localStorage.getItem('dr.amapKey') || DEFAULT_AMAP_KEY; } catch { return DEFAULT_AMAP_KEY; }
+  try { return localStorage.getItem('dr.amapKey') || ''; } catch { return ''; }
 }
 let amapLoading: Promise<any> | null = null;
 function loadAmap(): Promise<any> {
+  const key = getAmapKey();
+  if (!key) return Promise.reject(new Error('未配置高德 key'));
   if ((window as any).AMap) return Promise.resolve((window as any).AMap);
   if (amapLoading) return amapLoading;
   amapLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = `https://webapi.amap.com/maps?v=2.0&key=${getAmapKey()}`;
+    s.src = `https://webapi.amap.com/maps?v=2.0&key=${key}`;
     s.onload = () => resolve((window as any).AMap);
     s.onerror = reject;
     document.head.appendChild(s);
@@ -300,7 +301,7 @@ export function LocationPanel() {
           <div className="music-add" style={{ marginTop: 8 }}>
             <input className="music-name-input" value={amapKey}
               onChange={(e) => setAmapKey(e.target.value)}
-              placeholder="高德 Web key（默认已填，可改）" />
+              placeholder="高德 Web key（lbs.amap.com 申请，必填）" />
             <button className="music-add-btn" onClick={() => {
               try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
               toast('key 已保存，刷新页生效');
