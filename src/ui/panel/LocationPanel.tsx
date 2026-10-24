@@ -146,7 +146,9 @@ function wgs84ToGcj02(lat: number, lng: number): { lat: number; lng: number } {
 }
 
 export function LocationPanel() {
-  const [fileId, setFileId] = useState<string | null>(null);
+  const [fileId, setFileId] = useState<string | null>(() => {
+    try { return localStorage.getItem('dr.locationFileId') || null; } catch { return null; }
+  });
   const [fileName, setFileName] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
@@ -291,6 +293,27 @@ export function LocationPanel() {
 
   // 卸载时清定时器
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  // 记住上次选的文件
+  useEffect(() => {
+    try {
+      if (fileId) localStorage.setItem('dr.locationFileId', fileId);
+      else localStorage.removeItem('dr.locationFileId');
+    } catch {}
+  }, [fileId]);
+
+  // 首次加载：如果有记住的 fileId，自动读文件
+  useEffect(() => {
+    if (!fileId) return;
+    const f = getFile(fileId);
+    if (!f) { setFileId(null); return; }
+    setFileName(f.name);
+    getBlob(fileId).then((blob) => {
+      if (!blob) return;
+      blob.text().then((text) => setRows(parseCsv(text)));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="music-panel">
