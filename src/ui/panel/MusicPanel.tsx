@@ -2,14 +2,14 @@
 //
 // 音频来源两个：
 //   1. 从本地磁盘选文件（走 uploadFile 入库）
-//   2. 从文件库里选已存在的文件加入歌单（不重复占空间）
-//
-// 播放控制：播放/暂停、上一首/下一首、进度条拖动、倍速、循环三态。
+//   2. 从文件库里选已存在的文件加入歌单（复用 FilesPanel，点文件即加入）
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listFiles, type StoredFile } from '../../core/repo/files';
 import { uploadFile } from '../../core/files/upload';
 import { objectUrlFor, forgetUrl } from '../../core/db/blob';
+import { FilesPanel } from '../files';
+import { showToast as toast } from '../toast';
 
 type LoopMode = 'list' | 'one' | 'off';
 
@@ -41,7 +41,7 @@ export function MusicPanel() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [url, setUrl] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -121,9 +121,29 @@ export function MusicPanel() {
     [current, tracks],
   );
 
-  const allFiles = listFiles();
-  const inPlaylist = new Set(tracks.map((t) => t.id));
-  const pickable = allFiles.filter((f) => !inPlaylist.has(f.id));
+  // 文件选择模式：点一个文件就加入歌单
+  const onPickFile = (f: StoredFile) => {
+    setTracks((ts) => {
+      if (ts.some((t) => t.id === f.id)) {
+        toast(`「${f.name}」已在歌单`);
+        return ts;
+      }
+      toast(`已加入「${f.name}」`);
+      return [...ts, f];
+    });
+  };
+
+  if (picking) {
+    return (
+      <div className="music-panel">
+        <div className="music-pick-back">
+          <button className="music-add-btn" onClick={() => setPicking(false)}>← 返回歌单</button>
+          <span className="muted small">点文件即可加入歌单</span>
+        </div>
+        <FilesPanel onPick={onPickFile} />
+      </div>
+    );
+  }
 
   return (
     <div className="music-panel">
@@ -173,7 +193,7 @@ export function MusicPanel() {
 
       <div className="music-add">
         <button className="music-add-btn primary" onClick={() => fileInputRef.current?.click()}>从本地添加</button>
-        <button className="music-add-btn" onClick={() => setPickerOpen(true)}>从文件库选</button>
+        <button className="music-add-btn" onClick={() => setPicking(true)}>从文件库选</button>
       </div>
 
       <ul className="music-list">
@@ -186,30 +206,6 @@ export function MusicPanel() {
           </li>
         ))}
       </ul>
-
-      {pickerOpen && (
-        <div className="music-picker-mask" onClick={() => setPickerOpen(false)}>
-          <div className="music-picker" onClick={(e) => e.stopPropagation()}>
-            <div className="music-picker-head">
-              <strong>从文件库选</strong>
-              <button onClick={() => setPickerOpen(false)}>✕</button>
-            </div>
-            <div className="music-picker-body">
-              {pickable.length === 0 && <div className="muted small">文件库没有其他文件。</div>}
-              {pickable.map((f) => (
-                <label key={f.id} className="music-picker-row">
-                  <input type="checkbox" value={f.id} onChange={(e) => {
-                    if (e.target.checked) setTracks((ts) => [...ts, f]);
-                    else setTracks((ts) => ts.filter((t) => t.id !== f.id));
-                  }} />
-                  <span className="music-picker-name">{f.name}</span>
-                  <span className="muted small">{f.mime}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
