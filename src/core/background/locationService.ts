@@ -50,7 +50,7 @@ function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number })
 
 let rows: Row[] = [];
 let fileId: string | null = null;
-let threshold = 5;
+let threshold = 20; // 默认 20 米，GPS 静止漂移范围内
 
 function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
@@ -63,24 +63,27 @@ function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> 
   });
 }
 
+async function writeBack() {
+  if (!fileId) return;
+  const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8' });
+  await overwriteFileContent(fileId, blob);
+}
+
 async function tick() {
   if (!fileId) return;
   try {
     const pos = await getPosition();
     const last = rows[rows.length - 1];
-    let next: Row[];
     if (last && distM(last, pos) < threshold) {
-      next = [...rows];
-      next[next.length - 1] = { ...last, ts: new Date().toISOString(), accuracy: pos.accuracy };
+      // 同一点：刷新最后一条时间戳，不新增
+      rows[rows.length - 1] = { ...last, ts: new Date().toISOString(), accuracy: pos.accuracy };
     } else {
-      next = [...rows, {
+      rows.push({
         ts: new Date().toISOString(), lat: pos.lat, lng: pos.lng,
         accuracy: pos.accuracy, note: '',
-      }];
+      });
     }
-    rows = next;
-    const blob = new Blob([toCsv(next)], { type: 'text/csv;charset=utf-8' });
-    await overwriteFileContent(fileId, blob);
+    await writeBack();
   } catch {
     // 定位失败忽略，下一秒再试
   }
@@ -88,22 +91,49 @@ async function tick() {
 
 let timer: number | null = null;
 
+/** 手动打点（组件里调），追加一条记录 */
+export async function manualRecord(note: string): Promise<Row | null> {
+  if (!fileId) return null;
+  try {
+    const pos = await getPosition();
+    const last = rows[rows.length - 1];
+    if (last && distM(last, pos) < threshold) {
+      rows[rows.length - 1] = { ...last, ts: new Date().toISOString(), note: note || last.note };
+    } else {
+      rows.push({
+        ts: new Date().toISOString(), lat: pos.lat, lng: pos.lng,
+        accuracy: pos.accuracy, note,
+      });
+    }
+    await writeBack();
+    return rows[rows.length - 1];
+  } catch {
+    return null;
+  }
+}
+
+/** 打开/切换文件：加载 CSV 到全局 rows */
+export async function openFile(fid: string): Promise<number> {
+  const blob = await getBlob(fid);
+  if (!blob) return 0;
+  fileId = fid;
+  rows = parseCsv(await blob.text());
+  return rows.length;
+}
+
 export async function startLocationService(): Promise<boolean> {
   if (timer) return true;
-  try {
-    fileId = localStorage.getItem('dr.locationFileId');
-    if (!fileId || !getFile(fileId)) return false;
-    const savedThreshold = Number(localStorage.getItem('dr.locationThreshold'));
-    if (isFinite(savedThreshold) && savedThreshold >= 0) threshold = savedThreshold;
-    const blob = await getBlob(fileId);
-    if (!blob) return false;
-    rows = parseCsv(await blob.text());
-    tick();
-    timer = window.setInterval(tick, 1000);
-    return true;
-  } catch {
-    return false;
+  if (!fileId) {
+    // 从 localStorage 恢复
+    const saved = localStorage.getItem('dr.locationFileId');
+    if (!saved || !getFile(saved)) return false;
+    await openFile(saved);
   }
+  const savedThreshold = Number(localStorage.getItem('dr.locationThreshold'));
+  if (isFinite(savedThreshold) && savedThreshold > 0) threshold = savedThreshold;
+  tick();
+  timer = window.setInterval(tick, 1000);
+  return true;
 }
 
 export function stopLocationService() {
@@ -116,4 +146,5 @@ export function isLocationServiceRunning(): boolean {
 
 export function getServiceRows(): Row[] { return rows; }
 export function getServiceFileId(): string | null { return fileId; }
-export function setServiceThreshold(t: number) { threshold = t; }
+export function setServiceThreshold(t: number) { threshold = Math.max(1, t || 1); }
+export function setServiceFileId(fid: string | null) { fileId = fid; }

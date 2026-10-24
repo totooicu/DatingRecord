@@ -6,13 +6,13 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getFile, overwriteFileContent, type StoredFile } from '../../core/repo/files';
+import { getFile, type StoredFile } from '../../core/repo/files';
 import { getBlob } from '../../core/db/blob';
 import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
 import { upsertService, getAutostart, setAutostart } from '../../core/background/center';
-import { startLocationService, stopLocationService, isLocationServiceRunning, getServiceRows, getServiceFileId, setServiceThreshold } from '../../core/background/locationService';
+import { startLocationService, stopLocationService, isLocationServiceRunning, getServiceRows, getServiceFileId, openFile, manualRecord, setServiceThreshold, setServiceFileId } from '../../core/background/locationService';
 
 function getAmapKey(): string {
   try { return localStorage.getItem('dr.amapKey') || ''; } catch { return ''; }
@@ -202,15 +202,12 @@ export function LocationPanel() {
   }, [rows, selectedIdx]);
 
   const selectExisting = async (f: StoredFile) => {
-    const blob = await getBlob(f.id);
-    if (!blob) { toast('读不到文件'); return; }
-    const text = await blob.text();
-    const parsed = parseCsv(text);
-    setRows(parsed);
+    const n = await openFile(f.id);
+    setRows(getServiceRows());
     setFileId(f.id);
     setFileName(f.name);
     setPicking(false);
-    toast(`已打开「${f.name}」，${parsed.length} 条记录`);
+    toast(`已打开「${f.name}」，${n} 条记录`);
   };
 
   const createNew = async () => {
@@ -219,33 +216,28 @@ export function LocationPanel() {
     const file = new File([blob], name, { type: 'text/csv' });
     const out = await uploadFile(file, { smallLimit: 5 * 1024 * 1024 });
     const f = out.kind === 'created' ? out.file : out.kind === 'reused' ? out.file : null;
-    if (f) { setFileId(f.id); setFileName(f.name); setRows([]); toast(`已创建「${f.name}」`); }
+    if (f) {
+      setServiceFileId(f.id);
+      setRows([]);
+      setFileId(f.id);
+      setFileName(f.name);
+      toast(`已创建「${f.name}」`);
+    }
   };
 
-  const writeBack = async (next: Row[]) => {
-    if (!fileId) return;
-    const blob = new Blob([toCsv(next)], { type: 'text/csv;charset=utf-8' });
-    await overwriteFileContent(fileId, blob);
-  };
-
-  const record = () => {
+  const record = async () => {
     if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
     setBusy(true);
-    getPosition()
-      .then(async (pos) => {
-        setBusy(false);
-        const r: Row = {
-          ts: new Date().toISOString(),
-          lat: pos.lat, lng: pos.lng,
-          accuracy: pos.accuracy, note: note.trim(),
-        };
-        const next = [...rows, r];
-        setRows(next); setNote('');
-        await writeBack(next);
-        mapRef.current?.setView([r.lat, r.lng], 16);
-        toast('已记录并保存');
-      })
-      .catch((err) => { setBusy(false); toast(`定位失败：${err.message || err}`); });
+    const r = await manualRecord(note.trim());
+    setBusy(false);
+    if (r) {
+      setRows([...getServiceRows()]);
+      setNote('');
+      mapRef.current?.setView([r.lat, r.lng], 16);
+      toast('已记录并保存');
+    } else {
+      toast('定位失败');
+    }
   };
 
   const locateMe = () => {
