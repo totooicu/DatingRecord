@@ -386,6 +386,15 @@ export function renameFile(id: string, name: string): void {
   });
 }
 
+/** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录这类追加写场景用。 */
+export async function overwriteFileContent(id: string, blob: Blob): Promise<void> {
+  await putBlob(id, blob);
+  transact(() => {
+    run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
+    appendOplog('attachment', id, 'update', { size: blob.size });
+  });
+}
+
 /** 方括号里的名字只做最小转义：别让文件名里的 `[` `]` 破坏链接语法 */
 function bracketLabel(name: string): string {
   return name.replace(/\\/g, '\\\\').replace(/[[\]]/g, '\\$&').replace(/\r?\n/g, ' ');
