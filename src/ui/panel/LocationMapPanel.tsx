@@ -69,9 +69,10 @@ export function LocationMapPanel() {
       iconAnchor: [7, 7],
     });
     mapRef.current = L.map(containerRef.current).setView([30.2741, 120.1551], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '© 高德地图',
     }).addTo(mapRef.current);
     (mapRef.current as any)._drIcon = icon;
   }, []);
