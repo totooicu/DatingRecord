@@ -201,3 +201,11 @@
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border, #eee);
 }
+
+/* 已在歌单里的文件：灰显禁选 */
+.file-item-picked {
+  opacity: 0.45;
+}
+.file-item-picked .file-name {
+  pointer-events: none;
+}

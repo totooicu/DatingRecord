@@ -146,7 +146,7 @@ export function MusicPanel() {
           <button className="music-add-btn" onClick={() => setPicking(false)}>← 返回歌单</button>
           <span className="muted small">点文件即可加入歌单</span>
         </div>
-        <FilesPanel onPick={onPickFile} />
+        <FilesPanel onPick={onPickFile} pickedIds={new Set(tracks.map((t) => t.id))} />
         {ask && <CollisionModal prompt={ask.prompt} uploading={ask.preview}
           onDecide={(p) => ask.step(p)} onCancel={ask.cancel} />}
       </div>

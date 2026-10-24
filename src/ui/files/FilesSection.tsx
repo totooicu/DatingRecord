@@ -33,7 +33,7 @@ import {
 } from './fileFilter';
 import { fmtSize } from './fileFormat';
 
-export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
+export function FilesSection({ onPick, pickedIds }: { onPick?: (f: StoredFile) => void; pickedIds?: Set<string> }) {
   const v = useVersion();
   const files = useMemo(() => listFiles(), [v]);
   // 引用数排序/筛选要用：一次算好整张表，避免在比较函数里反复查库。
@@ -195,6 +195,7 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
               onDelete={remove}
               onShowRefs={setRefsFile}
               onPick={onPick}
+              pickDisabled={pickedIds?.has(f.id)}
             />
           ))}
         </ul>
