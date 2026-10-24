@@ -10,6 +10,7 @@ import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
 import { LabSection } from './LabSection';
+import { AiHubSection } from './AiHubSection';
 import { LabAiSection } from './LabAiSection';
 import { LabEdgeSection } from './LabEdgeSection';
 import { LabExtractSection } from './LabExtractSection';
@@ -35,9 +36,9 @@ import { canLeave } from '../navGuard';
  * 目录常驻。所以这里不需要 JS 判断宽度——sub 为 null 只表示「手机上还在目录页」，
  * 宽屏永远按 DEFAULT_SETTINGS_KEY 渲染右栏。
  *
- * 入口已经按「做一件事」合并过（见 sections.ts），带子页的入口有两个：
- * 备份与分享（备份 / 同步 / 分享）、功能体验（边缘分割 / 未完成的记录）；
- * AI 组（对话 / 聊天提取 / 模型）三页都可直接进，不套入口页。
+ * 入口已经按「做一件事」合并过（见 sections.ts），带子页的入口有三个：
+ * 备份与分享（备份 / 同步 / 分享）、功能体验（边缘分割 / 未完成的记录）、
+ * AI（AI 对话 / 聊天提取 / 模型）；目录上各占一行，点进去才是二级目录。
  */
 export function Settings({ initial }: { initial?: string | null }) {
   // initial 允许带旧 key（lock / enc / templates / overview / sample），
@@ -101,8 +102,10 @@ export function Settings({ initial }: { initial?: string | null }) {
 
         {active === 'data' && <DataSection />}
 
-        {/* 功能体验：入口页只放目录，具体功能各占一页，互不挤占屏幕。
-            lab 的返回目标就是「设置目录」，子页的返回目标是 lab——两级，不多不少 */}
+        {/* 入口页只放目录，具体功能各占一页，互不挤占屏幕。
+            AI / lab 的返回目标就是「设置目录」，子页的返回目标是各自的入口页——两级，不多不少 */}
+        {active === 'ai' && <AiHubSection onPick={go} />}
+
         {active === 'lab' && <LabSection onPick={go} />}
 
         {active === 'labAi' && <LabAiSection />}

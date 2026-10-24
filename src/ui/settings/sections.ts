@@ -10,9 +10,9 @@
 //   · 库概览 + 示例数据与重置都属于「这个库整体」。
 // 合并只动「进哪一页」，各组内部仍是独立卡片，状态互不影响。
 //
-// AI 组（对话 / 聊天提取 / 模型）是 2026-10-24 从「功能体验」抽出来的：
-// 这三个功能已经用顺了，不该继续和试验功能挤在一组；模型配置也不再挂在
-// AI 对话页的标签里——配密钥是低频动作，占住聊天页的一条标签不值。
+// AI 是 2026-10-24 从「功能体验」抽出来的独立入口页：目录上只有一行「AI」，
+// 点进去的二级目录里放 AI 对话 / 聊天提取 / 模型。模型配置也不再挂在 AI 对话页的
+// 标签里——配密钥是低频动作，占住聊天页的一条标签不值。
 
 export type SettingsKey =
   | 'backup'
@@ -31,6 +31,7 @@ export type SettingsKey =
   | 'labEdge'
   | 'labChat'
   | 'labDraft'
+  | 'ai'
   | 'aiModel';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
@@ -50,8 +51,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.zip', group: 'general' },
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
-  // AI 单独成组：对话、聊天提取、模型配置是同一件事的三步，放在一起才不会
-  // 让人为了配个密钥去「功能体验」里翻。三页都可直接进，不再套一层入口页。
+  // AI 单独成组：「AI」是入口页，AI 对话 / 聊天提取 / 模型是它的三个子页。
+  // 目录上只占一行，点进去才看到二级目录——和「功能体验」「备份与分享」同一套路。
+  { key: 'ai', title: 'AI', hint: '对话 · 聊天提取 · 模型', group: 'ai' },
   { key: 'labAi', title: 'AI 对话', hint: '能思考、能动手的助手', group: 'ai' },
   { key: 'labChat', title: '聊天提取', hint: '截图 → 聊天事件', group: 'ai' },
   { key: 'aiModel', title: '模型', hint: '别名、服务商与密钥', group: 'ai' },
@@ -85,6 +87,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  * 加新子页只需在 SETTINGS_ENTRIES 里加一条、再挂到这里。
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
+  ai: ['labAi', 'labChat', 'aiModel'],
   lab: ['labEdge', 'labDraft'],
   backup: ['backupData', 'sync', 'share'],
 };
@@ -104,8 +107,6 @@ export const LEGACY_KEYS: Record<string, SettingsKey> = {
   templates: 'attrs',
   overview: 'data',
   sample: 'data',
-  // 顶级「AI 模型」入口 → 现在的「AI → 模型」页
-  ai: 'aiModel',
 };
 
 /** 某个 key 在目录里的标题；子页也有标题，用来拼「← 返回 xxx」 */

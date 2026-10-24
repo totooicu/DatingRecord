@@ -174,6 +174,14 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M17.6 8.6v3.2M15.9 10.2h3.4" />
         </>,
       );
+    // AI 入口页：对话气泡 + 一颗星芒，进门后三页各自还有图标
+    case 'ai':
+      return wrap(
+        <>
+          <path d="M4.4 6h10.4v7.2H9.2l-2.8 2.2v-2.2H4.4z" />
+          <path d="M18.2 10.4l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" />
+        </>,
+      );
     // AI 对话：带小三角的对话气泡（和「模型」的滑杆区分开）
     case 'labAi':
       return wrap(
