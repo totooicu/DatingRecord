@@ -97,19 +97,9 @@ export function LocationMapPanel() {
     });
 
     map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
+    // 选完文件后容器可能刚从隐藏变显示，Leaflet 不知道要重算尺寸
+    setTimeout(() => map.invalidateSize(), 50);
   }, [rows]);
-
-  if (picking) {
-    return (
-      <div className="music-panel">
-        <div className="music-pick-back">
-          <button className="music-add-btn" onClick={() => setPicking(false)}>← 返回地图</button>
-          <span className="muted small">选一个定位 CSV 文件</span>
-        </div>
-        <FilesPanel onPick={(f) => onPickFile(f)} />
-      </div>
-    );
-  }
 
   return (
     <div className="music-panel">
@@ -139,6 +129,20 @@ export function LocationMapPanel() {
       )}
 
       <div ref={containerRef} className="map-leaflet" />
+
+      {picking && (
+        <div className="music-picker-mask" onClick={() => setPicking(false)}>
+          <div className="music-picker" onClick={(e) => e.stopPropagation()}>
+            <div className="music-picker-head">
+              <strong>选定位 CSV</strong>
+              <button onClick={() => setPicking(false)}>✕</button>
+            </div>
+            <div className="music-picker-body">
+              <FilesPanel onPick={(f) => onPickFile(f)} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
