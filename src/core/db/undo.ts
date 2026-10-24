@@ -85,14 +85,6 @@ function restore(step: Step): void {
 
 // ---------------- 事务钩子 ----------------
 
-/** 换掉整个库实例后清空撤销栈：旧快照指向另一份数据，留着会互相污染 */
-export function resetUndo(): void {
-  undoStack = [];
-  redoStack = [];
-  stepOpen = false;
-  emit('write');
-}
-
 /** 批量/特殊操作期间暂停记账（导入、示例数据、迁移） */
 export function suspendUndo(): void {
   suspended++;
@@ -135,6 +127,21 @@ export function bulkAction<T>(label: string, fn: () => T): T {
   } finally {
     resumeUndo();
   }
+}
+
+/**
+ * 整个栈作废：换库之后调用。
+ *
+ * 快照式撤销存的是「旧库实例的整库字节」。凡是把库实例整个换掉的地方
+ * （AI 成果暂存/执行/放弃、快照恢复、回退），旧步骤指向的字节就已经不是
+ * 这条时间线上的状态了——留着它们，用户一按撤销就会把「还没落地的改动」
+ * 放回来，或把「刚执行掉的成果」再撤掉。所以换库 == 撤销历史清零。
+ */
+export function resetUndo(): void {
+  undoStack = [];
+  redoStack = [];
+  stepOpen = false;
+  emit('reset');
 }
 
 /**

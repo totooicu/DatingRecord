@@ -769,9 +769,11 @@ export function LabAiSection() {
       showToast(
         staged
           ? '改动已暂存，去「成果」确认后执行'
-          : res.aborted
-            ? '已停止本轮'
-            : 'AI 已完成，可以继续提问或离开',
+          : res.snapshotId
+            ? '这一轮库没有变化，自动备份已留在「成果」里'
+            : res.aborted
+              ? '已停止本轮'
+              : 'AI 已完成，可以继续提问或离开',
       );
       // 落盘：被中断也能从历史会话里找回并继续
       persistSession(hist, nextItems);
@@ -793,9 +795,16 @@ export function LabAiSection() {
   const stop = () => abortRef.current?.abort();
 
   const rollback = async (id: string) => {
+    setErr(null);
     if (!window.confirm('拒绝这次改动？\n数据会回退到 AI 动手之前。当前状态会自动留底，踩错了还能再退回来。')) return;
     clearSnapReturn();
-    await restoreSnapshot(id);
+    const ok = await restoreSnapshot(id);
+    if (!ok) {
+      // 备份字节丢失时不能假装成功：数据没变，提示条却关掉了，用户以为回退过
+      setErr('回退失败：这份备份的数据不见了，可能已被清理。');
+      reloadSnaps();
+      return;
+    }
     bump();
     reloadSnaps();
     setRollbackId(null);
@@ -803,6 +812,7 @@ export function LabAiSection() {
   };
 
   const removeSnap = async (id: string) => {
+    setErr(null);
     if (!window.confirm('确认接受这次改动？\n接受后这条成果记录会被关掉，数据保留不变。')) return;
     clearSnapReturn();
     await deleteSnapshot(id);
@@ -811,9 +821,17 @@ export function LabAiSection() {
 
   /** 审核通过：把暂存的那份库换进来，这一轮改动才真正生效 */
   const applySnap = async (id: string) => {
+    setErr(null);
     if (!window.confirm('确认执行这轮改动？\n执行后这些记录才会真正进库。')) return;
-    const ok = await applyPendingSnapshot(id);
-    if (!ok) {
+    const r = await applyPendingSnapshot(id);
+    if (r === 'stale') {
+      // 暂存期间库被外人动过：照旧执行会把那些改动连锅端掉，且撤销栈已清零。
+      // 拦住，指一条稳妥的路——放弃这轮，让 AI 照着现在的数据重做。
+      setErr('执行已拦截：暂存这份成果期间，库里的数据被其他操作改过（手动改动 / 导入 / 同步）。为避免冲掉那些改动，请先「放弃」这轮成果，再让 AI 重新做。');
+      reloadSnaps();
+      return;
+    }
+    if (r === 'gone') {
       setErr('执行失败：暂存的改动不见了，可能已被清理。请重试或放弃。');
       reloadSnaps();
       return;
@@ -823,11 +841,14 @@ export function LabAiSection() {
     persistSession(history, nextItems);
     reloadSnaps();
     setSnapDetail(null);
+    // 成果已执行：还开着的记录详情弹窗跟着关，否则保存改名会扑空
+    setRecordView(null);
     showToast('已执行，改动已进库');
   };
 
   /** 不要这轮改动了：两份字节一起删掉，库本来就没动过 */
   const discardSnap = async (id: string) => {
+    setErr(null);
     if (!window.confirm('放弃这轮改动？\n库里的数据不会变，这份成果会被删掉。')) return;
     await discardPendingSnapshot(id);
     const nextItems = items.map((it) => (it.pendingId === id ? { ...it, pendingId: null } : it));
@@ -835,6 +856,7 @@ export function LabAiSection() {
     persistSession(history, nextItems);
     reloadSnaps();
     setSnapDetail(null);
+    setRecordView(null);
     showToast('已放弃，库没有变');
   };
 
@@ -885,6 +907,7 @@ export function LabAiSection() {
 
   const applyRejected = async () => {
     if (!snapDetail || rejected.size === 0) return;
+    setErr(null);
     if (!window.confirm(`拒绝选中的 ${rejected.size} 项改动？\n其余改动保留。`)) return;
     const { revertDiffItems } = await import('../../core/snapshots/diff');
     const diff = snapDetail.diff;
@@ -958,6 +981,9 @@ export function LabAiSection() {
 
       {/* 内容区：吃掉剩余高度，四个 tab 共用这块，切换只换里面的视图 */}
       <div className="aichat-body">
+        {/* 错误条放在 tab 面板外面：在「成果」tab 点执行 / 放弃改动失败时，
+            提示必须当场看得见，不能藏到「聊天」tab 里 */}
+        {err && <p className="aichat-err">{err}</p>}
         {tab === 'chat' && (
           <div className="aichat-chat">
             <div className="aichat-log" ref={logRef}>
@@ -1047,8 +1073,6 @@ export function LabAiSection() {
 
               {busy && activity.length === 0 && <div className="aichat-item aichat-assistant">思考中…</div>}
             </div>
-
-            {err && <p className="aichat-err">{err}</p>}
 
             {/* 待发送的附件：贴在输入框上方，发出去就清空 */}
             {atts.length > 0 && (
@@ -1310,7 +1334,7 @@ export function LabAiSection() {
             </p>
             <p className="muted small">
               顶部四个按钮：<b>聊天</b>是和 AI 对话；<b>历史会话</b>是自动保存的对话记录，可载入继续；
-              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、删了谁、记了什么事；点进去核对后，<b>接受</b>保留改动并关掉记录，<b>放弃改动</b>则整轮回退到 AI 动手前。<b>说明</b>是本页。切换不中断 AI 正在做的事。
+              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、删了谁、记了什么事。AI 写完先暂存、不动你的库：点进去核对后，<b>执行</b>才让改动真正进库，<b>放弃</b>则当什么都没发生；已执行的成果也能<b>放弃改动</b>整轮回退到动手前。一份成果处理完才能继续下一轮对话。<b>说明</b>是本页。切换不中断 AI 正在做的事。
             </p>
           </div>
         )}

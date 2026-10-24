@@ -4,7 +4,7 @@
 // 拆开是因为引擎文件已经够长，而这里只跟订阅者打交道、完全不碰快照——
 // 订阅机制要是哪天想换成别的方式（比如事件总线），只动这一个文件。
 
-export type UndoOp = 'write' | 'undo' | 'redo';
+export type UndoOp = 'write' | 'undo' | 'redo' | 'reset';
 
 /** 给 UI 看的那一小块（不碰整库数据） */
 export interface UndoStepInfo {

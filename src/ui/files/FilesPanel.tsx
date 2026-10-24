@@ -36,10 +36,10 @@ function SmallLimitRow() {
   );
 }
 
-export function FilesPanel({ onPick }: { onPick?: (f: StoredFile) => void }) {
+export function FilesPanel({ onPick, pickedIds }: { onPick?: (f: StoredFile) => void; pickedIds?: Set<string> }) {
   return (
     <div className="files-panel">
-      <FilesSection onPick={onPick} />
+      <FilesSection onPick={onPick} pickedIds={pickedIds} />
       <SmallLimitRow />
       <details className="files-advanced">
         <summary>数据迁移（内容寻址）</summary>

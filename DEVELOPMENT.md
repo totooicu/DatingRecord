@@ -331,6 +331,15 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **与「撤销栈」的分工**：撤销栈在内存、刷新即失效，管"刚才那一下点错了"；快照落盘，管"AI 一顿操作之后整体不对"。两者不替代。
 
+**换库 = 撤销历史清零（硬规则）**：撤销栈是"整库快照式"——每一步存的是**旧库实例**的字节。凡是把库实例整个换掉的地方（`stageAiTurn` / `applyPendingSnapshot` / `discardPendingSnapshot` / `restoreSnapshot` / `revertAiTurn`），换完必须 `resetUndo()`（`src/core/db/undo.ts`）。不清栈的后果：pending 时按撤销会把**没落地的 AI 改动一步步放回真实库**；执行后按撤销会把**刚进库的成果撤掉**。同理，放弃（discard）后不清栈，撤销也会把放弃掉的改动放回来。
+
+**同批踩过的坑（改这几个函数前必读）**：
+- `prune()` 扔最旧快照时必须**让 `review==='pending'` 的优先保留**——before 字节一被淘汰，这份成果就再也无法执行/放弃，`afterId` 还会变成孤儿字节。保留后要按原顺序（新的在前）写回 meta。
+- `restoreSnapshot()` 换库后必须把**当前 meta 列表带着写进新实例**：快照字节是"恢复目标时刻"导出的，那里面既没有 auto 留底、也没有之后新建的快照；不带着换，成果列表会直接清空退回目标时刻的旧样子（`writeMeta` 要在 `setDbInstance` 之后调）。
+- `agent.ts` 回合结束回写 diff 时，**`reverted` 也要存**：建了又删的轮次三组都为空，不存 diff 的话成果详情里什么都不显示，用户看不出这一轮动过什么（详情里的"动过又复原"提示条依赖它）。
+- **同一时刻最多一份 pending**：两份 pending 基于同一个 before，先后执行会互相覆盖丢数据。`LabAiSection` 的 `send()` 用 `hasPendingSnapshot()` 拦截，没处理完不让发下一轮。
+- **执行前必须校验"库还是暂存时的样子"**（`applyPendingSnapshot` 返回 `'ok' | 'stale' | 'gone'`）：pending 挂着的时候用户照样能改数据（手动改记录 / 合并导入 / 同步合并），after 是旧世界的整体快照，照旧换进来会把暂存期间的新改动**连锅端掉**，且换库时撤销栈已清零，用户连撤销都救不回来。校验用 `dataFingerprint()`（除 `meta` 与 `sqlite_%` 外全表按 rowid 序列化后比对，before 字节开只读副本对照）——排除 `meta` 是必须的：快照元数据、AI 会话、hlc 计数器都写在那，暂存本身就会改它，不排除每次执行都误报。命中 stale 时 UI 拦住并提示先放弃这轮让 AI 重做。回归场景：矩阵 e2e S12。
+
 **输入与轮次约定**（在 UI / agent 层）：
 - 对话框 `Enter` **只换行**，`Cmd/Ctrl+Enter` 才发送——换行不能误触发送（见 `LabAiSection.tsx` 的 `onKeyDown`）。
 - `runAgentTurn` 的 `maxRounds` **不硬性封顶**：`const maxRounds = opts.maxRounds; if (maxRounds && rounds > maxRounds)`——没传就一路跑到模型主动收尾，不限制 AI 的思考轮次。

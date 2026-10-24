@@ -4,6 +4,7 @@
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
 import { countRefs, collectionsUsingFile, isMappingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
+import { isInPlaylist as isInMusic } from '../../core/music/playlist';
 import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
 import {
@@ -48,6 +49,7 @@ export function FileRow({
   onDelete,
   onShowRefs,
   onPick,
+  pickDisabled,
 }: {
   file: StoredFile;
   thumb?: string;
@@ -60,6 +62,8 @@ export function FileRow({
   onShowRefs: (f: StoredFile) => void;
   /** 编辑器里的挑选模式：给了就在行内显示「插入」，点名字也直接插入 */
   onPick?: (f: StoredFile) => void;
+  /** 挑选模式下此文件已被选：灰显，点名字/插入都不响应 */
+  pickDisabled?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -77,7 +81,10 @@ export function FileRow({
   /** 批量模式勾选、挑选模式插入，其余情况预览 */
   const openOrSelect = () => {
     if (batch) onToggleSelect(file.id);
-    else if (onPick) onPick(file);
+    else if (onPick) {
+      if (pickDisabled) return;
+      onPick(file);
+    }
     else onPreview(file);
   };
 
@@ -95,7 +102,7 @@ export function FileRow({
   };
 
   return (
-    <li className={selected ? 'file-item file-item-selected' : 'file-item'}>
+    <li className={`${selected ? 'file-item file-item-selected' : 'file-item'}${pickDisabled ? ' file-item-picked' : ''}`}>
       {batch && (
         <button
           type="button"
@@ -134,8 +141,9 @@ export function FileRow({
           {!batch && (
             <span className="file-actions">
               {onPick && (
-                <button type="button" className="btn btn-sm btn-primary" onClick={() => onPick(file)}>
-                  插入
+                <button type="button" className="btn btn-sm btn-primary" disabled={pickDisabled}
+                  onClick={() => { if (!pickDisabled) onPick(file); }}>
+                  {pickDisabled ? '已选' : '插入'}
                 </button>
               )}
               <IconButton label="预览" onClick={() => onPreview(file)}>
@@ -251,7 +259,7 @@ export function FileRow({
           <span>·</span>
           <span>{fmtDate(file.createdAt)}</span>
           <span>·</span>
-          {refs + avatars.length + icons.length === 0 ? (
+          {refs + avatars.length + icons.length + (isInMusic(file.id) ? 1 : 0) === 0 ? (
             <span>未被引用</span>
           ) : (
             <button
@@ -264,6 +272,7 @@ export function FileRow({
                 refs > 0 ? `${refs} 个事件` : '',
                 avatars.length > 0 ? `${avatars.length} 个头像` : '',
                 icons.length > 0 ? `${icons.length} 个图标` : '',
+                isInMusic(file.id) ? '歌单' : '',
               ]
                 .filter(Boolean)
                 .join(' · ')}

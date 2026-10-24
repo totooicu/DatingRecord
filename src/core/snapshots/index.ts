@@ -11,7 +11,9 @@
 // 但列表要能给人看。
 
 import { getDbInstance, getSql, setDbInstance } from '../db/state';
+import type { Database } from 'sql.js';
 import { flushPersist } from '../db/persist';
+import { resetUndo } from '../db/undo';
 import { bump } from '../../store';
 import { newId } from '../id';
 import { getSnapStore, type SnapBytes } from './store';
@@ -165,26 +167,35 @@ export async function restoreSnapshot(id: string): Promise<boolean> {
     const bakId = newId('snap');
     await store.put(bakId, cur);
     const c = counts();
-    writeMeta([
-      {
-        id: bakId,
-        source: 'auto',
-        persons: c.persons,
-        events: c.events,
-        bytes: cur.length,
-        createdAt: new Date().toISOString(),
-        note: '恢复快照前的自动留底',
-      },
-      ...readMeta(),
-    ]);
+    // 当前库的 meta 列表要「带着换」：快照字节是恢复目标时刻导出的，那个
+    // 时刻的 meta 里既没有这条 auto 留底，也不包含之后新建的快照。不在
+    // 换库后补写，成果列表就会直接退回目标时刻的旧样子，auto 留底也消失。
+    const carried = readMeta();
+    const bakMeta: SnapMeta = {
+      id: bakId,
+      source: 'auto',
+      persons: c.persons,
+      events: c.events,
+      bytes: cur.length,
+      createdAt: new Date().toISOString(),
+      note: '恢复快照前的自动留底',
+    };
+    const next = new sql.Database(bytes);
+    next.run('PRAGMA foreign_keys = ON');
+    db.close();
+    setDbInstance(next);
+    writeMeta([bakMeta, ...carried]);
+  } else {
+    const next = new sql.Database(bytes);
+    next.run('PRAGMA foreign_keys = ON');
+    setDbInstance(next);
   }
 
-  const next = new sql.Database(bytes);
-  next.run('PRAGMA foreign_keys = ON');
-  db?.close();
-  setDbInstance(next);
   flushPersist();
   bump();
+  // 换库 = 旧撤销栈全部作废：那些步骤存的是这次替换掉的实例的字节，
+  // 留着会让用户一按撤销就把恢复前的状态翻回来。
+  resetUndo();
   return true;
 }
 
@@ -200,6 +211,47 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
   return true;
+}
+
+/**
+ * 数据指纹：除 meta 表与 sqlite 内部表外，每张表按 rowid 顺序整表序列化。
+ *
+ * 只给「暂存成果能不能照旧执行」用：AI 改动暂存后库停在动手前，此时用户
+ * 手动改记录、跑导入、被同步合并，before 字节就成了旧世界的快照——照旧
+ * 把 after 换进来会把暂存期间的新改动连锅端掉，而换库时撤销栈已清零，
+ * 用户连撤销都救不回来。宁可拦住这一次执行，也不能静默弄丢数据。
+ *
+ * 排除 meta 表是必须的：快照元数据、AI 会话、hlc 计数器都写在 meta 里，
+ * 暂存本身就会改它，不排除的话每次执行都会误报「被动过」。
+ */
+function dataFingerprint(d: Database): string {
+  const res = d.exec(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'meta'",
+  );
+  const names = (res[0]?.values ?? []).map((v) => String(v[0]));
+  const parts: string[] = [];
+  for (const t of names) {
+    const rows = d.exec(`SELECT * FROM "${t}" ORDER BY rowid`);
+    const vals = rows[0]?.values ?? [];
+    parts.push(`${t}:${vals.map((r) => JSON.stringify(r)).join(',')}`);
+  }
+  return parts.join(';');
+}
+
+/**
+ * 暂存的成果还能不能照旧执行：库里数据必须还是暂存时的样子。
+ * 返回 stale = 暂存期间被外人动过（手动改动 / 导入 / 同步合并），不能换库。
+ */
+function staleSinceStaged(before: Uint8Array | null | undefined): boolean {
+  const sql = getSql();
+  const db = getDbInstance();
+  if (!sql || !db || !before) return false; // 字节缺失等极端情况放行，由后续逻辑报错
+  const scratch = new sql.Database(before);
+  try {
+    return dataFingerprint(db) !== dataFingerprint(scratch);
+  } finally {
+    scratch.close();
+  }
 }
 
 /**
@@ -219,6 +271,9 @@ export async function stageAiTurn(
   if (!db || !sql) return null;
   const store = getSnapStore();
   const beforeBytes = await store.get(id);
+  // before 字节丢失（被 prune 淘汰 / 存储损坏）时没法暂存。此时库停在
+  // 「AI 改过」的状态，快照卡留着——用户至少看得见这一轮动过，可以尝试
+  // 回退。prune 已保护 pending，这条路径正常情况下走不到。
   if (!beforeBytes) return null;
   const afterBytes = new Uint8Array(db.export());
   // 全是失败的工具调用时库没变，不必生成一张空成果
@@ -250,16 +305,27 @@ export async function stageAiTurn(
   writeMeta(list);
   flushPersist();
   bump();
+  // AI 写库期间记下的一大串撤销步骤，指向的是「改过」的中间状态——
+  // 现在库已切回动手前，不清栈的话用户一按撤销就会把没落地的改动放回来。
+  resetUndo();
   return staged;
 }
 
-/** 执行暂存的改动：把 after 换回当前库 */
-export async function applyPendingSnapshot(id: string): Promise<boolean> {
+/**
+ * 执行暂存的改动：把 after 换回当前库。
+ * 返回 ok = 已执行；stale = 暂存期间库被外人动过，拒绝执行；gone = 字节丢失。
+ */
+export async function applyPendingSnapshot(id: string): Promise<'ok' | 'stale' | 'gone'> {
   const sql = getSql();
   const meta = readMeta().find((s) => s.id === id);
-  if (!sql || !meta || meta.review !== 'pending' || !meta.afterId) return false;
+  if (!sql || !meta || meta.review !== 'pending' || !meta.afterId) return 'gone';
   const bytes = await getSnapStore().get(meta.afterId);
-  if (!bytes) return false;
+  if (!bytes) return 'gone';
+  // 暂存期间数据被外人动过（手动改记录 / 导入 / 同步合并）就不能照旧执行：
+  // after 是旧世界的整体快照，换进来会连锅端掉后来的改动，且撤销栈在换库时
+  // 清零，用户连撤销都救不回来。拦住并让用户放弃这轮重来，是唯一稳妥的路。
+  const before = await getSnapStore().get(meta.id);
+  if (staleSinceStaged(before)) return 'stale';
   const next = new sql.Database(bytes);
   next.run('PRAGMA foreign_keys = ON');
   const db = getDbInstance();
@@ -277,7 +343,10 @@ export async function applyPendingSnapshot(id: string): Promise<boolean> {
   }
   flushPersist();
   bump();
-  return true;
+  // 执行也是一次换库：撤销栈里那些「AI 写真实库期间」的步骤一起作废，
+  // 否则用户按撤销会把刚执行进库的成果再撤掉。
+  resetUndo();
+  return 'ok';
 }
 
 /** 放弃暂存的改动：库本来就没变，删掉两份字节和这条成果即可 */
@@ -285,6 +354,9 @@ export async function discardPendingSnapshot(id: string): Promise<void> {
   const meta = readMeta().find((s) => s.id === id);
   if (meta?.afterId) await getSnapStore().del(meta.afterId);
   await deleteSnapshot(id);
+  // 库实例没换，但 AI 写库期间的撤销步骤还挂着——不清栈，用户一按撤销
+  // 就会把刚放弃掉的改动放回库里。
+  resetUndo();
 }
 
 /** 待执行时改一条新增记录的名字（只改暂存的那份 after 字节） */
@@ -353,6 +425,8 @@ export async function revertAiTurn(id: string): Promise<boolean> {
   setDbInstance(next);
   db?.close();
   await deleteSnapshot(id);
+  // 同 stageAiTurn：退回动手前后，AI 写库期间的撤销步骤一并作废
+  resetUndo();
   return true;
 }
 
@@ -404,14 +478,24 @@ export function patchSnapshotDiff(id: string, diff: SnapDiff): SnapMeta | null {
 
 /** 超量就扔最旧的。保留最新的 MAX_SNAPS 个，且总字节不超上限 */
 async function prune(store: SnapBytes, list: SnapMeta[]): Promise<void> {
-  let keep = list.slice(0, MAX_SNAPS);
+  // 待执行的成果优先保留：它的 before 字节一旦被淘汰，这份成果就再也
+  // 无法执行 / 放弃（afterId 变成孤儿字节），而 pending 往往正是用户
+  // 还没顾上处理的最新一轮——扔它等于把用户正要审的东西删了。
+  const order = [...list].sort(
+    (a, b) => Number(b.review === 'pending') - Number(a.review === 'pending'),
+  );
+  let keep = order.slice(0, MAX_SNAPS);
   let total = keep.reduce((s, x) => s + x.bytes, 0);
   while (keep.length > 1 && total > MAX_TOTAL_BYTES) {
     const dropped = keep.pop()!;
     total -= dropped.bytes;
     await store.del(dropped.id);
   }
-  if (keep.length !== list.length) writeMeta(keep);
+  if (keep.length !== list.length) {
+    // 写回时保持原顺序（新的在前），别把 pending 顶到列表最上面
+    const ids = new Set(keep.map((x) => x.id));
+    writeMeta(list.filter((x) => ids.has(x.id)));
+  }
 }
 
 /** 人类可读的体积 */
