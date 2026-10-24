@@ -13,7 +13,9 @@ import { objectUrlFor, forgetUrl } from '../db/blob';
 import { getPlaylist, setPlaylist } from '../music/playlist';
 import {
   registerService,
+  isServiceAutostart,
   setServiceAutostart,
+  setServiceDetail,
   setServiceNote,
   setServiceRunning,
 } from './store';
@@ -21,7 +23,8 @@ import {
 export type LoopMode = 'list' | 'one' | 'off';
 
 const SERVICE_ID = 'music';
-const AUTOSTART_KEY = 'music-autostart';
+/** 旧版把自启动开关存在这个 key；现在归 store 统一管，见 initMusicService 的搬迁 */
+const LEGACY_AUTOSTART_KEY = 'music-autostart';
 
 export interface MusicState {
   tracks: StoredFile[];
@@ -84,9 +87,20 @@ function getAudio(): HTMLAudioElement {
     audio.addEventListener('loadedmetadata', () => {
       if (audio) patch({ duration: audio.duration });
     });
+    // 服务运行态由音频事件驱动，不走调用点：播放/暂停/切歌/自动下一首
+    // 全都会经过这两个事件，head 图标与服务页状态才不会和实际声音脱节。
+    audio.addEventListener('play', () => {
+      patch({ playing: true, pendingPlay: false });
+      setServiceRunning(SERVICE_ID, true);
+      setServiceNote(SERVICE_ID, undefined);
+    });
+    audio.addEventListener('pause', () => {
+      patch({ playing: false });
+      // 音乐停了服务也跟着停：head 图标消失、服务页显示已停止。
+      // 播完自动下一首也会瞬过一下 pause，随后的 play 会再置回运行中。
+      setServiceRunning(SERVICE_ID, false);
+    });
     audio.addEventListener('ended', () => next(true));
-    audio.addEventListener('play', () => patch({ playing: true }));
-    audio.addEventListener('pause', () => patch({ playing: false }));
   }
   return audio;
 }
@@ -99,6 +113,7 @@ async function loadCurrent(): Promise<void> {
       url = null;
       objectId = null;
     }
+    setServiceDetail(SERVICE_ID, undefined);
     patch({ playing: false });
     return;
   }
@@ -115,11 +130,12 @@ async function loadCurrent(): Promise<void> {
   a.playbackRate = state.speed;
   try {
     await a.play();
+    // 运行态由上面的 'play' 事件置上；这里只兜「被浏览器拦了」的情况
     patch({ playing: true, pendingPlay: false });
   } catch {
     // 浏览器禁止无手势播放：保持「运行中」但停在待播放态
     patch({ playing: false, pendingPlay: true });
-    setServiceNote(SERVICE_ID, '待播放：点一下恢复');
+    setServiceRunning(SERVICE_ID, true, '待播放：点一下恢复');
   }
 }
 
@@ -127,6 +143,7 @@ export function playAt(i: number): void {
   const track = state.tracks[i];
   if (!track) return;
   patch({ current: track, progress: 0, pendingPlay: false });
+  setServiceDetail(SERVICE_ID, track.name);
   void loadCurrent();
 }
 
@@ -198,6 +215,7 @@ export function addTracks(files: StoredFile[]): void {
 export function removeTrack(id: string): void {
   if (state.current?.id === id) {
     getAudio().pause();
+    setServiceDetail(SERVICE_ID, undefined);
     patch({ current: null, playing: false, progress: 0, duration: 0 });
     void loadCurrent();
   }
@@ -216,12 +234,11 @@ export function reorder(i: number, dir: -1 | 1): void {
 }
 
 export function isAutostart(): boolean {
-  return localStorage.getItem(AUTOSTART_KEY) === '1';
+  return isServiceAutostart(SERVICE_ID);
 }
 export function setAutostart(on: boolean): void {
-  localStorage.setItem(AUTOSTART_KEY, on ? '1' : '0');
-  // 同步 store 里这条服务的 autostart 字段：受控的开关要靠它来翻状态，
-  // 否则 React 重渲染会把 checkbox 改回原样（点上去「状态没变」）。
+  // 自启动偏好存进 store 的统一存档（dr.svc.autostart），刷新后由
+  // restoreAutostartServices() 兑现；checkbox 的受控状态也靠它翻。
   setServiceAutostart(SERVICE_ID, on);
   if (on) startService();
   else stopService();
@@ -230,8 +247,13 @@ export function setAutostart(on: boolean): void {
 /** 进入「运行中」并试图播放（自启动或用户手动开启都走这） */
 export function startService(): void {
   syncTracks();
+  if (state.tracks.length === 0) {
+    // 没歌可放：开不了机，保持已停止（否则 head 会挂个空转的服务图标）
+    setServiceRunning(SERVICE_ID, false, '还没有可播放的音频');
+    return;
+  }
   setServiceRunning(SERVICE_ID, true);
-  if (!state.current && state.tracks.length > 0) playAt(0);
+  if (!state.current) playAt(0);
   else void loadCurrent();
 }
 
@@ -248,20 +270,36 @@ export function syncTracks(): void {
   const all = listFiles();
   const tracks = ids.map((id) => all.find((f) => f.id === id)).filter(Boolean) as StoredFile[];
   const currentStillThere = state.current && tracks.some((t) => t.id === state.current!.id);
-  patch({ tracks, current: currentStillThere ? state.current : (tracks[0] ?? null) });
+  const current = currentStillThere ? state.current : (tracks[0] ?? null);
+  setServiceDetail(SERVICE_ID, current?.name);
+  patch({ tracks, current });
 }
 
-/** 开机初始化：注册服务 + 自启动 */
+/** 开机初始化：注册服务（自启动与否交给 store 存档，App 统一恢复） */
 export function initMusicService(): void {
   // 先把文件库里的歌单同步进单例，音乐页才看得到列表（无论是否自启动）
   syncTracks();
-  registerService({
-    id: SERVICE_ID,
-    kind: 'music',
-    title: '背景音乐',
-    running: false,
-    autostart: isAutostart(),
-    target: { type: 'settings', key: 'panelMusic' },
-  });
-  if (isAutostart()) startService();
+  // 旧版开关搬迁：music-autostart → store 的 dr.svc.autostart，只搬一次
+  try {
+    const legacy = localStorage.getItem(LEGACY_AUTOSTART_KEY);
+    if (legacy !== null) {
+      if (legacy === '1') setServiceAutostart(SERVICE_ID, true);
+      localStorage.removeItem(LEGACY_AUTOSTART_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+  // 交出启动函数：App 加载完毕后调 restoreAutostartServices() 时，
+  // 若存档里这条开了自启动，就会调到 startService。
+  registerService(
+    {
+      id: SERVICE_ID,
+      kind: 'music',
+      title: '背景音乐',
+      running: false,
+      autostart: isServiceAutostart(SERVICE_ID),
+      target: { type: 'settings', key: 'panelMusic' },
+    },
+    startService,
+  );
 }

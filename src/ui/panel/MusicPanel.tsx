@@ -63,7 +63,14 @@ export function MusicPanel() {
   return (
     <div className="music-panel">
       <input ref={inputRef} type="file" accept="audio/*" multiple hidden
-        onChange={(e) => { upload(e.target.files).then(refresh); }} />
+        onChange={(e) => {
+          upload(e.target.files).then((files) => {
+            // 上传成功的文件直接加进歌单：歌单可能被用户清空过（播种逻辑
+            // 不会兜这种场景），这里显式加，传完立刻看得到。
+            if (files.length) addTracks(files);
+            refresh();
+          });
+        }} />
 
       <div className="music-now">
         <div className="music-disc">{m.current ? '♪' : '♫'}</div>

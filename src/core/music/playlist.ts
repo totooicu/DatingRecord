@@ -6,12 +6,24 @@
 //
 // 文件库引用数算上歌单：正在歌单里的文件删除时会提示被引用。
 
+import { listFiles } from '../repo/files';
+
 const KEY = 'dr-music-playlist';
 
 export function getPlaylist(): string[] {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
+    if (raw === null) {
+      // 从没存过歌单（新用户 / 旧版本还没写过这个 key）：
+      // 播种成「文件库全部音频」——与 7dc62fb 之前 MusicPanel 的
+      // 初始行为一致。落库一次，之后用户删空歌单就是真的空，
+      // 不会被再次自动收养。
+      const seeded = listFiles()
+        .filter((f) => f.mime.startsWith('audio/'))
+        .map((f) => f.id);
+      setPlaylist(seeded);
+      return seeded;
+    }
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
   } catch {

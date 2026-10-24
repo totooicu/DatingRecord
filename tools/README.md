@@ -25,8 +25,9 @@
 | `e2e/input-review-e2e.mjs` | 验证两项：① AI 对话框 Enter 只换行不发送、Ctrl+Enter 才发送；② 「审核后执行」——AI 跑完改动先挂起，点「执行」前真实人物列表看不到新建的 P1、点「执行」后才看得到 | 需要 preview 服务 + 假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/input-review-e2e.mjs http://localhost:4173/`。依赖全局 playwright |
 | `e2e/fake-ai-matrix.mjs` | 多变种假 OpenAI 服务：按用户消息关键词走不同操作流——纯新增 / 纯修改 / 纯删除 / 建了又删（净零）/ 混合 / 无改动（不调写工具）/ 「慢慢」慢响应（每回合拖 1.2s，用来测离开页面任务仍在跑）/ 「失败」直接回 500（测任务图标变红） | `PORT=8794 node tools/e2e/fake-ai-matrix.mjs`。配合下面的矩阵 e2e |
 | `e2e/review-matrix-e2e.mjs` | 12 个场景 × 三时间点核对（AI 动手前 → 暂存待执行 → 点执行后）：新增/修改/删除/净零各自落地行为；pending 时真实库必须还是原样、执行后才变；撤销放不回未落地改动也撤不掉已执行成果；放弃/刷新保持/多 pending 拦截；已执行后「放弃改动」整轮回退且列表保留 auto 留底；暂存期间合并导入后执行被拦截（stale 守卫）、放弃后外部改动完好 | 需要 preview 服务 + 矩阵假服务：`FAKE=http://localhost:8794/v1 node tools/e2e/review-matrix-e2e.mjs http://localhost:4173/`。结尾汇总通过/失败数，失败时 exit 1 |
-| `e2e/runtime-e2e.mjs` | 「服务 / 任务」两层体系回归（R1–R8）：AI 回复中离开聊天页不中断、head 出图标、完成变绿/失败变红、点图标跳来源页并清通知（进行中只跳不清）、主动打开来源页也清通知；服务/任务入口页可达；音乐自启动开启并刷新后 head 出服务图标、点图标跳音乐页；默认不开自启动；任务页列出/跳转/手动清除 | 需要 preview 服务 + 矩阵假服务：`FAKE=http://localhost:8794/v1 node tools/e2e/runtime-e2e.mjs http://localhost:4173/`。结尾汇总通过/失败数，失败时 exit 1 |
+| `e2e/runtime-e2e.mjs` | 「服务 / 任务」两层体系回归（R1–R9）：AI 回复中离开聊天页不中断、head 出图标、完成变绿/失败变红、点图标跳来源页并清通知（进行中只跳不清）、主动打开来源页也清通知；服务/任务入口页可达；音乐自启动开启并刷新后 head 出服务图标、点图标跳音乐页；默认不开自启动；任务页列出/跳转/手动清除；面板播放/暂停直接驱动服务图标（播 → 出、停 → 消） | 需要 preview 服务 + 矩阵假服务：`FAKE=http://localhost:8794/v1 node tools/e2e/runtime-e2e.mjs http://localhost:4173/`。结尾汇总通过/失败数，失败时 exit 1 |
 | `e2e/location-service-e2e.mjs` | 定位「自动打点」后台服务回归（L1–L5）：开机即注册未运行服务；开始打点 head 出图标；**离开面板服务照跑**（图标在、行数继续涨——单例化后才成立）；服务页显示运行中、点「打开」回面板；停止后图标消失 | 需要 preview 服务：`node tools/e2e/location-service-e2e.mjs http://localhost:4173/`。定位权限用 Playwright context 级 mock，不需要真 GPS |
+| `e2e/music-migrate-e2e.mjs` | 自启动存档迁移回归（M1–M3）：旧版 `music-autostart` key 的老用户，升级后刷新应兑现自启动（head 出图标）、搬进统一存档 `dr.svc.autostart`、旧 key 清除 | 需要 preview 服务：`node tools/e2e/music-migrate-e2e.mjs http://localhost:4173/`。会往页面传一首 `/tmp/tone.wav` |
 
 ## src/core/tools/
 

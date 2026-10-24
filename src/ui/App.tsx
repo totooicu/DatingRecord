@@ -24,6 +24,7 @@ import { peekSnapReturn } from './snapReturn';
 import { setNavHandler } from '../core/runtime/nav';
 import { initMusicService } from '../core/runtime/music';
 import { initLocationAutoService } from '../core/runtime/locationAuto';
+import { restoreAutostartServices } from '../core/runtime/store';
 import { HeadStatus } from './runtime/HeadStatus';
 import { ServicesPage } from './runtime/ServicesPage';
 import { TasksPage } from './runtime/TasksPage';
@@ -136,14 +137,13 @@ export default function App() {
     return () => setNavHandler(null);
   }, [view]);
 
-  // 开软件时初始化背景音乐服务（注册 + 自启动）
+  // 开软件时：先让各服务注册（背景音乐 / 自动打点），再统一检查存档里
+  // 开了自启动的服务把它们拉起来——「刷新后服务不丢」靠的就是这一步。
+  // 服务要自启动，只管在 registerService 时交出启动函数，不用自己碰存档。
   useEffect(() => {
     initMusicService();
-  }, []);
-
-  // 开软件时注册自动打点服务（恢复上次文件；不会自动开打）
-  useEffect(() => {
     initLocationAutoService();
+    restoreAutostartServices();
   }, []);
 
   const gotoTab = (key: TabKey) => {

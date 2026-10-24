@@ -10,6 +10,7 @@
 //   R6  AI 轮次失败：head 图标变红（error），点开后通知消失
 //   R7  默认不开自启动：新装打开 head 无服务图标、服务页开关为关
 //   R8  任务页：完成后列出任务（标题改为已完成）→ 打开跳来源页 → 手动清除
+//   R9  面板播放/暂停直接驱动服务运行态：播 → head 出图标，停 → 图标消失
 //
 // 依赖：fake-ai-matrix.mjs（含「慢慢」慢响应场景 + 「失败」500 场景）+ vite preview。
 // 用法：node tools/e2e/runtime-e2e.mjs [url]
@@ -99,6 +100,25 @@ const ensureAiPage = async (p) => {
 const goHome = async (p) => {
   await p.locator('.tabbar-item', { hasText: '人物' }).click();
   await p.waitForTimeout(600);
+};
+
+/** 进音乐面板（不上传）。设置页会记得上次打开的子页，可能直接就停在音乐面板 */
+const openMusic = async (p) => {
+  if (await p.locator('.music-panel').count()) return;
+  await p.locator('.tabbar-item', { hasText: '设置' }).click();
+  await p.waitForTimeout(600);
+  if (await p.locator('.music-panel').count()) return;
+  await p.locator('.settings-nav-title', { hasText: /^功能面板$/ }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.settings-hub-title', { hasText: '音乐' }).first().click();
+  await p.waitForTimeout(900);
+};
+
+/** 进音乐面板并上传一首测试音频（自启动场景的前置：没歌可放时服务开不了机） */
+const goMusicUpload = async (p) => {
+  await openMusic(p);
+  await p.locator('input[type=file]').setInputFiles('/tmp/tone.wav');
+  await p.waitForTimeout(1500);
 };
 
 const scenario = async (name, fn) => {
@@ -242,6 +262,10 @@ await scenario('R4/R5 音乐自启动 + 服务图标', async () => {
   await boot(p);
   await goHome(p);
 
+  // 先传一首歌：自启动恢复时没歌可放，服务会保持已停止
+  await goMusicUpload(p);
+  await goHome(p);
+
   // 打开服务页，开启自启动
   await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
   await p.waitForTimeout(700);
@@ -263,8 +287,8 @@ await scenario('R4/R5 音乐自启动 + 服务图标', async () => {
     .then(() => true)
     .catch(() => false);
   check('R4：开启自启动并刷新后 head 出现音乐服务图标（运行中）', svcIcon);
-  const lsFlag = await p.evaluate(() => localStorage.getItem('music-autostart'));
-  check('R4：自启动开关已持久化', lsFlag === '1', `localStorage=${lsFlag}`);
+  const lsFlag = await p.evaluate(() => localStorage.getItem('dr.svc.autostart'));
+  check('R4：自启动开关已持久化到统一存档', !!lsFlag && lsFlag.includes('music'), `localStorage=${lsFlag}`);
 
   // 点服务图标 → 跳到音乐页
   await p.locator('.home-head .hs-svc').first().click();
@@ -323,7 +347,7 @@ await scenario('R7 默认不自启动', async () => {
   // 全新环境（localStorage 无标记）：head 不应出现音乐服务图标
   const svcIcon = await p.locator('.home-head .hs-svc').count();
   check('R7：默认不开自启动时 head 无服务图标', svcIcon === 0, `count=${svcIcon}`);
-  const lsFlag = await p.evaluate(() => localStorage.getItem('music-autostart'));
+  const lsFlag = await p.evaluate(() => localStorage.getItem('dr.svc.autostart'));
   check('R7：默认无自启动标记', lsFlag === null, `localStorage=${lsFlag}`);
 
   // 服务页里自启动开关应为未勾选
@@ -381,6 +405,42 @@ await scenario('R8 任务页跳转与清除', async () => {
   await p.waitForTimeout(500);
   const rowsAfter = await p.locator('.task-row').count();
   check('R8：手动清除后任务页为空', rowsAfter === 0, `rows=${rowsAfter}`);
+  await p.context().close();
+});
+
+// ---- R9：面板播放/暂停直接驱动服务运行态（不碰自启动） ----
+await scenario('R9 面板播放 → 服务图标跟着走', async () => {
+  const p = await newPage(browser);
+  await boot(p);
+  await goHome(p);
+  await goMusicUpload(p);
+  await goHome(p);
+
+  // 上传后没播：自启动没开，head 不该有服务图标
+  const before = await p.locator('.home-head .hs-svc').count();
+  check('R9：上传后未播放时 head 无服务图标', before === 0, `count=${before}`);
+
+  // 回音乐页点播放 → head 出现运行中图标（服务状态跟着播放走，不停在「已停止」）
+  await openMusic(p);
+  await p.locator('.music-btn-play').click();
+  await p.waitForTimeout(900);
+  const playing = await p.locator('.music-title').textContent().catch(() => '');
+  check('R9：点击后面板显示在播放', String(playing).includes('tone.wav'), `title=${playing}`);
+  await goHome(p);
+  await p.waitForTimeout(500);
+  const whilePlay = await p.locator('.home-head .hs-svc.running').count();
+  check('R9：播放中 head 出现音乐服务图标', whilePlay >= 1, `count=${whilePlay}`);
+  const tip = await p.locator('.home-head .hs-svc').first().getAttribute('title').catch(() => '');
+  check('R9：图标标题是当前曲目', String(tip).includes('tone.wav'), `title=${tip}`);
+
+  // 回音乐页暂停 → 图标消失
+  await openMusic(p);
+  await p.locator('.music-btn-play').click();
+  await p.waitForTimeout(600);
+  await goHome(p);
+  await p.waitForTimeout(500);
+  const afterPause = await p.locator('.home-head .hs-svc').count();
+  check('R9：暂停后 head 服务图标消失', afterPause === 0, `count=${afterPause}`);
   await p.context().close();
 });
 

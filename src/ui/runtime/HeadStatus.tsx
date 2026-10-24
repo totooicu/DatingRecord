@@ -64,7 +64,7 @@ export function HeadStatus() {
           <button
             key={s.id}
             className={`hs-icon hs-svc ${s.running ? 'running' : ''}`}
-            title={s.note ? `${s.title}：${s.note}` : s.title}
+            title={[s.title, s.detail, s.note].filter(Boolean).join(' · ')}
             onClick={() => clickService(s)}
             aria-label={s.title}
           >

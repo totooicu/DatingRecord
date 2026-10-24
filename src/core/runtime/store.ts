@@ -38,6 +38,8 @@ export interface ServiceItem {
   autostart: boolean;
   /** 待办说明，例如「待播放：点一下恢复」（被浏览器拦时） */
   note?: string;
+  /** 当前活动说明，例如正在播放的曲名；显示在 head 图标的悬停提示里 */
+  detail?: string;
   target: NavTarget;
 }
 
@@ -128,13 +130,53 @@ export function getTasks(): TaskItem[] {
 
 // ---- 服务 API ----
 
-export function registerService(s: ServiceItem): void {
+// 自启动存档：「开软件自动启动」是刷新/重开都要兑现的偏好，属存档不属内存。
+// 每个服务的 autostart 存进同一张表（只记 true，缺省即 false），
+// registerService 注册时以存档为准，restoreAutostartServices() 在应用
+// 加载完毕后统一点名恢复——服务自己不用各写一个 localStorage key。
+
+const AUTOSTART_KEY = 'dr.svc.autostart';
+/** 各服务注册时交出来的「启动函数」，供开机恢复时调用 */
+const starters = new Map<string, () => void>();
+
+function readAutostartMap(): Record<string, true> {
+  try {
+    const raw = localStorage.getItem(AUTOSTART_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAutostartMap(m: Record<string, true>): void {
+  try {
+    if (Object.keys(m).length > 0) localStorage.setItem(AUTOSTART_KEY, JSON.stringify(m));
+    else localStorage.removeItem(AUTOSTART_KEY);
+  } catch {
+    /* 隐私模式写不进就算了 */
+  }
+}
+
+/** 某个服务是否开了自启动（存档为准；服务还没注册也能问） */
+export function isServiceAutostart(id: string): boolean {
+  return readAutostartMap()[id] === true;
+}
+
+export function registerService(s: ServiceItem, start?: () => void): void {
+  if (start) starters.set(s.id, start);
+  // 自启动一律以存档为准：调用方传的可能是默认值或旧版 key，
+  // 覆盖之后服务页的 checkbox 才和「刷新后实际会不会自启」一致。
+  const autostart = isServiceAutostart(s.id);
   const existing = services.find((x) => x.id === s.id);
   if (existing) {
-    // 已有则只更新可变字段，保留外部可能改过的 running/autostart
-    services = services.map((x) => (x.id === s.id ? { ...x, title: s.title, note: s.note, target: s.target } : x));
+    // 已有则只更新可变字段，保留外部可能改过的 running
+    services = services.map((x) =>
+      x.id === s.id ? { ...x, title: s.title, note: s.note, target: s.target, autostart } : x,
+    );
   } else {
-    services = [...services, s];
+    services = [...services, { ...s, autostart }];
   }
   emit();
 }
@@ -149,9 +191,27 @@ export function setServiceNote(id: string, note: string | undefined): void {
   emit();
 }
 
+export function setServiceDetail(id: string, detail: string | undefined): void {
+  services = services.map((x) => (x.id === id ? { ...x, detail } : x));
+  emit();
+}
+
 export function setServiceAutostart(id: string, autostart: boolean): void {
+  const m = readAutostartMap();
+  if (autostart) m[id] = true;
+  else delete m[id];
+  writeAutostartMap(m);
   services = services.map((x) => (x.id === id ? { ...x, autostart } : x));
   emit();
+}
+
+/** 应用加载完毕后调用：把存档里开了自启动的服务逐一拉起来。
+ *  先决条件是各服务都已 registerService（交出了启动函数）。 */
+export function restoreAutostartServices(): void {
+  for (const s of services) {
+    if (!s.autostart || s.running) continue;
+    starters.get(s.id)?.();
+  }
 }
 
 export function getServices(): ServiceItem[] {
