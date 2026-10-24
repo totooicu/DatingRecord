@@ -15,6 +15,7 @@ import { isPrivacyMode } from '../../privacy';
 import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
 import { FILE_REF_PREFIX } from '../markdown';
+import { sha256Hex } from '../files/naming';
 import { isInPlaylist as isInMusicPlaylist } from '../music/playlist';
 
 export interface StoredFile {
@@ -388,11 +389,15 @@ export function renameFile(id: string, name: string): void {
 
 /** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录每秒追加写，不记 undo。 */
 export async function overwriteFileContent(id: string, blob: Blob): Promise<void> {
+  // 内容变了，sha256 也得跟着变（stored_id 保持不动，正文里的旧引用照常可用）。
+  // 非安全上下文算不出 hash（''），此时只更新大小，别把原有 hash 抹掉。
+  const sha = await sha256Hex(blob);
   suspendUndo();
   try {
     await putBlob(id, blob);
     transact(() => {
-      run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
+      if (sha) run('UPDATE attachments SET size = ?, sha256 = ? WHERE id = ?', [blob.size, sha, id]);
+      else run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
     });
   } finally {
     resumeUndo();

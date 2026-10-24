@@ -50,6 +50,7 @@ export function FileRow({
   onShowRefs,
   onPick,
   pickDisabled,
+  pickLabel = '插入',
 }: {
   file: StoredFile;
   thumb?: string;
@@ -64,6 +65,8 @@ export function FileRow({
   onPick?: (f: StoredFile) => void;
   /** 挑选模式下此文件已被选：灰显，点名字/插入都不响应 */
   pickDisabled?: boolean;
+  /** 挑选按钮文案（默认「插入」；音乐面板传「加入」） */
+  pickLabel?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -143,7 +146,7 @@ export function FileRow({
               {onPick && (
                 <button type="button" className="btn btn-sm btn-primary" disabled={pickDisabled}
                   onClick={() => { if (!pickDisabled) onPick(file); }}>
-                  {pickDisabled ? '已选' : '插入'}
+                  {pickDisabled ? '已选' : pickLabel}
                 </button>
               )}
               <IconButton label="预览" onClick={() => onPreview(file)}>

@@ -16,6 +16,7 @@ import {
 import { useVersion, bump } from '../../store';
 import { FilePickInput } from '../common';
 import { PreviewModal } from '../preview';
+import { kindOf, type PreviewKind } from '../preview/kind';
 import { CollisionModal } from './CollisionModal';
 import { MergeModal } from './MergeModal';
 import { FileBatchBar } from './FileBatchBar';
@@ -34,9 +35,29 @@ import {
 } from './fileFilter';
 import { fmtSize } from './fileFormat';
 
-export function FilesSection({ onPick, pickedIds }: { onPick?: (f: StoredFile) => void; pickedIds?: Set<string> }) {
+export function FilesSection({
+  onPick,
+  pickedIds,
+  onlyKinds,
+  pickLabel,
+  compact,
+}: {
+  onPick?: (f: StoredFile) => void;
+  pickedIds?: Set<string>;
+  /** 挑选模式只列这些类型（如音乐面板只列音频） */
+  onlyKinds?: PreviewKind[];
+  /** 挑选按钮文案（默认「插入」） */
+  pickLabel?: string;
+  /** 紧凑挑选：不显示上传/映射/筛选/批量，只留文件列表 */
+  compact?: boolean;
+}) {
   const v = useVersion();
-  const files = useMemo(() => listFiles(), [v]);
+  const files = useMemo(() => {
+    const all = listFiles();
+    return onlyKinds && onlyKinds.length
+      ? all.filter((f) => onlyKinds.includes(kindOf(f.name, f.mime)))
+      : all;
+  }, [v, onlyKinds]);
   // 引用数排序/筛选要用：一次算好整张表，避免在比较函数里反复查库。
   // 口径与行尾「未被引用」一致：事件 + 头像/图标 + 集图标
   const refCounts = useMemo(() => {
@@ -114,59 +135,71 @@ export function FilesSection({ onPick, pickedIds }: { onPick?: (f: StoredFile) =
 
   return (
     <div>
-      {onPick && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
-      <div className="row-actions">
-        <button className="btn btn-primary btn-sm" onClick={openPicker} disabled={busy}>
-          {busy ? '处理中…' : '＋ 上传文件'}
-        </button>
-        <button className="btn btn-sm" onClick={() => setMappingOpen(true)} disabled={busy}>
-          ＋ 添加映射文件
-        </button>
-        <span className="muted small">
-          {visible.length === files.length
-            ? `${files.length} 个文件`
-            : `匹配 ${visible.length} / ${files.length} 个文件`}
-          {visible.length ? ` · ${fmtSize(totalSize)}` : ''}
-        </span>
-      </div>
-      <FilePickInput inputRef={inputRef} accept="*/*" multiple onFiles={(files) => void upload(files)} />
+      {onPick && !compact && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
+      {!compact && (
+        <>
+          <div className="row-actions">
+            <button className="btn btn-primary btn-sm" onClick={openPicker} disabled={busy}>
+              {busy ? '处理中…' : '＋ 上传文件'}
+            </button>
+            <button className="btn btn-sm" onClick={() => setMappingOpen(true)} disabled={busy}>
+              ＋ 添加映射文件
+            </button>
+            <span className="muted small">
+              {visible.length === files.length
+                ? `${files.length} 个文件`
+                : `匹配 ${visible.length} / ${files.length} 个文件`}
+              {visible.length ? ` · ${fmtSize(totalSize)}` : ''}
+            </span>
+          </div>
+          <FilePickInput inputRef={inputRef} accept="*/*" multiple onFiles={(files) => void upload(files)} />
 
-      <FileFilters
-        filter={filter}
-        onChange={(patch) => setFilter((f) => ({ ...f, ...patch }))}
-        sort={sort}
-        onSort={setSort}
-        open={filtersOpen}
-        onToggle={() => {
-          setFiltersOpen((x) => !x);
-          setSortOpen(false);
-        }}
-        sortOpen={sortOpen}
-        onToggleSort={() => {
-          setSortOpen((x) => !x);
-          setFiltersOpen(false);
-        }}
-        onReset={() => setFilter(EMPTY_FILTER)}
-        batch={batch}
-        onBatch={toggleBatch}
-      />
+          <FileFilters
+            filter={filter}
+            onChange={(patch) => setFilter((f) => ({ ...f, ...patch }))}
+            sort={sort}
+            onSort={setSort}
+            open={filtersOpen}
+            onToggle={() => {
+              setFiltersOpen((x) => !x);
+              setSortOpen(false);
+            }}
+            sortOpen={sortOpen}
+            onToggleSort={() => {
+              setSortOpen((x) => !x);
+              setFiltersOpen(false);
+            }}
+            onReset={() => setFilter(EMPTY_FILTER)}
+            batch={batch}
+            onBatch={toggleBatch}
+          />
 
-      {batch && (
-        <FileBatchBar
-          count={selectedVisible.length}
-          total={visible.length}
-          allSelected={allSelected}
-          targetName={selectedVisible[0]?.name}
-          onToggleAll={toggleAll}
-          onMerge={() =>
-            setMerge({ target: selectedVisible[0].id, sources: selectedVisible.slice(1).map((f) => f.id) })
-          }
-          onDelete={() => void removeSelected()}
-        />
+          {batch && (
+            <FileBatchBar
+              count={selectedVisible.length}
+              total={visible.length}
+              allSelected={allSelected}
+              targetName={selectedVisible[0]?.name}
+              onToggleAll={toggleAll}
+              onMerge={() =>
+                setMerge({ target: selectedVisible[0].id, sources: selectedVisible.slice(1).map((f) => f.id) })
+              }
+              onDelete={() => void removeSelected()}
+            />
+          )}
+        </>
+      )}
+
+      {compact && (
+        <p className="muted small">
+          {files.length ? `文件库里 ${files.length} 首音频` : '文件库里还没有音频'}
+        </p>
       )}
 
       {files.length === 0 ? (
-        <p className="muted">还没有文件。上传后可在事件正文里插入引用（编辑器工具栏的「插图」）。</p>
+        <p className="muted">
+          {compact ? '文件库里还没有音频。先用上面的「从本地添加」上传。' : '还没有文件。上传后可在事件正文里插入引用（编辑器工具栏的「插图」）。'}
+        </p>
       ) : visible.length === 0 ? (
         <div className="empty">
           <p>没有匹配的文件</p>
@@ -190,6 +223,7 @@ export function FilesSection({ onPick, pickedIds }: { onPick?: (f: StoredFile) =
               onShowRefs={setRefsFile}
               onPick={onPick}
               pickDisabled={pickedIds?.has(f.id)}
+              pickLabel={pickLabel}
             />
           ))}
         </ul>

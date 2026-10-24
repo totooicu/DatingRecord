@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import type { StoredFile } from '../../core/repo/files';
 import { FilesSection } from './FilesSection';
+import type { PreviewKind } from '../preview';
 import { MigrateSection } from './MigrateSection';
 import { SMALL_LIMIT_OPTIONS, getSmallLimit, setSmallLimit } from '../filePrefs';
 import { fmtSize } from './fileFormat';
@@ -36,7 +37,32 @@ function SmallLimitRow() {
   );
 }
 
-export function FilesPanel({ onPick, pickedIds }: { onPick?: (f: StoredFile) => void; pickedIds?: Set<string> }) {
+export function FilesPanel({
+  onPick,
+  pickedIds,
+  onlyKinds,
+  pickLabel,
+  compact,
+}: {
+  onPick?: (f: StoredFile) => void;
+  pickedIds?: Set<string>;
+  onlyKinds?: PreviewKind[];
+  pickLabel?: string;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <div className="files-panel">
+        <FilesSection
+          onPick={onPick}
+          pickedIds={pickedIds}
+          onlyKinds={onlyKinds}
+          pickLabel={pickLabel}
+          compact
+        />
+      </div>
+    );
+  }
   return (
     <div className="files-panel">
       <FilesSection onPick={onPick} pickedIds={pickedIds} />

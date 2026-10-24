@@ -354,3 +354,65 @@
     max-height: calc(100dvh - 80px);
   }
 }
+
+/* ---------- 歌单预览 ---------- */
+.playlist-preview {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.playlist-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.playlist-preview-name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.playlist-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.playlist-preview-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.playlist-preview-list li:last-child {
+  border-bottom: none;
+}
+
+.playlist-preview-idx {
+  width: 22px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.playlist-preview-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.playlist-preview-missing .playlist-preview-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+

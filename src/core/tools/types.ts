@@ -7,7 +7,7 @@
 // 两条路最终落到同一个实现，不会出现「AI 能改的字段 UI 改不了」这种分叉。
 
 /** 工具分组：目录展示、CLI 子命令前缀、AI 提示里的分类都用它 */
-export type ToolGroup = 'person' | 'event' | 'chat' | 'collection' | 'file' | 'snapshot' | 'io' | 'system' | 'remote';
+export type ToolGroup = 'person' | 'event' | 'chat' | 'collection' | 'file' | 'playlist' | 'snapshot' | 'io' | 'system' | 'remote';
 
 export type ToolParamType = 'string' | 'number' | 'boolean' | 'object' | 'array';
 
@@ -47,6 +47,7 @@ export const GROUP_LABELS: Record<ToolGroup, string> = {
   chat: '聊天消息',
   collection: '事件集',
   file: '附件',
+  playlist: '歌单',
   snapshot: '快照',
   io: '导入导出 / 分享',
   system: '系统',

@@ -7,21 +7,108 @@
   gap: 16px;
 }
 
+/* ---- 歌单文件区 ---- */
+
+.music-playlists {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.music-pl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.music-pl-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.music-save-state {
+  font-size: 12px;
+  color: var(--muted);
+}
+.music-save-state.is-error {
+  color: var(--danger);
+}
+.music-pl-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.music-pl-select {
+  flex: 1 1 150px;
+  min-width: 0;
+  height: 38px;
+}
+.music-pl-bar .music-add-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+}
+.music-pl-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.music-pl-action {
+  border: none;
+  background: none;
+  color: var(--primary);
+  padding: 2px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.music-pl-action.danger,
+.music-pl-action.danger:hover {
+  color: var(--danger);
+  background: none;
+}
+.music-save-queue {
+  padding: 9px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+}
+.music-missing {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+.music-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.music-check input {
+  width: auto;
+}
+
 .music-now {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 14px;
-  background: var(--bg-card, #fff);
+  background: var(--panel);
   border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow);
 }
 
 .music-disc {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: var(--accent, #d9536b);
+  background: var(--primary);
   color: #fff;
   display: grid;
   place-items: center;
@@ -45,10 +132,10 @@
   gap: 10px;
   padding: 0 4px;
 }
-.music-time { min-width: 38px; text-align: center; color: var(--muted, #888); }
+.music-time { min-width: 38px; text-align: center; color: var(--muted); }
 .music-range {
   flex: 1;
-  accent-color: var(--accent, #d9536b);
+  accent-color: var(--primary);
 }
 
 .music-controls {
@@ -62,10 +149,11 @@
   height: 44px;
   border-radius: 50%;
   border: none;
-  background: var(--bg-card, #fff);
+  background: var(--panel);
+  color: var(--text);
   font-size: 18px;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow);
   transition: transform 0.1s;
 }
 .music-btn:active { transform: scale(0.94); }
@@ -73,7 +161,7 @@
 .music-btn-play {
   width: 60px;
   height: 60px;
-  background: var(--accent, #d9536b);
+  background: var(--primary);
   color: #fff;
   font-size: 22px;
 }
@@ -93,14 +181,19 @@
   flex: 1;
   padding: 10px;
   border-radius: 10px;
-  border: 1px solid var(--border, #ddd);
-  background: var(--bg-card, #fff);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
   cursor: pointer;
 }
 .music-add-btn.primary {
-  background: var(--accent, #d9536b);
+  background: var(--primary);
   color: #fff;
   border-color: transparent;
+}
+.music-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .music-list {
@@ -109,22 +202,22 @@
   padding: 0;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--bg-card, #fff);
+  background: var(--panel);
 }
 .music-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border, #f0f0f0);
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 .music-row:last-child { border-bottom: none; }
-.music-row.on { background: var(--accent-soft, rgba(217,83,107,0.08)); }
+.music-row.on { background: color-mix(in srgb, var(--primary) 9%, transparent); }
 .music-row-idx {
   width: 24px;
   text-align: center;
-  color: var(--muted, #888);
+  color: var(--muted);
   font-size: 13px;
 }
 .music-row-name { flex: 1; font-size: 14px; }
@@ -140,7 +233,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: var(--muted, #999);
+  color: var(--muted);
   font-size: 10px;
   cursor: pointer;
   line-height: 1;
@@ -151,32 +244,32 @@
 .music-remove {
   border: none;
   background: none;
-  color: var(--muted, #999);
+  color: var(--muted);
   font-size: 14px;
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 6px;
 }
 .music-remove:hover {
-  color: var(--danger, #d9536b);
-  background: rgba(217, 83, 107, 0.1);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .music-name-input {
   flex: 1;
   padding: 10px 12px;
-  border: 1px solid var(--border, #ddd);
+  border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 14px;
-  background: var(--bg-card, #fff);
+  background: var(--panel);
 }
 
 .map-wrap {
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--bg-card, #fff);
-  border: 1px solid var(--border, #eee);
+  background: var(--panel);
+  border: 1px solid var(--border);
 }
 .map-canvas {
   width: 100%;
@@ -200,7 +293,7 @@
   height: 320px;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--border, #eee);
+  border: 1px solid var(--border);
   z-index: 0;
 }
 
@@ -215,7 +308,7 @@
   padding: 20px;
 }
 .music-picker {
-  background: var(--bg-card, #fff);
+  background: var(--panel);
   border-radius: 14px;
   max-width: 420px;
   width: 100%;
@@ -228,7 +321,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border, #eee);
+  border-bottom: 1px solid var(--border);
 }
 .music-picker-head button {
   border: none;
@@ -247,7 +340,7 @@
   padding: 10px 16px;
   cursor: pointer;
 }
-.music-picker-row:hover { background: var(--bg-hover, #f5f5f5); }
+.music-picker-row:hover { background: var(--bg); }
 .music-picker-name { flex: 1; font-size: 14px; }
 
 .music-pick-back {
@@ -255,7 +348,7 @@
   align-items: center;
   gap: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border, #eee);
+  border-bottom: 1px solid var(--border);
 }
 
 /* 已在歌单里的文件：灰显禁选 */

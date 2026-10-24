@@ -352,7 +352,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 |---|---|
 | `src/core/runtime/store.ts` | 任务/服务的响应式数据中心（pub/sub，仿 `toast` 模式）：`useTasks/useServices` + `addTask/finishTask/markTaskRead/updateTask/removeTask` + `registerService/setServiceRunning/setServiceAutostart/setServiceDetail`。只存状态，不碰 UI。**自启动存档**也归这里：`dr.svc.autostart` 一张表记所有开了自启动的服务，`registerService(s, start?)` 接收服务交出的启动函数，`restoreAutostartServices()` 在应用加载完毕后统一点名恢复 |
 | `src/core/runtime/aiChat.ts` | AI 聊天全局单例：轮次执行态（busy/activity/items/history/session）原来在 `LabAiSection` 的 state 里，离开即卸载丢失；现在 `sendTurn` 由单例驱动，页面只订阅。发送即 `addTask({kind:'ai-chat'})`，成功 `stageAiTurn` 后 `finishTask(true)`，失败 `revertAiTurn` 后 `finishTask(false)` |
-| `src/core/runtime/music.ts` | 背景音乐服务单例：`<audio>` 用 `document.createElement` 全局托管（原来在 `MusicPanel` 里，离开即停）；`registerService(..., startService)` 交出启动函数，自启动存 store 统一存档（旧 key `music-autostart` 首次开机自动搬迁并清除）；**服务运行态由 audio 的 play/pause 事件驱动**——播放/暂停/切歌/自动下一首全经过事件，head 图标不会和实际声音脱节 |
+| `src/core/runtime/music.ts` | 背景音乐服务单例：`<audio>` 用 `document.createElement` 全局托管（原来在 `MusicPanel` 里，离开即停）；`registerService(..., startService)` 交出启动函数，自启动存 store 统一存档（旧 key `music-autostart` 首次开机自动搬迁并清除）；**服务运行态由 audio 的 play/pause 事件驱动**——播放/暂停/切歌/自动下一首全经过事件，head 图标不会和实际声音脱节。歌单（`.drpl`）选中后是队列的持久化真相：增删/排序防抖 350ms 写回文件，`pagehide` / `visibilitychange:hidden` 时强制落盘；没选歌单则退回旧的 localStorage 临时队列 |
 | `src/core/runtime/locationAuto.ts` | 定位「自动打点」服务单例：每秒取 GPS、按阈值去重写回 CSV。定时器与数据在单例里——离开定位面板照打（服务语义）；面板 `LocationPanel` 只是订阅式视图 + 地图渲染 |
 | `src/core/runtime/nav.ts` | 全局导航（`setNavHandler`/`navigate`，仿 `setEventOpener` 一族）：App 注册实现，head 图标/服务页借此跨页跳到指定设置子页 |
 | `src/ui/runtime/HeadStatus.tsx` | head 右侧状态区：活动/未读任务图标（运行中蓝色脉冲、完成绿、失败红，带未读角标）、运行中服务图标（悬停显示 `标题 · 当前活动 · 待办`）、「服务」「任务」入口。挂在主页 head、时间线/日历 `PageHead` 与设置页 `PageHead` 的 right 槽 |
@@ -366,6 +366,36 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 **回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R9：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红、播放/暂停驱动服务图标）；定位打点服务另有 `node tools/e2e/location-service-e2e.mjs`（L1–L5）；自启动存档迁移（旧 `music-autostart` key 的老用户）有 `node tools/e2e/music-migrate-e2e.mjs`（M1–M3）。
 
 **顺带修的预存 bug**：`7dc62fb` 抽歌单持久化时丢了"空歌单则收养所有音频"的逻辑——"从本地添加"上传后文件进了文件库但歌单显示 0 首。现在 `getPlaylist()` 在 key 从未存在过时播种为全部音频（落库一次，之后用户删空就是真的空）；`useUploader.upload()` 返回本次落库的文件，MusicPanel 上传后直接 `addTracks`，两种路径都兜住。
+
+### 1.12a 歌单：文件库里的 `.drpl`
+
+**定位**：歌单不做独立表，就是文件库里一条普通附件。这样备份 / 坚果云同步 / 分享 / 隐私 / 类型筛选 / 预览全部自动覆盖，后续功能（事件正文引用、数据分析选歌、AI 操作）只需要认 `file.id`，不必另接一套存储。
+
+**格式**（`core/music/format.ts`）：扩展名 `.drpl`，MIME `application/x-dr-playlist`，正文是 JSON：
+
+```json
+{ "format": "dr.playlist", "version": 1, "name": "夜跑", "description": "",
+  "createdAt": "…", "updatedAt": "…",
+  "tracks": [{ "id": "f_…", "storedId": "sha-…", "name": "a.mp3", "mime": "audio/mpeg", "size": 123 }] }
+```
+
+曲目同时记本机附件 `id`、内容寻址 `storedId` 和名称快照。解析按 **id → storedId → 唯一文件名** 依次兜底，换设备 / 重新导入后仍能对上；对不上的条目进 `missing` 计数并显示，编辑时不会把缺失条目静默丢掉。写入时 `name` 以文件名去 `.drpl` 为准（改名同时改文件名），`updatedAt` 自动刷新。
+
+**代码分工**：
+
+| 文件 | 职责 |
+|---|---|
+| `core/music/format.ts` | 纯格式层：判定、解析/序列化、名称清洗、`resolvePlaylistTracks` |
+| `core/music/playlistFile.ts` | 文件库 CRUD：`listPlaylists/createPlaylist/readPlaylist/writePlaylist/updatePlaylistMeta/deletePlaylist/importPlaylistText`；选中态存 localStorage `dr.music.active-playlist` |
+| `core/runtime/music.ts` | 队列真相：选中歌单后增删/排序防抖写回；`saveChain` 串行 + `saveRev` 版本号 + `dirty` 门，防止旧快照后落盖掉新内容；`pagehide` / `visibilitychange:hidden` 强制 flush；`openPlaylist/detachPlaylist/saveQueueAsPlaylist/renameActivePlaylist/deleteActivePlaylist` |
+| `ui/panel/MusicPanel.tsx` | 歌单条：下拉切换、新建（可带上当前队列）、导入、改名/改描述、删除、保存状态与缺失提示 |
+| `ui/preview/PlaylistPreview.tsx` | 文件库点开 `.drpl` 的预览：曲目表 + 缺失项 + 一键播放 |
+| `core/tools/playlists.ts` | `playlist.*` 六个工具，CLI / AI 与 UI 共用实现 |
+| `ui/files/*` + `ui/preview/kind.ts` | 新增「歌单」筛选类型；`FilesSection compact` 给音乐面板提供只列音频的紧凑选择器 |
+
+**运行时规则**：没选歌单时仍用旧的 localStorage 队列（UI 显示「临时队列（未保存）」），删除当前歌单或歌单文件被外部删掉时，曲目保留为临时队列，不连坐删除音频；开机按 `active-playlist` 异步恢复，恢复失败自动退回临时队列。`writePlaylist` 走 `overwriteFileContent`，后者现在会同步重算 `sha256`（`stored_id` 不变，旧引用不受影响）。
+
+**回归**：`node tools/e2e/music-playlist-e2e.mjs [url]`（P1–P7：上传+新建、文件库筛选/预览、刷新恢复、改名改描述、增删排序写回、导入 `.drpl`、删除后回临时队列）。
 
 ---
 

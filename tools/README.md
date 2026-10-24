@@ -28,6 +28,7 @@
 | `e2e/runtime-e2e.mjs` | 「服务 / 任务」两层体系回归（R1–R9）：AI 回复中离开聊天页不中断、head 出图标、完成变绿/失败变红、点图标跳来源页并清通知（进行中只跳不清）、主动打开来源页也清通知；服务/任务入口页可达；音乐自启动开启并刷新后 head 出服务图标、点图标跳音乐页；默认不开自启动；任务页列出/跳转/手动清除；面板播放/暂停直接驱动服务图标（播 → 出、停 → 消） | 需要 preview 服务 + 矩阵假服务：`FAKE=http://localhost:8794/v1 node tools/e2e/runtime-e2e.mjs http://localhost:4173/`。结尾汇总通过/失败数，失败时 exit 1 |
 | `e2e/location-service-e2e.mjs` | 定位「自动打点」后台服务回归（L1–L5）：开机即注册未运行服务；开始打点 head 出图标；**离开面板服务照跑**（图标在、行数继续涨——单例化后才成立）；服务页显示运行中、点「打开」回面板；停止后图标消失 | 需要 preview 服务：`node tools/e2e/location-service-e2e.mjs http://localhost:4173/`。定位权限用 Playwright context 级 mock，不需要真 GPS |
 | `e2e/music-migrate-e2e.mjs` | 自启动存档迁移回归（M1–M3）：旧版 `music-autostart` key 的老用户，升级后刷新应兑现自启动（head 出图标）、搬进统一存档 `dr.svc.autostart`、旧 key 清除 | 需要 preview 服务：`node tools/e2e/music-migrate-e2e.mjs http://localhost:4173/`。会往页面传一首 `/tmp/tone.wav` |
+| `e2e/music-playlist-e2e.mjs` | 歌单 `.drpl` 回归（P1–P7）：上传音频后新建歌单并带上队列、文件库按「歌单」筛选与预览、刷新恢复选中态、改名/描述、增删/排序写回文件、导入 `.drpl` 按 storedId/文件名对上曲目、删除当前歌单后曲目退回临时队列 | 需要 preview 服务：`node tools/e2e/music-playlist-e2e.mjs http://localhost:4173/`。自动生成 wav 与 `.drpl`，依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 
 ## src/core/tools/
 
