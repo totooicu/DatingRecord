@@ -223,6 +223,7 @@ export function MusicPanel() {
             <span className="music-row-name" onClick={() => playAt(i)}>{t.name}</span>
             <span className="music-row-size muted small">{(t.size / 1024 / 1024).toFixed(1)}M</span>
             <button className="music-remove" onClick={() => {
+              if (!confirm(`把「${t.name}」移出歌单？`)) return;
               if (current?.id === t.id) { setCurrent(null); setPlaying(false); }
               setTracks((ts) => ts.filter((x) => x.id !== t.id));
             }} title="移出歌单">✕</button>
