@@ -21,6 +21,7 @@ import { PanelHubSection } from './PanelHubSection';
 import { MusicPanel } from '../panel/MusicPanel';
 import { LocationPanel } from '../panel/LocationPanel';
 import { PreciseLocationPanel } from '../panel/PreciseLocationPanel';
+import { ServicesPanel } from '../background/ServicesPanel';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
@@ -132,6 +133,8 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'panelLocation' && <LocationPanel />}
 
         {active === 'panelPrecise' && <PreciseLocationPanel />}
+
+        {active === 'background' && <ServicesPanel />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>

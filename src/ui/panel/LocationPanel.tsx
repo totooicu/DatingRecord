@@ -11,6 +11,7 @@ import { getBlob } from '../../core/db/blob';
 import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
+import { upsertService } from '../../core/background/center';
 
 function getAmapKey(): string {
   try { return localStorage.getItem('dr.amapKey') || ''; } catch { return ''; }
@@ -306,12 +307,22 @@ export function LocationPanel() {
     setAuto(true);
     tick();
     timerRef.current = window.setInterval(tick, 1000);
+    upsertService({
+      id: 'location-auto', name: '自动打点', icon: '📍',
+      running: true, autostart: false,
+      onStop: () => stopAuto(),
+    });
     toast('自动打点已开始（每秒）');
   };
 
   const stopAuto = () => {
     setAuto(false);
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    upsertService({
+      id: 'location-auto', name: '自动打点', icon: '📍',
+      running: false, autostart: false,
+      onStart: () => startAuto(),
+    });
   };
 
   // 卸载时清定时器

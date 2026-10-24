@@ -37,7 +37,8 @@ export type SettingsKey =
   | 'panel'
   | 'panelMusic'
   | 'panelLocation'
-  | 'panelPrecise';
+  | 'panelPrecise'
+  | 'background';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
@@ -79,6 +80,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
   { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹', group: 'trial' },
   { key: 'panelPrecise', title: '高精度定位', hint: '高德官方 demo 诊断', group: 'trial' },
+  { key: 'background', title: '后台服务', hint: '运行中的服务管理', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
