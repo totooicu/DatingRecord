@@ -2,7 +2,14 @@
 import type { StoredFile } from '../../core/repo/files';
 import { kindOf, type PreviewKind } from '../preview';
 
-export type FileSort = 'new' | 'old' | 'name' | 'size-desc' | 'size-asc';
+export type FileSort =
+  | 'new'
+  | 'old'
+  | 'name'
+  | 'size-desc'
+  | 'size-asc'
+  | 'refs-desc'
+  | 'refs-asc';
 
 export interface FileFilter {
   q: string;
@@ -44,7 +51,12 @@ function kb(value: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export function applyFilter(files: StoredFile[], f: FileFilter, sort: FileSort): StoredFile[] {
+export function applyFilter(
+  files: StoredFile[],
+  f: FileFilter,
+  sort: FileSort,
+  refCounts: Record<string, number>,
+): StoredFile[] {
   const q = f.q.trim().toLowerCase();
   const min = kb(f.minKB);
   const max = kb(f.maxKB);
@@ -76,6 +88,19 @@ export function applyFilter(files: StoredFile[], f: FileFilter, sort: FileSort):
       break;
     case 'size-asc':
       out.sort((a, b) => a.size - b.size);
+      break;
+    case 'refs-desc':
+      // 引用数相同的按上传时间新到旧，列表不会因为排序来回抖
+      out.sort(
+        (a, b) =>
+          (refCounts[b.id] ?? 0) - (refCounts[a.id] ?? 0) || b.createdAt.localeCompare(a.createdAt),
+      );
+      break;
+    case 'refs-asc':
+      out.sort(
+        (a, b) =>
+          (refCounts[a.id] ?? 0) - (refCounts[b.id] ?? 0) || b.createdAt.localeCompare(a.createdAt),
+      );
       break;
     default:
       out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -17,6 +17,8 @@ const SORTS: { key: FileSort; label: string }[] = [
   { key: 'name', label: '名称 A→Z' },
   { key: 'size-desc', label: '大小：大到小' },
   { key: 'size-asc', label: '大小：小到大' },
+  { key: 'refs-desc', label: '引用：多到少' },
+  { key: 'refs-asc', label: '引用：少到多' },
 ];
 
 export function FileFilters({

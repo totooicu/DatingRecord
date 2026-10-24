@@ -6,7 +6,13 @@
 // 正文引用存 file:<storedId>，方括号里另写一份文件名当展示名；
 // 定位只看 id，所以这里改名不会让既有引用失效（显示名保持插入时的样子）。
 import { useMemo, useState } from 'react';
-import { deleteFile, fileRefSyntax, listFiles, type StoredFile } from '../../core/repo/files';
+import {
+  countRefs,
+  deleteFile,
+  fileRefSyntax,
+  listFiles,
+  type StoredFile,
+} from '../../core/repo/files';
 import { useVersion, bump } from '../../store';
 import { PreviewModal } from '../preview';
 import { CollisionModal } from './CollisionModal';
@@ -24,6 +30,12 @@ import { fmtSize } from './fileFormat';
 export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const v = useVersion();
   const files = useMemo(() => listFiles(), [v]);
+  // 引用数排序要用：一次算好整张表，避免在 sort 的比较函数里反复查库
+  const refCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const f of files) map[f.id] = countRefs(f);
+    return map;
+  }, [files]);
   const thumbs = useThumbs(files);
   const [tip, setTip] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -38,7 +50,10 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
   const [mappingOpen, setMappingOpen] = useState(false);
 
-  const visible = useMemo(() => applyFilter(files, filter, sort), [files, filter, sort]);
+  const visible = useMemo(
+    () => applyFilter(files, filter, sort, refCounts),
+    [files, filter, sort, refCounts],
+  );
   const selectedVisible = visible.filter((f) => selected.has(f.id));
   const allSelected = visible.length > 0 && selectedVisible.length === visible.length;
 
