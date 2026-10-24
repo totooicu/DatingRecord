@@ -23,7 +23,7 @@ function loadAmap(): Promise<any> {
   if (amapLoading) return amapLoading;
   amapLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = `https://webapi.amap.com/maps?v=2.0&key=${key}`;
+    s.src = `https://webapi.amap.com/maps?v=1.4.15&key=${key}`;
     s.onload = () => resolve((window as any).AMap);
     s.onerror = reject;
     document.head.appendChild(s);
