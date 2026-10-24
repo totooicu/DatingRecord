@@ -5,6 +5,15 @@ import { EncUnlock } from './ui/enc/EncUnlock';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { initDb, probeEnc } from './core/db';
 import { unlock } from './core/lock';
+import {
+  bootClient,
+  prepareClientBoot,
+  savedHostConfig,
+  startHost,
+  takeRemoteTip,
+  type RemoteConfig,
+} from './core/remote';
+import { showToast } from './ui/toast';
 import './styles.css';
 
 const el = document.getElementById('root')!;
@@ -97,44 +106,93 @@ const hardTimer = window.setTimeout(() => {
 //
 // 顺序不能反——initDb 内部要 new sql.Database(明文)，密文状态下它什么都读不出来。
 // 所以「加密且锁着」时先挂一个只有解锁界面的 React 树，解锁成功再走原来的路。
-probeEnc()
-  .then((status) => {
-    if (status !== 'locked') {
+//
+// 跨设备客户端是例外：它不读本地库，直接连服务端；本地加不加密都不影响它。
+// 但必须先 prepareClientBoot() 把本地落盘堵住，再 initDb（迁移会 markDirty）。
+const clientCfg = prepareClientBoot();
+
+/** 统一的 React 挂载：本地 / 远程成功后都走这里 */
+function renderApp(): void {
+  createRoot(el).render(
+    <ErrorBoundary>
+      <LockGate>
+        <App />
+      </LockGate>
+    </ErrorBoundary>,
+  );
+  finishBoot();
+  registerServiceWorker();
+  const tip = takeRemoteTip();
+  if (tip) showToast(tip, 3200);
+  // 服务端刷新后自动恢复：不断开中继，客户端就还能继续用
+  const hostCfg = savedHostConfig();
+  if (hostCfg) {
+    void startHost(hostCfg).catch(() => {
+      /* 失败会由远程状态条显示；本机数据照常可用 */
+    });
+  }
+}
+
+if (clientCfg) {
+  startRemote(clientCfg);
+} else {
+  probeEnc()
+    .then((status) => {
+      if (status !== 'locked') {
+        startDb();
+        return;
+      }
+      createRoot(el).render(
+        <ErrorBoundary>
+          <EncUnlock
+            onUnlocked={() => {
+              // 口令刚验过一次，应用锁没必要再问一遍
+              unlock();
+              startDb();
+            }}
+          />
+        </ErrorBoundary>,
+      );
+      finishBoot();
+    })
+    .catch(() => {
+      // 探测失败（IndexedDB 被禁之类）别在这儿卡死，照常尝试启动
       startDb();
-      return;
-    }
-    createRoot(el).render(
-      <ErrorBoundary>
-        <EncUnlock
-          onUnlocked={() => {
-            // 口令刚验过一次，应用锁没必要再问一遍
-            unlock();
-            startDb();
-          }}
-        />
-      </ErrorBoundary>,
-    );
-    finishBoot();
-  })
-  .catch(() => {
-    // 探测失败（IndexedDB 被禁之类）别在这儿卡死，照常尝试启动
-    startDb();
-  });
+    });
+}
+
+/** 客户端启动：连上服务端、换库成功后才渲染；失败就退回本地库 */
+function startRemote(cfg: RemoteConfig): void {
+  setTip('正在连接服务端…', null);
+  initDb(setTip)
+    .then(async () => {
+      try {
+        await bootClient(cfg, (msg) => setTip(msg, null));
+        window.clearTimeout(slowTimer);
+        window.clearTimeout(hardTimer);
+        renderApp();
+      } catch {
+        window.clearTimeout(slowTimer);
+        window.clearTimeout(hardTimer);
+        // 本地库一直在盘上，渲染出来就是自己的数据；错误由远程状态条说明
+        renderApp();
+        showToast('连不上服务端，已显示本地数据', 3600);
+      }
+    })
+    .catch((err: unknown) => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(hardTimer);
+      const raw = err instanceof Error ? err.message : String(err);
+      finishBoot(errorCard('启动失败', raw));
+    });
+}
 
 function startDb(): void {
   initDb(setTip)
     .then(() => {
       window.clearTimeout(slowTimer);
       window.clearTimeout(hardTimer);
-      createRoot(el).render(
-        <ErrorBoundary>
-          <LockGate>
-            <App />
-          </LockGate>
-        </ErrorBoundary>,
-      );
-      finishBoot();
-      registerServiceWorker();
+      renderApp();
     })
     .catch((err: unknown) => {
       window.clearTimeout(slowTimer);

@@ -85,6 +85,14 @@ function restore(step: Step): void {
 
 // ---------------- 事务钩子 ----------------
 
+/** 换掉整个库实例后清空撤销栈：旧快照指向另一份数据，留着会互相污染 */
+export function resetUndo(): void {
+  undoStack = [];
+  redoStack = [];
+  stepOpen = false;
+  emit('write');
+}
+
 /** 批量/特殊操作期间暂停记账（导入、示例数据、迁移） */
 export function suspendUndo(): void {
   suspended++;

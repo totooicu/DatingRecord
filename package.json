@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build && node scripts/bust-sw.mjs && node scripts/gen-version.mjs",
     "build:cli": "node scripts/build-cli.mjs",
     "dr": "node dist-cli/cli.cjs",
+    "relay": "node tools/remote-relay/server.mjs",
     "preview": "vite preview --port 4173 --host"
   },
   "dependencies": {

@@ -27,6 +27,30 @@ export function setPersistSink(fn: PersistSink | null): void {
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let dirty = false;
 
+/**
+ * 落盘之后的观察者（已经写成功才通知）。
+ *
+ * 跨设备操作里，服务端要把它自己的每一次本地写入推给客户端；
+ * 挂在 persist 上就不用去 44 个写入口逐个补一遍广播。
+ */
+type PersistObserver = (bytes: Uint8Array) => void;
+const observers = new Set<PersistObserver>();
+
+export function onPersisted(fn: PersistObserver): () => void {
+  observers.add(fn);
+  return () => observers.delete(fn);
+}
+
+function notifyPersisted(bytes: Uint8Array): void {
+  observers.forEach((fn) => {
+    try {
+      fn(bytes);
+    } catch {
+      /* 观察者失败不能影响落盘 */
+    }
+  });
+}
+
 export function markDirty(): void {
   dirty = true;
   if (saveTimer !== null) return;
@@ -58,11 +82,14 @@ export async function persist(force = false): Promise<void> {
   // 加密开启时写密文，绝不顺带留一份明文——那等于没加密
   if (getEncStatus() === 'open') {
     await saveEncrypted(bytes);
+    notifyPersisted(bytes);
     return;
   }
   if (sink) {
     await sink(bytes);
+    notifyPersisted(bytes);
     return;
   }
   await idbPut(bytes);
+  notifyPersisted(bytes);
 }

@@ -9,6 +9,7 @@ import { TopBar } from './TopBar';
 import { UndoSnackbar } from './undo/UndoSnackbar';
 import { ToastHost } from './toast';
 import { TabBar } from './TabBar';
+import { RemoteStatusBar } from './RemoteStatusBar';
 import { Calendar } from './calendar';
 import { hasAnyPerson } from '../core/seed';
 import { getRoot } from '../core/repo/collections';
@@ -189,6 +190,7 @@ export default function App() {
         onNew={() => setQuickEvent(true)}
       />
 
+      <RemoteStatusBar />
       <div className="stack">
         {listDetail && view.s === 'persons' && (
           <PersonsPane

@@ -1,0 +1,131 @@
+/* ---------- 跨设备操作 ---------- */
+.remote-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.remote-section .card {
+  margin-bottom: 0;
+}
+
+.remote-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--side);
+}
+
+.remote-badge-on {
+  color: #fff;
+  background: var(--primary);
+}
+
+.remote-line {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.remote-line code,
+.remote-cmd {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.remote-token-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.remote-token-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.remote-share {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfaf8;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.remote-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.remote-hint {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: #fbfaf8;
+}
+
+.remote-cmd {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1eee9;
+  overflow-wrap: anywhere;
+}
+
+.remote-ok {
+  margin: 0;
+  color: #2f9e44;
+}
+
+/* 全局状态条：数据源不是本机时必须一眼可见 */
+.remote-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 14px 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.remote-bar-client {
+  color: #8a3d12;
+  background: #fff4e6;
+  border: 1px solid #f0c9a0;
+}
+
+.remote-bar-host {
+  color: #1c5c34;
+  background: #ebfbee;
+  border: 1px solid #b9e4c5;
+}
+
+.remote-bar-error {
+  color: #8a1f2d;
+  background: #fdecef;
+  border: 1px solid #efb9c4;
+}
+
+.remote-bar .btn {
+  flex: none;
+}
+
+@media (min-width: 1024px) {
+  .remote-bar {
+    max-width: 840px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}

@@ -36,6 +36,12 @@ export function BackupHubSection({ onPick }: { onPick: (k: SettingsKey) => void 
       desc: '用四步向导挑事件集、人物和分享程度，导出 .drshare.zip。',
       hint: '导出前选程度 · 导入前先预览',
     },
+    {
+      key: 'remote',
+      title: '跨设备操作',
+      desc: '把本机数据作为服务端，另一台设备直接读写；断开后客户端回到自己的库。',
+      hint: '服务端 / 客户端 · 实时切换数据源',
+    },
   ];
 
   return (
