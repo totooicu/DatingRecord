@@ -47,6 +47,17 @@ function parseCsv(text: string): Row[] {
   return out;
 }
 
+/** 两点间距离（米），haversine */
+function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
 export function LocationPanel() {
   const [fileId, setFileId] = useState<string | null>(null);
   const [fileName, setFileName] = useState('');
@@ -54,8 +65,16 @@ export function LocationPanel() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [picking, setPicking] = useState(false);
+  const [auto, setAuto] = useState(false);
+  const [threshold, setThreshold] = useState(5); // 米
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<number | null>(null);
+  // 用 ref 存最新 rows/fileId，避免 setInterval 闭包拿旧值
+  const rowsRef = useRef<Row[]>([]);
+  const fileIdRef = useRef<string | null>(null);
+  rowsRef.current = rows;
+  fileIdRef.current = fileId;
 
   const current = fileId ? getFile(fileId) : null;
 
@@ -150,6 +169,51 @@ export function LocationPanel() {
     );
   };
 
+  const tick = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const fid = fileIdRef.current;
+        if (!fid) return;
+        const last = rowsRef.current[rowsRef.current.length - 1];
+        const cur = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        let next: Row[];
+        if (last && distM(last, cur) < threshold) {
+          // 同一点：刷新最后一条的时间戳，不新增
+          next = [...rowsRef.current];
+          next[next.length - 1] = { ...last, ts: new Date().toISOString(), accuracy: pos.coords.accuracy };
+        } else {
+          // 新位置：append
+          next = [...rowsRef.current, {
+            ts: new Date().toISOString(), lat: cur.lat, lng: cur.lng,
+            accuracy: pos.coords.accuracy, note: '',
+          }];
+        }
+        rowsRef.current = next;
+        setRows(next);
+        await writeBack(next);
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+    );
+  };
+
+  const startAuto = () => {
+    if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
+    setAuto(true);
+    tick();
+    timerRef.current = window.setInterval(tick, 1000);
+    toast('自动打点已开始（每秒）');
+  };
+
+  const stopAuto = () => {
+    setAuto(false);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  };
+
+  // 卸载时清定时器
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
   return (
     <div className="music-panel">
       <div className="music-now">
@@ -174,13 +238,26 @@ export function LocationPanel() {
       {fileId && (
         <>
           <input className="music-name-input" value={note} onChange={(e) => setNote(e.target.value)}
-            placeholder="备注（可选）" />
+            placeholder="备注（可选，手动打点时带）" />
           <div className="music-add">
-            <button className="music-add-btn primary" onClick={record} disabled={busy}>
+            <button className="music-add-btn primary" onClick={record} disabled={busy || auto}>
               {busy ? '定位中…' : '记录位置'}
             </button>
             <button className="music-add-btn" onClick={locateMe}>我的位置</button>
             <button className="music-add-btn" onClick={() => { setFileId(null); setRows([]); }}>切换文件</button>
+          </div>
+          <div className="music-add" style={{ marginTop: 8 }}>
+            <label className="muted small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              去重阈值
+              <input type="number" min="0" style={{ width: 70 }} value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value) || 0)} />
+              米内视为同一点
+            </label>
+            {auto ? (
+              <button className="music-add-btn" onClick={stopAuto}>⏹ 停止自动打点</button>
+            ) : (
+              <button className="music-add-btn primary" onClick={startAuto}>▶ 自动打点（1秒/次）</button>
+            )}
           </div>
         </>
       )}
