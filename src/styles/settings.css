@@ -22,6 +22,11 @@
 
 .settings-nav,
 .settings-body {
+  /* 必须显式 width:100%：父级是纵向 flex，auto 左右的 margin 会让该子项
+     放弃拉伸、按内容宽度（min-content）排布——文件库里一条超长文件名就能把
+     整栏撑到屏幕外。给死宽度后长名字才会在卡片内换行。 */
+  width: 100%;
+  min-width: 0;
   max-width: 900px;
   margin: 0 auto;
   padding: 14px 14px 8px;
