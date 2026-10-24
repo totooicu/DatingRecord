@@ -1,14 +1,15 @@
 // 功能面板 · 背景音乐歌单。
 //
 // 音频来源两个：
-//   1. 从本地磁盘选文件（走 uploadFile 入库）
+//   1. 从本地磁盘选文件（复用文件库 useUploader：判重、撞车弹窗全走它）
 //   2. 从文件库里选已存在的文件加入歌单（复用 FilesPanel，点文件即加入）
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listFiles, type StoredFile } from '../../core/repo/files';
-import { uploadFile } from '../../core/files/upload';
 import { objectUrlFor, forgetUrl } from '../../core/db/blob';
 import { FilesPanel } from '../files';
+import { CollisionModal } from '../files/CollisionModal';
+import { useUploader } from '../files/useUploader';
 import { showToast as toast } from '../toast';
 
 type LoopMode = 'list' | 'one' | 'off';
@@ -43,9 +44,13 @@ export function MusicPanel() {
   const [url, setUrl] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = () => setTracks(listFiles().filter(isAudio));
+  const { busy, ask, inputRef, upload, openPicker } = useUploader((msg) => toast(msg));
+
+  const refresh = () => {
+    const all = listFiles();
+    setTracks((ts) => ts.length ? ts : all.filter(isAudio));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -66,20 +71,22 @@ export function MusicPanel() {
     if (audioRef.current) audioRef.current.playbackRate = speed;
   }, [speed, url]);
 
-  const pickLocal = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    for (const f of Array.from(files)) {
-      await uploadFile(f, { smallLimit: 5 * 1024 * 1024 });
-    }
-    refresh();
-  };
-
   const playAt = (i: number) => {
     const t = tracks[i];
     if (!t) return;
     setProgress(0);
     setCurrent(t);
     setPlaying(true);
+  };
+
+  const move = (i: number, dir: -1 | 1) => {
+    setTracks((ts) => {
+      const j = i + dir;
+      if (j < 0 || j >= ts.length) return ts;
+      const next = [...ts];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   };
 
   const next = (auto = false) => {
@@ -121,7 +128,6 @@ export function MusicPanel() {
     [current, tracks],
   );
 
-  // 文件选择模式：点一个文件就加入歌单
   const onPickFile = (f: StoredFile) => {
     setTracks((ts) => {
       if (ts.some((t) => t.id === f.id)) {
@@ -141,14 +147,16 @@ export function MusicPanel() {
           <span className="muted small">点文件即可加入歌单</span>
         </div>
         <FilesPanel onPick={onPickFile} />
+        {ask && <CollisionModal prompt={ask.prompt} uploading={ask.preview}
+          onDecide={(p) => ask.step(p)} onCancel={ask.cancel} />}
       </div>
     );
   }
 
   return (
     <div className="music-panel">
-      <input ref={fileInputRef} type="file" accept="audio/*" multiple hidden
-        onChange={(e) => pickLocal(e.target.files)} />
+      <input ref={inputRef} type="file" accept="audio/*" multiple hidden
+        onChange={(e) => { upload(e.target.files).then(refresh); }} />
 
       <div className="music-now">
         <div className="music-disc">{current ? '♪' : '♫'}</div>
@@ -192,20 +200,29 @@ export function MusicPanel() {
       />
 
       <div className="music-add">
-        <button className="music-add-btn primary" onClick={() => fileInputRef.current?.click()}>从本地添加</button>
+        <button className="music-add-btn primary" onClick={openPicker} disabled={busy}>
+          {busy ? '上传中…' : '从本地添加'}
+        </button>
         <button className="music-add-btn" onClick={() => setPicking(true)}>从文件库选</button>
       </div>
 
       <ul className="music-list">
         {tracks.length === 0 && <li className="muted small">还没有音频，从本地或文件库添加。</li>}
         {tracks.map((t, i) => (
-          <li key={t.id} className={`music-row${current?.id === t.id ? ' on' : ''}`} onClick={() => playAt(i)}>
+          <li key={t.id} className={`music-row${current?.id === t.id ? ' on' : ''}`}>
+            <span className="music-row-order">
+              <button className="music-move" onClick={() => move(i, -1)} disabled={i === 0} title="上移">↑</button>
+              <button className="music-move" onClick={() => move(i, 1)} disabled={i === tracks.length - 1} title="下移">↓</button>
+            </span>
             <span className="music-row-idx">{current?.id === t.id ? (playing ? '♪' : '‖') : i + 1}</span>
-            <span className="music-row-name">{t.name}</span>
+            <span className="music-row-name" onClick={() => playAt(i)}>{t.name}</span>
             <span className="music-row-size muted small">{(t.size / 1024 / 1024).toFixed(1)}M</span>
           </li>
         ))}
       </ul>
+
+      {ask && <CollisionModal prompt={ask.prompt} uploading={ask.preview}
+        onDecide={(p) => ask.step(p)} onCancel={ask.cancel} />}
     </div>
   );
 }
