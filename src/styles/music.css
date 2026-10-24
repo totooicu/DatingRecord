@@ -297,6 +297,95 @@
   z-index: 0;
 }
 
+/* ---- 功能面板 · 定位（页签 + 卡片） ---- */
+.loc-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.loc-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.loc-view[hidden] {
+  display: none;
+}
+.loc-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.loc-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.loc-coord {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.loc-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.loc-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.loc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.loc-map {
+  height: 360px;
+}
+.loc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.loc-row .music-name-input {
+  flex: 1 1 160px;
+}
+.loc-num {
+  width: 70px;
+  margin: 0 4px;
+}
+.loc-offset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.loc-offset label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.loc-empty {
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
 .music-picker-mask {
   position: fixed;
   inset: 0;

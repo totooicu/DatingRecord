@@ -12,6 +12,7 @@ const TYPE_OPTIONS: { key: PreviewKind; label: string }[] = [
   { key: 'image', label: '图片' },
   { key: 'video', label: '视频' },
   { key: 'audio', label: '音频' },
+  { key: 'location', label: '定位' },
   { key: 'playlist', label: '歌单' },
   { key: 'text', label: '文本' },
   { key: 'markdown', label: 'Markdown' },

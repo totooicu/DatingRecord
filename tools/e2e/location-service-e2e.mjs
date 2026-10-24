@@ -10,8 +10,14 @@
 // 依赖：vite preview + 浏览器定位权限（Playwright context 级 mock）。
 // 用法：node tools/e2e/location-service-e2e.mjs [url]
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+import fs from 'node:fs';
 
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
 const APP = process.argv[2] || 'http://localhost:4173/';
 
 const failures = [];
@@ -23,7 +29,10 @@ const check = (label, cond, extra = '') => {
   }
 };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
+  args: ['--no-sandbox'],
+});
 const ctx = await browser.newContext({
   viewport: { width: 390, height: 844 },
   permissions: ['geolocation'],
@@ -61,8 +70,12 @@ await p.locator('.settings-hub-title', { hasText: '定位' }).first().click();
 await p.waitForTimeout(1500);
 check('L2：定位面板打开 + leaflet 挂上', (await p.locator('.leaflet-container').count()) >= 1);
 
-await p.getByRole('button', { name: '新建文件' }).click();
+await p.getByRole('tab', { name: '文件' }).click();
+await p.waitForTimeout(500);
+await p.locator('input[placeholder*="新文件名"]').fill('后台打点');
+await p.getByRole('button', { name: '新建', exact: true }).click();
 await p.waitForTimeout(1200);
+check('L2：新建后回到「记录」页且已选中文件', (await p.locator('.loc-card-head', { hasText: '后台打点' }).count()) >= 1);
 await p.getByRole('button', { name: '▶ 自动打点' }).click();
 await p.waitForTimeout(2500);
 const svcIcons = await p.locator('.page-head-right .hs-svc').count();
@@ -96,7 +109,9 @@ await p.waitForTimeout(1200);
 check('L4：服务页「打开」跳回定位面板', (await p.locator('.leaflet-container').count()) >= 1);
 
 // ---- L5：停止后图标消失 ----
-await p.getByRole('button', { name: '⏹ 停止' }).click();
+await p.getByRole('tab', { name: '记录' }).click();
+await p.waitForTimeout(500);
+await p.getByRole('button', { name: '⏹ 停止自动打点' }).click();
 await p.waitForTimeout(800);
 await p.locator('.tabbar-item', { hasText: '人物' }).click();
 await p.waitForTimeout(600);

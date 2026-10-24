@@ -79,7 +79,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // 放在功能体验组里：还在试验期，用顺了再搬去该去的地方。
   { key: 'panel', title: '功能面板', hint: '背景音乐 · 定位记录 · 数据分析', group: 'trial' },
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
-  { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹', group: 'trial' },
+  { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹（.drloc）', group: 'trial' },
   { key: 'panelPrecise', title: '高精度定位', hint: '高德官方 demo 诊断', group: 'trial' },
 ];
 

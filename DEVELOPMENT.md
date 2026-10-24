@@ -353,7 +353,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | `src/core/runtime/store.ts` | 任务/服务的响应式数据中心（pub/sub，仿 `toast` 模式）：`useTasks/useServices` + `addTask/finishTask/markTaskRead/updateTask/removeTask` + `registerService/setServiceRunning/setServiceAutostart/setServiceDetail`。只存状态，不碰 UI。**自启动存档**也归这里：`dr.svc.autostart` 一张表记所有开了自启动的服务，`registerService(s, start?)` 接收服务交出的启动函数，`restoreAutostartServices()` 在应用加载完毕后统一点名恢复 |
 | `src/core/runtime/aiChat.ts` | AI 聊天全局单例：轮次执行态（busy/activity/items/history/session）原来在 `LabAiSection` 的 state 里，离开即卸载丢失；现在 `sendTurn` 由单例驱动，页面只订阅。发送即 `addTask({kind:'ai-chat'})`，成功 `stageAiTurn` 后 `finishTask(true)`，失败 `revertAiTurn` 后 `finishTask(false)` |
 | `src/core/runtime/music.ts` | 背景音乐服务单例：`<audio>` 用 `document.createElement` 全局托管（原来在 `MusicPanel` 里，离开即停）；`registerService(..., startService)` 交出启动函数，自启动存 store 统一存档（旧 key `music-autostart` 首次开机自动搬迁并清除）；**服务运行态由 audio 的 play/pause 事件驱动**——播放/暂停/切歌/自动下一首全经过事件，head 图标不会和实际声音脱节。歌单（`.drpl`）选中后是队列的持久化真相：增删/排序防抖 350ms 写回文件，`pagehide` / `visibilitychange:hidden` 时强制落盘；没选歌单则退回旧的 localStorage 临时队列 |
-| `src/core/runtime/locationAuto.ts` | 定位「自动打点」服务单例：每秒取 GPS、按阈值去重写回 CSV。定时器与数据在单例里——离开定位面板照打（服务语义）；面板 `LocationPanel` 只是订阅式视图 + 地图渲染 |
+| `src/core/runtime/locationAuto.ts` | 定位「自动打点」服务单例：每秒取 GPS、按阈值去重写回 `.drloc`。定时器与写入串行链在单例里——离开定位面板照打（服务语义）；面板 `LocationPanel` 只是订阅式视图 + 地图渲染，显示坐标统一走 `applyOffset(原始点, 文件 offset)` |
 | `src/core/runtime/nav.ts` | 全局导航（`setNavHandler`/`navigate`，仿 `setEventOpener` 一族）：App 注册实现，head 图标/服务页借此跨页跳到指定设置子页 |
 | `src/ui/runtime/HeadStatus.tsx` | head 右侧状态区：活动/未读任务图标（运行中蓝色脉冲、完成绿、失败红，带未读角标）、运行中服务图标（悬停显示 `标题 · 当前活动 · 待办`）、「服务」「任务」入口。挂在主页 head、时间线/日历 `PageHead` 与设置页 `PageHead` 的 right 槽 |
 
@@ -363,7 +363,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **踩过的坑**：① `setAutostart` 最初只改 localStorage 和 running，没同步 store 的 `autostart`——受控 checkbox 每次重渲染都被打回原值，表现为"点了开关没反应"。凡是单例状态被 UI 受控渲染的，写入口必须同时更新 store。② 服务运行态最初只在 `startService` 里置，用户在面板点播放走的是 `toggle → a.play()` 另一条路——head 图标不出现、服务页显示"已停止"但歌在放。改成由 audio 的 play/pause 事件驱动后才根治（事件覆盖所有播放路径，包括切歌和自动下一首的瞬时空档）。
 
-**回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R9：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红、播放/暂停驱动服务图标）；定位打点服务另有 `node tools/e2e/location-service-e2e.mjs`（L1–L5）；自启动存档迁移（旧 `music-autostart` key 的老用户）有 `node tools/e2e/music-migrate-e2e.mjs`（M1–M3）。
+**回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R9：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红、播放/暂停驱动服务图标）；定位打点服务另有 `node tools/e2e/location-service-e2e.mjs`（L1–L5）；定位文件格式与分段页有 `node tools/e2e/location-format-tabs-e2e.mjs`（D1–D7）；自启动存档迁移（旧 `music-autostart` key 的老用户）有 `node tools/e2e/music-migrate-e2e.mjs`（M1–M3）。
 
 **顺带修的预存 bug**：`7dc62fb` 抽歌单持久化时丢了"空歌单则收养所有音频"的逻辑——"从本地添加"上传后文件进了文件库但歌单显示 0 首。现在 `getPlaylist()` 在 key 从未存在过时播种为全部音频（落库一次，之后用户删空就是真的空）；`useUploader.upload()` 返回本次落库的文件，MusicPanel 上传后直接 `addTracks`，两种路径都兜住。
 
@@ -396,6 +396,38 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 **运行时规则**：没选歌单时仍用旧的 localStorage 队列（UI 显示「临时队列（未保存）」），删除当前歌单或歌单文件被外部删掉时，曲目保留为临时队列，不连坐删除音频；开机按 `active-playlist` 异步恢复，恢复失败自动退回临时队列。`writePlaylist` 走 `overwriteFileContent`，后者现在会同步重算 `sha256`（`stored_id` 不变，旧引用不受影响）。
 
 **回归**：`node tools/e2e/music-playlist-e2e.mjs [url]`（P1–P7：上传+新建、文件库筛选/预览、刷新恢复、改名改描述、增删排序写回、导入 `.drpl`、删除后回临时队列）。
+
+### 1.12b 定位：文件库里的 `.drloc`
+
+**定位**：定位记录和歌单一样，不做独立表，就是文件库里一条普通附件。旧版把点写成 `.csv`，和人手建的表格混在一起、文件页筛不出来；现在换成独一份的 `.drloc`（JSON），备份 / 同步 / 分享 / 隐私 / 类型筛选 / 预览全部复用文件库。
+
+**格式**（`core/location/format.ts`）：扩展名 `.drloc`，MIME `application/x-dr-location`，正文是 JSON：
+
+```json
+{ "format": "dr.location", "version": 1, "name": "夜跑",
+  "offset": { "lat": 0.000123, "lng": -0.000456 },
+  "points": [{ "ts": "…", "lat": 31.2304, "lng": 121.4737, "accuracy": 5, "note": "" }],
+  "createdAt": "…", "updatedAt": "…" }
+```
+
+`points` 永远是**原始坐标**；`offset` 是这个文件相对底图的整体修正量（单位：度，正值向北 / 向东）。显示、列表、地图、预览统一走 `applyOffset(points, offset)`，所以改偏移只是整体平移，不改写任何一条点。
+
+**代码分工**：
+
+| 文件 | 职责 |
+|---|---|
+| `core/location/format.ts` | 纯格式层：判定、解析/序列化、名称清洗、`applyOffset`、旧 CSV 解析 |
+| `core/location/locationFile.ts` | 文件库 CRUD：`listLocations/createLocation/readLocation/writeLocation/importLocationText/deleteLocation`；选中态存 localStorage `dr.locationFileId` |
+| `core/runtime/locationAuto.ts` | 自动打点服务单例：原始点、offset、当前 GPS 蓝点都在这里；`saveChain` 串行落盘，偏移编辑与自动打点不会互相覆盖；手动 `punch` 返回新点下标供面板选中 |
+| `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact` |
+| `ui/preview/LocationPreview.tsx` | 文件库点开 `.drloc` 的预览：点位表 + 偏移说明 |
+| `core/tools/locations.ts` | `location.*` 七个工具，CLI / AI 与 UI 共用实现 |
+
+**地图约定**：线宽 4px，点直径固定 2×线宽 = 8px；当前位置蓝色、文件历史点黄色、选中点红色。蓝点只来自本次定位，不写进文件，只有打点才追加。
+
+**运行时规则**：自动打点是后台服务，离开面板仍按阈值记录；恢复上次文件失败（被删 / 内容损坏）时回到未选择状态，不拿空队列覆盖文件。旧 CSV 不原地改写，导入时统一转成新的 `.drloc`。
+
+**回归**：`node tools/e2e/location-format-tabs-e2e.mjs [url]`（D1–D7：分段切换、新建、导入带偏移的 `.drloc`、地图配色与尺寸、改偏移写回且原始点不变、文件库筛选/预览、旧 CSV 转换）；后台服务语义见 `location-service-e2e.mjs`（L1–L5）。
 
 ---
 

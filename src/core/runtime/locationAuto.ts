@@ -1,41 +1,70 @@
-// 自动打点后台服务单例：每秒取一次 GPS，按去重阈值写回 CSV。
+// 自动打点后台服务单例：每秒取一次 GPS，按去重阈值写回 .drloc 文件。
 //
 // 定时器和数据都在单例里——离开定位面板照样打点（这才是「服务」），
 // head 上常驻图标，服务页显示运行中。面板只是订阅式视图。
+//
+// 数据文件是文件库里的 .drloc（见 core/location/format.ts）：
+//   · points 存原始坐标，offset 记这个文件的经纬度修正量；
+//   · 显示 / 落图时统一 applyOffset()，改偏移就能整体平移；
+//   · 写回串行化（saveChain），偏移调整和自动打点不会互相覆盖。
 
 import { useEffect, useState } from 'react';
-import { getBlob } from '../db/blob';
-import { getFile, overwriteFileContent } from '../repo/files';
+import {
+  getActiveLocationId,
+  getLocationFile,
+  readLocation,
+  setActiveLocationId,
+  writeLocation,
+} from '../location/locationFile';
+import {
+  applyOffset,
+  type LocationDoc,
+  type LocationOffset,
+  type LocationPoint,
+} from '../location/format';
 import { registerService, setServiceNote, setServiceRunning } from './store';
 
 export const SERVICE_ID = 'location-auto';
 
-export interface Row {
+/** 一次实时定位结果：蓝点用它，不进文件（打点时才追加） */
+export interface CurrentFix {
   ts: string;
   lat: number;
   lng: number;
   accuracy: number;
-  note: string;
 }
+
+export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export interface LocationAutoState {
   fileId: string | null;
   fileName: string;
-  rows: Row[];
+  doc: LocationDoc | null;
+  /** 原始点（未加偏移），和 doc.points 同源 */
+  rows: LocationPoint[];
+  offset: LocationOffset;
+  /** 当前 GPS 位置：地图上的蓝点 */
+  current: CurrentFix | null;
   /** 去重阈值（米）：位移小于它只刷新时间戳，不新增点 */
   threshold: number;
   running: boolean;
   /** 手动打点定位中 */
   busy: boolean;
+  /** 写回文件的状态 */
+  saving: SaveState;
 }
 
 let state: LocationAutoState = {
   fileId: null,
   fileName: '',
+  doc: null,
   rows: [],
+  offset: { lat: 0, lng: 0 },
+  current: null,
   threshold: 5,
   running: false,
   busy: false,
+  saving: 'idle',
 };
 
 const listeners = new Set<() => void>();
@@ -70,15 +99,29 @@ export function useLocationAuto(): LocationAutoState {
   return val;
 }
 
+/** 地图 / 列表用：原始点加上文件偏移 */
+export function correctedRows(s: LocationAutoState = state): LocationPoint[] {
+  return applyOffset(s.rows, s.offset);
+}
+
 // ---- 定位（高德优先，回退浏览器原生；WGS-84 → GCJ-02） ----
 
-function getAmapKey(): string {
+export function getAmapKey(): string {
   try {
     return localStorage.getItem('dr.amapKey') || '';
   } catch {
     return '';
   }
 }
+
+export function setAmapKey(key: string): void {
+  try {
+    localStorage.setItem('dr.amapKey', key.trim());
+  } catch {
+    /* ignore */
+  }
+}
+
 let amapLoading: Promise<any> | null = null;
 function loadAmap(): Promise<any> {
   const key = getAmapKey();
@@ -132,6 +175,14 @@ function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> 
     .catch(() => fallbackBrowser());
 }
 
+/** 取一次位置并更新蓝点 */
+async function readFix(): Promise<CurrentFix> {
+  const pos = await getPosition();
+  const fix: CurrentFix = { ts: new Date().toISOString(), lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy };
+  patch({ current: fix });
+  return fix;
+}
+
 const PI = Math.PI;
 const A = 6378245.0;
 const EE = 0.00669342162296594323;
@@ -176,38 +227,6 @@ function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number })
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-// ---- CSV ----
-
-export function toCsv(rows: Row[]): string {
-  const head = '时间,纬度,经度,精度(米),备注\n';
-  const body = rows
-    .map((r) => {
-      const d = new Date(r.ts);
-      const t = `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
-      return `"${t}",${r.lat.toFixed(6)},${r.lng.toFixed(6)},${Math.round(r.accuracy)},"${r.note.replace(/"/g, '""')}"`;
-    })
-    .join('\n');
-  return head + body + '\n';
-}
-
-export function parseCsv(text: string): Row[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const out: Row[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const parts =
-      lines[i]
-        .match(/("([^"]|"")*"|[^,]*)(,|$)/g)
-        ?.map((p) => p.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim()) ?? [];
-    if (parts.length < 3) continue;
-    const lat = Number(parts[1]);
-    const lng = Number(parts[2]);
-    if (!isFinite(lat) || !isFinite(lng)) continue;
-    out.push({ ts: parts[0], lat, lng, accuracy: Number(parts[3]) || 0, note: parts[4] || '' });
-  }
-  return out;
-}
-
 // ---- 服务注册 ----
 
 function registerAutoService(running: boolean): void {
@@ -216,88 +235,140 @@ function registerAutoService(running: boolean): void {
     kind: 'location',
     title: '自动打点',
     running,
-    autostart: false, // 打点要用户先选文件，不开机自启
+    autostart: false, // 打点要先选文件，不开机自启
     target: { type: 'settings', key: 'panelLocation' },
   });
   setServiceRunning(SERVICE_ID, running);
 }
 
-/** 开机注册：服务页一开始就列得出「自动打点」（未运行） */
+/** 开机注册：服务页一开始就列得出「自动打点」（未运行），并恢复上次文件 */
 export function initLocationAutoService(): void {
   registerAutoService(state.running);
-  restoreLastFile();
+  void restoreLastFile();
 }
 
-/** 恢复上次选的文件（localStorage 记忆） */
-function restoreLastFile(): void {
-  let id: string | null = null;
-  try {
-    id = localStorage.getItem('dr.locationFileId') || null;
-  } catch {
-    /* ignore */
-  }
+async function restoreLastFile(): Promise<void> {
+  const id = getActiveLocationId();
   if (!id) return;
-  const f = getFile(id);
-  if (!f) return;
+  const f = getLocationFile(id);
+  if (!f) {
+    setActiveLocationId(null);
+    return;
+  }
   patch({ fileId: f.id, fileName: f.name });
-  getBlob(f.id).then((blob) => {
-    if (!blob) return;
-    blob.text().then((text) => patch({ rows: parseCsv(text) }));
-  });
+  try {
+    const doc = await readLocation(f);
+    if (state.fileId !== f.id) return;
+    patch({ doc, rows: doc.points, offset: doc.offset, saving: 'idle' });
+  } catch {
+    // 文件损坏：宁可回到未选择状态，也不拿空队列覆盖它
+    if (state.fileId === f.id) {
+      setActiveLocationId(null);
+      patch({ fileId: null, fileName: '', doc: null, rows: [], offset: { lat: 0, lng: 0 }, saving: 'idle' });
+    }
+  }
 }
 
 // ---- 面板 → 单例 的操作 ----
 
-/** 新建 / 打开 / 切换文件后调用：把文件与初始行灌进单例 */
-export function setAutoFile(id: string | null, name: string, rows: Row[]): void {
-  patch({ fileId: id, fileName: name, rows });
-  try {
-    if (id) localStorage.setItem('dr.locationFileId', id);
-    else localStorage.removeItem('dr.locationFileId');
-  } catch {
-    /* ignore */
+/** 打开 / 新建后把文件与正文灌进单例；id=null 表示卸下当前文件 */
+export function openLocationFile(id: string | null, name: string, doc: LocationDoc | null): void {
+  setActiveLocationId(id);
+  if (!id || !doc) {
+    stopAuto();
+    patch({ fileId: null, fileName: '', doc: null, rows: [], offset: { lat: 0, lng: 0 }, saving: 'idle' });
+    return;
   }
-  if (!id) stopAuto();
+  patch({
+    fileId: id,
+    fileName: name,
+    doc,
+    rows: doc.points,
+    offset: doc.offset,
+    saving: 'idle',
+  });
 }
 
 export function setThreshold(m: number): void {
   patch({ threshold: Number.isFinite(m) && m >= 0 ? m : 0 });
 }
 
-/** 手动打点：取一次位置，带去重，写回；返回新行（面板用来飞地图） */
-export async function punch(note: string): Promise<Row | null> {
-  if (!state.fileId) return null;
+function normalizeOffset(offset: LocationOffset): LocationOffset {
+  const r = (n: number) => (Number.isFinite(n) ? Math.round(n * 1e6) / 1e6 : 0);
+  return { lat: r(offset.lat), lng: r(offset.lng) };
+}
+
+/** 写入串行链：自动打点与偏移调整按顺序落盘，后写不会被先写盖回去 */
+let saveChain: Promise<void> = Promise.resolve();
+
+function persist(doc: LocationDoc): Promise<void> {
+  const id = state.fileId;
+  if (!id) return saveChain;
+  const snapshot: LocationDoc = { ...doc, points: [...doc.points] };
+  const rev = state.offset.lat + state.offset.lng + snapshot.points.length;
+  patch({ saving: 'saving' });
+  saveChain = saveChain.then(async () => {
+    try {
+      await writeLocation(id, snapshot);
+      if (state.fileId === id && state.offset.lat + state.offset.lng + state.rows.length === rev) {
+        patch({ saving: 'saved' });
+      }
+    } catch {
+      if (state.fileId === id) patch({ saving: 'error' });
+    }
+  });
+  return saveChain;
+}
+
+/** 修改文件偏移：原始点不动，只改 offset 并写回 */
+export async function setLocationOffset(offset: LocationOffset): Promise<void> {
+  const doc = state.doc;
+  if (!doc) return;
+  const next: LocationDoc = { ...doc, offset: normalizeOffset(offset) };
+  patch({ doc: next, offset: next.offset });
+  await persist(next);
+}
+
+export interface PunchResult {
+  point: LocationPoint;
+  /** 点落在行数组里的下标：去重替换最后一条时也指向最后一条，面板据此选中 */
+  index: number;
+}
+
+/** 手动打点：取一次位置，带去重，写回；返回新行与下标（面板用来飞地图 / 选中） */
+export async function punch(note: string): Promise<PunchResult | null> {
+  if (!state.fileId || !state.doc) return null;
   patch({ busy: true });
   try {
-    const pos = await getPosition();
-    const r: Row = {
-      ts: new Date().toISOString(),
-      lat: pos.lat,
-      lng: pos.lng,
-      accuracy: pos.accuracy,
+    const fix = await readFix();
+    const r: LocationPoint = {
+      ts: fix.ts,
+      lat: fix.lat,
+      lng: fix.lng,
+      accuracy: fix.accuracy,
       note: note.trim(),
     };
-    const next = appendRow(state.rows, r, state.threshold);
-    patch({ rows: next, busy: false });
-    await writeBack(next);
-    return next[next.length - 1];
+    const points = appendPoint(state.rows, r, state.threshold);
+    const doc: LocationDoc = { ...state.doc, points };
+    patch({ rows: points, doc, busy: false });
+    await persist(doc);
+    return { point: points[points.length - 1], index: points.length - 1 };
   } catch {
     patch({ busy: false });
     throw new Error('定位失败');
   }
 }
 
-/** 「我的位置」：只取一次坐标（不写点），面板用来飞地图；失败返回 null */
-export async function locateMe(): Promise<{ lat: number; lng: number } | null> {
+/** 「我的位置」：只刷新蓝点，不写文件；失败返回 null */
+export async function locateMe(): Promise<CurrentFix | null> {
   try {
-    const pos = await getPosition();
-    return { lat: pos.lat, lng: pos.lng };
+    return await readFix();
   } catch {
     return null;
   }
 }
 
-function appendRow(rows: Row[], r: Row, threshold: number): Row[] {
+function appendPoint(rows: LocationPoint[], r: LocationPoint, threshold: number): LocationPoint[] {
   const last = rows[rows.length - 1];
   if (last && distM(last, r) < threshold) {
     const next = [...rows];
@@ -307,31 +378,26 @@ function appendRow(rows: Row[], r: Row, threshold: number): Row[] {
   return [...rows, r];
 }
 
-async function writeBack(rows: Row[]): Promise<void> {
-  if (!state.fileId) return;
-  const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8' });
-  await overwriteFileContent(state.fileId, blob);
-}
-
 // ---- 自动打点（后台服务本体） ----
 
 let timer: number | null = null;
 
 function tick(): void {
-  getPosition()
-    .then(async (pos) => {
-      if (!state.fileId) return;
-      const r: Row = {
-        ts: new Date().toISOString(),
-        lat: pos.lat,
-        lng: pos.lng,
-        accuracy: pos.accuracy,
+  readFix()
+    .then(async (fix) => {
+      if (!state.fileId || !state.doc) return;
+      const r: LocationPoint = {
+        ts: fix.ts,
+        lat: fix.lat,
+        lng: fix.lng,
+        accuracy: fix.accuracy,
         note: '',
       };
-      const next = appendRow(state.rows, r, state.threshold);
-      patch({ rows: next });
+      const points = appendPoint(state.rows, r, state.threshold);
+      const doc: LocationDoc = { ...state.doc, points };
+      patch({ rows: points, doc });
       setServiceNote(SERVICE_ID, undefined);
-      await writeBack(next);
+      await persist(doc);
     })
     .catch(() => {
       // 定位失败不打断服务：在服务状态上留个说明，下一秒再试

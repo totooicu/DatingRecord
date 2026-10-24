@@ -6,13 +6,15 @@
 // 两条都对不上就退化成「未知」，交给用户选打开方式。
 
 import { PLAYLIST_MIME } from '../../core/music/format';
+import { LOCATION_MIME } from '../../core/location/format';
 
-export type PreviewKind = 'image' | 'video' | 'audio' | 'playlist' | 'markdown' | 'text' | 'unknown';
+export type PreviewKind = 'image' | 'video' | 'audio' | 'location' | 'playlist' | 'markdown' | 'text' | 'unknown';
 
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'svg', 'ico', 'heic'];
 const VIDEO_EXT = ['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv'];
 const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba'];
 const PLAYLIST_EXT = ['drpl'];
+const LOCATION_EXT = ['drloc'];
 const TEXT_EXT = [
   'txt', 'log', 'csv', 'tsv', 'json', 'yaml', 'yml', 'xml', 'html', 'htm', 'css',
   'js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'h', 'cpp', 'sh', 'ini', 'conf',
@@ -32,6 +34,8 @@ export function kindOf(name: string, mime: string): PreviewKind {
   if (m.startsWith('image/')) return 'image';
   if (m.startsWith('video/')) return 'video';
   if (m.startsWith('audio/')) return 'audio';
+  // 定位是应用自己的格式，同样一份后缀 + MIME 认出来
+  if (m === LOCATION_MIME || LOCATION_EXT.includes(ext)) return 'location';
   // 歌单是应用自己的格式：后缀和 MIME 都是独一份的，优先认出来
   if (m === PLAYLIST_MIME || PLAYLIST_EXT.includes(ext)) return 'playlist';
   // text/markdown 在各浏览器里的写法不一致，扩展名兜底更稳
@@ -42,6 +46,7 @@ export function kindOf(name: string, mime: string): PreviewKind {
   if (IMAGE_EXT.includes(ext)) return 'image';
   if (VIDEO_EXT.includes(ext)) return 'video';
   if (AUDIO_EXT.includes(ext)) return 'audio';
+  if (LOCATION_EXT.includes(ext)) return 'location';
   if (PLAYLIST_EXT.includes(ext)) return 'playlist';
   if (TEXT_EXT.includes(ext)) return 'text';
 
@@ -76,6 +81,8 @@ export function kindLabel(k: PreviewKind): string {
       return '视频';
     case 'audio':
       return '音频';
+    case 'location':
+      return '定位';
     case 'playlist':
       return '歌单';
     case 'markdown':
