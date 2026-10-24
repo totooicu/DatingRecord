@@ -42,6 +42,8 @@ export interface LocationAutoState {
   doc: LocationDoc | null;
   /** 原始点（未加偏移），和 doc.points 同源 */
   rows: LocationPoint[];
+  /** 点的结构版本：新增 / 删除 / 换文件时 +1（去重只改最后一条的时间不算，地图不必重画） */
+  rev: number;
   offset: LocationOffset;
   /** 当前 GPS 位置：地图上的蓝点 */
   current: CurrentFix | null;
@@ -59,6 +61,7 @@ let state: LocationAutoState = {
   fileName: '',
   doc: null,
   rows: [],
+  rev: 0,
   offset: { lat: 0, lng: 0 },
   current: null,
   threshold: 5,
@@ -259,12 +262,12 @@ async function restoreLastFile(): Promise<void> {
   try {
     const doc = await readLocation(f);
     if (state.fileId !== f.id) return;
-    patch({ doc, rows: doc.points, offset: doc.offset, saving: 'idle' });
+    patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, saving: 'idle' });
   } catch {
     // 文件损坏：宁可回到未选择状态，也不拿空队列覆盖它
     if (state.fileId === f.id) {
       setActiveLocationId(null);
-      patch({ fileId: null, fileName: '', doc: null, rows: [], offset: { lat: 0, lng: 0 }, saving: 'idle' });
+      patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle' });
     }
   }
 }
@@ -276,7 +279,7 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
   setActiveLocationId(id);
   if (!id || !doc) {
     stopAuto();
-    patch({ fileId: null, fileName: '', doc: null, rows: [], offset: { lat: 0, lng: 0 }, saving: 'idle' });
+    patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle' });
     return;
   }
   patch({
@@ -284,6 +287,7 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
     fileName: name,
     doc,
     rows: doc.points,
+    rev: state.rev + 1,
     offset: doc.offset,
     saving: 'idle',
   });
@@ -348,9 +352,9 @@ export async function punch(note: string): Promise<PunchResult | null> {
       accuracy: fix.accuracy,
       note: note.trim(),
     };
-    const points = appendPoint(state.rows, r, state.threshold);
+    const { points, added } = appendPoint(state.rows, r, state.threshold);
     const doc: LocationDoc = { ...state.doc, points };
-    patch({ rows: points, doc, busy: false });
+    patch({ rows: points, doc, rev: added ? state.rev + 1 : state.rev, busy: false });
     await persist(doc);
     return { point: points[points.length - 1], index: points.length - 1 };
   } catch {
@@ -368,19 +372,36 @@ export async function locateMe(): Promise<CurrentFix | null> {
   }
 }
 
-function appendPoint(rows: LocationPoint[], r: LocationPoint, threshold: number): LocationPoint[] {
+/** 删除一个点；返回删除后的点数，下标越界返回 null */
+export async function removePoint(index: number): Promise<number | null> {
+  if (!state.doc || !Number.isInteger(index) || index < 0 || index >= state.rows.length) return null;
+  const points = state.rows.filter((_, i) => i !== index);
+  const doc: LocationDoc = { ...state.doc, points };
+  patch({ rows: points, doc, rev: state.rev + 1 });
+  await persist(doc);
+  return points.length;
+}
+
+function appendPoint(
+  rows: LocationPoint[],
+  r: LocationPoint,
+  threshold: number,
+): { points: LocationPoint[]; added: boolean } {
   const last = rows[rows.length - 1];
   if (last && distM(last, r) < threshold) {
     const next = [...rows];
     next[next.length - 1] = { ...last, ts: r.ts, accuracy: r.accuracy };
-    return next;
+    return { points: next, added: false };
   }
-  return [...rows, r];
+  return { points: [...rows, r], added: true };
 }
 
 // ---- 自动打点（后台服务本体） ----
 
 let timer: number | null = null;
+/** 原地打点（去重命中）只在内存里刷新时间，最多这么久落一次盘，避免每秒整篇重写 */
+let lastFlush = 0;
+const FLUSH_MS = 15000;
 
 function tick(): void {
   readFix()
@@ -393,11 +414,15 @@ function tick(): void {
         accuracy: fix.accuracy,
         note: '',
       };
-      const points = appendPoint(state.rows, r, state.threshold);
+      const { points, added } = appendPoint(state.rows, r, state.threshold);
       const doc: LocationDoc = { ...state.doc, points };
-      patch({ rows: points, doc });
+      patch({ rows: points, doc, rev: added ? state.rev + 1 : state.rev });
       setServiceNote(SERVICE_ID, undefined);
-      await persist(doc);
+      const now = Date.now();
+      if (added || now - lastFlush >= FLUSH_MS) {
+        lastFlush = now;
+        await persist(doc);
+      }
     })
     .catch(() => {
       // 定位失败不打断服务：在服务状态上留个说明，下一秒再试
@@ -420,6 +445,8 @@ export function stopAuto(): void {
     clearInterval(timer);
     timer = null;
   }
+  // 停止 / 切文件前把「原地刷新」的最后一条时间戳也落盘
+  if (state.doc) void persist(state.doc);
   patch({ running: false });
   setServiceRunning(SERVICE_ID, false);
   setServiceNote(SERVICE_ID, undefined);

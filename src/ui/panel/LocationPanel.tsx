@@ -17,12 +17,19 @@ import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
 import { bump } from '../../store';
 import { createLocation, importLocationText, readLocation } from '../../core/location/locationFile';
-import { applyOffset } from '../../core/location/format';
+import {
+  applyOffset,
+  metersFromOffset,
+  offsetFromMeters,
+  refLatOf,
+  type LocationPoint,
+} from '../../core/location/format';
 import {
   getAmapKey,
   locateMe as locateOnce,
   openLocationFile,
   punch,
+  removePoint,
   setAmapKey,
   setLocationOffset,
   setThreshold,
@@ -69,22 +76,49 @@ const TABS: { key: TabKey; label: string }[] = [
 export function LocationPanel() {
   const la = useLocationAuto();
   const { fileId, fileName, rows, offset, current, threshold, running: auto, busy } = la;
-  const corrected = useMemo(() => applyOffset(rows, offset), [rows, offset]);
 
   const [tab, setTab] = useState<TabKey>('map');
   const [note, setNote] = useState('');
   const [picking, setPicking] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [offsetLat, setOffsetLat] = useState('0');
-  const [offsetLng, setOffsetLng] = useState('0');
+  const [offsetNorth, setOffsetNorth] = useState('0');
+  const [offsetEast, setOffsetEast] = useState('0');
   const [amapKey, setAmapKeyState] = useState(getAmapKey);
+  /** 记录页一次渲染多少条：点可能上万，全量 DOM 会卡 */
+  const [listLimit, setListLimit] = useState(300);
 
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  /** 轨迹图层（线 + 历史点）；蓝点单独一层，避免每秒定位重画整条轨迹 */
+  const trackRef = useRef<L.LayerGroup | null>(null);
+  const pointMarkers = useRef<L.Marker[]>([]);
+  const currentMarker = useRef<L.Marker | null>(null);
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selectedIdx;
   /** 已经对哪个文件做过 fitBounds：自动打点持续加点时不再反复缩放 */
   const fittedFile = useRef<string | null>(null);
+
+  /** 参考纬度：按点的平均纬度把米换算成度；没有点就没法换算经度 */
+  const refLat = useMemo(() => refLatOf(rows), [fileId, la.rev]);
+
+  const withOffset = (p: LocationPoint): LocationPoint => ({
+    ...p,
+    lat: p.lat + offset.lat,
+    lng: p.lng + offset.lng,
+  });
+
+  const selected = selectedIdx !== null && rows[selectedIdx] ? withOffset(rows[selectedIdx]) : null;
+
+  /** 只渲染最近 listLimit 条，避免几千个 DOM 节点拖慢每秒刷新 */
+  const shownRows = useMemo(() => {
+    const start = Math.max(0, rows.length - listLimit);
+    const out: { p: LocationPoint; idx: number }[] = [];
+    for (let i = rows.length - 1; i >= start; i -= 1) out.push({ p: withOffset(rows[i]), idx: i });
+    return out;
+    // offset / rows 都会变，但只切片最近 N 条，成本是 O(N) 而不是 O(总点数)
+  }, [rows, offset.lat, offset.lng, listLimit]);
 
   const saveText =
     la.saving === 'saving'
@@ -95,14 +129,22 @@ export function LocationPanel() {
           ? '已保存'
           : '自动保存';
 
-  // 偏移输入框跟当前文件同步（保存偏移后回填规范化后的数值）
+  // 偏移输入框跟当前文件同步：文件里存度，界面显示米（按点的平均纬度反算）
   useEffect(() => {
-    setOffsetLat(String(offset.lat));
-    setOffsetLng(String(offset.lng));
-  }, [fileId, offset.lat, offset.lng]);
+    if (refLat == null) {
+      setOffsetNorth('0');
+      setOffsetEast('0');
+      return;
+    }
+    const m = metersFromOffset(offset, refLat);
+    const fmt = (n: number) => String(Math.round(n * 100) / 100);
+    setOffsetNorth(fmt(m.north));
+    setOffsetEast(fmt(m.east));
+  }, [fileId, offset.lat, offset.lng, refLat]);
 
   useEffect(() => {
     setSelectedIdx(null);
+    setListLimit(300);
     fittedFile.current = null;
   }, [fileId]);
 
@@ -116,7 +158,15 @@ export function LocationPanel() {
       'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
       { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图' },
     ).addTo(map);
+    trackRef.current = L.layerGroup().addTo(map);
     setTimeout(() => map.invalidateSize(), 100);
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      trackRef.current = null;
+      pointMarkers.current = [];
+      currentMarker.current = null;
+    };
   }, []);
 
   // 切回地图页时补一次尺寸计算：隐藏期间容器宽高是 0
@@ -126,51 +176,83 @@ export function LocationPanel() {
     return () => clearTimeout(t);
   }, [tab]);
 
-  // 数据变化重画图层
+  // 轨迹结构变化才重建（新增 / 删除 / 换文件 / 改偏移）；
+  // 自动打点去重只改最后一条时间，不会触发这里。选中和蓝点各走各的。
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    map.eachLayer((layer) => {
-      if (!(layer instanceof L.TileLayer)) map.removeLayer(layer);
-    });
+    const layer = trackRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    pointMarkers.current = [];
 
-    if (corrected.length > 1) {
+    const pts = applyOffset(rows, offset);
+    if (pts.length > 1) {
       L.polyline(
-        corrected.map((r) => [r.lat, r.lng] as [number, number]),
+        pts.map((r) => [r.lat, r.lng] as [number, number]),
         { color: COLOR_LINE, weight: LINE_WEIGHT, opacity: 0.75 },
-      ).addTo(map);
+      ).addTo(layer);
     }
 
-    corrected.forEach((r, i) => {
-      const color = i === selectedIdx ? COLOR_SELECTED : COLOR_POINT;
-      L.marker([r.lat, r.lng], { icon: dotIcon(color) })
-        .addTo(map)
+    const sel = selectedRef.current;
+    pts.forEach((r, i) => {
+      const marker = L.marker([r.lat, r.lng], {
+        icon: dotIcon(i === sel ? COLOR_SELECTED : COLOR_POINT),
+        zIndexOffset: i === sel ? 1000 : 0,
+      })
         .on('click', () => setSelectedIdx(i))
         .bindPopup(
           `<div><strong>${esc(fmtTime(r.ts))}</strong><br/>${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}` +
             `${r.accuracy ? `<br/>±${Math.round(r.accuracy)}m` : ''}${r.note ? `<br/>${esc(r.note)}` : ''}</div>`,
         );
+      marker.addTo(layer);
+      pointMarkers.current.push(marker);
     });
 
-    // 蓝点最后画，压在历史点上面；它不属于文件，只表示「现在在哪」
-    if (current) {
-      L.marker([current.lat, current.lng], { icon: dotIcon(COLOR_CURRENT) })
-        .addTo(map)
-        .bindPopup(
-          `<div><strong>当前位置</strong><br/>${current.lat.toFixed(6)}, ${current.lng.toFixed(6)}` +
-            `${current.accuracy ? `<br/>±${Math.round(current.accuracy)}m` : ''}</div>`,
-        );
-    }
-
-    if (corrected.length > 0 && fittedFile.current !== fileId) {
+    if (pts.length > 0 && fittedFile.current !== fileId) {
       fittedFile.current = fileId;
-      map.fitBounds(L.latLngBounds(corrected.map((r) => [r.lat, r.lng] as [number, number])).pad(0.2));
+      map.fitBounds(L.latLngBounds(pts.map((r) => [r.lat, r.lng] as [number, number])).pad(0.2));
     }
-  }, [corrected, selectedIdx, current, fileId]);
+    // rows / offset 是这条 effect 的数据源；用 rev + 偏移值当依赖，避免每秒重画
+  }, [la.rev, offset.lat, offset.lng, fileId]);
+
+  // 选中只换图标，不重建整层
+  useEffect(() => {
+    pointMarkers.current.forEach((m, i) => {
+      m.setIcon(dotIcon(i === selectedIdx ? COLOR_SELECTED : COLOR_POINT));
+      m.setZIndexOffset(i === selectedIdx ? 1000 : 0);
+    });
+  }, [selectedIdx]);
+
+  // 蓝点属于「现在」，不写进文件；单独更新，自动打点每秒只动它一个
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!current) {
+      if (currentMarker.current) {
+        map.removeLayer(currentMarker.current);
+        currentMarker.current = null;
+      }
+      return;
+    }
+    const popup =
+      `<div><strong>当前位置</strong><br/>${current.lat.toFixed(6)}, ${current.lng.toFixed(6)}` +
+      `${current.accuracy ? `<br/>±${Math.round(current.accuracy)}m` : ''}</div>`;
+    if (currentMarker.current) {
+      currentMarker.current.setLatLng([current.lat, current.lng]);
+      currentMarker.current.setPopupContent(popup);
+    } else {
+      currentMarker.current = L.marker([current.lat, current.lng], {
+        icon: dotIcon(COLOR_CURRENT),
+        zIndexOffset: 2000,
+      })
+        .addTo(map)
+        .bindPopup(popup);
+    }
+  }, [current]);
 
   const selectPoint = (idx: number) => {
     setSelectedIdx(idx);
-    const p = corrected[idx];
+    const p = rows[idx] ? withOffset(rows[idx]) : null;
     if (p) mapRef.current?.setView([p.lat, p.lng], 16);
     setTab('map');
   };
@@ -244,16 +326,52 @@ export function LocationPanel() {
       .catch(() => toast('定位失败'));
   };
 
+  const removeAt = async (idx: number) => {
+    const p = rows[idx] ? withOffset(rows[idx]) : null;
+    if (!p) return;
+    if (!window.confirm(`删除第 ${idx + 1} 个点（${fmtTime(p.ts)}）？`)) return;
+    try {
+      const left = await removePoint(idx);
+      if (left == null) {
+        toast('这个点已经不存在了');
+        return;
+      }
+      setSelectedIdx((cur) => (cur == null ? null : cur === idx ? null : cur > idx ? cur - 1 : cur));
+      toast(`已删除并保存，剩 ${left} 个点`);
+    } catch (e) {
+      toast(`删除失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+
   const saveOffset = async () => {
-    const lat = Number(offsetLat);
-    const lng = Number(offsetLng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      toast('偏移要填数字（单位：度）');
+    if (!fileId) return;
+    if (refLat == null) {
+      toast('文件还没有点，先打点后再按米设置偏移');
+      return;
+    }
+    const north = Number(offsetNorth);
+    const east = Number(offsetEast);
+    if (!Number.isFinite(north) || !Number.isFinite(east)) {
+      toast('偏移要填数字（单位：米）');
       return;
     }
     try {
-      await setLocationOffset({ lat, lng });
-      toast('经纬度偏移已写入文件');
+      await setLocationOffset(offsetFromMeters(north, east, refLat));
+      fittedFile.current = null; // 偏移变了，让地图重新框住轨迹
+      toast(`已按纬度 ${refLat.toFixed(4)}° 换算并写入文件`);
+    } catch (e) {
+      toast(`保存失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const clearOffset = async () => {
+    if (!fileId) return;
+    setOffsetNorth('0');
+    setOffsetEast('0');
+    try {
+      await setLocationOffset({ lat: 0, lng: 0 });
+      fittedFile.current = null;
+      toast('偏移已归零');
     } catch (e) {
       toast(`保存失败：${e instanceof Error ? e.message : e}`);
     }
@@ -263,8 +381,6 @@ export function LocationPanel() {
     setAmapKey(amapKey);
     toast('高德 key 已保存');
   };
-
-  const selected = selectedIdx !== null ? corrected[selectedIdx] : null;
 
   return (
     <div className="loc-panel">
@@ -374,27 +490,45 @@ export function LocationPanel() {
 
             <ul className="music-list loc-list">
               {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
-              {corrected
-                .slice()
-                .reverse()
-                .map((r, i) => {
-                  const realIdx = corrected.length - 1 - i;
-                  const isSel = realIdx === selectedIdx;
-                  return (
-                    <li
-                      key={`${r.ts}-${realIdx}`}
-                      className={`music-row${isSel ? ' on' : ''}`}
-                      onClick={() => selectPoint(realIdx)}
+              {shownRows.map(({ p: r, idx }) => {
+                const isSel = idx === selectedIdx;
+                return (
+                  <li
+                    key={`${r.ts}-${idx}`}
+                    className={`music-row${isSel ? ' on' : ''}`}
+                    onClick={() => selectPoint(idx)}
+                  >
+                    <span className="music-row-idx">{idx + 1}</span>
+                    <span className="music-row-name">
+                      {fmtTime(r.ts)} · {r.lat.toFixed(6)},{r.lng.toFixed(6)}
+                      {r.note ? ` · ${r.note}` : ''}
+                    </span>
+                    <span className="music-row-size muted small">±{Math.round(r.accuracy)}m</span>
+                    <button
+                      type="button"
+                      className="loc-del"
+                      aria-label={`删除第 ${idx + 1} 个点`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeAt(idx);
+                      }}
                     >
-                      <span className="music-row-idx">{realIdx + 1}</span>
-                      <span className="music-row-name">
-                        {fmtTime(r.ts)} · {r.lat.toFixed(6)},{r.lng.toFixed(6)}
-                        {r.note ? ` · ${r.note}` : ''}
-                      </span>
-                      <span className="music-row-size muted small">±{Math.round(r.accuracy)}m</span>
-                    </li>
-                  );
-                })}
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+              {rows.length > listLimit && (
+                <li className="loc-more">
+                  <button
+                    type="button"
+                    className="music-add-btn"
+                    onClick={() => setListLimit((n) => n + 300)}
+                  >
+                    显示更早的 300 个（还有 {rows.length - listLimit} 个）
+                  </button>
+                </li>
+              )}
             </ul>
           </>
         )}
@@ -448,46 +582,52 @@ export function LocationPanel() {
 
             <div className="loc-card">
               <div className="loc-card-head">
-                <strong>经纬度偏移</strong>
-                <span className="muted small">单位：度</span>
+                <strong>距离偏移</strong>
+                <span className="muted small">单位：米</span>
               </div>
               <p className="muted small">
-                偏移会写进 <code>.drloc</code> 文件并加到所有点上：正值向北 / 向东。用于修正底图或导入数据的整体偏差。
+                按「南北 / 东西多少米」填，保存时用点的平均纬度换算成度写进 <code>.drloc</code>：正值向北 / 向东。
               </p>
+              {refLat == null ? (
+                <p className="muted small">文件还没有点：先打点，再按米设置偏移（经度换算需要参考纬度）。</p>
+              ) : (
+                <p className="muted small">
+                  参考纬度 {refLat.toFixed(4)}° · 文件里存 Δ{offset.lat.toFixed(6)}, Δ{offset.lng.toFixed(6)}
+                </p>
+              )}
               <div className="loc-offset">
                 <label>
-                  纬度 Δ
+                  南北（米，正=向北）
                   <input
                     className="music-name-input"
                     inputMode="decimal"
-                    value={offsetLat}
-                    onChange={(e) => setOffsetLat(e.target.value)}
-                    placeholder="0.000000"
+                    value={offsetNorth}
+                    onChange={(e) => setOffsetNorth(e.target.value)}
+                    placeholder="0"
+                    disabled={refLat == null}
                   />
                 </label>
                 <label>
-                  经度 Δ
+                  东西（米，正=向东）
                   <input
                     className="music-name-input"
                     inputMode="decimal"
-                    value={offsetLng}
-                    onChange={(e) => setOffsetLng(e.target.value)}
-                    placeholder="0.000000"
+                    value={offsetEast}
+                    onChange={(e) => setOffsetEast(e.target.value)}
+                    placeholder="0"
+                    disabled={refLat == null}
                   />
                 </label>
               </div>
               <div className="music-add">
-                <button className="music-add-btn primary" onClick={saveOffset} disabled={!fileId || la.saving === 'saving'}>
+                <button
+                  className="music-add-btn primary"
+                  onClick={saveOffset}
+                  disabled={!fileId || refLat == null || la.saving === 'saving'}
+                >
                   保存偏移
                 </button>
-                <button
-                  className="music-add-btn"
-                  onClick={() => {
-                    setOffsetLat('0');
-                    setOffsetLng('0');
-                  }}
-                  disabled={!fileId}
-                >
+                <button className="music-add-btn" onClick={clearOffset} disabled={!fileId}>
                   归零
                 </button>
               </div>
@@ -520,11 +660,13 @@ export function LocationPanel() {
           <strong>文件与偏移</strong>
           <p className="muted small">
             <code>.drloc</code> 是应用自己的定位格式（JSON），里面保存点的时间、经纬度、精度、备注，
-            以及这个文件整体的经纬度偏移。旧版 CSV 可以通过「导入」转成 <code>.drloc</code>，
+            以及这个文件整体的经纬度偏移（单位：度，正值向北 / 向东）。面板按「米」输入，
+            有数据时用点的平均纬度换算；旧版 CSV 可以通过「导入」转成 <code>.drloc</code>，
             原 CSV 不会被改写。
           </p>
           <p className="muted small">
-            自动打点是后台服务：离开本页仍会按阈值继续记录，回到页面即可看到新增的点。
+            记录页可以逐点删除；点很多时只先渲染最近 300 条，可继续「显示更早」。自动打点是后台服务：
+            离开本页仍会按阈值继续记录，原地不动时最多 15 秒落一次盘。
           </p>
         </div>
       </div>

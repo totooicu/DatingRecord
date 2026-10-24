@@ -35,7 +35,17 @@ const check = (label, cond, extra = '') => {
 const raw1 = { lat: 31.2304, lng: 121.4737 };
 const raw2 = { lat: 31.231, lng: 121.4745 };
 const offset1 = { lat: 0.001, lng: 0.002 };
-const offset2 = { lat: 0.002, lng: 0.003 };
+/** D5 按米输入：南北 100m、东西 150m，按两点平均纬度换算 */
+const meters = { north: 100, east: 150 };
+const refLat = (raw1.lat + raw2.lat) / 2;
+const offset2 = {
+  lat: Math.round((meters.north / 111320) * 1e6) / 1e6,
+  lng: Math.round((meters.east / (111320 * Math.cos((refLat * Math.PI) / 180))) * 1e6) / 1e6,
+};
+const shifted1 = {
+  lat: Math.round((raw1.lat + offset2.lat) * 1e6) / 1e6,
+  lng: Math.round((raw1.lng + offset2.lng) * 1e6) / 1e6,
+};
 
 const importFile = path.join(TMP, '偏移轨迹.drloc');
 fs.writeFileSync(
@@ -62,6 +72,48 @@ const csvFile = path.join(TMP, 'legacy.csv');
 fs.writeFileSync(
   csvFile,
   'ts,lat,lng,accuracy,note\n2026-02-01T10:00:00.000Z,30.1001,120.2002,6,旧数据\n',
+);
+
+const removeFile = path.join(TMP, '删除测试.drloc');
+fs.writeFileSync(
+  removeFile,
+  JSON.stringify(
+    {
+      format: 'dr.location',
+      version: 1,
+      name: '删除测试',
+      offset: { lat: 0, lng: 0 },
+      points: [
+        { ts: '2026-03-01T10:00:00.000Z', lat: 31.5, lng: 121.5, accuracy: 4, note: '保留' },
+        { ts: '2026-03-01T10:01:00.000Z', lat: 31.5001, lng: 121.5001, accuracy: 4, note: '删掉' },
+      ],
+      createdAt: '2026-03-01T10:00:00.000Z',
+      updatedAt: '2026-03-01T10:01:00.000Z',
+    },
+    null,
+    2,
+  ),
+);
+
+const manyCount = 350;
+const manyFile = path.join(TMP, '很多点.drloc');
+fs.writeFileSync(
+  manyFile,
+  JSON.stringify({
+    format: 'dr.location',
+    version: 1,
+    name: '很多点',
+    offset: { lat: 0, lng: 0 },
+    points: Array.from({ length: manyCount }, (_, i) => ({
+      ts: new Date(Date.UTC(2026, 3, 1, 0, 0, i)).toISOString(),
+      lat: 31.4 + i * 0.00001,
+      lng: 121.4 + i * 0.00001,
+      accuracy: 5,
+      note: '',
+    })),
+    createdAt: '2026-04-01T00:00:00.000Z',
+    updatedAt: '2026-04-01T00:00:00.000Z',
+  }),
 );
 
 const browser = await chromium.launch({
@@ -176,6 +228,10 @@ await p.getByRole('button', { name: '新建', exact: true }).click();
 await p.waitForTimeout(1200);
 check('新建后自动切到记录页', !(await p.locator('.loc-panel .loc-view').nth(1).getAttribute('hidden')));
 check('记录页显示新文件名', (await p.locator('.loc-card-head', { hasText: 'E2E 空轨迹' }).count()) >= 1);
+await tab('文件').click();
+await p.waitForTimeout(300);
+check('空文件不能按米换算偏移', await p.locator('.loc-offset input').nth(0).isDisabled());
+check('空文件的保存偏移按钮禁用', await p.getByRole('button', { name: '保存偏移' }).isDisabled());
 
 console.log('\nD3 导入带偏移的 .drloc');
 await tab('文件').click();
@@ -240,26 +296,28 @@ check('选中的点是红点', marks.filter((m) => m.color === RED).length === 1
 check('其余历史点仍是黄色', marks.filter((m) => m.color === YELLOW).length === 1);
 check('蓝点仍在', marks.filter((m) => m.color === BLUE).length === 1);
 
-console.log('\nD5 修改偏移并写回');
+console.log('\nD5 按米修改偏移并写回');
 await tab('文件').click();
 await p.waitForTimeout(400);
 const offInputs = p.locator('.loc-offset input');
-await offInputs.nth(0).fill(String(offset2.lat));
-await offInputs.nth(1).fill(String(offset2.lng));
+check('有数据后偏移输入可用', await offInputs.nth(0).isEnabled());
+await offInputs.nth(0).fill(String(meters.north));
+await offInputs.nth(1).fill(String(meters.east));
 await p.getByRole('button', { name: '保存偏移' }).click();
 await p.waitForTimeout(1400);
 await tab('记录').click();
 await p.waitForTimeout(400);
 const shiftedText = await p.locator('.loc-list').innerText();
 check(
-  '改偏移后坐标整体平移',
-  shiftedText.includes('31.232400,121.476700') && shiftedText.includes('31.233000,121.477500'),
+  '按米输入的偏移已换算成度并平移坐标',
+  shiftedText.includes(`${shifted1.lat.toFixed(6)},${shifted1.lng.toFixed(6)}`),
   shiftedText.replace(/\n/g, ' | ').slice(0, 160),
 );
 const afterEdit = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === '偏移轨迹');
 check(
-  '偏移写进文件',
+  '换算后的度数写进文件',
   !!afterEdit && afterEdit.offset.lat === offset2.lat && afterEdit.offset.lng === offset2.lng,
+  afterEdit ? JSON.stringify(afterEdit.offset) : 'missing',
 );
 check(
   '原始点没有被改写',
@@ -275,10 +333,12 @@ check('刷新后自动恢复上次文件', (await p.locator('.loc-card-head', { 
 await tab('文件').click();
 await p.waitForTimeout(400);
 const restored = p.locator('.loc-offset input');
+const restoredNorth = Number(await restored.nth(0).inputValue());
+const restoredEast = Number(await restored.nth(1).inputValue());
 check(
-  '刷新后偏移回填',
-  (await restored.nth(0).inputValue()) === String(offset2.lat) &&
-    (await restored.nth(1).inputValue()) === String(offset2.lng),
+  '刷新后按米回填（允许度数取整带来的 <0.5m 误差）',
+  Math.abs(restoredNorth - meters.north) < 0.5 && Math.abs(restoredEast - meters.east) < 0.5,
+  `${restoredNorth} / ${restoredEast}`,
 );
 
 console.log('\nD6 文件库筛选 / 预览');
@@ -297,7 +357,9 @@ check('预览标题是定位', (await p.locator('.modal-head h3').textContent())
 check('预览列出 2 个点', (await p.locator('.playlist-preview-list li').count()) === 2);
 check(
   '预览坐标也带偏移',
-  (await p.locator('.playlist-preview-list').innerText()).includes('31.232400, 121.476700'),
+  (await p.locator('.playlist-preview-list').innerText()).includes(
+    `${shifted1.lat.toFixed(6)}, ${shifted1.lng.toFixed(6)}`,
+  ),
 );
 await p.locator('.modal-head .icon-btn').click();
 await p.waitForTimeout(400);
@@ -315,6 +377,36 @@ check('CSV 的点被读进来', (await p.locator('.loc-list .music-row').count()
 check('CSV 点坐标正确', (await p.locator('.loc-list').innerText()).includes('30.100100,120.200200'));
 const legacyBlob = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === 'legacy');
 check('转换后的文件格式是 dr.location', !!legacyBlob && legacyBlob.format === 'dr.location');
+
+console.log('\nD8 删除点');
+await tab('文件').click();
+await p.waitForTimeout(300);
+await p.getByRole('button', { name: '导入 .drloc / 旧 CSV' }).click();
+await p.locator('input[accept*="drloc"]').setInputFiles(removeFile);
+await p.waitForTimeout(1600);
+check('导入删除测试文件（2 个点）', (await p.locator('.loc-list .music-row').count()) === 2);
+await p.locator('.loc-list .music-row .loc-del').first().click();
+await p.waitForTimeout(1400);
+check('删除后只剩 1 个点', (await p.locator('.loc-list .music-row').count()) === 1);
+const afterRemove = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === '删除测试');
+check(
+  '删除写回文件，留下的是另一个点',
+  !!afterRemove && afterRemove.points.length === 1 && afterRemove.points[0].note === '保留',
+  afterRemove ? JSON.stringify(afterRemove.points) : 'missing',
+);
+
+console.log('\nD9 大量点只渲染最近 300 条');
+await tab('文件').click();
+await p.waitForTimeout(300);
+await p.getByRole('button', { name: '导入 .drloc / 旧 CSV' }).click();
+await p.locator('input[accept*="drloc"]').setInputFiles(manyFile);
+await p.waitForTimeout(2200);
+check('记录页先渲染 300 条', (await p.locator('.loc-list .music-row').count()) === 300);
+const moreBtn = p.getByRole('button', { name: /显示更早的 300 个/ });
+check('出现「显示更早」入口', (await moreBtn.count()) === 1);
+await moreBtn.click();
+await p.waitForTimeout(1200);
+check('展开后能看到全部 350 条', (await p.locator('.loc-list .music-row').count()) === manyCount);
 
 await browser.close();
 fs.rmSync(TMP, { recursive: true, force: true });

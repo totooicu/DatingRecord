@@ -379,6 +379,31 @@
   font-size: 12px;
   color: var(--muted);
 }
+.loc-offset input:disabled {
+  opacity: 0.55;
+}
+.loc-del {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.loc-del:hover {
+  background: var(--bg);
+  color: var(--danger, #d33);
+}
+.loc-more {
+  padding: 10px 8px;
+  text-align: center;
+  border-bottom: none;
+}
 .loc-empty {
   padding: 24px;
   text-align: center;

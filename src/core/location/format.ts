@@ -210,6 +210,48 @@ export function applyOffset(points: LocationPoint[], offset: LocationOffset): Lo
   return points.map((p) => ({ ...p, lat: p.lat + offset.lat, lng: p.lng + offset.lng }));
 }
 
+// ---- 米 ↔ 度 ----
+//
+// 文件里存的是度（和底图坐标系一致）；面板让用户按「米」输入，
+// 保存时按点的平均纬度换算：纬度 1° ≈ 111320m，经度还要乘 cos(纬度)。
+// 没有点时算不出参考纬度，所以「先不换算」——UI 会要求先打点。
+
+export const METERS_PER_DEG_LAT = 111320;
+
+/** 点的平均纬度：经度换算的参考线；没有点返回 null */
+export function refLatOf(points: { lat: number }[]): number | null {
+  if (points.length === 0) return null;
+  let sum = 0;
+  for (const p of points) sum += p.lat;
+  return sum / points.length;
+}
+
+function lngScale(refLat: number): number {
+  const c = Math.cos((refLat * Math.PI) / 180);
+  // 极区 cos 会趋近 0，别把经度算成天文数字
+  return METERS_PER_DEG_LAT * Math.max(0.01, c);
+}
+
+/** 距离（米）→ 经纬度偏移（度）：north 正值向北，east 正值向东 */
+export function offsetFromMeters(
+  north: number,
+  east: number,
+  refLat: number,
+): LocationOffset {
+  return {
+    lat: round6(north / METERS_PER_DEG_LAT),
+    lng: round6(east / lngScale(refLat)),
+  };
+}
+
+/** 经纬度偏移（度）→ 距离（米） */
+export function metersFromOffset(offset: LocationOffset, refLat: number): { north: number; east: number } {
+  return {
+    north: offset.lat * METERS_PER_DEG_LAT,
+    east: offset.lng * lngScale(refLat),
+  };
+}
+
 export function serializeLocationDoc(doc: LocationDoc): string {
   const clean: LocationDoc = {
     format: LOCATION_FORMAT,

@@ -17,6 +17,9 @@ import {
 import {
   applyOffset,
   locationFileName,
+  metersFromOffset,
+  offsetFromMeters,
+  refLatOf,
   type LocationOffset,
   type LocationPoint,
 } from '../location/format';
@@ -33,6 +36,29 @@ function offsetOf(raw: unknown): LocationOffset | undefined {
   const lng = Number(o.lng ?? 0);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('offset.lat / offset.lng 必须是数字（单位：度）');
   return { lat: round6(lat), lng: round6(lng) };
+}
+
+function offsetMetersOf(raw: unknown): { north: number; east: number } | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object') throw new Error('offsetMeters 必须是 { north, east } 对象');
+  const o = raw as Record<string, unknown>;
+  const north = Number(o.north ?? 0);
+  const east = Number(o.east ?? 0);
+  if (!Number.isFinite(north) || !Number.isFinite(east)) {
+    throw new Error('offsetMeters.north / east 必须是数字（单位：米）');
+  }
+  return { north, east };
+}
+
+/** 有米制偏移时按点的平均纬度换算；没有点没法换算经度，直接报错 */
+function metersToOffset(
+  meters: { north: number; east: number } | undefined,
+  points: LocationPoint[],
+): LocationOffset | undefined {
+  if (!meters) return undefined;
+  const lat = refLatOf(points);
+  if (lat == null) throw new Error('文件还没有点，无法按米换算偏移（经度需要参考纬度）');
+  return offsetFromMeters(meters.north, meters.east, lat);
 }
 
 function pointOf(raw: unknown): LocationPoint {
@@ -116,11 +142,14 @@ export const LOCATION_TOOLS: ToolDef[] = [
       const limit = a.limit === undefined ? 1000 : Math.max(0, Number(a.limit) || 0);
       const tail = limit > 0 ? doc.points.slice(-limit) : doc.points;
       const shifted = applyOffset(tail, doc.offset);
+      const lat = refLatOf(doc.points);
       return {
         ...brief(f, doc),
         total: doc.points.length,
         returned: shifted.length,
         offset: doc.offset,
+        offsetMeters: lat == null ? null : metersFromOffset(doc.offset, lat),
+        refLat: lat,
         points: shifted.map((p, i) => ({
           ts: p.ts,
           lat: p.lat,
@@ -137,18 +166,21 @@ export const LOCATION_TOOLS: ToolDef[] = [
     name: 'location.create',
     group: 'location',
     title: '新建定位文件',
-    desc: '在文件库创建 .drloc，可同时带初始点与偏移（偏移单位：度，正值向北/向东）',
+    desc: '在文件库创建 .drloc，可同时带初始点与偏移（度或米；米制需要至少一个点来换算）',
     mutating: true,
     params: [
       { name: 'name', type: 'string', desc: '名称（不必带 .drloc）', required: true },
-      { name: 'offset', type: 'object', desc: '经纬度偏移 { lat, lng }，省略为 0' },
+      { name: 'offset', type: 'object', desc: '经纬度偏移 { lat, lng }（度），省略为 0' },
+      { name: 'offsetMeters', type: 'object', desc: '距离偏移 { north, east }（米），按点平均纬度换算；需要 points' },
       { name: 'points', type: 'array', desc: '初始点数组 [{ ts?, lat, lng, accuracy?, note? }]' },
     ],
     run: async (a) => {
+      const points = pointsOf(a.points) ?? [];
+      const meters = offsetMetersOf(a.offsetMeters);
       const f = await createLocation({
         name: String(a.name),
-        offset: offsetOf(a.offset),
-        points: pointsOf(a.points) ?? [],
+        offset: meters ? metersToOffset(meters, points) : offsetOf(a.offset),
+        points,
       });
       return brief(f, await readLocation(f));
     },
@@ -157,21 +189,24 @@ export const LOCATION_TOOLS: ToolDef[] = [
     name: 'location.save',
     group: 'location',
     title: '保存定位文件',
-    desc: '改名称 / 整表替换点 / 改偏移；省略的参数保持原值。点数量很大时建议用 location.add',
+    desc: '改名称 / 整表替换点 / 改偏移（度或米）；省略的参数保持原值。点数量很大时建议用 location.add',
     mutating: true,
     params: [
       { name: 'id', type: 'string', desc: '定位文件 id', required: true },
       { name: 'name', type: 'string', desc: '新名称；省略不改（会同步改文件名）' },
-      { name: 'offset', type: 'object', desc: '新的经纬度偏移 { lat, lng }；省略不改' },
+      { name: 'offset', type: 'object', desc: '新的经纬度偏移 { lat, lng }（度）；省略不改' },
+      { name: 'offsetMeters', type: 'object', desc: '新的距离偏移 { north, east }（米），按点平均纬度换算；没有点会报错' },
       { name: 'points', type: 'array', desc: '整表替换点数组；省略不改' },
     ],
     run: async (a) => {
       const { f, doc } = await load(a.id);
       if (a.name !== undefined) renameFile(f.id, locationFileName(String(a.name)));
+      const points = pointsOf(a.points) ?? doc.points;
+      const meters = offsetMetersOf(a.offsetMeters);
       const next = {
         ...doc,
-        offset: offsetOf(a.offset) ?? doc.offset,
-        points: pointsOf(a.points) ?? doc.points,
+        offset: meters ? metersToOffset(meters, points) ?? doc.offset : offsetOf(a.offset) ?? doc.offset,
+        points,
       };
       await writeLocation(f.id, next);
       const fresh = getFile(f.id);
@@ -201,6 +236,29 @@ export const LOCATION_TOOLS: ToolDef[] = [
       const fresh = getFile(f.id);
       if (!fresh) throw new Error('定位文件在保存过程中被删除');
       return { ...brief(fresh, await readLocation(fresh)), point };
+    },
+  },
+  {
+    name: 'location.remove',
+    group: 'location',
+    title: '删除定位点',
+    desc: '按顺序下标删除一个点（0 开始，和 location.get 返回的数组顺序一致）',
+    mutating: true,
+    params: [
+      { name: 'id', type: 'string', desc: '定位文件 id', required: true },
+      { name: 'index', type: 'number', desc: '要删除的点下标（0 开始）', required: true },
+    ],
+    run: async (a) => {
+      const { f, doc } = await load(a.id);
+      const index = Number(a.index);
+      if (!Number.isInteger(index) || index < 0 || index >= doc.points.length) {
+        throw new Error(`下标越界：${String(a.index)}（共 ${doc.points.length} 个点）`);
+      }
+      const next = { ...doc, points: doc.points.filter((_, i) => i !== index) };
+      await writeLocation(f.id, next);
+      const fresh = getFile(f.id);
+      if (!fresh) throw new Error('定位文件在保存过程中被删除');
+      return { ...brief(fresh, await readLocation(fresh)), removed: index };
     },
   },
   {
