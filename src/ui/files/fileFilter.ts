@@ -2,14 +2,15 @@
 import type { StoredFile } from '../../core/repo/files';
 import { kindOf, type PreviewKind } from '../preview';
 
-export type FileSort =
-  | 'new'
-  | 'old'
-  | 'name'
-  | 'size-desc'
-  | 'size-asc'
-  | 'refs-desc'
-  | 'refs-asc';
+export type FileSortKey = 'time' | 'name' | 'size' | 'refs';
+export type FileSortDir = 'asc' | 'desc';
+
+export interface FileSort {
+  key: FileSortKey;
+  dir: FileSortDir;
+}
+
+export const DEFAULT_SORT: FileSort = { key: 'time', dir: 'desc' };
 
 export interface FileFilter {
   q: string;
@@ -76,34 +77,26 @@ export function applyFilter(
     return true;
   });
 
-  switch (sort) {
-    case 'old':
-      out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      break;
+  const sign = sort.dir === 'asc' ? 1 : -1;
+  // 同值时统一按上传时间新到旧兜底，来回切换排序时列表不会抖
+  const tie = (a: StoredFile, b: StoredFile) => b.createdAt.localeCompare(a.createdAt);
+  switch (sort.key) {
     case 'name':
-      out.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }));
-      break;
-    case 'size-desc':
-      out.sort((a, b) => b.size - a.size);
-      break;
-    case 'size-asc':
-      out.sort((a, b) => a.size - b.size);
-      break;
-    case 'refs-desc':
-      // 引用数相同的按上传时间新到旧，列表不会因为排序来回抖
       out.sort(
         (a, b) =>
-          (refCounts[b.id] ?? 0) - (refCounts[a.id] ?? 0) || b.createdAt.localeCompare(a.createdAt),
+          sign * a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) || tie(a, b),
       );
       break;
-    case 'refs-asc':
+    case 'size':
+      out.sort((a, b) => sign * (a.size - b.size) || tie(a, b));
+      break;
+    case 'refs':
       out.sort(
-        (a, b) =>
-          (refCounts[a.id] ?? 0) - (refCounts[b.id] ?? 0) || b.createdAt.localeCompare(a.createdAt),
+        (a, b) => sign * ((refCounts[a.id] ?? 0) - (refCounts[b.id] ?? 0)) || tie(a, b),
       );
       break;
     default:
-      out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      out.sort((a, b) => sign * a.createdAt.localeCompare(b.createdAt) || tie(a, b));
   }
 
   return out;

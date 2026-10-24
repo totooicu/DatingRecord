@@ -200,14 +200,6 @@
   padding: 7px 10px;
 }
 
-.file-sort {
-  flex: 0 1 auto;
-  width: auto;
-  max-width: 47%;
-  font-size: 13px;
-  padding: 7px 8px;
-}
-
 .file-filter-bar {
   display: flex;
   align-items: center;
@@ -216,7 +208,8 @@
   margin-bottom: 10px;
 }
 
-.file-filters {
+.file-filters,
+.file-sorts {
   display: flex;
   flex-direction: column;
   gap: 10px;

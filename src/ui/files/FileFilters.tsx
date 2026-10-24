@@ -1,6 +1,11 @@
 // 文件列表工具条：搜索、排序，以及可折叠的类型/时间/大小筛选。
 import type { PreviewKind } from '../preview';
-import { activeFilterCount, type FileFilter, type FileSort } from './fileFilter';
+import {
+  activeFilterCount,
+  type FileFilter,
+  type FileSort,
+  type FileSortKey,
+} from './fileFilter';
 
 const TYPE_OPTIONS: { key: PreviewKind; label: string }[] = [
   { key: 'image', label: '图片' },
@@ -11,15 +16,20 @@ const TYPE_OPTIONS: { key: PreviewKind; label: string }[] = [
   { key: 'unknown', label: '其他' },
 ];
 
-const SORTS: { key: FileSort; label: string }[] = [
-  { key: 'new', label: '最新上传' },
-  { key: 'old', label: '最早上传' },
-  { key: 'name', label: '名称 A→Z' },
-  { key: 'size-desc', label: '大小：大到小' },
-  { key: 'size-asc', label: '大小：小到大' },
-  { key: 'refs-desc', label: '引用：多到少' },
-  { key: 'refs-asc', label: '引用：少到多' },
+const SORT_FIELDS: { key: FileSortKey; label: string }[] = [
+  { key: 'time', label: '上传时间' },
+  { key: 'name', label: '名称' },
+  { key: 'size', label: '大小' },
+  { key: 'refs', label: '引用数量' },
 ];
+
+/** 「顺序 / 逆序」对不同字段的含义不一样，直接写成人话 */
+const DIR_HINT: Record<FileSortKey, Record<FileSort['dir'], string>> = {
+  time: { asc: '最早在前', desc: '最新在前' },
+  name: { asc: 'A → Z', desc: 'Z → A' },
+  size: { asc: '小到大', desc: '大到小' },
+  refs: { asc: '少到多', desc: '多到少' },
+};
 
 export function FileFilters({
   filter,
@@ -28,6 +38,8 @@ export function FileFilters({
   onSort,
   open,
   onToggle,
+  sortOpen,
+  onToggleSort,
   onReset,
   batch,
   onBatch,
@@ -38,11 +50,14 @@ export function FileFilters({
   onSort: (s: FileSort) => void;
   open: boolean;
   onToggle: () => void;
+  sortOpen: boolean;
+  onToggleSort: () => void;
   onReset: () => void;
   batch: boolean;
   onBatch: () => void;
 }) {
   const active = activeFilterCount(filter);
+  const sortLabel = SORT_FIELDS.find((s) => s.key === sort.key)?.label ?? '上传时间';
 
   const toggleType = (k: PreviewKind) => {
     const has = filter.types.includes(k);
@@ -60,18 +75,6 @@ export function FileFilters({
           placeholder="搜索文件名…"
           aria-label="搜索文件名"
         />
-        <select
-          className="file-sort"
-          value={sort}
-          onChange={(e) => onSort(e.target.value as FileSort)}
-          aria-label="排序方式"
-        >
-          {SORTS.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div className="file-filter-bar">
@@ -82,6 +85,14 @@ export function FileFilters({
           aria-expanded={open}
         >
           筛选{active > 0 ? ` · ${active}` : ''}
+        </button>
+        <button
+          type="button"
+          className={sortOpen ? 'btn btn-sm btn-primary' : 'btn btn-sm'}
+          onClick={onToggleSort}
+          aria-expanded={sortOpen}
+        >
+          排序 · {sortLabel}
         </button>
         <button
           type="button"
@@ -96,6 +107,40 @@ export function FileFilters({
           </span>
         )}
       </div>
+
+      {sortOpen && (
+        <div className="file-sorts">
+          <div className="file-filter-group">
+            <span className="file-filter-label">排序</span>
+            <div className="chip-group">
+              {SORT_FIELDS.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  className={sort.key === s.key ? 'chip chip-on' : 'chip'}
+                  onClick={() => onSort({ ...sort, key: s.key })}
+                  aria-pressed={sort.key === s.key}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="file-filter-group">
+            <span className="file-filter-label">方向</span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => onSort({ ...sort, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
+              aria-label={sort.dir === 'asc' ? '切换为逆序' : '切换为顺序'}
+            >
+              {sort.dir === 'asc' ? '顺序 ↑' : '逆序 ↓'}
+            </button>
+            <span className="muted small">{DIR_HINT[sort.key][sort.dir]}</span>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="file-filters">

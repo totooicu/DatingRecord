@@ -24,7 +24,13 @@ import { MappingModal } from './MappingModal';
 import { FileRow } from './FileRow';
 import { useThumbs } from './useThumbs';
 import { useUploader } from './useUploader';
-import { applyFilter, EMPTY_FILTER, type FileFilter, type FileSort } from './fileFilter';
+import {
+  applyFilter,
+  DEFAULT_SORT,
+  EMPTY_FILTER,
+  type FileFilter,
+  type FileSort,
+} from './fileFilter';
 import { fmtSize } from './fileFormat';
 
 export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
@@ -43,8 +49,9 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const { busy, ask, inputRef, upload, openPicker } = useUploader(setTip);
 
   const [filter, setFilter] = useState<FileFilter>(EMPTY_FILTER);
-  const [sort, setSort] = useState<FileSort>('new');
+  const [sort, setSort] = useState<FileSort>(DEFAULT_SORT);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
   const [batch, setBatch] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
@@ -135,7 +142,15 @@ export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
         sort={sort}
         onSort={setSort}
         open={filtersOpen}
-        onToggle={() => setFiltersOpen((x) => !x)}
+        onToggle={() => {
+          setFiltersOpen((x) => !x);
+          setSortOpen(false);
+        }}
+        sortOpen={sortOpen}
+        onToggleSort={() => {
+          setSortOpen((x) => !x);
+          setFiltersOpen(false);
+        }}
         onReset={() => setFilter(EMPTY_FILTER)}
         batch={batch}
         onBatch={toggleBatch}
