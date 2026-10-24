@@ -1,18 +1,18 @@
 {
-  "version": "2026-10-24T00:36:55.296Z",
+  "version": "2026-10-24T00:49:03.262Z",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "3fb2f4a8881cad42",
-      "link": "/assets/diff-BfCLQfbO.js"
+      "version": "12cd4208a1e0229f",
+      "link": "/assets/diff-Bv7dFmvE.js"
+    },
+    {
+      "version": "547738bcbfb34d2f",
+      "link": "/assets/index-DDRnGMTd.js"
     },
     {
       "version": "67f53a2684afb76c",
       "link": "/assets/index-DiMQn7BF.css"
-    },
-    {
-      "version": "37792e8ba3b92243",
-      "link": "/assets/index-kAn_K7cz.js"
     },
     {
       "version": "8be885f0a6a49903",
@@ -35,7 +35,7 @@
       "link": "/icon.svg"
     },
     {
-      "version": "bff228bb90bd07d9",
+      "version": "8588b51cc94aec76",
       "link": "/index.html"
     },
     {
