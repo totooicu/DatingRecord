@@ -19,7 +19,6 @@ import { AiSection } from './AiSection';
 import { PanelHubSection } from './PanelHubSection';
 import { MusicPanel } from '../panel/MusicPanel';
 import { LocationPanel } from '../panel/LocationPanel';
-import { LocationMapPanel } from '../panel/LocationMapPanel';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
@@ -127,8 +126,6 @@ export function Settings({ initial }: { initial?: string | null }) {
         {active === 'panelMusic' && <MusicPanel />}
 
         {active === 'panelLocation' && <LocationPanel />}
-
-        {active === 'panelMap' && <LocationMapPanel />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>

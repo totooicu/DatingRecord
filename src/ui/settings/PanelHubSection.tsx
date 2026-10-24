@@ -18,15 +18,9 @@ export function PanelHubSection({ onPick }: { onPick: (k: SettingsKey) => void }
     },
     {
       key: 'panelLocation',
-      title: '定位记录',
-      desc: '点一下拿当前经纬度，追加到 CSV，保存进文件库。',
-      hint: 'CSV · 自定义文件名',
-    },
-    {
-      key: 'panelMap',
-      title: '定位地图',
-      desc: '从文件库选一个定位 CSV，Canvas 画轨迹散点图。',
-      hint: '离线 · 点查看详情',
+      title: '定位',
+      desc: '选/建 CSV 文件，地图上打点记录，自动写回；我的位置一键飞到当前 GPS。',
+      hint: 'GPS 打点 · 高德地图轨迹',
     },
   ];
 
