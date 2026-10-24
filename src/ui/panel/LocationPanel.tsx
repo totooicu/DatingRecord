@@ -137,6 +137,7 @@ export function LocationPanel() {
       iconSize: [14, 14], iconAnchor: [7, 7],
     });
     mapRef.current = L.map(containerRef.current).setView([30.2741, 120.1551], 12);
+    L.control.scale({ imperial: false, metric: true }).addTo(mapRef.current);
     L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
       subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图',
     }).addTo(mapRef.current);
