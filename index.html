@@ -7,6 +7,24 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
     />
     <meta name="theme-color" content="#d9536b" />
+    <script>
+      // 首屏脚本：HTML 到达时主包还在下载，先把上次选的主题贴到 :root，
+      // 否则要先看几秒默认粉色启动页，再「啪」一下换色。
+      // 只认 -- 开头的字符串键，存储被禁时静默跳过。
+      (function () {
+        try {
+          var raw = localStorage.getItem('dr.appearance.vars.v1');
+          if (!raw) return;
+          var vars = JSON.parse(raw);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          for (var k in vars) {
+            if (k.indexOf('--') !== 0 || typeof vars[k] !== 'string') continue;
+            document.documentElement.style.setProperty(k, vars[k]);
+            if (k === '--primary' && meta) meta.setAttribute('content', vars[k]);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta name="description" content="朝汇当下，夕忆从前（Dawn Gather Dusk Recall）—— 本地优先的个人关系档案工具：人物 · 事件集 · 事件" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -72,8 +90,8 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
-        background: #f6f5f3;
-        color: #4a4640;
+        background: var(--bg, #f6f5f3);
+        color: var(--text, #4a4640);
         font: 14px/1.6 system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
         z-index: 999;
       }
@@ -83,7 +101,7 @@
         gap: 2px;
         font-size: 19px;
         font-weight: 700;
-        color: #2f2c28;
+        color: var(--text, #2f2c28);
         letter-spacing: 1px;
         /* 入场结束后轻轻呼吸，静止不动会让人以为卡住了 */
         animation: boot-name-breathe 2.6s ease-in-out 1.3s infinite;
@@ -178,14 +196,18 @@
         width: 190px;
         height: 4px;
         border-radius: 999px;
-        background: #e6e2dc;
+        background: var(--border, #e6e2dc);
         overflow: hidden;
       }
       #boot .boot-progress-fill {
         height: 100%;
         width: 0;
         border-radius: inherit;
-        background: linear-gradient(90deg, #e6909c, #d9536b);
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--primary, #d9536b) 55%, #fff),
+          var(--primary, #d9536b)
+        );
         transition: width 0.3s ease-out;
       }
       #boot .boot-progress.is-unknown .boot-progress-fill {
@@ -206,7 +228,7 @@
         align-items: baseline;
         gap: 8px;
         font-size: 13px;
-        color: #8b857c;
+        color: var(--muted, #8b857c);
         min-height: 1.6em;
       }
       #boot .boot-pct {
@@ -214,8 +236,8 @@
         color: #b3aca2;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bz0-l7Et.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CMKxUUbA.css">
+    <script type="module" crossorigin src="./assets/index-BSITtNi9.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-dZMEk29t.css">
   </head>
   <body>
     <div id="root"></div>
