@@ -157,6 +157,7 @@ export function LocationPanel() {
   const [auto, setAuto] = useState(false);
   const [threshold, setThreshold] = useState(5); // 米
   const [amapKey, setAmapKey] = useState(() => getAmapKey());
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -195,18 +196,20 @@ export function LocationPanel() {
     L.polyline(latlngs, { color: '#FFC107', weight: 2, opacity: 0.7 }).addTo(map);
     rows.forEach((r, i) => {
       const isLast = i === rows.length - 1;
-      const color = isLast ? '#2196F3' : '#FFC107';
-      const size = isLast ? 18 : 12;
+      const isSelected = i === selectedIdx;
+      const color = isSelected ? '#d9536b' : isLast ? '#2196F3' : '#FFC107';
+      const size = isSelected ? 22 : isLast ? 18 : 12;
+      const glow = isSelected ? 'box-shadow:0 0 10px rgba(217,83,107,0.7);' : '';
       const dotIcon = L.divIcon({
         className: '',
-        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>`,
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4);${glow}"></div>`,
         iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
       L.marker([r.lat, r.lng], { icon: dotIcon }).addTo(map)
         .bindPopup(`<div><strong>${r.ts}</strong><br/>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.note ? `<br/>${r.note}` : ''}</div>`);
     });
     map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
-  }, [rows]);
+  }, [rows, selectedIdx]);
 
   const selectExisting = async (f: StoredFile) => {
     const blob = await getBlob(f.id);
@@ -400,20 +403,15 @@ export function LocationPanel() {
 
       <ul className="music-list">
         {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
-        {rows.slice().reverse().map((r, i) => (
-          <li key={i} className="music-row" onClick={() => {
-            mapRef.current?.setView([r.lat, r.lng], 16);
-            if (mapRef.current) {
-              (mapRef.current as any)._selMarker?.remove();
-              const selIcon = L.divIcon({
-                className: '',
-                html: '<div style="width:24px;height:24px;border-radius:50%;background:#d9536b;border:3px solid #fff;box-shadow:0 0 10px rgba(217,83,107,0.7)"></div>',
-                iconSize: [24, 24], iconAnchor: [12, 12],
-              });
-              const m = L.marker([r.lat, r.lng], { icon: selIcon }).addTo(mapRef.current);
-              (mapRef.current as any)._selMarker = m;
-            }
-          }}>
+        {rows.slice().reverse().map((r, i) => {
+          const realIdx = rows.length - 1 - i;
+          const isSel = realIdx === selectedIdx;
+          return (
+          <li key={i} className="music-row" style={isSel ? { background: '#ffe8ec', borderLeft: '3px solid #d9536b' } : {}}
+            onClick={() => {
+              setSelectedIdx(realIdx);
+              mapRef.current?.setView([r.lat, r.lng], 16);
+            }}>
             <span className="music-row-idx">{rows.length - i}</span>
             <span className="music-row-name">
               {new Date(r.ts).toLocaleString()} · {r.lat.toFixed(6)},{r.lng.toFixed(6)}
@@ -421,7 +419,8 @@ export function LocationPanel() {
             </span>
             <span className="music-row-size muted small">±{Math.round(r.accuracy)}m</span>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {picking && (
