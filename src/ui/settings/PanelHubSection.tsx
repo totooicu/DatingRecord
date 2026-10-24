@@ -22,6 +22,12 @@ export function PanelHubSection({ onPick }: { onPick: (k: SettingsKey) => void }
       desc: '点一下拿当前经纬度，追加到 CSV，保存进文件库。',
       hint: 'CSV · 自定义文件名',
     },
+    {
+      key: 'panelMap',
+      title: '定位地图',
+      desc: '从文件库选一个定位 CSV，Canvas 画轨迹散点图。',
+      hint: '离线 · 点查看详情',
+    },
   ];
 
   return (
