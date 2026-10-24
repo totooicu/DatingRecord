@@ -308,47 +308,58 @@ function intersectionOf(a: BoxPx, b: BoxPx): number {
 
 /**
  * 头像框校正：头像几乎都是小正方形，和表情包一样用同一份边缘候选。
- * 这里始终以分割结果为准——模型框只用来圈定「大概是这个头像」，
- * 真正裁哪一块由候选区域决定：优先方、和模型框贴得紧、像照片的那块。
- * 没有合适的方候选时才退回模型框。
+ * 这里强制以分割结果为准——模型框只当作「大概往哪儿找」的提示，
+ * 最终裁哪一块由候选区域决定：离模型框最近、方正、像照片的那块。
+ * 只有这张截图一个分割区域都没有时才退回模型框。
  */
 export async function refineAvatarBox(shot: Shot, box: ImageBox): Promise<ImageBox> {
   try {
     const analysis = await analyze(shot);
     if (!analysis) return box;
     const { canvas, ctx, regions, scale } = analysis;
+    if (!regions.length) return box;
+
     const detectBox: BoxPx = {
       x: box.x * canvas.width,
       y: box.y * canvas.height,
       w: Math.max(1, box.w * canvas.width),
       h: Math.max(1, box.h * canvas.height),
     };
-
+    const centerX = detectBox.x + detectBox.w / 2;
+    const centerY = detectBox.y + detectBox.h / 2;
+    const baseSize = Math.max(1, Math.max(detectBox.w, detectBox.h));
     const boxArea = Math.max(1, detectBox.w * detectBox.h);
-    const candidates = regions
-      .filter((r) => overlapOf(r, detectBox) >= 0.15)
-      .map((r) => {
-        const aspect = r.w / r.h;
-        const square = Math.max(0, 1 - Math.abs(1 - aspect) * 1.8);
-        const ratioW = r.w / detectBox.w;
-        const ratioH = r.h / detectBox.h;
-        // 头像可能比模型框小（框松了），但不会大出一倍：大太多的多半是整块气泡
-        const sizeFit = ratioW <= 2.2 && ratioH <= 2.2 ? 1 : 0.3;
-        return {
-          region: r,
-          coverage: intersectionOf(r, detectBox) / boxArea,
-          score: photoScore(ctx, r),
-          square,
-          sizeFit,
-        };
-      })
-      .filter((c) => c.square >= 0.55 && c.coverage >= 0.02);
-    if (!candidates.length) return box;
+
+    const candidates = regions.map((r) => {
+      const aspect = r.w / r.h;
+      const square = Math.max(0, 1 - Math.abs(1 - aspect) * 1.8);
+      const ratioW = r.w / detectBox.w;
+      const ratioH = r.h / detectBox.h;
+      // 头像可能比模型框小（框松了），但不会大出一倍：大太多的多半是整块气泡
+      const sizeFit = ratioW <= 2.2 && ratioH <= 2.2 ? 1 : 0.3;
+      const dx = r.x + r.w / 2 - centerX;
+      const dy = r.y + r.h / 2 - centerY;
+      // 距离按模型框尺寸归一化：模型框偏一点也能找到最近的那个头像
+      const proximity = 1 / (1 + Math.hypot(dx, dy) / baseSize);
+      return {
+        region: r,
+        proximity,
+        coverage: intersectionOf(r, detectBox) / boxArea,
+        score: photoScore(ctx, r),
+        square,
+        sizeFit,
+      };
+    });
+    // 优先方形候选；这张截图确实没有方的（少见），也仍然从最近的分割区域里选，
+    // 不再回退到模型框——否则「用分割结果」就名不副实了。
+    const squarePool = candidates.filter((c) => c.square >= 0.45);
+    const pool = squarePool.length ? squarePool : candidates;
 
     const rank = (c: (typeof candidates)[number]) =>
-      c.sizeFit * (c.square * 0.45 + Math.min(1, c.coverage) * 0.35 + Math.min(1, c.score / 1.2) * 0.2);
-    candidates.sort((a, b) => rank(b) - rank(a));
-    const best = candidates[0];
+      c.sizeFit *
+      (c.square * 0.4 + c.proximity * 0.3 + Math.min(1, c.coverage) * 0.2 + Math.min(1, c.score / 1.2) * 0.1);
+    pool.sort((a, b) => rank(b) - rank(a));
+    const best = pool[0];
 
     const margin = Math.max(1, Math.round(EDGE_MARGIN * 0.5 * Math.sqrt(scale)));
     const x = Math.max(0, best.region.x - margin);
