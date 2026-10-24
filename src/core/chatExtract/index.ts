@@ -1,8 +1,9 @@
 // 聊天截图提取：把一张或多张聊天截图变成「聊天形式」的事件。
 //
 // 分工：
-//   · 模型看截图，抄下每条消息的说话人 / 左右 / 文字，并给出图片在截图里的位置；
+//   · 模型看截图，抄下每条消息的说话人 / 左右 / 文字，并给出图片和头像在截图里的位置；
 //   · 浏览器按位置把图片裁出来，存进本库文件（正文里用 ![](file:xxx) 引用）；
+//   · 新建人物时顺带把头像也裁下来，存成人物头像；
 //   · 最后用事件 + 消息表落库，视图切成 chat——和手动记的聊天事件完全一样。
 //
 // 图片必须真的裁下来，而不是把整张截图塞进消息：截图里有输入框、状态栏、
@@ -11,12 +12,12 @@
 
 import { chat, type AiContentPart, type AiModel } from '../ai';
 import { listPersons } from '../repo/persons';
-import { createPerson } from '../repo/persons/write';
+import { createPerson, updatePerson } from '../repo/persons/write';
 import { createEvent } from '../repo/events';
 import { appendMessage } from '../repo/chat';
 import { DEFAULT_SMALL_LIMIT, uploadFileQuiet } from '../files';
 import type { StoredFile } from '../repo/files';
-import { refineImageBox } from './segment';
+import { refineAvatarBox, refineImageBox } from './segment';
 
 /** 一张截图（已经缩到模型能接受的尺寸） */
 export interface Shot {
@@ -52,10 +53,23 @@ export interface ExtractedMessage {
   quote?: QuotedMessage | null;
 }
 
+/** 说话人头像在截图里的位置：新建人物时顺手拿来当头像 */
+export interface ExtractedAvatar {
+  speaker: string;
+  box: ImageBox;
+}
+
 export interface ExtractedChat {
   title: string;
   time?: string | null;
   messages: ExtractedMessage[];
+  avatars: ExtractedAvatar[];
+}
+
+export interface PreviewAvatar {
+  speaker: string;
+  personId: string;
+  imageUrl: string;
 }
 
 export interface PreviewMessage {
@@ -73,6 +87,8 @@ export interface SavedExtraction {
   messageCount: number;
   dividerCount: number;
   imageCount: number;
+  avatarCount: number;
+  avatars: PreviewAvatar[];
   preview: PreviewMessage[];
   warnings: string[];
 }
@@ -238,6 +254,23 @@ function normalizeChat(obj: Record<string, unknown>, shots: Shot[]): ExtractedCh
     (Array.isArray(obj.conversation) ? obj.conversation : null) ??
     [];
   const messages: ExtractedMessage[] = [];
+  const avatars: ExtractedAvatar[] = [];
+  const seenAvatars = new Set<string>();
+  // 头像只有「新建人物」时才用得上：同名说话人取第一张清晰的就行。
+  const addAvatar = (speakerRaw: unknown, rawBox: unknown) => {
+    const speaker = str(speakerRaw);
+    if (!speaker || isSelfSpeaker(speaker) || seenAvatars.has(speaker)) return;
+    const box = normalizeBox(rawBox, shots);
+    if (!box) return;
+    seenAvatars.add(speaker);
+    avatars.push({ speaker, box });
+  };
+  const rawAvatars = Array.isArray(obj.avatars) ? obj.avatars : [];
+  for (const raw of rawAvatars) {
+    if (!raw || typeof raw !== 'object') continue;
+    const a = raw as Record<string, unknown>;
+    addAvatar(a.speaker ?? a.name ?? a.from ?? a.author, a.image ?? a.avatar ?? a.box ?? a.bbox ?? a);
+  }
 
   for (const raw of rawMessages) {
     if (!raw || typeof raw !== 'object') continue;
@@ -287,6 +320,9 @@ function normalizeChat(obj: Record<string, unknown>, shots: Shot[]): ExtractedCh
     }
 
     const speaker = speakerRaw || '对方';
+    // 模型也可能把头像挂在某条消息上；当作这个说话人的头像位置。
+    const avatarRaw = m.avatar ?? m.avatar_box ?? m.avatar_image;
+    if (avatarRaw) addAvatar(speaker, avatarRaw);
     const sideRaw = str(m.side).toLowerCase();
     const side: 'left' | 'right' =
       sideRaw === 'right' || sideRaw === 'out' || sideRaw === 'mine' || isSelfSpeaker(speaker)
@@ -312,7 +348,7 @@ function normalizeChat(obj: Record<string, unknown>, shots: Shot[]): ExtractedCh
   }
   const title = str(obj.title) || `聊天记录 · ${new Date().toLocaleDateString('zh-CN')}`;
   const time = str(obj.time ?? obj.date) || null;
-  return { title, time, messages: messages.slice(0, MAX_MODEL_MESSAGES) };
+  return { title, time, messages: messages.slice(0, MAX_MODEL_MESSAGES), avatars };
 }
 
 function buildPrompt(userPrompt: string, shotCount: number): string {
@@ -324,6 +360,9 @@ function buildPrompt(userPrompt: string, shotCount: number): string {
     '{',
     '  "title": "一句话概括这段对话，例如：和林小满聊周末爬山",',
     '  "time": "截图里能看到的日期时间（ISO8601），看不到就 null",',
+    '  "avatars": [',
+    '    { "speaker": "说话人昵称", "image": { "page": 0, "x": 0.03, "y": 0.35, "w": 0.10, "h": 0.05 } }',
+    '  ],',
     '  "messages": [',
     '    {',
     '      "type": "msg",',
@@ -340,6 +379,7 @@ function buildPrompt(userPrompt: string, shotCount: number): string {
     `一共有 ${shotCount} 张截图，page 从 0 开始，对应第几张。`,
     'image 是「图片 / 表情包 / 照片」在截图里的外框：x y 是左上角，w h 是宽高。',
     '坐标请归一化到 0~1（不要用像素）；只有真的是一张图片时才给 image，纯文字消息填 null。',
+    'avatars 里的 image 同样用 0~1 坐标，框住说话人头像。',
     '规则：',
     '1. 按截图里从上到下的顺序输出每条消息，连续同一个人也要分开成多条，不要合并。',
     '2. side 按气泡方向判断：自己发的在右边写 right，对方在左边写 left。',
@@ -349,6 +389,8 @@ function buildPrompt(userPrompt: string, shotCount: number): string {
     '6. 说话人用截图里的昵称；分不清就用「对方」。',
     '7. 表情包、照片、截图等非文字内容：text 留空，image 给出位置。',
     '8. 不要编造截图里没有的内容。',
+    '9. 头像单独放在 avatars 里：每个非「我」的说话人给一张头像的外框（圆形头像框紧贴外沿），同一个人的头像只给一次；没有头像或只是默认灰头像就不写。',
+    '10. 头像不是消息图片，不要放进 messages 的 image。',
     userPrompt.trim() ? `\n用户额外要求：${userPrompt.trim()}` : '',
   ].join('\n');
 }
@@ -402,7 +444,11 @@ async function cropShot(shot: Shot, box: ImageBox): Promise<string | null> {
 }
 
 /** 在已有的人物里按姓名 / 别名找，找不到就新建一个（打上「聊天提取」标签，方便事后清理） */
-function personForSpeaker(name: string, cache: Map<string, string>): string | null {
+function personForSpeaker(
+  name: string,
+  cache: Map<string, string>,
+  onCreated?: (id: string, displayName: string) => void,
+): string | null {
   const hit = cache.get(name);
   if (hit !== undefined) return hit || null;
   const clean = name.trim();
@@ -419,6 +465,7 @@ function personForSpeaker(name: string, cache: Map<string, string>): string | nu
   }
   const created = createPerson({ displayName: clean, tags: ['聊天提取'] });
   cache.set(name, created.id);
+  onCreated?.(created.id, clean);
   return created.id;
 }
 
@@ -455,7 +502,7 @@ function findQuotedId(history: { id: string; text: string }[], quote: QuotedMess
 }
 
 /**
- * 把提取结果落成一个聊天事件：裁图 → 存文件 → 建人物 → 建事件 → 逐条消息。
+ * 把提取结果落成一个聊天事件：裁图 → 存文件 → 建人物（顺带头像）→ 建事件 → 逐条消息。
  *
  * 图片裁不出来时不让整批失败：记一条 warning，消息照常入库，用户事后能补。
  * 引用优先挂成 reply_to（聊天视图里能点回原消息），匹配不上就写成 Markdown 引用块。
@@ -469,13 +516,48 @@ export async function saveExtraction(
   const cache = new Map<string, string>();
   const preview: PreviewMessage[] = [];
   const personIds = new Map<string, string | null>();
+  // 只有这次新建的人物才配头像；已有的人物不覆盖用户自己设的头像
+  const createdPersons = new Map<string, string>();
+  const avatars: PreviewAvatar[] = [];
   let imageCount = 0;
 
   // 先定人物：事件参与者要在建事件时一起写进去
   for (const m of extracted.messages) {
     if (m.type === 'divider') continue;
     const self = m.side === 'right' || isSelfSpeaker(m.speaker);
-    personIds.set(m.speaker, self ? (selfPersonId ?? null) : personForSpeaker(m.speaker, cache));
+    personIds.set(
+      m.speaker,
+      self
+        ? (selfPersonId ?? null)
+        : personForSpeaker(m.speaker, cache, (id, name) => createdPersons.set(name, id)),
+    );
+  }
+
+  // 截图里带了头像，就在新建人物后顺手存成头像文件
+  for (const avatar of extracted.avatars) {
+    const speaker = avatar.speaker.trim();
+    const personId = createdPersons.get(speaker);
+    if (!personId) continue;
+    const shot = shots[avatar.box.page];
+    if (!shot) {
+      warnings.push(`「${speaker}」的头像指到了不存在的截图，已跳过`);
+      continue;
+    }
+    try {
+      // 模型框可能比头像圆框松一点：用边缘分割里方正的候选把它收紧
+      const refined = await refineAvatarBox(shot, avatar.box);
+      const dataUrl = await cropShot(shot, refined);
+      if (!dataUrl) throw new Error('裁图失败');
+      const safe = speaker.replace(/[\\/:*?"<>|]/g, '-');
+      const file: StoredFile = await uploadFileQuiet(
+        new File([dataUrlToBlob(dataUrl)], `头像-${safe}.png`, { type: 'image/png' }),
+        DEFAULT_SMALL_LIMIT,
+      );
+      updatePerson(personId, { avatar: `file:${file.id}` });
+      avatars.push({ speaker, personId, imageUrl: dataUrl });
+    } catch (e) {
+      warnings.push(`「${speaker}」的头像没截下来：${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   const participantIds = [...new Set([...personIds.values()].filter((id): id is string => !!id))];
@@ -573,6 +655,8 @@ export async function saveExtraction(
     messageCount: extracted.messages.length,
     dividerCount,
     imageCount,
+    avatarCount: avatars.length,
+    avatars,
     preview,
     warnings,
   };

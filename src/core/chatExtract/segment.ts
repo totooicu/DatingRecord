@@ -296,6 +296,79 @@ function analyze(shot: Shot): Promise<Analysis | null> {
   return task;
 }
 
+/** 框内交叠面积占候选框的比例（与 overlapOf 不同：这里关心候选本身是否被覆盖） */
+function intersectionOf(a: BoxPx, b: BoxPx): number {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.w, b.x + b.w);
+  const y2 = Math.min(a.y + a.h, b.y + b.h);
+  if (x2 <= x1 || y2 <= y1) return 0;
+  return (x2 - x1) * (y2 - y1);
+}
+
+/**
+ * 头像框校正：头像几乎都是小正方形，和表情包一样用同一份边缘候选，
+ * 但排序时更看重「方」和「与模型框贴得紧」，避免挑到旁边的气泡或表情。
+ * 模型框本身已经方正、又像照片时原样返回。
+ */
+export async function refineAvatarBox(shot: Shot, box: ImageBox): Promise<ImageBox> {
+  try {
+    const analysis = await analyze(shot);
+    if (!analysis) return box;
+    const { canvas, ctx, regions, scale } = analysis;
+    const detectBox: BoxPx = {
+      x: box.x * canvas.width,
+      y: box.y * canvas.height,
+      w: Math.max(1, box.w * canvas.width),
+      h: Math.max(1, box.h * canvas.height),
+    };
+    const baseAspect = detectBox.w / detectBox.h;
+    if (baseAspect >= 0.75 && baseAspect <= 1.35 && photoScore(ctx, detectBox) >= 0.65) return box;
+
+    const boxArea = Math.max(1, detectBox.w * detectBox.h);
+    const candidates = regions
+      .filter((r) => overlapOf(r, detectBox) >= 0.15)
+      .map((r) => {
+        const aspect = r.w / r.h;
+        const square = Math.max(0, 1 - Math.abs(1 - aspect) * 1.8);
+        const ratioW = r.w / detectBox.w;
+        const ratioH = r.h / detectBox.h;
+        const sizeFit = ratioW >= 0.45 && ratioW <= 2.2 && ratioH >= 0.45 && ratioH <= 2.2 ? 1 : 0.35;
+        return {
+          region: r,
+          coverage: intersectionOf(r, detectBox) / boxArea,
+          score: photoScore(ctx, r),
+          square,
+          sizeFit,
+        };
+      })
+      .filter((c) => c.square > 0.45 && c.coverage >= 0.03);
+    if (!candidates.length) return box;
+
+    const rank = (c: (typeof candidates)[number]) =>
+      c.sizeFit * (c.square * 0.45 + Math.min(1, c.coverage) * 0.3 + Math.min(1, c.score / 1.2) * 0.25);
+    candidates.sort((a, b) => rank(b) - rank(a));
+    const best = candidates[0];
+    // 候选几乎和模型框一样大、又不够方，说明分割没找到头像本身
+    if (best.square < 0.55) return box;
+
+    const margin = Math.max(1, Math.round(EDGE_MARGIN * 0.5 * Math.sqrt(scale)));
+    const x = Math.max(0, best.region.x - margin);
+    const y = Math.max(0, best.region.y - margin);
+    const w = Math.min(canvas.width - x, best.region.w + margin * 2);
+    const h = Math.min(canvas.height - y, best.region.h + margin * 2);
+    return {
+      page: box.page,
+      x: x / canvas.width,
+      y: y / canvas.height,
+      w: w / canvas.width,
+      h: h / canvas.height,
+    };
+  } catch {
+    return box;
+  }
+}
+
 /** 找「比模型框更像照片」的那块；找不到就原样返回 */
 export async function refineImageBox(shot: Shot, box: ImageBox): Promise<ImageBox> {
   try {

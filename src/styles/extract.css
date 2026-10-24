@@ -176,6 +176,42 @@
   margin-top: 2px;
 }
 
+.extract-avatars {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.extract-avatar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--side);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.extract-avatar img {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.extract-avatar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .extract-warn {
   margin: 0 0 10px;
   padding: 8px 10px 8px 26px;

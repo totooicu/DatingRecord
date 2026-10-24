@@ -136,7 +136,9 @@ export function LabExtractSection() {
       showToast(
         `已整理成事件：${Math.max(0, saved.messageCount - saved.dividerCount)} 条消息${
           saved.dividerCount ? `、${saved.dividerCount} 段旁白` : ''
-        }${saved.imageCount ? `、${saved.imageCount} 张图` : ''}`,
+        }${saved.imageCount ? `、${saved.imageCount} 张图` : ''}${
+          saved.avatarCount ? `、${saved.avatarCount} 个新头像` : ''
+        }`,
       );
     } catch (e) {
       setErr(
@@ -176,7 +178,7 @@ export function LabExtractSection() {
             )}
           </div>
           <p className="muted small extract-hint">
-            最多 {MAX_SHOTS} 张，按顺序发。只截对话区域最好；整屏截图也能认，但输入框和状态栏会被忽略。表情包和头像会借用边缘分割自动找边界。
+            最多 {MAX_SHOTS} 张，按顺序发。只截对话区域最好；整屏截图也能认，但输入框和状态栏会被忽略。表情包和头像会借用边缘分割自动找边界；新建的人物会带上截图里的头像。
           </p>
         </div>
 
@@ -241,12 +243,24 @@ export function LabExtractSection() {
                 {Math.max(0, result.messageCount - result.dividerCount)} 条消息
                 {result.dividerCount > 0 ? ` · ${result.dividerCount} 段旁白` : ''}
                 {result.imageCount ? ` · ${result.imageCount} 张图片` : ''}
+                {result.avatarCount ? ` · ${result.avatarCount} 个新头像` : ''}
               </span>
             </div>
             <button type="button" className="btn btn-sm" onClick={() => openEvent(result.eventId)}>
               打开事件
             </button>
           </div>
+          {result.avatars.length > 0 && (
+            <div className="extract-avatars">
+              <span className="extract-label">新人物头像</span>
+              {result.avatars.map((a) => (
+                <span className="extract-avatar" key={a.personId}>
+                  <img src={a.imageUrl} alt={a.speaker} />
+                  <span>{a.speaker}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {result.warnings.length > 0 && (
             <ul className="extract-warn">
               {result.warnings.map((w, i) => (
