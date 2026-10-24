@@ -218,6 +218,7 @@ export {
   noteUndoStep,
   suspendUndo,
   resumeUndo,
+  resetUndo,
 } from './undo';
 export {
   subscribeUndo,
@@ -242,7 +243,7 @@ export {
   type EncStatus,
 } from './encStore';
 export { getMeta, setMeta } from './meta';
-export { markDirty, flushPersist, persist, setPersistSink, type PersistSink } from './persist';
+export { markDirty, flushPersist, persist, setPersistSink, onPersisted, type PersistSink } from './persist';
 export { openIdb, BLOB_STORE } from './idb';
 export { SCHEMA_SQL } from './schema';
 export { runMigrations, ensureAttachmentColumns } from './migrate';

@@ -19,6 +19,7 @@ export type SettingsKey =
   | 'backupData'
   | 'sync'
   | 'share'
+  | 'remote'
   | 'security'
   | 'people'
   | 'data'
@@ -35,7 +36,8 @@ export type SettingsKey =
   | 'aiModel'
   | 'panel'
   | 'panelMusic'
-  | 'panelLocation';
+  | 'panelLocation'
+  | 'panelPrecise';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
@@ -54,6 +56,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'backupData', title: '数据备份', hint: '导入 / 导出 .drp.zip', group: 'general' },
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
+  { key: 'remote', title: '跨设备操作', hint: '把本机库当作服务端 / 连到别的设备', group: 'general' },
   // AI 单独成组：「AI」是入口页，AI 对话 / 聊天提取 / 模型是它的三个子页。
   // 目录上只占一行，点进去才看到二级目录——和「功能体验」「备份与分享」同一套路。
   { key: 'ai', title: 'AI', hint: '对话 · 聊天提取 · 模型', group: 'ai' },
@@ -74,7 +77,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // 放在功能体验组里：还在试验期，用顺了再搬去该去的地方。
   { key: 'panel', title: '功能面板', hint: '背景音乐 · 定位记录 · 数据分析', group: 'trial' },
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
-  { key: 'panelLocation', title: '定位记录', hint: 'GPS 打点存 CSV', group: 'trial' },
+  { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹', group: 'trial' },
+  { key: 'panelPrecise', title: '高精度定位', hint: '高德官方 demo 诊断', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -97,8 +101,8 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   ai: ['labAi', 'labChat', 'aiModel'],
   lab: ['labEdge', 'labDraft'],
-  backup: ['backupData', 'sync', 'share'],
-  panel: ['panelMusic', 'panelLocation'],
+  backup: ['backupData', 'sync', 'share', 'remote'],
+  panel: ['panelMusic', 'panelLocation', 'panelPrecise'],
 };
 
 /** 这个 key 是不是某个入口页的子页 */

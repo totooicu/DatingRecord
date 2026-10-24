@@ -12,6 +12,8 @@ function ServiceRow({ s }: { s: ServiceItem }) {
     if (s.kind === 'music') setMusicAutostart(!s.autostart);
     else setServiceAutostart(s.id, !s.autostart);
   };
+  // 目前只有背景音乐支持自启动（自动打点要先选文件，开机自启没有意义）
+  const autostartable = s.kind === 'music';
   return (
     <div className="svc-row">
       <div className="svc-main">
@@ -20,10 +22,16 @@ function ServiceRow({ s }: { s: ServiceItem }) {
           {s.running ? (s.note ? `运行中 · ${s.note}` : '运行中') : '已停止'}
         </div>
       </div>
-      <label className="svc-auto" title="开软件自动启动">
-        <input type="checkbox" checked={s.autostart} onChange={toggleAutostart} />
-        自启动
-      </label>
+      {autostartable ? (
+        <label className="svc-auto" title="开软件自动启动">
+          <input type="checkbox" checked={s.autostart} onChange={toggleAutostart} />
+          自启动
+        </label>
+      ) : (
+        <span className="svc-auto muted small" title="该服务需要先手动准备，不支持自启动">
+          —
+        </span>
+      )}
       <button className="svc-open" onClick={open}>
         打开
       </button>

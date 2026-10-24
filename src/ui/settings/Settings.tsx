@@ -5,6 +5,7 @@ import { BackupHubSection } from './BackupHubSection';
 import { BackupSection } from './BackupSection';
 import { SyncSection } from './SyncSection';
 import { ShareSection } from './ShareSection';
+import { RemoteSection } from './RemoteSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
@@ -18,6 +19,7 @@ import { AiSection } from './AiSection';
 import { PanelHubSection } from './PanelHubSection';
 import { MusicPanel } from '../panel/MusicPanel';
 import { LocationPanel } from '../panel/LocationPanel';
+import { PreciseLocationPanel } from '../panel/PreciseLocationPanel';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
@@ -80,6 +82,8 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
 
         {active === 'share' && <ShareSection />}
 
+        {active === 'remote' && <RemoteSection />}
+
         {active === 'security' && <SecuritySection />}
 
         {active === 'people' && <PeopleSection />}
@@ -118,6 +122,8 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
         {active === 'panelMusic' && <MusicPanel />}
 
         {active === 'panelLocation' && <LocationPanel />}
+
+        {active === 'panelPrecise' && <PreciseLocationPanel />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>

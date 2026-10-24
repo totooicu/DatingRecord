@@ -14,6 +14,7 @@ import { FILE_TOOLS } from './files';
 import { SNAPSHOT_TOOLS } from './snapshots';
 import { IO_TOOLS } from './io';
 import { SYSTEM_TOOLS } from './system';
+import { REMOTE_TOOLS } from './remote';
 
 export const TOOLS: ToolDef[] = [
   ...PERSON_TOOLS,
@@ -24,6 +25,7 @@ export const TOOLS: ToolDef[] = [
   ...SNAPSHOT_TOOLS,
   ...IO_TOOLS,
   ...SYSTEM_TOOLS,
+  ...REMOTE_TOOLS,
 ];
 
 // 启动时自检：重名会让 runTool 随机命中其中一个，必须零容忍

@@ -353,6 +353,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | `src/core/runtime/store.ts` | 任务/服务的响应式数据中心（pub/sub，仿 `toast` 模式）：`useTasks/useServices` + `addTask/finishTask/markTaskRead/updateTask/removeTask` + `registerService/setServiceRunning/setServiceAutostart`。只存状态，不碰 UI |
 | `src/core/runtime/aiChat.ts` | AI 聊天全局单例：轮次执行态（busy/activity/items/history/session）原来在 `LabAiSection` 的 state 里，离开即卸载丢失；现在 `sendTurn` 由单例驱动，页面只订阅。发送即 `addTask({kind:'ai-chat'})`，成功 `stageAiTurn` 后 `finishTask(true)`，失败 `revertAiTurn` 后 `finishTask(false)` |
 | `src/core/runtime/music.ts` | 背景音乐服务单例：`<audio>` 用 `document.createElement` 全局托管（原来在 `MusicPanel` 里，离开即停）；`setAutostart` 写 localStorage 并同步 store，开软件时 `initMusicService()` 按标记自启动 |
+| `src/core/runtime/locationAuto.ts` | 定位「自动打点」服务单例：每秒取 GPS、按阈值去重写回 CSV。定时器与数据在单例里——离开定位面板照打（服务语义）；面板 `LocationPanel` 只是订阅式视图 + 地图渲染 |
 | `src/core/runtime/nav.ts` | 全局导航（`setNavHandler`/`navigate`，仿 `setEventOpener` 一族）：App 注册实现，head 图标/服务页借此跨页跳到指定设置子页 |
 | `src/ui/runtime/HeadStatus.tsx` | head 右侧状态区：活动/未读任务图标（运行中蓝色脉冲、完成绿、失败红，带未读角标）、运行中服务图标、「服务」「任务」入口。挂在主页 head、时间线/日历 `PageHead` 与设置页 `PageHead` 的 right 槽 |
 
@@ -362,7 +363,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **踩过的坑**：`setAutostart` 最初只改 localStorage 和 running，没同步 store 的 `autostart`——受控 checkbox 每次重渲染都被打回原值，表现为"点了开关没反应"。凡是单例状态被 UI 受控渲染的，写入口必须同时更新 store。
 
-**回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R8：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红）。
+**回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R8：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红）；定位打点服务另有 `node tools/e2e/location-service-e2e.mjs`（L1–L5）。
 
 ---
 

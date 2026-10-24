@@ -9,6 +9,7 @@ import { TopBar } from './TopBar';
 import { UndoSnackbar } from './undo/UndoSnackbar';
 import { ToastHost } from './toast';
 import { TabBar } from './TabBar';
+import { RemoteStatusBar } from './RemoteStatusBar';
 import { Calendar } from './calendar';
 import { hasAnyPerson } from '../core/seed';
 import { getRoot } from '../core/repo/collections';
@@ -22,6 +23,7 @@ import { setCollectionOpener } from './openCollection';
 import { peekSnapReturn } from './snapReturn';
 import { setNavHandler } from '../core/runtime/nav';
 import { initMusicService } from '../core/runtime/music';
+import { initLocationAutoService } from '../core/runtime/locationAuto';
 import { HeadStatus } from './runtime/HeadStatus';
 import { ServicesPage } from './runtime/ServicesPage';
 import { TasksPage } from './runtime/TasksPage';
@@ -139,6 +141,11 @@ export default function App() {
     initMusicService();
   }, []);
 
+  // 开软件时注册自动打点服务（恢复上次文件；不会自动开打）
+  useEffect(() => {
+    initLocationAutoService();
+  }, []);
+
   const gotoTab = (key: TabKey) => {
     setKeyword('');
     if (key === 'timeline') setView({ k: 'timeline' });
@@ -223,6 +230,7 @@ export default function App() {
         onNew={() => setQuickEvent(true)}
       />
 
+      <RemoteStatusBar />
       <div className="stack">
         {listDetail && view.s === 'persons' && (
           <PersonsPane
