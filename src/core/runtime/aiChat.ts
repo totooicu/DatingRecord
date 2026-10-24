@@ -209,7 +209,7 @@ export async function sendTurn(text: string, sent: Attachment[], model: AiModel)
         activity: [],
         roundNo: 0,
       });
-      finishTask(TASK_ID, false, res.error);
+      finishTask(TASK_ID, false, res.error, 'AI 回复失败');
       return;
     }
     const hist = res.messages;
@@ -243,6 +243,7 @@ export async function sendTurn(text: string, sent: Attachment[], model: AiModel)
       TASK_ID,
       true,
       res.aborted ? '本轮已停止' : staged ? '改动已暂存，待你确认' : '已完成',
+      'AI 已完成回复',
     );
   } catch (e) {
     patch({
@@ -252,7 +253,7 @@ export async function sendTurn(text: string, sent: Attachment[], model: AiModel)
       activity: [],
       roundNo: 0,
     });
-    finishTask(TASK_ID, false, e instanceof Error ? e.message : String(e));
+    finishTask(TASK_ID, false, e instanceof Error ? e.message : String(e), 'AI 回复失败');
   } finally {
     abortRef = null;
   }

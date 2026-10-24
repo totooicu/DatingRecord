@@ -215,7 +215,7 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 | `repository` | 集成（临时 SQLite） | CRUD + 索引命中 + 关联查询 |
 | `io` | **往返测试** | 导出 → 导入，数据必须完全等价（这条最容易出隐性 bug） |
 | `app-core` | 用例测试 | 主要成功路径 + 关键失败路径 |
-| e2e | 关键流程 | 建人物 → 记事件 → 归集 → 导出 → 导入 |
+| e2e | 关键流程 | 建人物 → 记事件 → 归集 → 导出 → 导入；AI 审核后执行矩阵（`review-matrix-e2e`）；服务/任务两层体系（`runtime-e2e`） |
 
 ## 1.5 Definition of Done（完成标准）
 
@@ -343,6 +343,26 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 **输入与轮次约定**（在 UI / agent 层）：
 - 对话框 `Enter` **只换行**，`Cmd/Ctrl+Enter` 才发送——换行不能误触发送（见 `LabAiSection.tsx` 的 `onKeyDown`）。
 - `runAgentTurn` 的 `maxRounds` **不硬性封顶**：`const maxRounds = opts.maxRounds; if (maxRounds && rounds > maxRounds)`——没传就一路跑到模型主动收尾，不限制 AI 的思考轮次。
+
+## 1.12 「服务 / 任务」两层体系（后台运行时）
+
+一次性的后台工作叫**任务**（AI 正在回复你）；常驻后台的东西叫**服务**（背景音乐）。两者的状态都放在模块级单例里，UI 只是订阅式视图——**组件卸载不影响单例继续跑**，这是"离开聊天页 AI 不中断"的根本原因。
+
+| 文件 | 职责 |
+|---|---|
+| `src/core/runtime/store.ts` | 任务/服务的响应式数据中心（pub/sub，仿 `toast` 模式）：`useTasks/useServices` + `addTask/finishTask/markTaskRead/updateTask/removeTask` + `registerService/setServiceRunning/setServiceAutostart`。只存状态，不碰 UI |
+| `src/core/runtime/aiChat.ts` | AI 聊天全局单例：轮次执行态（busy/activity/items/history/session）原来在 `LabAiSection` 的 state 里，离开即卸载丢失；现在 `sendTurn` 由单例驱动，页面只订阅。发送即 `addTask({kind:'ai-chat'})`，成功 `stageAiTurn` 后 `finishTask(true)`，失败 `revertAiTurn` 后 `finishTask(false)` |
+| `src/core/runtime/music.ts` | 背景音乐服务单例：`<audio>` 用 `document.createElement` 全局托管（原来在 `MusicPanel` 里，离开即停）；`setAutostart` 写 localStorage 并同步 store，开软件时 `initMusicService()` 按标记自启动 |
+| `src/core/runtime/nav.ts` | 全局导航（`setNavHandler`/`navigate`，仿 `setEventOpener` 一族）：App 注册实现，head 图标/服务页借此跨页跳到指定设置子页 |
+| `src/ui/runtime/HeadStatus.tsx` | head 右侧状态区：活动/未读任务图标（运行中蓝色脉冲、完成绿、失败红，带未读角标）、运行中服务图标、「服务」「任务」入口。挂在主页 head、时间线/日历 `PageHead` 与设置页 `PageHead` 的 right 槽 |
+
+**任务语义**：`addTask` 同 kind 顶掉旧的 finished 记录；`finishTask` 完成即置 `unread:true`（即便之前在聊天页清过未读——完成本身是新的通知）；点图标/点开来源页 `markTaskRead` 清未读，**进行中的只跳不清**；任务页可手动 `removeTask`。
+
+**服务语义**：`registerService` 幂等；`autostart` 走 localStorage + store 双写（受控 checkbox 才能翻状态）；被浏览器自动播放策略拦住时 note 置「待播放：点一下恢复」。
+
+**踩过的坑**：`setAutostart` 最初只改 localStorage 和 running，没同步 store 的 `autostart`——受控 checkbox 每次重渲染都被打回原值，表现为"点了开关没反应"。凡是单例状态被 UI 受控渲染的，写入口必须同时更新 store。
+
+**回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R8：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红）。
 
 ---
 

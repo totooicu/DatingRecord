@@ -11,7 +11,12 @@ import { useEffect, useState } from 'react';
 import { listFiles, type StoredFile } from '../repo/files';
 import { objectUrlFor, forgetUrl } from '../db/blob';
 import { getPlaylist, setPlaylist } from '../music/playlist';
-import { registerService, setServiceNote, setServiceRunning } from './store';
+import {
+  registerService,
+  setServiceAutostart,
+  setServiceNote,
+  setServiceRunning,
+} from './store';
 
 export type LoopMode = 'list' | 'one' | 'off';
 

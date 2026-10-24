@@ -86,11 +86,20 @@ export function updateTask(id: string, patch: Partial<TaskItem>): void {
   emit();
 }
 
-export function finishTask(id: string, ok: boolean, note?: string): void {
+export function finishTask(id: string, ok: boolean, note?: string, title?: string): void {
   tasks = tasks.map((x) =>
     // 完成即视为「新的未读通知」：即便此前在聊天页看过（清过未读），
     // 完成时仍要变绿/变红提示用户，直到他点开/点图标才消失。
-    x.id === id ? { ...x, status: ok ? 'success' : 'error', finishedAt: Date.now(), note: note ?? x.note, unread: true } : x,
+    x.id === id
+      ? {
+          ...x,
+          title: title ?? x.title,
+          status: ok ? 'success' : 'error',
+          finishedAt: Date.now(),
+          note: note ?? x.note,
+          unread: true,
+        }
+      : x,
   );
   emit();
 }

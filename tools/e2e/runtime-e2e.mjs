@@ -7,8 +7,11 @@
 //   R3  head 的「服务」「任务」入口能打开对应页面
 //   R4  背景音乐自启动：开启后刷新，head 出现音乐服务图标（运行中）
 //   R5  点击音乐服务图标跳到音乐页
+//   R6  AI 轮次失败：head 图标变红（error），点开后通知消失
+//   R7  默认不开自启动：新装打开 head 无服务图标、服务页开关为关
+//   R8  任务页：完成后列出任务（标题改为已完成）→ 打开跳来源页 → 手动清除
 //
-// 依赖：fake-ai-matrix.mjs（含「慢慢」慢响应场景）+ vite preview。
+// 依赖：fake-ai-matrix.mjs（含「慢慢」慢响应场景 + 「失败」500 场景）+ vite preview。
 // 用法：node tools/e2e/runtime-e2e.mjs [url]
 
 import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
@@ -172,27 +175,41 @@ await scenario('R2 进行中任务点击只跳不清', async () => {
   await ensureAiPage(p);
   await p.locator('.aichat-tab', { hasText: '聊天' }).click();
   await p.waitForTimeout(400);
-  await p.locator('.aichat-input textarea').fill('慢慢新增第二个测试人物小红');
+  await p.locator('.aichat-input textarea').fill('慢慢新增第三个测试人物小刚');
   await p.locator('.aichat-send').click();
 
-  // 趁进行中点 head 上的进行中图标 → 跳转 AI 对话，但图标不消失
+  // 趁进行中，先点返回键回到 AI 目录页（模拟「退出聊天页面」落到别的页）
   await p.waitForTimeout(900);
+  await p.locator('.page-head .back-btn').first().click();
+  await p.waitForTimeout(500);
+  // 目录页 head 上应能看到进行中的 AI 任务图标
+  const iconOnHub = await p.locator('.page-head-right .hs-task.running').count();
+  check('R2：退出聊天到 AI 目录页后 head 显示进行中图标', iconOnHub >= 1, `count=${iconOnHub}`);
+
+  // 点进行中图标 → 跳回 AI 对话（进行中不清通知）
   const clicked = await p
-    .locator('.home-head .hs-task.running')
+    .locator('.page-head-right .hs-task.running')
     .first()
-    .click()
+    .click({ force: true })
     .then(() => true)
     .catch(() => false);
   check('R2：能点到进行中的任务图标', clicked);
   if (clicked) {
-    await p.waitForTimeout(1200);
+    // 点完立刻验证跳转（慢场景全程约 3.6s，这些等待要短，抢在完成前）
+    await p.waitForTimeout(400);
     const onChat = await p.locator('.aichat-tabs').count();
     check('R2：点击进行中任务跳回 AI 对话', onChat >= 1);
-    // 还没完成，回到主页 head 图标仍在（running）
+    // 此刻任务还在跑：回主页，head 图标必须还在（点进行中不清通知）
     await goHome(p);
-    await p.waitForTimeout(600);
+    await p.waitForTimeout(300);
     const runningStill = await p.locator('.home-head .hs-task.running').count();
     check('R2：进行中任务点过之后图标不消失', runningStill >= 1, `running=${runningStill}`);
+    // 兜底：点过之后任务不受影响，继续跑完并变色
+    const done = await p
+      .waitForSelector('.home-head .hs-task.success', { timeout: 20000 })
+      .then(() => true)
+      .catch(() => false);
+    check('R2：点过之后任务继续跑完并变色', done);
   }
   await p.context().close();
 });
@@ -254,6 +271,116 @@ await scenario('R4/R5 音乐自启动 + 服务图标', async () => {
   await p.waitForTimeout(1000);
   const onMusic = await p.locator('.music-panel').count();
   check('R5：点服务图标跳到音乐页', onMusic >= 1);
+  await p.context().close();
+});
+
+// ---- R6：AI 轮次失败 → 图标变红 → 点开清通知 ----
+await scenario('R6 失败任务红色图标 + 点开清通知', async () => {
+  const p = await newPage(browser);
+  await boot(p);
+  await setupModel(p);
+
+  await ensureAiPage(p);
+  await p.locator('.aichat-tab', { hasText: '聊天' }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.aichat-input textarea').fill('失败测试：这一轮故意出错');
+  await p.locator('.aichat-send').click();
+
+  // 假服务对这一轮直接回 500：head 图标应变红（error），页面给出错误说明
+  const redOnChat = await p
+    .locator('.page-head-right .hs-task.error')
+    .first()
+    .waitFor({ state: 'visible', timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  check('R6：AI 轮次失败后 head 图标变红', redOnChat);
+  const errShown = await p.locator('.aichat-err').count();
+  check('R6：聊天页显示错误说明', errShown >= 1);
+
+  // 回主页：红色未读图标在，点它跳回聊天并清通知
+  await goHome(p);
+  await p.waitForTimeout(600);
+  const redOnHome = await p.locator('.home-head .hs-task.error').count();
+  check('R6：主页 head 出现红色未读图标', redOnHome >= 1, `count=${redOnHome}`);
+  await p.locator('.home-head .hs-task.error').first().click();
+  await p.waitForTimeout(900);
+  const onChat = await p.locator('.aichat-tabs').count();
+  check('R6：点红色图标跳回 AI 对话', onChat >= 1);
+  await goHome(p);
+  await p.waitForTimeout(600);
+  const stillThere = await p.locator('.home-head .hs-task').count();
+  check('R6：点开来源页后红色通知消失', stillThere === 0, `hs-task 数=${stillThere}`);
+  await p.context().close();
+});
+
+// ---- R7：默认不开自启动 ----
+await scenario('R7 默认不自启动', async () => {
+  const p = await newPage(browser);
+  await boot(p);
+  await goHome(p);
+  await p.waitForTimeout(600);
+
+  // 全新环境（localStorage 无标记）：head 不应出现音乐服务图标
+  const svcIcon = await p.locator('.home-head .hs-svc').count();
+  check('R7：默认不开自启动时 head 无服务图标', svcIcon === 0, `count=${svcIcon}`);
+  const lsFlag = await p.evaluate(() => localStorage.getItem('music-autostart'));
+  check('R7：默认无自启动标记', lsFlag === null, `localStorage=${lsFlag}`);
+
+  // 服务页里自启动开关应为未勾选
+  await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
+  await p.waitForTimeout(700);
+  const box = p.locator('.svc-auto input[type=checkbox]').first();
+  const checked = await box.isChecked().catch(() => false);
+  check('R7：服务页自启动开关默认关闭', !checked);
+  const sub = await p.locator('.svc-row .svc-sub').first().textContent().catch(() => '');
+  check('R7：服务页显示「已停止」', String(sub).includes('已停止'), `sub=${sub}`);
+  await p.context().close();
+});
+
+// ---- R8：任务页（列出 → 打开跳转 → 清除） ----
+await scenario('R8 任务页跳转与清除', async () => {
+  const p = await newPage(browser);
+  await boot(p);
+  await setupModel(p);
+
+  await ensureAiPage(p);
+  await p.locator('.aichat-tab', { hasText: '聊天' }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.aichat-input textarea').fill('新增一个人物小赵');
+  await p.locator('.aichat-send').click();
+
+  // 等这一轮跑完（快场景）
+  const okIcon = await p
+    .locator('.page-head-right .hs-task.success')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+  check('R8：AI 轮次完成', okIcon);
+
+  // 打开任务页：应列出这条任务，标题是「AI 已完成回复」
+  await goHome(p);
+  await p.locator('.home-head .hs-text', { hasText: '任务' }).click();
+  await p.waitForTimeout(700);
+  const rows = await p.locator('.task-row').count();
+  check('R8：任务页列出 1 条任务', rows === 1, `rows=${rows}`);
+  const doneTitle = await p.getByText('AI 已完成回复').count();
+  check('R8：完成后标题改为「AI 已完成回复」', doneTitle >= 1);
+
+  // 点「打开」→ 跳回 AI 对话
+  await p.locator('.task-open').first().click();
+  await p.waitForTimeout(900);
+  const onChat = await p.locator('.aichat-tabs').count();
+  check('R8：任务页点打开跳回 AI 对话', onChat >= 1);
+
+  // 再进任务页，手动清除
+  await goHome(p);
+  await p.locator('.home-head .hs-text', { hasText: '任务' }).click();
+  await p.waitForTimeout(700);
+  await p.locator('.task-clear').first().click();
+  await p.waitForTimeout(500);
+  const rowsAfter = await p.locator('.task-row').count();
+  check('R8：手动清除后任务页为空', rowsAfter === 0, `rows=${rowsAfter}`);
   await p.context().close();
 });
 

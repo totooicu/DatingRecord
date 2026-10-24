@@ -1,5 +1,6 @@
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
+import { HeadStatus } from '../runtime/HeadStatus';
 import { BackupHubSection } from './BackupHubSection';
 import { BackupSection } from './BackupSection';
 import { SyncSection } from './SyncSection';
@@ -59,6 +60,7 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
       <PageHead
         title={sub === null ? '设置与数据' : (entry?.title ?? '设置')}
         onBack={sub === null ? undefined : () => go(backTo)}
+        right={<HeadStatus />}
       />
       <SettingsNav active={active} onPick={go} />
 
