@@ -28,6 +28,19 @@ function MusicGlyph() {
     </svg>
   );
 }
+function LocationGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </svg>
+  );
+}
+/** 不同服务用不同的图标：运行时一眼能分清是哪个服务在跑，而不是都长得像音乐 */
+function serviceGlyph(kind: string) {
+  if (kind === 'location') return <LocationGlyph />;
+  return <MusicGlyph />;
+}
 
 export function HeadStatus() {
   const tasks = useTasks();
@@ -68,7 +81,7 @@ export function HeadStatus() {
             onClick={() => clickService(s)}
             aria-label={s.title}
           >
-            <MusicGlyph />
+            {serviceGlyph(s.kind)}
             {s.note && <span className="hs-dot warn" />}
           </button>
         ))}

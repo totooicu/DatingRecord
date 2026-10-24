@@ -22,7 +22,13 @@ import {
   type LocationOffset,
   type LocationPoint,
 } from '../location/format';
-import { registerService, setServiceNote, setServiceRunning } from './store';
+import {
+  isServiceAutostart,
+  registerService,
+  setServiceAutostart,
+  setServiceNote,
+  setServiceRunning,
+} from './store';
 
 export const SERVICE_ID = 'location-auto';
 
@@ -54,6 +60,8 @@ export interface LocationAutoState {
   busy: boolean;
   /** 写回文件的状态 */
   saving: SaveState;
+  /** 上次选的文件内容是否已在单例里就绪（打点前必须为真，否则会把旧点覆盖掉） */
+  fileReady: boolean;
 }
 
 let state: LocationAutoState = {
@@ -68,6 +76,7 @@ let state: LocationAutoState = {
   running: false,
   busy: false,
   saving: 'idle',
+  fileReady: false,
 };
 
 const listeners = new Set<() => void>();
@@ -232,16 +241,43 @@ function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number })
 
 // ---- 服务注册 ----
 
+/** 供 store 在「应用加载完毕后统一恢复自启动」时调用的启动函数。
+ *  没选文件时拉不起来（打点要落点），留个说明等用户在面板选了文件再说。 */
+function startAutoService(): void {
+  if (!state.fileId) {
+    setServiceNote(SERVICE_ID, '未选择打点文件，暂无法自启动');
+    return;
+  }
+  if (!state.fileReady) {
+    // 文件内容还在读，restoreLastFile 读完会回来拉起，这里先静默等
+    return;
+  }
+  startAuto();
+}
+
 function registerAutoService(running: boolean): void {
-  registerService({
-    id: SERVICE_ID,
-    kind: 'location',
-    title: '自动打点',
-    running,
-    autostart: false, // 打点要先选文件，不开机自启
-    target: { type: 'settings', key: 'panelLocation' },
-  });
+  // autostart 由 registerService 内部以存档为准覆盖，这里传 false 即可；
+  // start 交出启动函数，开软件时 restoreAutostartServices() 统一点名恢复。
+  registerService(
+    {
+      id: SERVICE_ID,
+      kind: 'location',
+      title: '自动打点',
+      running,
+      autostart: false,
+      target: { type: 'settings', key: 'panelLocation' },
+    },
+    startAutoService,
+  );
   setServiceRunning(SERVICE_ID, running);
+}
+
+/** 服务页「自启动」开关的写入口：落 store 存档 + 同步服务行。 */
+export function setAutoServiceAutostart(on: boolean): void {
+  setServiceAutostart(SERVICE_ID, on);
+  // 用户在面板已经选好文件、此刻想立刻生效就把服务拉起来；
+  // 没选文件时先记偏好，等选了文件再起（restoreLastFile 会触发）。
+  if (on && state.fileId && state.fileReady && !state.running) startAuto();
 }
 
 /** 开机注册：服务页一开始就列得出「自动打点」（未运行），并恢复上次文件 */
@@ -262,12 +298,15 @@ async function restoreLastFile(): Promise<void> {
   try {
     const doc = await readLocation(f);
     if (state.fileId !== f.id) return;
-    patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, saving: 'idle' });
+    patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, saving: 'idle', fileReady: true });
+    // 内容读完了才允许自动打点——否则先写空会把旧点覆盖掉。
+    // 开了自启动就在这里拉起服务（比统一恢复那一步更稳，能拿到完整行数）。
+    if (isServiceAutostart(SERVICE_ID) && !state.running) startAuto();
   } catch {
     // 文件损坏：宁可回到未选择状态，也不拿空队列覆盖它
     if (state.fileId === f.id) {
       setActiveLocationId(null);
-      patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle' });
+      patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle', fileReady: false });
     }
   }
 }
@@ -279,7 +318,7 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
   setActiveLocationId(id);
   if (!id || !doc) {
     stopAuto();
-    patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle' });
+    patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle', fileReady: false });
     return;
   }
   patch({
@@ -290,6 +329,7 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
     rev: state.rev + 1,
     offset: doc.offset,
     saving: 'idle',
+    fileReady: true,
   });
 }
 
@@ -431,7 +471,7 @@ function tick(): void {
 }
 
 export function startAuto(): boolean {
-  if (!state.fileId) return false;
+  if (!state.fileId || !state.fileReady) return false;
   if (timer) return true;
   timer = window.setInterval(tick, 1000);
   tick();
