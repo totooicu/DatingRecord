@@ -263,6 +263,16 @@ export function LocationPanel() {
         </div>
       </div>
 
+      <div className="music-add" style={{ marginBottom: 8 }}>
+        <input className="music-name-input" value={amapKey}
+          onChange={(e) => setAmapKey(e.target.value)}
+          placeholder="高德 Web key（lbs.amap.com 申请）" />
+        <button className="music-add-btn" onClick={() => {
+          try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
+          toast('key 已保存');
+        }}>保存 key</button>
+      </div>
+
       {!fileId && (
         <>
           <input className="music-name-input" value={fileName} onChange={(e) => setFileName(e.target.value)}
@@ -297,15 +307,6 @@ export function LocationPanel() {
             ) : (
               <button className="music-add-btn primary" onClick={startAuto}>▶ 自动打点（1秒/次）</button>
             )}
-          </div>
-          <div className="music-add" style={{ marginTop: 8 }}>
-            <input className="music-name-input" value={amapKey}
-              onChange={(e) => setAmapKey(e.target.value)}
-              placeholder="高德 Web key（lbs.amap.com 申请，必填）" />
-            <button className="music-add-btn" onClick={() => {
-              try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
-              toast('key 已保存，刷新页生效');
-            }}>保存 key</button>
           </div>
         </>
       )}
