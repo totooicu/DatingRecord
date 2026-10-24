@@ -235,7 +235,7 @@
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
   border-radius: 10px;
-  background: #fff7f9;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
 }
 
 /* 操作条里的分组细线：九个个按钮混在一排，没分隔就看不出谁和谁是一伙的 */

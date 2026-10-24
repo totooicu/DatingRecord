@@ -113,7 +113,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f0a6ae, #d9536b);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 45%, #fff), var(--primary));
   color: #fff;
   display: inline-flex;
   align-items: center;

@@ -112,13 +112,13 @@
 /* 跳过去之后目标格闪一下，让人知道落在哪 */
 @keyframes cal-cell-flash {
   0% {
-    box-shadow: 0 0 0 0 rgba(217, 83, 107, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
   30% {
-    box-shadow: 0 0 0 3px rgba(217, 83, 107, 0.5);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 50%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(217, 83, 107, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 

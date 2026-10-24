@@ -1,0 +1,269 @@
+/* 设置 → 外观：主题色 / 底色 / 预览
+   这一页自己也得跟着主题走，所以除了色点的小色块，其他颜色全用变量。 */
+
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+@media (min-width: 640px) {
+  .theme-swatches {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.theme-swatch:hover {
+  border-color: var(--primary);
+}
+
+.theme-swatch-on {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
+}
+
+.theme-swatch-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.theme-swatch-on .theme-swatch-dot {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--primary);
+}
+
+.theme-swatch-name {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.theme-swatch-on .theme-swatch-name {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* 自定义色：左边原生取色器，右边可直接粘十六进制 */
+.theme-custom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.theme-color-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* 底座 input 规则是 width:100%，取色器只要一个小方块 */
+input.theme-color-input {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.theme-hex {
+  width: 108px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.4px;
+  text-transform: lowercase;
+}
+
+.theme-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+}
+
+.theme-meter-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* ---------- 底色 ---------- */
+
+.tone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tone-item {
+  min-width: 0;
+  text-align: left;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.tone-item:hover {
+  border-color: var(--primary);
+}
+
+.tone-item-on {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+/* 一张缩小的界面：底 → 卡片 → 两行字 + 当前主题色点 */
+.tone-mini {
+  display: block;
+  height: 58px;
+  padding: 7px 8px;
+  border: 1px solid;
+  border-radius: 8px;
+}
+
+.tone-mini-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  padding: 7px 7px;
+  border: 1px solid;
+  border-radius: 5px;
+}
+
+.tone-mini-line {
+  display: block;
+  width: 68%;
+  height: 3px;
+  border-radius: 2px;
+  opacity: 0.75;
+}
+
+.tone-mini-line-short {
+  width: 44%;
+  opacity: 0.5;
+}
+
+.tone-mini-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.tone-name {
+  display: block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tone-hint {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ---------- 预览 ---------- */
+
+.theme-preview {
+  margin-top: 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.theme-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.theme-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.theme-preview-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.theme-preview-text {
+  min-width: 0;
+}
+
+.theme-preview-name {
+  display: block;
+  font-weight: 600;
+}
+
+.theme-preview-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.theme-preview .row-actions {
+  margin-bottom: 0;
+}
+
+.theme-reset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 2px 0 16px;
+}
+
+.theme-reset-row .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

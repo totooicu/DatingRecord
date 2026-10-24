@@ -14,7 +14,12 @@ import {
   type RemoteConfig,
 } from './core/remote';
 import { showToast } from './ui/toast';
+import { initAppearance } from './ui/theme';
 import './styles.css';
+
+// 主题变量尽早贴上：index.html 的首屏脚本已经按缓存刷过一次，
+// 这里再做一次是为了校验存储内容，并顺便更新浏览器状态栏颜色。
+initAppearance();
 
 const el = document.getElementById('root')!;
 const boot = document.getElementById('boot');
@@ -58,7 +63,7 @@ function finishBoot(errHtml?: string): void {
 function errorCard(title: string, detail: string): string {
   const btn =
     '<button onclick="location.reload()" style="margin-top:16px;padding:9px 22px;border:none;' +
-    'border-radius:8px;background:#d9536b;color:#fff;font-size:14px">重新加载</button>';
+    'border-radius:8px;background:var(--primary,#d9536b);color:#fff;font-size:14px">重新加载</button>';
   return `<div style="max-width:420px;padding:24px;text-align:center">
       <div style="font-size:17px;font-weight:700;color:#2f2c28;margin-bottom:10px">${title}</div>
       <div style="font-size:13px;color:#8b857c;line-height:1.7">${detail}</div>

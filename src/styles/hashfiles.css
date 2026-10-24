@@ -246,7 +246,7 @@
 
 .mig-mode-on {
   border-color: var(--primary);
-  background: rgba(217, 83, 107, 0.06);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .mig-mode input {

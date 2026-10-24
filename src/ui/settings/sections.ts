@@ -16,6 +16,7 @@
 
 export type SettingsKey =
   | 'backup'
+  | 'appearance'
   | 'backupData'
   | 'sync'
   | 'share'
@@ -57,6 +58,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
   { key: 'remote', title: '跨设备操作', hint: '把本机库当作服务端 / 连到别的设备', group: 'general' },
+  { key: 'appearance', title: '外观', hint: '主题色 · 底色 · 实时预览', group: 'general' },
   // AI 单独成组：「AI」是入口页，AI 对话 / 聊天提取 / 模型是它的三个子页。
   // 目录上只占一行，点进去才看到二级目录——和「功能体验」「备份与分享」同一套路。
   { key: 'ai', title: 'AI', hint: '对话 · 聊天提取 · 模型', group: 'ai' },

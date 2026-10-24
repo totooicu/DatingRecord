@@ -64,7 +64,7 @@
 
 .share-tree-root {
   border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-  background: #fff7f9;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
   color: var(--primary);
   font-weight: 600;
 }
@@ -251,7 +251,7 @@
 
 .share-pick-on {
   border-color: color-mix(in srgb, var(--primary) 40%, transparent);
-  background: #fff7f9;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
 }
 
 .share-pick-name {
@@ -276,7 +276,7 @@
   flex: none;
   padding: 1px 7px;
   border-radius: 999px;
-  background: #fff0f4;
+  background: color-mix(in srgb, var(--primary) 12%, var(--panel));
   color: var(--primary);
   font-size: 11px;
   font-weight: 600;
@@ -325,7 +325,7 @@
 
 .share-level-on {
   border-color: var(--primary);
-  background: #fff7f9;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
 }
 
 .share-level-text {
@@ -408,7 +408,7 @@
 
 .share-landing-on {
   border-color: var(--primary);
-  background: #fff7f9;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
 }
 
 .share-landing-detail {

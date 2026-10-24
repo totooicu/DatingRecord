@@ -21,6 +21,7 @@
 @import './styles/files.css';
 @import './styles/preview.css';
 @import './styles/settings.css';
+@import './styles/appearance.css';
 @import './styles/remote.css';
 @import './styles/lock.css';
 @import './styles/enc.css';

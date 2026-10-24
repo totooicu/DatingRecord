@@ -6,6 +6,7 @@ import { BackupSection } from './BackupSection';
 import { SyncSection } from './SyncSection';
 import { ShareSection } from './ShareSection';
 import { RemoteSection } from './RemoteSection';
+import { AppearanceSection } from './AppearanceSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
@@ -83,6 +84,8 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
         {active === 'share' && <ShareSection />}
 
         {active === 'remote' && <RemoteSection />}
+
+        {active === 'appearance' && <AppearanceSection />}
 
         {active === 'security' && <SecuritySection />}
 

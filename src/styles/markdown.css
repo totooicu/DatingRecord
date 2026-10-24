@@ -281,14 +281,14 @@
 }
 .md-hl-code {
   color: #8a4b2f;
-  background: rgba(217, 83, 107, 0.1);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
   border-radius: 3px;
 }
 .md-hl-strong {
   color: #000;
 }
 .md-hl-em {
-  background: rgba(217, 83, 107, 0.07);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
 }
 .md-hl-strike {
   color: var(--muted);

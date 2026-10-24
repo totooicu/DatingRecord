@@ -68,6 +68,16 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M9.9 11.6 12 9.5l2.1 2.1" />
         </>,
       );
+    // 外观：调色盘 + 三个色点
+    case 'appearance':
+      return wrap(
+        <>
+          <path d="M12 3.6a8.4 8.4 0 1 0 0 16.8c1.2 0 1.9-.8 1.9-1.8 0-.7-.3-1.2-.7-1.7-.3-.4-.5-.8-.5-1.2 0-.9.7-1.6 1.7-1.6h1.8a3.8 3.8 0 0 0 3.8-3.8c0-3.7-3.6-6.7-8-6.7z" />
+          <circle cx="8.2" cy="9" r="1" />
+          <circle cx="12" cy="7.4" r="1" />
+          <circle cx="7.4" cy="13.2" r="1" />
+        </>,
+      );
     // 隐私与安全（分组）：盾牌
     case 'security':
       return wrap(
