@@ -183,6 +183,39 @@
   flex: none;
 }
 
+/* ---------- 文件页铺满屏幕 ---------- */
+/* 这一页本质是一张长表，套一层带边框的卡片会让左右各少三十来像素：
+   去掉卡片的边框/圆角/投影，让列表和分隔线直接铺到屏幕两侧。 */
+.settings-panes[data-sub='files'] .settings-body {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.settings-panes[data-sub='files'] .settings-body .card {
+  padding: 14px 16px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 标题、说明、搜索条仍留出边距；只有文件列表越出卡片铺满整屏 */
+.settings-panes[data-sub='files'] .file-list {
+  margin-left: -16px;
+  margin-right: -16px;
+}
+
+.settings-panes[data-sub='files'] .file-item {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* 选中高亮跟着铺满，不再是 6px 内缩的一小块 */
+.settings-panes[data-sub='files'] .file-item-selected {
+  margin: 0;
+  border-radius: 0;
+}
+
 /* ---------- 搜索 / 排序 / 筛选 / 批量 ---------- */
 .file-tools {
   display: flex;

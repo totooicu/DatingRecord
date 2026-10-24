@@ -7,7 +7,7 @@
 // 定位只看 id，所以这里改名不会让既有引用失效（显示名保持插入时的样子）。
 import { useMemo, useState } from 'react';
 import {
-  countRefs,
+  countTotalRefs,
   deleteFile,
   fileRefSyntax,
   listFiles,
@@ -36,10 +36,11 @@ import { fmtSize } from './fileFormat';
 export function FilesSection({ onPick }: { onPick?: (f: StoredFile) => void }) {
   const v = useVersion();
   const files = useMemo(() => listFiles(), [v]);
-  // 引用数排序要用：一次算好整张表，避免在 sort 的比较函数里反复查库
+  // 引用数排序/筛选要用：一次算好整张表，避免在比较函数里反复查库。
+  // 口径与行尾「未被引用」一致：事件 + 头像/图标 + 集图标
   const refCounts = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const f of files) map[f.id] = countRefs(f);
+    for (const f of files) map[f.id] = countTotalRefs(f);
     return map;
   }, [files]);
   const thumbs = useThumbs(files);

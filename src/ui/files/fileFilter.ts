@@ -4,6 +4,8 @@ import { kindOf, type PreviewKind } from '../preview';
 
 export type FileSortKey = 'time' | 'name' | 'size' | 'refs';
 export type FileSortDir = 'asc' | 'desc';
+/** 引用筛选：任一 / 未被引用 / 有引用（事件、头像、图标都算） */
+export type FileRefFilter = 'any' | 'none' | 'some';
 
 export interface FileSort {
   key: FileSortKey;
@@ -15,6 +17,7 @@ export const DEFAULT_SORT: FileSort = { key: 'time', dir: 'desc' };
 export interface FileFilter {
   q: string;
   types: PreviewKind[];
+  refs: FileRefFilter;
   /** YYYY-MM-DD，含当天 */
   from: string;
   to: string;
@@ -26,6 +29,7 @@ export interface FileFilter {
 export const EMPTY_FILTER: FileFilter = {
   q: '',
   types: [],
+  refs: 'any',
   from: '',
   to: '',
   minKB: '',
@@ -34,7 +38,14 @@ export const EMPTY_FILTER: FileFilter = {
 
 /** 目录筛选条件的数量（搜索词不计入，避免「有筛选」徽标被搜索一直点亮） */
 export function activeFilterCount(f: FileFilter): number {
-  return f.types.length + (f.from ? 1 : 0) + (f.to ? 1 : 0) + (f.minKB ? 1 : 0) + (f.maxKB ? 1 : 0);
+  return (
+    f.types.length +
+    (f.refs !== 'any' ? 1 : 0) +
+    (f.from ? 1 : 0) +
+    (f.to ? 1 : 0) +
+    (f.minKB ? 1 : 0) +
+    (f.maxKB ? 1 : 0)
+  );
 }
 
 /** 本地日期，避免 UTC 与用户看到的日期差一天 */
@@ -73,6 +84,11 @@ export function applyFilter(
 
     if (min !== null && file.size < min * 1024) return false;
     if (max !== null && file.size > max * 1024) return false;
+
+    // refCounts 是「事件 + 头像 + 图标」的总引用数，和行尾「未被引用」同源
+    const total = refCounts[file.id] ?? 0;
+    if (f.refs === 'none' && total !== 0) return false;
+    if (f.refs === 'some' && total === 0) return false;
 
     return true;
   });

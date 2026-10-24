@@ -3,6 +3,7 @@ import type { PreviewKind } from '../preview';
 import {
   activeFilterCount,
   type FileFilter,
+  type FileRefFilter,
   type FileSort,
   type FileSortKey,
 } from './fileFilter';
@@ -28,8 +29,14 @@ const DIR_HINT: Record<FileSortKey, Record<FileSort['dir'], string>> = {
   time: { asc: '最早在前', desc: '最新在前' },
   name: { asc: 'A → Z', desc: 'Z → A' },
   size: { asc: '小到大', desc: '大到小' },
-  refs: { asc: '少到多', desc: '多到少' },
+  refs: { asc: '少到多，未被引用在前', desc: '多到少，未被引用在后' },
 };
+
+const REF_OPTIONS: { key: FileRefFilter; label: string }[] = [
+  { key: 'any', label: '全部' },
+  { key: 'some', label: '有引用' },
+  { key: 'none', label: '未被引用' },
+];
 
 export function FileFilters({
   filter,
@@ -156,6 +163,23 @@ export function FileFilters({
                   aria-pressed={filter.types.includes(t.key)}
                 >
                   {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="file-filter-group">
+            <span className="file-filter-label">引用</span>
+            <div className="chip-group">
+              {REF_OPTIONS.map((r) => (
+                <button
+                  key={r.key}
+                  type="button"
+                  className={filter.refs === r.key ? 'chip chip-on' : 'chip'}
+                  onClick={() => onChange({ refs: r.key })}
+                  aria-pressed={filter.refs === r.key}
+                >
+                  {r.label}
                 </button>
               ))}
             </div>
