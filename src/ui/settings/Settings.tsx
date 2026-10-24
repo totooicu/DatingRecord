@@ -16,6 +16,8 @@ import { LabEdgeSection } from './LabEdgeSection';
 import { LabExtractSection } from './LabExtractSection';
 import { LabDraftSection } from './LabDraftSection';
 import { AiSection } from './AiSection';
+import { PanelHubSection } from './PanelHubSection';
+import { MusicPanel } from '../panel/MusicPanel';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
@@ -117,6 +119,10 @@ export function Settings({ initial }: { initial?: string | null }) {
         {/* 模型配置从「AI 对话 → 模型」标签抽成独立子页：配密钥是低频动作，
             不该占着聊天页的一排标签位置 */}
         {active === 'aiModel' && <AiSection />}
+
+        {active === 'panel' && <PanelHubSection onPick={go} />}
+
+        {active === 'panelMusic' && <MusicPanel />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>
