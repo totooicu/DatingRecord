@@ -11,6 +11,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { uploadFileQuiet } from '../../core/files';
 import { listFiles, urlForFile, type StoredFile } from '../../core/repo/files';
 import { ConfirmButton, FilePickInput, Modal } from '../common';
+import { ColorPicker } from '../color/ColorPicker';
+import { rememberColor } from '../color/history';
 import { useVersion, bump } from '../../store';
 import { getSmallLimit } from '../filePrefs';
 import type { CollectionIcon, CollectionIconType } from '../../core/types';
@@ -74,6 +76,8 @@ export function IconPicker({
   const [bg, setBg] = useState(cur?.bg ?? BG_COLORS[1]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** 哪一行展开了自定义取色面板（背景 / 前景），一次只开一个 */
+  const [openColor, setOpenColor] = useState<'bg' | 'fg' | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // 图库里只挑与当前 tab 匹配的文件。
@@ -124,6 +128,14 @@ export function IconPicker({
     onSave(draft);
     bump();
     onClose();
+  };
+
+  /** 选颜色（预设或自定义面板）：顺手记进全局历史，下次在任何取色入口都能看到 */
+  const pick = (which: 'bg' | 'fg', c: string) => {
+    if (which === 'bg') setBg(c);
+    else setFg(c);
+    setErr('');
+    rememberColor(c);
   };
 
   return (
@@ -251,17 +263,51 @@ export function IconPicker({
           </div>
         )}
 
-        {/* 配色：图片类只给背景（前景色对位图没意义） */}
+        {/* 配色：图片类只给背景（前景色对位图没意义）。预设之外可展开自定义取色 */}
         <div className="icon-colors">
           <div className="icon-color-row">
             <span className="muted small">背景</span>
-            <Swatches colors={BG_COLORS} value={bg} onChange={setBg} />
+            <Swatches colors={BG_COLORS} value={bg} onChange={(c) => pick('bg', c)} />
+            <button
+              type="button"
+              className={
+                openColor === 'bg'
+                  ? 'icon-swatch icon-swatch-custom icon-swatch-on'
+                  : 'icon-swatch icon-swatch-custom'
+              }
+              aria-label="自定义背景色"
+              title="自定义颜色（彩虹 / 历史 / HEX / RGB）"
+              onClick={() => setOpenColor(openColor === 'bg' ? null : 'bg')}
+            >
+              +
+            </button>
           </div>
+          {openColor === 'bg' && (
+            <ColorPicker compact value={bg} onChange={(c) => pick('bg', c)} allowTransparent />
+          )}
           {type !== 'image' && (
-            <div className="icon-color-row">
-              <span className="muted small">前景</span>
-              <Swatches colors={FG_COLORS} value={fg} onChange={setFg} />
-            </div>
+            <>
+              <div className="icon-color-row">
+                <span className="muted small">前景</span>
+                <Swatches colors={FG_COLORS} value={fg} onChange={(c) => pick('fg', c)} />
+                <button
+                  type="button"
+                  className={
+                    openColor === 'fg'
+                      ? 'icon-swatch icon-swatch-custom icon-swatch-on'
+                      : 'icon-swatch icon-swatch-custom'
+                  }
+                  aria-label="自定义前景色"
+                  title="自定义颜色（彩虹 / 历史 / HEX / RGB）"
+                  onClick={() => setOpenColor(openColor === 'fg' ? null : 'fg')}
+                >
+                  +
+                </button>
+              </div>
+              {openColor === 'fg' && (
+                <ColorPicker compact value={fg} onChange={(c) => pick('fg', c)} />
+              )}
+            </>
           )}
         </div>
 

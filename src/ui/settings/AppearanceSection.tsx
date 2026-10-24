@@ -4,6 +4,7 @@
 // 每次改动都会写 localStorage，刷新/重开还在；恢复默认是唯一的回退。
 import { useState } from 'react';
 import { Section } from './Section';
+import { ColorPicker } from '../color/ColorPicker';
 import {
   ACCENT_PRESETS,
   BASE_TONES,
@@ -17,14 +18,13 @@ import {
 
 export function AppearanceSection() {
   const [appearance, setAppearance] = useState<Appearance>(() => getAppearance());
-  const [hexDraft, setHexDraft] = useState(() => getAppearance().accent);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [note, setNote] = useState('');
   const [isDefault, setIsDefault] = useState(() => isDefaultAppearance(getAppearance()));
 
   const commit = (patch: Partial<Appearance>) => {
     const res = applyAppearance({ ...appearance, ...patch });
     setAppearance(res.appearance);
-    setHexDraft(res.appearance.accent);
     setIsDefault(isDefaultAppearance(res.appearance));
     setNote(
       res.adjusted
@@ -33,22 +33,9 @@ export function AppearanceSection() {
     );
   };
 
-  // 输入框允许打到一半（#a8 之类），只有凑齐 6 位才应用，不打断输入；
-  // 3 位简写等失焦时再展开，否则刚打完 #abc 就被替换成 #aabbcc。
-  const onHex = (raw: string) => {
-    setHexDraft(raw);
-    if (/^#?[0-9a-f]{6}$/i.test(raw.trim())) commit({ accent: raw });
-  };
-
-  const onHexBlur = () => {
-    if (/^#?[0-9a-f]{3}$/i.test(hexDraft.trim())) commit({ accent: hexDraft });
-    else setHexDraft(appearance.accent);
-  };
-
   const onReset = () => {
     const res = resetAppearance();
     setAppearance(res.appearance);
-    setHexDraft(res.appearance.accent);
     setIsDefault(true);
     setNote('');
   };
@@ -80,26 +67,27 @@ export function AppearanceSection() {
         </div>
 
         <div className="theme-custom">
-          <label className="theme-color-label">
-            <input
-              type="color"
-              className="theme-color-input"
-              value={appearance.accent}
-              aria-label="自定义主题色"
-              onChange={(e) => commit({ accent: e.target.value })}
-            />
-            <span>自定义</span>
-          </label>
-          <input
-            className="theme-hex"
-            value={hexDraft}
-            spellCheck={false}
-            autoComplete="off"
-            aria-label="主题色色值"
-            onChange={(e) => onHex(e.target.value)}
-            onBlur={onHexBlur}
-          />
+          <button
+            type="button"
+            className="theme-color-label"
+            aria-expanded={pickerOpen}
+            onClick={() => setPickerOpen((v) => !v)}
+          >
+            <span className="theme-color-dot" style={{ background: appearance.accent }} />
+            <span>{pickerOpen ? '收起调色板' : '自定义颜色'}</span>
+          </button>
+          <span className="muted small">彩虹取色 · 历史色 · HEX / RGB 输入</span>
         </div>
+
+        {pickerOpen && (
+          <div className="theme-picker">
+            <ColorPicker
+              value={appearance.accent}
+              live={false}
+              onChange={(hex) => commit({ accent: hex })}
+            />
+          </div>
+        )}
 
         <p className="theme-meter muted small">
           <span className="theme-meter-dot" style={{ background: appearance.accent }} />

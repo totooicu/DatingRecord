@@ -1,6 +1,9 @@
 // 单值控件：文本 / 数字 / 日期 / 枚举 / 布尔 / 评分 / 标签 / 联系方式 / 关系
+import { useState } from 'react';
 import type { AttributeDef } from '../../core/types';
 import { TagInput } from '../common';
+import { ColorPicker } from '../color/ColorPicker';
+import { normalizeHex } from '../color/color';
 
 export function LongText({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
   return <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} />;
@@ -120,7 +123,30 @@ export function TextField({
 }
 
 export function ColorField({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
-  return <input type="color" value={value || '#c9a227'} onChange={(e) => onChange(e.target.value)} />;
+  const [open, setOpen] = useState(false);
+  const hex = normalizeHex(value);
+  return (
+    <div className="color-field">
+      <button
+        type="button"
+        className={open ? 'color-field-btn on' : 'color-field-btn'}
+        aria-expanded={open}
+        aria-label="选择颜色"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span
+          className={hex ? 'color-field-dot' : 'color-field-dot color-field-dot-empty'}
+          style={hex ? { background: hex } : undefined}
+        />
+        <span className="color-field-val">{hex ?? '选择颜色'}</span>
+      </button>
+      {open && (
+        <div className="color-field-pop">
+          <ColorPicker value={hex ?? '#c9a227'} onChange={(v) => onChange(v)} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function RelationField({

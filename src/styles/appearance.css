@@ -61,7 +61,7 @@
   font-weight: 600;
 }
 
-/* 自定义色：左边原生取色器，右边可直接粘十六进制 */
+/* 自定义色：按钮展开共用取色面板（彩虹 / 历史 / HEX / RGB） */
 .theme-custom {
   display: flex;
   align-items: center;
@@ -74,27 +74,17 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-/* 底座 input 规则是 width:100%，取色器只要一个小方块 */
-input.theme-color-input {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 34px;
-  padding: 2px;
+  padding: 4px 10px 4px 6px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--panel);
+  color: var(--text);
+  font-size: 12.5px;
   cursor: pointer;
 }
 
-.theme-hex {
-  width: 108px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.4px;
-  text-transform: lowercase;
+.theme-color-label:hover {
+  border-color: var(--primary);
 }
 
 .theme-meter {

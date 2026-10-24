@@ -32,6 +32,7 @@
 | `e2e/music-playlist-e2e.mjs` | 歌单 `.drpl` 回归（P1–P7）：上传音频后新建歌单并带上队列、文件库按「歌单」筛选与预览、刷新恢复选中态、改名/描述、增删/排序写回文件、导入 `.drpl` 按 storedId/文件名对上曲目、删除当前歌单后曲目退回临时队列 | 需要 preview 服务：`node tools/e2e/music-playlist-e2e.mjs http://localhost:4173/`。自动生成 wav 与 `.drpl`，依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/location-format-tabs-e2e.mjs` | 定位 `.drloc` 与分段页回归（D1–D9 + D5b–D5e）：地图/记录/文件/说明四段切换、新建、导入带偏移的 `.drloc`、地图 8px 蓝/黄/红点、空文件不允许米制换算、按米改偏移并写回（原始点不变）、度数 / 目标两种填法（目标留空归零）、文件库按「定位」筛选与预览、旧 CSV 导入转 `.drloc`、逐点删除、点很多时只渲染最近 300 条并可展开 | 需要 preview 服务：`node tools/e2e/location-format-tabs-e2e.mjs http://localhost:4173/`。自动生成 `.drloc` 与 CSV，定位用 Playwright context mock；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/settings-calendar-ui-e2e.mjs` | 设置入口与日历配色回归（S1–S2、C1）：功能体验 / 功能面板目录入口都有图标，功能面板三条子页与功能体验的图标渲染一致（防止 panel 一族漏配成空方块）；日历事件条底色按事件集分色，不再全部是写死的粉色 | 需要 preview 服务：`node tools/e2e/settings-calendar-ui-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/color-picker-e2e.mjs` | 统一取色面板回归（C1–C6）：外观自定义里彩虹在左 / 历史在右、HEX 输入生效、RGB 输入生效、彩虹拖动取色、历史颜色刷新后仍在、事件集图标自定义背景色保存生效并进入历史 | 需要 preview 服务：`node tools/e2e/color-picker-e2e.mjs http://localhost:4173/`。截图默认写到临时目录，可用 `SHOTS=/path` 指定；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 
 ## src/core/tools/
 
