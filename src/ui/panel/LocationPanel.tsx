@@ -12,6 +12,51 @@ import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
 
+const AMAP_KEY = 'bcef4f0dba2304c70d46d54c7aa9828e';
+let amapLoading: Promise<any> | null = null;
+function loadAmap(): Promise<any> {
+  if ((window as any).AMap) return Promise.resolve((window as any).AMap);
+  if (amapLoading) return amapLoading;
+  amapLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = `https://webapi.amap.com/maps?v=2.0&key=${AMAP_KEY}`;
+    s.onload = () => resolve((window as any).AMap);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return amapLoading;
+}
+
+/** 优先用高德定位，失败回退浏览器原生 */
+function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> {
+  return loadAmap().then(
+    (AMap) =>
+      new Promise<{ lat: number; lng: number; accuracy: number }>((resolve, reject) => {
+        AMap.plugin('AMap.Geolocation', () => {
+          const g = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000 });
+          g.getCurrentPosition((status: string, result: any) => {
+            if (status === 'complete' && result.position) {
+              resolve({ lat: result.position.lat, lng: result.position.lng, accuracy: result.accuracy || 0 });
+            } else {
+              fallbackBrowser().then(resolve, reject);
+            }
+          });
+        });
+      }),
+  ).catch(() => fallbackBrowser());
+}
+
+function fallbackBrowser(): Promise<{ lat: number; lng: number; accuracy: number }> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('不支持定位')); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+}
+
 interface Row {
   ts: string;
   lat: number;
@@ -139,63 +184,52 @@ export function LocationPanel() {
 
   const record = () => {
     if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
-    if (!navigator.geolocation) { toast('浏览器不支持定位'); return; }
     setBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+    getPosition()
+      .then(async (pos) => {
         setBusy(false);
         const r: Row = {
           ts: new Date().toISOString(),
-          lat: pos.coords.latitude, lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy, note: note.trim(),
+          lat: pos.lat, lng: pos.lng,
+          accuracy: pos.accuracy, note: note.trim(),
         };
         const next = [...rows, r];
         setRows(next); setNote('');
         await writeBack(next);
         mapRef.current?.setView([r.lat, r.lng], 16);
         toast('已记录并保存');
-      },
-      (err) => { setBusy(false); toast(`定位失败：${err.message}`); },
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
+      })
+      .catch((err) => { setBusy(false); toast(`定位失败：${err.message || err}`); });
   };
 
   const locateMe = () => {
-    if (!navigator.geolocation) { toast('浏览器不支持定位'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => mapRef.current?.setView([pos.coords.latitude, pos.coords.longitude], 16),
-      () => toast('定位失败'),
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
+    getPosition()
+      .then((pos) => mapRef.current?.setView([pos.lat, pos.lng], 16))
+      .catch(() => toast('定位失败'));
   };
 
   const tick = () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const fid = fileIdRef.current;
-        if (!fid) return;
-        const last = rowsRef.current[rowsRef.current.length - 1];
-        const cur = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        let next: Row[];
-        if (last && distM(last, cur) < threshold) {
-          // 同一点：刷新最后一条的时间戳，不新增
-          next = [...rowsRef.current];
-          next[next.length - 1] = { ...last, ts: new Date().toISOString(), accuracy: pos.coords.accuracy };
+    getPosition().then(async (pos) => {
+      const fid = fileIdRef.current;
+      if (!fid) return;
+      const last = rowsRef.current[rowsRef.current.length - 1];
+      const cur = { lat: pos.lat, lng: pos.lng };
+      let next: Row[];
+      if (last && distM(last, cur) < threshold) {
+        next = [...rowsRef.current];
+        next[next.length - 1] = { ...last, ts: new Date().toISOString(), accuracy: pos.accuracy };
         } else {
           // 新位置：append
           next = [...rowsRef.current, {
             ts: new Date().toISOString(), lat: cur.lat, lng: cur.lng,
-            accuracy: pos.coords.accuracy, note: '',
+            accuracy: pos.accuracy, note: '',
           }];
         }
         rowsRef.current = next;
         setRows(next);
         await writeBack(next);
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
-    );
+      })
+      .catch(() => {});
   };
 
   const startAuto = () => {
