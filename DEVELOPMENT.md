@@ -412,7 +412,15 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 `points` 永远是**原始坐标**；`offset` 是这个文件相对底图的整体修正量（单位：度，正值向北 / 向东）。显示、列表、地图、预览统一走 `applyOffset(points, offset)`，所以改偏移只是整体平移，不改写任何一条点。
 
-**面板按米输入**：文件里仍存度，但「文件」页的两个输入框是「南北米 / 东西米」。保存时用点的平均纬度换算：`Δlat = north / 111320`，`Δlng = east / (111320 × cos(纬度))`。没有点时算不出参考纬度，输入和保存都会禁用——先打点，再设偏移。CLI / AI 的 `location.save` 同时接受 `offset`（度）和 `offsetMeters: { north, east }`（米），规则相同。
+**面板三种修正方式**：文件里只存度，界面提供三种填法，结果都只是改 `offset`：
+
+| 方式 | 填什么 | 换算 |
+|---|---|---|
+| 度数 | `Δlat` / `Δlng`（度） | 原样写入 |
+| 距离 | 南北 / 东西多少米 | `Δlat = north / 111320`，`Δlng = east / (111320 × cos(参考纬度))`，参考纬度取点的平均纬度 |
+| 目标 | 第 1 个点应该落在的经纬度 | `offset = 目标 − 第 1 个点原始坐标`；两项都留空 = 不偏移（归零） |
+
+目标方式锚定**第 1 个点**而不是平均值：平均纬度会随补点漂移，起点不会。没有点时三种方式一起禁用（算不出参考纬度 / 没有锚点），先打点再修正。CLI / AI 的 `location.create` / `location.save` 同样三选一：`offset`（度）/ `offsetMeters: { north, east }`（米）/ `target: { lat, lng }`，同时给多个会报错；`location.get` 回传 `offset`、`offsetMeters`、`refLat`、`anchor`（第 1 个原始点）和 `target`（它修正后的坐标），三种表示可互相换算。
 
 **代码分工**：
 
@@ -421,7 +429,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | `core/location/format.ts` | 纯格式层：判定、解析/序列化、名称清洗、`applyOffset`、米/度换算（`refLatOf` / `offsetFromMeters` / `metersFromOffset`）、旧 CSV 解析 |
 | `core/location/locationFile.ts` | 文件库 CRUD：`listLocations/createLocation/readLocation/writeLocation/importLocationText/deleteLocation`；选中态存 localStorage `dr.locationFileId` |
 | `core/runtime/locationAuto.ts` | 自动打点服务单例：原始点、offset、当前 GPS 蓝点、`rev` 结构版本都在这里；`saveChain` 串行落盘，偏移编辑与自动打点不会互相覆盖；手动 `punch` 返回新点下标，`removePoint` 按序删点 |
-| `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact`；记录页逐点删除，一次只渲染最近 300 条 |
+| `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact`，位置修正支持度数 / 距离 / 目标三种填法；记录页逐点删除，一次只渲染最近 300 条 |
 | `ui/preview/LocationPreview.tsx` | 文件库点开 `.drloc` 的预览：点位表 + 偏移说明 |
 | `core/tools/locations.ts` | `location.*` 八个工具（list/get/create/save/add/remove/import/delete），CLI / AI 与 UI 共用实现 |
 
@@ -431,7 +439,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **运行时规则**：自动打点是后台服务，离开面板仍按阈值记录；恢复上次文件失败（被删 / 内容损坏）时回到未选择状态，不拿空队列覆盖文件。旧 CSV 不原地改写，导入时统一转成新的 `.drloc`。
 
-**回归**：`node tools/e2e/location-format-tabs-e2e.mjs [url]`（D1–D9：分段切换、新建、空文件不能米制换算、导入带偏移的 `.drloc`、地图配色与尺寸、按米改偏移写回且原始点不变、文件库筛选/预览、旧 CSV 转换、逐点删除、300 条分页）；后台服务语义见 `location-service-e2e.mjs`（L1–L5）。
+**回归**：`node tools/e2e/location-format-tabs-e2e.mjs [url]`（D1–D9 + D5b–D5e：分段切换、新建、空文件不能米制换算、导入带偏移的 `.drloc`、地图配色与尺寸、按米改偏移写回且原始点不变、度数 / 目标两种填法及目标留空归零、文件库筛选/预览、旧 CSV 转换、逐点删除、300 条分页）；后台服务语义见 `location-service-e2e.mjs`（L1–L5）。
 
 ---
 

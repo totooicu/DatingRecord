@@ -367,6 +367,31 @@
   width: 70px;
   margin: 0 4px;
 }
+.loc-modes {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.loc-mode {
+  flex: 1 1 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.loc-mode.on {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--panel));
+  color: var(--primary);
+  font-weight: 600;
+}
+.loc-mode:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .loc-offset {
   display: flex;
   flex-direction: column;

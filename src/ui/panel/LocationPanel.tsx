@@ -22,6 +22,7 @@ import {
   metersFromOffset,
   offsetFromMeters,
   refLatOf,
+  type LocationOffset,
   type LocationPoint,
 } from '../../core/location/format';
 import {
@@ -39,6 +40,15 @@ import {
 } from '../../core/runtime/locationAuto';
 
 type TabKey = 'map' | 'record' | 'file' | 'help';
+
+/** 位置修正的三种填法：度数偏移 / 距离偏移 / 目标坐标 */
+type OffsetMode = 'deg' | 'm' | 'target';
+
+const OFFSET_MODES: { key: OffsetMode; label: string }[] = [
+  { key: 'deg', label: '度数' },
+  { key: 'm', label: '距离' },
+  { key: 'target', label: '目标' },
+];
 
 /** 线宽 4 → 点直径 2×线粗 = 8；蓝/黄/红都同一尺寸，只靠颜色区分 */
 const LINE_WEIGHT = 4;
@@ -82,8 +92,10 @@ export function LocationPanel() {
   const [picking, setPicking] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [offsetNorth, setOffsetNorth] = useState('0');
-  const [offsetEast, setOffsetEast] = useState('0');
+  /** 位置修正是「三选一」的填法，输入框含义随模式变化 */
+  const [offsetMode, setOffsetMode] = useState<OffsetMode>('m');
+  const [offsetA, setOffsetA] = useState('0');
+  const [offsetB, setOffsetB] = useState('0');
   const [amapKey, setAmapKeyState] = useState(getAmapKey);
   /** 记录页一次渲染多少条：点可能上万，全量 DOM 会卡 */
   const [listLimit, setListLimit] = useState(300);
@@ -102,6 +114,8 @@ export function LocationPanel() {
 
   /** 参考纬度：按点的平均纬度把米换算成度；没有点就没法换算经度 */
   const refLat = useMemo(() => refLatOf(rows), [fileId, la.rev]);
+  /** 目标坐标的锚点：文件第 1 个点（原始坐标）。用固定的起点而不是平均值，补点时才不会偷偷改变目标 */
+  const anchor = rows.length > 0 ? { lat: rows[0].lat, lng: rows[0].lng } : null;
 
   const withOffset = (p: LocationPoint): LocationPoint => ({
     ...p,
@@ -129,18 +143,29 @@ export function LocationPanel() {
           ? '已保存'
           : '自动保存';
 
-  // 偏移输入框跟当前文件同步：文件里存度，界面显示米（按点的平均纬度反算）
+  // 输入框跟当前文件 / 模式同步：文件里只存度数，三种填法互相换算后显示
   useEffect(() => {
-    if (refLat == null) {
-      setOffsetNorth('0');
-      setOffsetEast('0');
+    if (refLat == null || !anchor) {
+      setOffsetA('0');
+      setOffsetB('0');
+      return;
+    }
+    if (offsetMode === 'deg') {
+      setOffsetA(String(offset.lat));
+      setOffsetB(String(offset.lng));
+      return;
+    }
+    if (offsetMode === 'target') {
+      // 目标 = 锚点原始坐标 + 偏移
+      setOffsetA((anchor.lat + offset.lat).toFixed(6));
+      setOffsetB((anchor.lng + offset.lng).toFixed(6));
       return;
     }
     const m = metersFromOffset(offset, refLat);
     const fmt = (n: number) => String(Math.round(n * 100) / 100);
-    setOffsetNorth(fmt(m.north));
-    setOffsetEast(fmt(m.east));
-  }, [fileId, offset.lat, offset.lng, refLat]);
+    setOffsetA(fmt(m.north));
+    setOffsetB(fmt(m.east));
+  }, [fileId, offset.lat, offset.lng, refLat, offsetMode, anchor?.lat, anchor?.lng]);
 
   useEffect(() => {
     setSelectedIdx(null);
@@ -346,19 +371,62 @@ export function LocationPanel() {
   const saveOffset = async () => {
     if (!fileId) return;
     if (refLat == null) {
-      toast('文件还没有点，先打点后再按米设置偏移');
+      toast('文件还没有点，先打点再修正位置');
       return;
     }
-    const north = Number(offsetNorth);
-    const east = Number(offsetEast);
-    if (!Number.isFinite(north) || !Number.isFinite(east)) {
-      toast('偏移要填数字（单位：米）');
-      return;
+    let next: LocationOffset;
+    if (offsetMode === 'target') {
+      const a = offsetA.trim();
+      const b = offsetB.trim();
+      if (!a && !b) {
+        next = { lat: 0, lng: 0 }; // 留空 = 不偏移
+      } else if (!a || !b) {
+        toast('目标经纬度要一起填，或都留空表示不偏移');
+        return;
+      } else {
+        const lat = Number(a);
+        const lng = Number(b);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          toast('目标经纬度要填数字（单位：度）');
+          return;
+        }
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          toast('目标经纬度超出范围');
+          return;
+        }
+        if (!anchor) {
+          toast('目标坐标以第 1 个点为锚点，文件里还没有点');
+          return;
+        }
+        next = { lat: lat - anchor.lat, lng: lng - anchor.lng };
+      }
+    } else if (offsetMode === 'deg') {
+      const lat = Number(offsetA);
+      const lng = Number(offsetB);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast('偏移度数要填数字（单位：度）');
+        return;
+      }
+      next = { lat, lng };
+    } else {
+      const north = Number(offsetA);
+      const east = Number(offsetB);
+      if (!Number.isFinite(north) || !Number.isFinite(east)) {
+        toast('偏移距离要填数字（单位：米）');
+        return;
+      }
+      next = offsetFromMeters(north, east, refLat);
     }
     try {
-      await setLocationOffset(offsetFromMeters(north, east, refLat));
+      await setLocationOffset(next);
       fittedFile.current = null; // 偏移变了，让地图重新框住轨迹
-      toast(`已按纬度 ${refLat.toFixed(4)}° 换算并写入文件`);
+      toast(
+        offsetMode === 'target'
+          ? next.lat || next.lng
+            ? '已按目标坐标修正并写入文件'
+            : '目标留空，偏移已归零'
+          : '偏移已写入文件',
+      );
     } catch (e) {
       toast(`保存失败：${e instanceof Error ? e.message : e}`);
     }
@@ -366,8 +434,8 @@ export function LocationPanel() {
 
   const clearOffset = async () => {
     if (!fileId) return;
-    setOffsetNorth('0');
-    setOffsetEast('0');
+    setOffsetA('0');
+    setOffsetB('0');
     try {
       await setLocationOffset({ lat: 0, lng: 0 });
       fittedFile.current = null;
@@ -582,39 +650,68 @@ export function LocationPanel() {
 
             <div className="loc-card">
               <div className="loc-card-head">
-                <strong>距离偏移</strong>
-                <span className="muted small">单位：米</span>
+                <strong>位置修正</strong>
+                <span className="muted small">三种填法任选</span>
               </div>
-              <p className="muted small">
-                按「南北 / 东西多少米」填，保存时用点的平均纬度换算成度写进 <code>.drloc</code>：正值向北 / 向东。
-              </p>
-              {refLat == null ? (
-                <p className="muted small">文件还没有点：先打点，再按米设置偏移（经度换算需要参考纬度）。</p>
+              {refLat == null || !anchor ? (
+                <p className="muted small">文件还没有点：先打点，再来修正位置（换算需要点位）。</p>
               ) : (
                 <p className="muted small">
-                  参考纬度 {refLat.toFixed(4)}° · 文件里存 Δ{offset.lat.toFixed(6)}, Δ{offset.lng.toFixed(6)}
+                  锚点（第 1 个点）{anchor.lat.toFixed(6)}, {anchor.lng.toFixed(6)} · 当前 Δ
+                  {offset.lat.toFixed(6)}, Δ{offset.lng.toFixed(6)} · 参考纬度 {refLat.toFixed(4)}°
                 </p>
               )}
+              <div className="loc-modes" role="group" aria-label="修正方式">
+                {OFFSET_MODES.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    className={offsetMode === m.key ? 'loc-mode on' : 'loc-mode'}
+                    aria-pressed={offsetMode === m.key}
+                    onClick={() => setOffsetMode(m.key)}
+                    disabled={!fileId || refLat == null}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <p className="muted small">
+                {offsetMode === 'deg'
+                  ? '直接填经纬度偏移（度）：正值向北 / 向东，文件里存的就是这两个数。'
+                  : offsetMode === 'target'
+                    ? '把第 1 个点（锚点）放到指定经纬度；两项都留空保存 = 不偏移。'
+                    : refLat == null
+                      ? '先打点，再按距离设置偏移（经度换算需要参考纬度）。'
+                      : `按南北 / 东西多少米填，保存时用平均纬度 ${refLat.toFixed(4)}° 换算成度。`}
+              </p>
               <div className="loc-offset">
                 <label>
-                  南北（米，正=向北）
+                  {offsetMode === 'deg'
+                    ? '纬度偏移（度，正=向北）'
+                    : offsetMode === 'target'
+                      ? '目标纬度'
+                      : '南北（米，正=向北）'}
                   <input
                     className="music-name-input"
                     inputMode="decimal"
-                    value={offsetNorth}
-                    onChange={(e) => setOffsetNorth(e.target.value)}
-                    placeholder="0"
+                    value={offsetA}
+                    onChange={(e) => setOffsetA(e.target.value)}
+                    placeholder={offsetMode === 'target' ? '留空=不偏移' : '0'}
                     disabled={refLat == null}
                   />
                 </label>
                 <label>
-                  东西（米，正=向东）
+                  {offsetMode === 'deg'
+                    ? '经度偏移（度，正=向东）'
+                    : offsetMode === 'target'
+                      ? '目标经度'
+                      : '东西（米，正=向东）'}
                   <input
                     className="music-name-input"
                     inputMode="decimal"
-                    value={offsetEast}
-                    onChange={(e) => setOffsetEast(e.target.value)}
-                    placeholder="0"
+                    value={offsetB}
+                    onChange={(e) => setOffsetB(e.target.value)}
+                    placeholder={offsetMode === 'target' ? '留空=不偏移' : '0'}
                     disabled={refLat == null}
                   />
                 </label>
@@ -625,7 +722,7 @@ export function LocationPanel() {
                   onClick={saveOffset}
                   disabled={!fileId || refLat == null || la.saving === 'saving'}
                 >
-                  保存偏移
+                  保存修正
                 </button>
                 <button className="music-add-btn" onClick={clearOffset} disabled={!fileId}>
                   归零
@@ -660,9 +757,10 @@ export function LocationPanel() {
           <strong>文件与偏移</strong>
           <p className="muted small">
             <code>.drloc</code> 是应用自己的定位格式（JSON），里面保存点的时间、经纬度、精度、备注，
-            以及这个文件整体的经纬度偏移（单位：度，正值向北 / 向东）。面板按「米」输入，
-            有数据时用点的平均纬度换算；旧版 CSV 可以通过「导入」转成 <code>.drloc</code>，
-            原 CSV 不会被改写。
+            以及这个文件整体的经纬度偏移（单位：度，正值向北 / 向东）。面板提供三种修正方式：
+            <strong>度数</strong>（直接填偏移角）、<strong>距离</strong>（填南北 / 东西多少米，按平均纬度换算）、
+            <strong>目标</strong>（把第 1 个点放到指定经纬度，留空 = 不偏移）。三种方式结果都只改 offset，
+            原始点不动；旧版 CSV 可以通过「导入」转成 <code>.drloc</code>，原 CSV 不会被改写。
           </p>
           <p className="muted small">
             记录页可以逐点删除；点很多时只先渲染最近 300 条，可继续「显示更早」。自动打点是后台服务：

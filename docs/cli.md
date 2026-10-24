@@ -114,7 +114,7 @@ $ cli.cjs person.create --displayName 张三 --compact
 | `collection.*` | 事件集树、增删改、移动、成员增删、智能集合规则 |
 | `file.*` | 附件列表/详情/重命名/删除/隐私/访问地址/批量转移事件引用（`file.transferRefs`）/ 映射文件（`file.addMapping`、`file.probeLink`） |
 | `playlist.*` | 歌单（文件库里的 `.drpl`）：列出/详情/新建/保存（改名、改描述、整表换曲目）/导入 JSON/删除 |
-| `location.*` | 定位（文件库里的 `.drloc`）：列出/详情/新建/保存（改名、整表换点、改偏移——支持度数或 `offsetMeters` 米制）/追加点/按序号删点/导入 JSON 或 CSV/删除文件 |
+| `location.*` | 定位（文件库里的 `.drloc`）：列出/详情/新建/保存（改名、整表换点、改偏移——`offset` 度数 / `offsetMeters` 米制 / `target` 目标坐标三选一）/追加点/按序号删点/导入 JSON 或 CSV/删除文件 |
 | `snapshot.*` | 快照创建、列表、恢复、删除 |
 | `io.*` | 整库导出/导入、事件集分享的打包/预览/导入、读取本地文本文件内容（`io.readFile`） |
 | `system.*` | 库概览、只读 SQL、表结构、操作记录、meta 读写 |

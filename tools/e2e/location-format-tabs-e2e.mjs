@@ -6,6 +6,7 @@
 //   D3 导入带 offset 的 .drloc：列表显示修正后的坐标，原文仍是原始坐标
 //   D4 地图配色 / 尺寸：历史点黄色、当前蓝点、选中红点，直径 = 2×线宽（8px）
 //   D5 改偏移写回文件：坐标整体平移，刷新后恢复；原始点不被改写
+//   D5b–D5e 三种修正方式：度数偏移 / 距离偏移 / 目标坐标（留空 = 不偏移）
 //   D6 文件库按「定位」筛选、类型徽标与预览
 //   D7 旧 CSV 导入后转成 .drloc
 //
@@ -45,6 +46,14 @@ const offset2 = {
 const shifted1 = {
   lat: Math.round((raw1.lat + offset2.lat) * 1e6) / 1e6,
   lng: Math.round((raw1.lng + offset2.lng) * 1e6) / 1e6,
+};
+/** D5b 度数方式：直接填偏移角 */
+const degOffset = { lat: 0.003, lng: 0.004 };
+/** D5c 目标方式：把第 1 个点放到这里，并按它反算偏移 */
+const targetPos = { lat: raw1.lat + 0.005, lng: raw1.lng + 0.006 };
+const targetOffset = {
+  lat: Math.round((targetPos.lat - raw1.lat) * 1e6) / 1e6,
+  lng: Math.round((targetPos.lng - raw1.lng) * 1e6) / 1e6,
 };
 
 const importFile = path.join(TMP, '偏移轨迹.drloc');
@@ -231,7 +240,8 @@ check('记录页显示新文件名', (await p.locator('.loc-card-head', { hasTex
 await tab('文件').click();
 await p.waitForTimeout(300);
 check('空文件不能按米换算偏移', await p.locator('.loc-offset input').nth(0).isDisabled());
-check('空文件的保存偏移按钮禁用', await p.getByRole('button', { name: '保存偏移' }).isDisabled());
+check('空文件的三种修正方式都禁用', await p.locator('.loc-mode').nth(0).isDisabled());
+check('空文件的保存修正按钮禁用', await p.getByRole('button', { name: '保存修正' }).isDisabled());
 
 console.log('\nD3 导入带偏移的 .drloc');
 await tab('文件').click();
@@ -303,7 +313,7 @@ const offInputs = p.locator('.loc-offset input');
 check('有数据后偏移输入可用', await offInputs.nth(0).isEnabled());
 await offInputs.nth(0).fill(String(meters.north));
 await offInputs.nth(1).fill(String(meters.east));
-await p.getByRole('button', { name: '保存偏移' }).click();
+await p.getByRole('button', { name: '保存修正' }).click();
 await p.waitForTimeout(1400);
 await tab('记录').click();
 await p.waitForTimeout(400);
@@ -322,6 +332,107 @@ check(
 check(
   '原始点没有被改写',
   !!afterEdit && afterEdit.points[0].lat === raw1.lat && afterEdit.points[0].lng === raw1.lng,
+);
+
+console.log('\nD5b 度数方式');
+await tab('文件').click();
+await p.waitForTimeout(300);
+await p.locator('.loc-mode', { hasText: '度数' }).click();
+await p.waitForTimeout(300);
+const degInputs = p.locator('.loc-offset input');
+check(
+  '切到度数模式后回填当前偏移',
+  Math.abs(Number(await degInputs.nth(0).inputValue()) - offset2.lat) < 1e-9,
+  `${await degInputs.nth(0).inputValue()} / ${await degInputs.nth(1).inputValue()}`,
+);
+await degInputs.nth(0).fill(String(degOffset.lat));
+await degInputs.nth(1).fill(String(degOffset.lng));
+await p.getByRole('button', { name: '保存修正' }).click();
+await p.waitForTimeout(1400);
+const afterDeg = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === '偏移轨迹');
+check(
+  '度数偏移原样写进文件',
+  !!afterDeg && afterDeg.offset.lat === degOffset.lat && afterDeg.offset.lng === degOffset.lng,
+  afterDeg ? JSON.stringify(afterDeg.offset) : 'missing',
+);
+await tab('记录').click();
+await p.waitForTimeout(400);
+check(
+  '记录坐标按度数整体平移',
+  (await p.locator('.loc-list').innerText()).includes('31.233400,121.477700'),
+  (await p.locator('.loc-list').innerText()).replace(/\n/g, ' | ').slice(0, 120),
+);
+
+console.log('\nD5c 目标坐标方式');
+await tab('文件').click();
+await p.waitForTimeout(300);
+await p.locator('.loc-mode', { hasText: '目标' }).click();
+await p.waitForTimeout(300);
+const targetInputs = p.locator('.loc-offset input');
+check(
+  '切到目标模式后回填「锚点 + 偏移」',
+  Math.abs(Number(await targetInputs.nth(0).inputValue()) - (raw1.lat + degOffset.lat)) < 1e-6 &&
+    Math.abs(Number(await targetInputs.nth(1).inputValue()) - (raw1.lng + degOffset.lng)) < 1e-6,
+  `${await targetInputs.nth(0).inputValue()} / ${await targetInputs.nth(1).inputValue()}`,
+);
+await targetInputs.nth(0).fill(String(targetPos.lat));
+await targetInputs.nth(1).fill(String(targetPos.lng));
+await p.getByRole('button', { name: '保存修正' }).click();
+await p.waitForTimeout(1400);
+const afterTarget = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === '偏移轨迹');
+check(
+  '目标坐标按第 1 个点反算成偏移写入',
+  !!afterTarget && afterTarget.offset.lat === targetOffset.lat && afterTarget.offset.lng === targetOffset.lng,
+  afterTarget ? JSON.stringify(afterTarget.offset) : 'missing',
+);
+check(
+  '原始点仍然不动',
+  !!afterTarget && afterTarget.points[0].lat === raw1.lat && afterTarget.points[0].lng === raw1.lng,
+);
+await tab('记录').click();
+await p.waitForTimeout(400);
+check(
+  '第 1 个点落到目标坐标',
+  (await p.locator('.loc-list').innerText()).includes(
+    `${targetPos.lat.toFixed(6)},${targetPos.lng.toFixed(6)}`,
+  ),
+  (await p.locator('.loc-list').innerText()).replace(/\n/g, ' | ').slice(0, 120),
+);
+
+console.log('\nD5d 目标留空 = 不偏移');
+await tab('文件').click();
+await p.waitForTimeout(300);
+await p.locator('.loc-offset input').nth(0).fill('');
+await p.locator('.loc-offset input').nth(1).fill('');
+await p.getByRole('button', { name: '保存修正' }).click();
+await p.waitForTimeout(1400);
+const afterBlank = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === '偏移轨迹');
+check(
+  '留空保存后偏移归零',
+  !!afterBlank && afterBlank.offset.lat === 0 && afterBlank.offset.lng === 0,
+  afterBlank ? JSON.stringify(afterBlank.offset) : 'missing',
+);
+check(
+  '归零后目标回填成锚点本身',
+  (await p.locator('.loc-offset input').nth(0).inputValue()) === raw1.lat.toFixed(6) &&
+    (await p.locator('.loc-offset input').nth(1).inputValue()) === raw1.lng.toFixed(6),
+  `${await p.locator('.loc-offset input').nth(0).inputValue()} / ${await p.locator('.loc-offset input').nth(1).inputValue()}`,
+);
+
+console.log('\nD5e 恢复距离偏移');
+await tab('文件').click();
+await p.waitForTimeout(300);
+await p.locator('.loc-mode', { hasText: '距离' }).click();
+await p.waitForTimeout(300);
+await p.locator('.loc-offset input').nth(0).fill(String(meters.north));
+await p.locator('.loc-offset input').nth(1).fill(String(meters.east));
+await p.getByRole('button', { name: '保存修正' }).click();
+await p.waitForTimeout(1400);
+const afterRestore = (await locationBlobs()).map((t) => JSON.parse(t)).find((d) => d.name === '偏移轨迹');
+check(
+  '距离方式换算回来的偏移和之前一致',
+  !!afterRestore && afterRestore.offset.lat === offset2.lat && afterRestore.offset.lng === offset2.lng,
+  afterRestore ? JSON.stringify(afterRestore.offset) : 'missing',
 );
 
 await p.reload({ waitUntil: 'load' });
