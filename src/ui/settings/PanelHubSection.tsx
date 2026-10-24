@@ -16,6 +16,12 @@ export function PanelHubSection({ onPick }: { onPick: (k: SettingsKey) => void }
       desc: '背景音乐歌单：从本地选音频文件入库，支持播放 / 暂停 / 上一首下一首 / 列表循环 / 单曲循环。',
       hint: audioCount ? `已存 ${audioCount} 首` : '还没加音频',
     },
+    {
+      key: 'panelLocation',
+      title: '定位记录',
+      desc: '点一下拿当前经纬度，追加到 CSV，保存进文件库。',
+      hint: 'CSV · 自定义文件名',
+    },
   ];
 
   return (

@@ -34,7 +34,8 @@ export type SettingsKey =
   | 'ai'
   | 'aiModel'
   | 'panel'
-  | 'panelMusic';
+  | 'panelMusic'
+  | 'panelLocation';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
@@ -71,8 +72,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
   // 功能面板（panel）：独立小组件空间，挂歌单、数据分析板等。
   // 放在功能体验组里：还在试验期，用顺了再搬去该去的地方。
-  { key: 'panel', title: '功能面板', hint: '背景音乐 · 数据分析', group: 'trial' },
+  { key: 'panel', title: '功能面板', hint: '背景音乐 · 定位记录 · 数据分析', group: 'trial' },
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
+  { key: 'panelLocation', title: '定位记录', hint: 'GPS 打点存 CSV', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -96,7 +98,7 @@ export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   ai: ['labAi', 'labChat', 'aiModel'],
   lab: ['labEdge', 'labDraft'],
   backup: ['backupData', 'sync', 'share'],
-  panel: ['panelMusic'],
+  panel: ['panelMusic', 'panelLocation'],
 };
 
 /** 这个 key 是不是某个入口页的子页 */

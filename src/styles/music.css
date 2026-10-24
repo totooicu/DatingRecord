@@ -162,6 +162,15 @@
   background: rgba(217, 83, 107, 0.1);
 }
 
+.music-name-input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--bg-card, #fff);
+}
+
 .music-picker-mask {
   position: fixed;
   inset: 0;
