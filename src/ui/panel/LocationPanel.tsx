@@ -11,7 +11,8 @@ import { getBlob } from '../../core/db/blob';
 import { uploadFile } from '../../core/files';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
-import { upsertService, startLocationLoop, stopLocationLoop, getAutostart, setAutostart, isLocationLoopRunning } from '../../core/background/center';
+import { upsertService, getAutostart, setAutostart } from '../../core/background/center';
+import { startLocationService, stopLocationService, isLocationServiceRunning, getServiceRows, getServiceFileId, setServiceThreshold } from '../../core/background/locationService';
 
 function getAmapKey(): string {
   try { return localStorage.getItem('dr.amapKey') || ''; } catch { return ''; }
@@ -99,17 +100,6 @@ function parseCsv(text: string): Row[] {
     out.push({ ts: parts[0], lat, lng, accuracy: Number(parts[3]) || 0, note: parts[4] || '' });
   }
   return out;
-}
-
-/** 两点间距离（米），haversine */
-function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371000;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 // WGS-84 → GCJ-02（火星坐标）转换，国内地图必须转
@@ -277,34 +267,13 @@ export function LocationPanel() {
       .catch(() => toast('定位失败'));
   };
 
-  const tick = () => {
-    getPosition().then(async (pos) => {
-      const fid = fileIdRef.current;
-      if (!fid) return;
-      const last = rowsRef.current[rowsRef.current.length - 1];
-      const cur = { lat: pos.lat, lng: pos.lng };
-      let next: Row[];
-      if (last && distM(last, cur) < threshold) {
-        next = [...rowsRef.current];
-        next[next.length - 1] = { ...last, ts: new Date().toISOString(), accuracy: pos.accuracy };
-        } else {
-          // 新位置：append
-          next = [...rowsRef.current, {
-            ts: new Date().toISOString(), lat: cur.lat, lng: cur.lng,
-            accuracy: pos.accuracy, note: '',
-          }];
-        }
-        rowsRef.current = next;
-        setRows(next);
-        await writeBack(next);
-      })
-      .catch(() => {});
-  };
-
-  const startAuto = () => {
+  const startAuto = async () => {
     if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
+    setServiceThreshold(threshold);
+    const ok = await startLocationService();
+    if (!ok) { toast('启动失败'); return; }
     setAuto(true);
-    startLocationLoop(tick);
+    setRows(getServiceRows());
     upsertService({
       id: 'location-auto', name: '自动打点', icon: '📍',
       running: true, autostart: getAutostart('location-auto'),
@@ -315,8 +284,8 @@ export function LocationPanel() {
   };
 
   const stopAuto = () => {
+    stopLocationService();
     setAuto(false);
-    stopLocationLoop();
     upsertService({
       id: 'location-auto', name: '自动打点', icon: '📍',
       running: false, autostart: getAutostart('location-auto'),
@@ -325,10 +294,29 @@ export function LocationPanel() {
     });
   };
 
-  // 组件挂载时：如果全局定时器在跑，同步状态
+  // 组件挂载时：如果全局服务在跑，同步状态
   useEffect(() => {
-    if (isLocationLoopRunning()) setAuto(true);
+    if (isLocationServiceRunning()) {
+      setAuto(true);
+      const fid = getServiceFileId();
+      if (fid) {
+        setFileId(fid);
+        const f = getFile(fid);
+        if (f) setFileName(f.name);
+      }
+      setRows(getServiceRows());
+    }
   }, []);
+
+  // 全局服务跑着时，定期同步 rows 到 UI
+  useEffect(() => {
+    if (!auto) return;
+    const iv = window.setInterval(() => {
+      const srows = getServiceRows();
+      if (srows.length !== rows.length) setRows([...srows]);
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [auto, rows.length]);
 
   // 记住上次选的文件
   useEffect(() => {
