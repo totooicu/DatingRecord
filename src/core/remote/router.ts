@@ -27,7 +27,7 @@ import {
 import { getDeviceId } from '../db/device';
 import { bump } from '../../store';
 import { RemoteTransport } from './transport';
-import { parseRemoteAddress } from './url';
+import { parseRemoteAddress, type ParsedAddress } from './url';
 import type { ClientMessage, PeerInfo, RemoteConfig, RemotePayload } from './types';
 
 const CLIENT_KEY = 'dr.remote.client';
@@ -483,6 +483,10 @@ export interface RelayInfo {
   port?: number;
   hostOnline?: boolean;
   clients?: number;
+  /** 只有请求里带了 token 才有值：false = token 与服务端不一致 */
+  tokenOk?: boolean | null;
+  /** 中继所在机器的局域网地址，给「复制给手机」用 */
+  addresses?: string[];
 }
 
 export async function relayInfo(): Promise<RelayInfo | null> {
@@ -528,9 +532,48 @@ function deviceName(): string {
   }
 }
 
+/**
+ * 客户端连之前先问中继一句：它在不在、token 对不对、服务端开没开。
+ *
+ * 这一步是跨域请求，中继的 /__remote/info 允许任何来源读取且不回业务数据。
+ * 有了它，「连不上中继」就不会再盖住真正的原因（地址写错 / token 不对 /
+ * 服务端压根没开），用户能看到一句能照着改的话。
+ */
+async function inspectRemote(parsed: ParsedAddress, timeoutMs = 4000): Promise<RelayInfo> {
+  const base = parsed.url.startsWith('wss:') ? 'https' : 'http';
+  const url = `${base}://${parsed.host}:${parsed.port}/__remote/info?token=${encodeURIComponent(parsed.token)}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+  } catch {
+    throw new Error(
+      `连不上中继（${parsed.label}）：确认地址和端口没写错、中继进程在运行、两台设备在同一网络，` +
+        '并注意 127.0.0.1 只对服务端本机有效，其他设备要填它的局域网 IP',
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  const ct = res.headers.get('content-type') ?? '';
+  if (!res.ok || !ct.includes('application/json')) {
+    throw new Error(`${parsed.label} 不是跨设备中继：这个端口上跑的是别的服务`);
+  }
+  const info = (await res.json()) as RelayInfo;
+  if (!info?.ok) throw new Error(`${parsed.label} 不认这个中继地址`);
+  if (info.tokenOk === false) {
+    throw new Error('token 不对：请照抄服务端页面上「客户端连接串」里的 token（区分大小写）');
+  }
+  if (info.hostOnline === false) {
+    throw new Error('中继在线，但服务端还没开启：先在服务端页面点「开启跨设备操作」');
+  }
+  return info;
+}
+
 /** 连接前先探一下：只建连不换库，避免把坏地址写进 sessionStorage 再刷新 */
 export async function probeRemote(input: string, token: string): Promise<string> {
   const parsed = parseRemoteAddress(input, token);
+  await inspectRemote(parsed);
   const t = new RemoteTransport(parsed.url, parsed.token, 'client', deviceName(), {
     onMessage() {
       /* 探测阶段不需要业务消息 */

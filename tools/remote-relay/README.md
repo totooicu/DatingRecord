@@ -37,10 +37,17 @@ npm run relay -- --port 4173 --token mytoken
 - 业务层（浏览器之间）：`snapshot` / `apply` / `blob-*`。写操作是「整库快照 + baseVersion」，
   版本冲突时中继不合并，直接把服务端最新快照发回给那个客户端（避免互相覆盖）。
 
+### /__remote/info（诊断用）
+
+`GET /__remote/info[?token=xxx]` 返回 `{ok, port, hostOnline, clients, tokenOk, addresses}`，
+带 `Access-Control-Allow-Origin: *`，好让客户端页面在连接前先分清楚「中继不在 / token 不对 /
+服务端没开」，而不是一律报「连不上中继」。`tokenOk` 只在请求带了 `token` 时返回。
+
 ## 已知限制
 
 - 明文 `ws://`，只适合可信局域网；没有 TLS。
 - 单服务端；第二个 `host` 会被拒绝。
+- 端口上已有服务端在线时不能再改 token（否则等于把它静默踢下线），要换请先停掉原来的服务端。
 - 写冲突用「后写者收到最新快照、本次改动不覆盖」的策略，不做字段级合并。
 - 服务端标签页关闭后，客户端会被中继断开并自动回到本地数据。
 - 纯静态托管（GitHub Pages）上没有 `/__remote/listen`，页面只能连已经启动的中继端口；

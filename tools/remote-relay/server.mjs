@@ -87,9 +87,19 @@ class Listener {
       const server = http.createServer((req, res) => this.httpHandler(req, res));
       this.server = server;
       server.on('upgrade', (req, socket, head) => this.handleUpgrade(req, socket, head));
+      // 连上来之后再把 reject 摘掉：之后任何 socket 级错误都不能让整个进程退出，
+      // 否则服务端会被动掉线（一个坏请求就能把所有人的连接一起带走）。
       server.on('error', reject);
       server.listen(this.port, HOST, () => {
         server.off('error', reject);
+        server.on('error', (e) => console.error('[remote-relay] 服务器错误：', e.message));
+        server.on('clientError', (_e, socket) => {
+          try {
+            socket.destroy();
+          } catch {
+            /* ignore */
+          }
+        });
         resolvePromise(this);
       });
     });
@@ -109,7 +119,7 @@ class Listener {
 
   httpHandler(req, res) {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    if (url.pathname === '/__remote/info') return this.info(res);
+    if (url.pathname === '/__remote/info') return this.info(url, res);
     if (url.pathname === '/__remote/listen') return this.controlListen(req, res);
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405).end('method not allowed');
@@ -118,15 +128,30 @@ class Listener {
     this.serveStatic(url.pathname, req, res);
   }
 
-  info(res) {
+  /**
+   * 中继自述：端口、地址、服务端在不在、token 对不对。
+   *
+   * 客户端在另一台设备上，连之前先问这一句，就能把「连不上 / token 错 /
+   * 服务端没开」分开报，而不是一律「连不上中继」。
+   * 带 CORS 是因为这个请求来自客户端页面自身的域名，而不是中继托管的页面。
+   */
+  info(url, res) {
     const room = this.rooms.get(this.token);
+    const asked = url.searchParams.get('token');
     const body = JSON.stringify({
       ok: true,
       port: this.port,
       hostOnline: !!room?.host,
       clients: room ? room.clients.size : 0,
+      /** 没问 token 就不回答，避免谁都能白拿一个校验服务 */
+      tokenOk: asked === null ? null : asked === this.token,
+      addresses: lanAddresses(),
     });
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+    });
     res.end(body);
   }
 
@@ -157,10 +182,16 @@ class Listener {
         if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error('端口号不合法');
         if (!token) throw new Error('token 不能为空');
         if (port === this.port) {
+          // 已经有服务端在线时不换 token：换了会让它瞬间变「不在线」，
+          // 客户端还会因 401 报「连不上中继」。
+          const busy = [...this.rooms.values()].some((r) => r.host);
+          if (busy && token !== this.token) {
+            throw new Error('该端口已有服务端在用，请保持 token 不变（或先停止原来的服务端）');
+          }
           this.token = token;
         } else if (!(await openPort(port, token))) {
           // openPort 返回 false 表示端口已被占用；同端口同 token 视为成功
-          throw new Error(`端口 ${port} 已被占用`);
+          throw new Error(`端口 ${port} 已被占用，或该端口已有服务端在用（token 需与它一致）`);
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, port }));
@@ -445,8 +476,11 @@ const ports = new Map();
 
 async function openPort(port, token) {
   if (ports.has(port)) {
-    // 同端口再次请求：允许更新 token（页面重开时 token 可能换了）
+    // 同端口再次请求：允许更新 token（页面重开时 token 可能换了），
+    // 但已有服务端在线时不能换——换了它就等于被静默踢下线。
     const existing = ports.get(port);
+    const busy = [...existing.rooms.values()].some((r) => r.host);
+    if (busy && token !== existing.token) return false;
     existing.token = token;
     return true;
   }

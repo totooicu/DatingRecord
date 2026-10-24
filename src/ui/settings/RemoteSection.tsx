@@ -49,12 +49,19 @@ export function RemoteSection() {
 
   const hostCfg = remote.mode === 'host' ? remote.label : '';
 
-  // 给客户端的连接串：地址用当前页面的主机名，换设备时把这段抄过去
+  // 给客户端的连接串：地址用当前页面的主机名，换设备时把这段抄过去。
+  // 页面在本机用 localhost / 127.0.0.1 打开时，抄到手机上连的是手机自己，
+  // 所以换成中继报上来的局域网地址。
+  const loopback =
+    typeof location !== 'undefined' &&
+    ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
+  const lanAddr = relay?.addresses?.find((a) => !a.startsWith('127.') && a !== '::1');
+  const shareHost =
+    typeof location !== 'undefined' ? (loopback && lanAddr ? lanAddr : location.hostname) : '127.0.0.1';
   const shareText = useMemo(() => {
     if (!hostCfg) return '';
-    const host = typeof location !== 'undefined' ? location.hostname : '127.0.0.1';
-    return `${host}:${port}?token=${token}`;
-  }, [hostCfg, port, token]);
+    return `${shareHost}:${port}?token=${token}`;
+  }, [hostCfg, shareHost, port, token]);
 
   const start = async () => {
     setErr('');
@@ -70,6 +77,8 @@ export function RemoteSection() {
         throw new Error(`中继拒绝在 ${parsed.port} 端口监听：${e instanceof Error ? e.message : String(e)}`);
       }
       await startHost(configOf(parsed));
+      // 中继可能刚被 POST 开起来，这里补一次自述，连接串才能拿到局域网地址
+      void relayInfo().then(setRelay);
       setMsg(
         sameOriginRelay
           ? '服务已开启。另一台设备打开同一个网址，在「作为客户端」里填上面的连接串。'
@@ -85,6 +94,11 @@ export function RemoteSection() {
   const connect = async () => {
     setErr('');
     setMsg('');
+    if (remote.mode === 'host') {
+      // 同一页既当服务端又当客户端，连接后刷新会把服务端一起带走
+      setErr('本页正在作为服务端，不能同时当客户端。请换一台设备或新开一个标签页来连。');
+      return;
+    }
     setBusy('client');
     try {
       const label = await probeRemote(addr, addrToken);
@@ -118,6 +132,11 @@ export function RemoteSection() {
               <span className="muted small">客户端连接串</span>
             </p>
             <textarea className="remote-share" readOnly value={shareText} rows={2} />
+            {loopback && lanAddr && (
+              <p className="muted small">
+                已把地址换成本机局域网 IP；<code>127.0.0.1</code> 只在本机有效，手机连不上。
+              </p>
+            )}
             <p className="muted small">
               当前 {remote.clients.length} 个客户端
               {remote.clients.length > 0 ? `：${remote.clients.map((c) => c.name).join('、')}` : ''}
@@ -210,12 +229,18 @@ export function RemoteSection() {
               />
             </Field>
             <div className="remote-actions">
-              <button className="btn btn-primary" onClick={() => void connect()} disabled={busy !== ''}>
+              <button
+                className="btn btn-primary"
+                onClick={() => void connect()}
+                disabled={busy !== '' || remote.mode === 'host'}
+              >
                 {busy === 'client' ? '正在连接…' : '连接服务端'}
               </button>
             </div>
             <p className="muted small">
-              客户端页面必须由服务端中继托管（同一局域网的 http 地址），否则 https 页面连不上 ws://。
+              {remote.mode === 'host'
+                ? '本页正在作为服务端，要连接请换一台设备或新开一个标签页。'
+                : '客户端页面必须由服务端中继托管（同一局域网的 http 地址），否则 https 页面连不上 ws://。'}
             </p>
           </>
         )}
