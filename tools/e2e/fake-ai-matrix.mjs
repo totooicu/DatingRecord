@@ -38,7 +38,7 @@ http
 
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
-    req.on('end', () => {
+    req.on('end', async () => {
       let body = {};
       try {
         body = JSON.parse(Buffer.concat(chunks).toString());
@@ -61,6 +61,12 @@ http
       const userText = String(
         msgs.filter((m) => m.role === 'user').map((m) => m.content ?? '').join(' '),
       );
+
+      // 慢响应场景（runtime-e2e 用）：含「慢慢」时每个回合都拖 1.2s，
+      // 让 AI 真正「进行中」一段时间，方便测「离开页面仍运行 + head 出图标」。
+      const SLOW = userText.includes('慢慢');
+      const nap = () => (SLOW ? new Promise((r) => setTimeout(r, 1200)) : Promise.resolve());
+      await nap();
 
       const send = (payload) => {
         res.writeHead(200, { ...CORS, 'content-type': 'application/json' });

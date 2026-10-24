@@ -23,7 +23,7 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
   /* 和 .page-head 对齐：详情页、设置子页都是 44px，主页不能矮一截 */
   height: 44px;
@@ -34,20 +34,20 @@
 }
 
 .home-head > strong {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
-  text-align: center;
+  text-align: left;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 标题靠左，把后面的「服务 / 任务」与 ＋ 顶到右边 */
+  margin-right: auto;
 }
 
-/* 绝对定位，避免按钮宽度把标题挤得偏离正中 */
+/* 标题左、状态区与 ＋ 右：不再绝对定位，避免和状态区重叠 */
 .home-head > .icon-btn,
 .home-head > .pane-head-actions {
-  position: absolute;
-  right: 8px;
   display: flex;
   align-items: center;
   gap: 6px;

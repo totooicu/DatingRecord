@@ -4,6 +4,7 @@ import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
 import { BUILD_TIME, fmtBuildTime } from '../../core/buildInfo';
 import { Avatar } from './Avatar';
+import { HeadStatus } from '../runtime/HeadStatus';
 
 export function PersonList({
   selectedId,
@@ -60,6 +61,7 @@ export function PersonList({
       </div>
       <div className="pane-head home-head">
         <strong>人物</strong>
+        <HeadStatus />
         <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">
           ＋
         </button>

@@ -20,8 +20,13 @@ import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
 import { setCollectionOpener } from './openCollection';
 import { peekSnapReturn } from './snapReturn';
-import { canLeave } from './navGuard';
+import { setNavHandler } from '../core/runtime/nav';
+import { initMusicService } from '../core/runtime/music';
+import { HeadStatus } from './runtime/HeadStatus';
+import { ServicesPage } from './runtime/ServicesPage';
+import { TasksPage } from './runtime/TasksPage';
 import type { TabKey } from './icons';
+import type { SettingsKey } from './settings/sections';
 
 /**
  * 页面栈视图状态。
@@ -33,12 +38,20 @@ type View =
   | { k: 'detail'; s: 'persons' | 'collections'; id: string }
   | { k: 'timeline' }
   | { k: 'calendar' }
-  | { k: 'settings' };
+  | { k: 'settings' }
+  | { k: 'services' }
+  | { k: 'tasks' };
 
 export default function App() {
   const v = useVersion();
   const privacy = usePrivacyMode();
   const [view, setView] = useState<View>({ k: 'list', s: 'persons' });
+  // 带「从成果详情跳出来看过对象」的来路时，自动落到 AI 对话子页
+  const [settingsSub, setSettingsSub] = useState<SettingsKey | null>(() =>
+    peekSnapReturn() ? 'labAi' : null,
+  );
+  /** 从服务/任务页返回时回到来之前那一页 */
+  const returnView = useRef<View>({ k: 'list', s: 'persons' });
   const [personId, setPersonId] = useState<string | null>(null);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
@@ -101,11 +114,32 @@ export default function App() {
   }, [v, personId, collectionId]);
 
   const section: TabKey =
-    view.k === 'timeline' || view.k === 'settings' || view.k === 'calendar' ? view.k : view.s;
+    view.k === 'timeline' || view.k === 'calendar'
+      ? view.k
+      : view.k === 'settings' || view.k === 'services' || view.k === 'tasks'
+        ? (view.k as TabKey)
+        : view.s;
+
+  // 全局导航处理器：head 状态图标、服务/任务页都通过它切换页面
+  useEffect(() => {
+    setNavHandler((t) => {
+      if (t.type === 'page') {
+        returnView.current = view;
+        setView({ k: t.key });
+      } else {
+        setSettingsSub(t.key as SettingsKey);
+        setView({ k: 'settings' });
+      }
+    });
+    return () => setNavHandler(null);
+  }, [view]);
+
+  // 开软件时初始化背景音乐服务（注册 + 自启动）
+  useEffect(() => {
+    initMusicService();
+  }, []);
 
   const gotoTab = (key: TabKey) => {
-    // AI 忙着的时候不让切走：这一轮会中断，会话还在组件 state 里
-    if (!canLeave()) return;
     setKeyword('');
     if (key === 'timeline') setView({ k: 'timeline' });
     else if (key === 'calendar') setView({ k: 'calendar' });
@@ -209,7 +243,7 @@ export default function App() {
         )}
         {view.k === 'timeline' && (
           <div className="pane pane-solo">
-            <PageHead title="时间线" />
+            <PageHead title="时间线" right={<HeadStatus />} />
             <TimelineFilters filter={filter} onChange={setFilter} />
             <Timeline
               filter={filter}
@@ -223,15 +257,21 @@ export default function App() {
         )}
         {view.k === 'calendar' && (
           <div className="pane pane-solo">
-            <PageHead title="日历" />
+            <PageHead title="日历" right={<HeadStatus />} />
             <Calendar onPickDay={pickDay} />
           </div>
         )}
         {view.k === 'settings' && (
           <div className="pane pane-solo">
             {/* 标题由 Settings 自己渲染：子页要把标题换成该设置项的名字 */}
-            <Settings />
+            <Settings sub={settingsSub} onSub={setSettingsSub} />
           </div>
+        )}
+        {view.k === 'services' && (
+          <ServicesPage onBack={() => setView(returnView.current)} />
+        )}
+        {view.k === 'tasks' && (
+          <TasksPage onBack={() => setView(returnView.current)} />
         )}
       </div>
 
@@ -240,8 +280,8 @@ export default function App() {
       <UndoSnackbar />
       <ToastHost />
 
-      {/* 设置页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
-      {modalCount === 0 && section !== 'settings' && (
+      {/* 设置 / 服务 / 任务页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
+      {modalCount === 0 && !['settings', 'services', 'tasks'].includes(section) && (
         <button className="fab" onClick={() => setQuickEvent(true)} aria-label="记一件事">
           ＋
         </button>

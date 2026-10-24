@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { peekSnapReturn } from '../snapReturn';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { BackupHubSection } from './BackupHubSection';
@@ -26,11 +24,9 @@ import {
   DEFAULT_SETTINGS_KEY,
   SETTINGS_ENTRIES,
   parentOf,
-  resolveSettingsKey,
   type SettingsKey,
 } from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
-import { canLeave } from '../navGuard';
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -43,23 +39,17 @@ import { canLeave } from '../navGuard';
  * 备份与分享（备份 / 同步 / 分享）、功能体验（边缘分割 / 未完成的记录）、
  * AI（AI 对话 / 聊天提取 / 模型）；目录上各占一行，点进去才是二级目录。
  */
-export function Settings({ initial }: { initial?: string | null }) {
-  // initial 允许带旧 key（lock / enc / templates / overview / sample），
-  // resolveSettingsKey 会把它换到合并后的那一页
-  // 带着「从成果详情跳出来看过对象」的来路进来时，直接落在 AI 对话子页：
-  // 下面的 LabAiSection 会把那份成果详情重新打开，用户等于原路返回。
-  const [sub, setSub] = useState<SettingsKey | null>(() =>
-    peekSnapReturn() ? 'labAi' : resolveSettingsKey(initial ?? null),
-  );
+export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: SettingsKey | null) => void }) {
+  // sub 由 App 控制：head 上的状态图标、服务/任务页都能直接跳到某个设置子页
+  // （如 AI 对话）。带着「从成果详情跳出来看过对象」的来路进来时，App 会把 sub 设为 'labAi'。
   const active = sub ?? DEFAULT_SETTINGS_KEY;
   // 子页标题就是该设置项的名字；返回目标优先父入口（功能体验 → 它的子页），否则回目录
   const entry = SETTINGS_ENTRIES.find((e) => e.key === active);
   const backTo = sub === null ? null : (parentOf(active) ?? null);
 
-  // 子页切换/返回统一走这里：AI 对话正忙时不让走（见 navGuard）
+  // 子页切换/返回统一走这里（AI 对话正忙也已放开：执行态在单例里，离开页面照跑）
   const go = (k: SettingsKey | null) => {
-    if (!canLeave()) return;
-    setSub(k);
+    onSub(k);
   };
 
   return (
