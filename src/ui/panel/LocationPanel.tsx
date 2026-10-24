@@ -193,7 +193,6 @@ export function LocationPanel() {
     if (rows.length === 0) return;
     const latlngs = rows.map((r) => [r.lat, r.lng] as [number, number]);
     L.polyline(latlngs, { color: '#d9536b', weight: 2, opacity: 0.7 }).addTo(map);
-    const icon = (map as any)._drIcon as L.DivIcon;
     rows.forEach((r, i) => {
       const isLast = i === rows.length - 1;
       const color = isLast ? '#2196F3' : '#d9536b';
