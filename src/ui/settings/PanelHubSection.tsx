@@ -22,6 +22,12 @@ export function PanelHubSection({ onPick }: { onPick: (k: SettingsKey) => void }
       desc: '选/建 CSV 文件，地图上打点记录，自动写回；我的位置一键飞到当前 GPS。',
       hint: 'GPS 打点 · 高德地图轨迹',
     },
+    {
+      key: 'panelPrecise',
+      title: '高精度定位',
+      desc: '高德官方 Geolocation demo 直跑，输出坐标、精度、定位类别，用于诊断对比。',
+      hint: '诊断 · 坐标/精度/纠偏状态',
+    },
   ];
 
   return (

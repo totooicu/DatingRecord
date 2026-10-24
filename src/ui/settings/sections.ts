@@ -36,7 +36,8 @@ export type SettingsKey =
   | 'aiModel'
   | 'panel'
   | 'panelMusic'
-  | 'panelLocation';
+  | 'panelLocation'
+  | 'panelPrecise';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
@@ -77,6 +78,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'panel', title: '功能面板', hint: '背景音乐 · 定位记录 · 数据分析', group: 'trial' },
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
   { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹', group: 'trial' },
+  { key: 'panelPrecise', title: '高精度定位', hint: '高德官方 demo 诊断', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -100,7 +102,7 @@ export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   ai: ['labAi', 'labChat', 'aiModel'],
   lab: ['labEdge', 'labDraft'],
   backup: ['backupData', 'sync', 'share', 'remote'],
-  panel: ['panelMusic', 'panelLocation'],
+  panel: ['panelMusic', 'panelLocation', 'panelPrecise'],
 };
 
 /** 这个 key 是不是某个入口页的子页 */
