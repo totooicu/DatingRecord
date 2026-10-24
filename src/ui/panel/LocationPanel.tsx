@@ -314,9 +314,15 @@ export function LocationPanel() {
     const iv = window.setInterval(() => {
       const srows = getServiceRows();
       if (srows.length !== rows.length) setRows([...srows]);
-    }, 1000);
+    }, 500);
     return () => clearInterval(iv);
   }, [auto, rows.length]);
+
+  // 阈值改动实时同步到全局服务
+  useEffect(() => {
+    setServiceThreshold(threshold);
+    try { localStorage.setItem('dr.locationThreshold', String(threshold)); } catch {}
+  }, [threshold]);
 
   // 记住上次选的文件
   useEffect(() => {
