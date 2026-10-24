@@ -11,6 +11,7 @@
 // 但列表要能给人看。
 
 import { getDbInstance, getSql, setDbInstance } from '../db/state';
+import type { Database } from 'sql.js';
 import { flushPersist } from '../db/persist';
 import { resetUndo } from '../db/undo';
 import { bump } from '../../store';
@@ -213,6 +214,47 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
+ * 数据指纹：除 meta 表与 sqlite 内部表外，每张表按 rowid 顺序整表序列化。
+ *
+ * 只给「暂存成果能不能照旧执行」用：AI 改动暂存后库停在动手前，此时用户
+ * 手动改记录、跑导入、被同步合并，before 字节就成了旧世界的快照——照旧
+ * 把 after 换进来会把暂存期间的新改动连锅端掉，而换库时撤销栈已清零，
+ * 用户连撤销都救不回来。宁可拦住这一次执行，也不能静默弄丢数据。
+ *
+ * 排除 meta 表是必须的：快照元数据、AI 会话、hlc 计数器都写在 meta 里，
+ * 暂存本身就会改它，不排除的话每次执行都会误报「被动过」。
+ */
+function dataFingerprint(d: Database): string {
+  const res = d.exec(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'meta'",
+  );
+  const names = (res[0]?.values ?? []).map((v) => String(v[0]));
+  const parts: string[] = [];
+  for (const t of names) {
+    const rows = d.exec(`SELECT * FROM "${t}" ORDER BY rowid`);
+    const vals = rows[0]?.values ?? [];
+    parts.push(`${t}:${vals.map((r) => JSON.stringify(r)).join(',')}`);
+  }
+  return parts.join(';');
+}
+
+/**
+ * 暂存的成果还能不能照旧执行：库里数据必须还是暂存时的样子。
+ * 返回 stale = 暂存期间被外人动过（手动改动 / 导入 / 同步合并），不能换库。
+ */
+function staleSinceStaged(before: Uint8Array | null | undefined): boolean {
+  const sql = getSql();
+  const db = getDbInstance();
+  if (!sql || !db || !before) return false; // 字节缺失等极端情况放行，由后续逻辑报错
+  const scratch = new sql.Database(before);
+  try {
+    return dataFingerprint(db) !== dataFingerprint(scratch);
+  } finally {
+    scratch.close();
+  }
+}
+
+/**
  * 把这一轮的写操作暂存起来：导出 after，然后立刻把库切回动手前。
  *
  * 做法是「整库两份字节」：before 就是快照本身，after 另存一份。
@@ -269,13 +311,21 @@ export async function stageAiTurn(
   return staged;
 }
 
-/** 执行暂存的改动：把 after 换回当前库 */
-export async function applyPendingSnapshot(id: string): Promise<boolean> {
+/**
+ * 执行暂存的改动：把 after 换回当前库。
+ * 返回 ok = 已执行；stale = 暂存期间库被外人动过，拒绝执行；gone = 字节丢失。
+ */
+export async function applyPendingSnapshot(id: string): Promise<'ok' | 'stale' | 'gone'> {
   const sql = getSql();
   const meta = readMeta().find((s) => s.id === id);
-  if (!sql || !meta || meta.review !== 'pending' || !meta.afterId) return false;
+  if (!sql || !meta || meta.review !== 'pending' || !meta.afterId) return 'gone';
   const bytes = await getSnapStore().get(meta.afterId);
-  if (!bytes) return false;
+  if (!bytes) return 'gone';
+  // 暂存期间数据被外人动过（手动改记录 / 导入 / 同步合并）就不能照旧执行：
+  // after 是旧世界的整体快照，换进来会连锅端掉后来的改动，且撤销栈在换库时
+  // 清零，用户连撤销都救不回来。拦住并让用户放弃这轮重来，是唯一稳妥的路。
+  const before = await getSnapStore().get(meta.id);
+  if (staleSinceStaged(before)) return 'stale';
   const next = new sql.Database(bytes);
   next.run('PRAGMA foreign_keys = ON');
   const db = getDbInstance();
@@ -296,7 +346,7 @@ export async function applyPendingSnapshot(id: string): Promise<boolean> {
   // 执行也是一次换库：撤销栈里那些「AI 写真实库期间」的步骤一起作废，
   // 否则用户按撤销会把刚执行进库的成果再撤掉。
   resetUndo();
-  return true;
+  return 'ok';
 }
 
 /** 放弃暂存的改动：库本来就没变，删掉两份字节和这条成果即可 */

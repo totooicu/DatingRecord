@@ -59,6 +59,33 @@ const snapList = () =>
     })),
   );
 
+/**
+ * 回到设置目录一级页。子页激活时左侧目录被 CSS 整个藏掉，页头换成 ‹ 返回键，
+ * 而且点底部 tab「设置」不会重置子页状态——所以必须先一路点返回键爬回目录。
+ * 最多三层：AI 对话 → AI → 目录。
+ */
+const toSettingsRoot = async () => {
+  await p.locator('.tabbar-item', { hasText: '设置' }).click();
+  await p.waitForTimeout(500);
+  for (let i = 0; i < 3; i++) {
+    const back = p.locator('.page-head .back-btn');
+    if (!(await back.count())) break;
+    if (!(await back.first().isVisible().catch(() => false))) break;
+    await back.first().click().catch(() => {});
+    await p.waitForTimeout(400);
+  }
+};
+
+/** 模型配置是「设置 → AI → 模型」独立子页，回对话页要重新导航 */
+const ensureAiPage = async () => {
+  if (await p.locator('.aichat-tabs').count()) return;
+  await toSettingsRoot();
+  await p.locator('.settings-nav-title', { hasText: /^AI$/ }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.settings-hub-title', { hasText: /^AI 对话$/ }).click();
+  await p.waitForTimeout(700);
+};
+
 await step('打开并载入示例数据', async () => {
   await p.goto(APP, { waitUntil: 'load' });
   await p.waitForFunction(
@@ -74,17 +101,19 @@ await step('打开并载入示例数据', async () => {
 });
 
 await step('进 AI 对话页', async () => {
-  await p.locator('.tabbar-item', { hasText: '设置' }).click();
+  await toSettingsRoot();
+  await p.locator('.settings-nav-title', { hasText: /^AI$/ }).click();
   await p.waitForTimeout(400);
-  await p.locator('.settings-nav-item', { hasText: '功能体验' }).click();
-  await p.waitForTimeout(400);
-  await p.locator('.settings-hub-item', { hasText: 'AI 对话' }).click();
+  await p.locator('.settings-hub-title', { hasText: /^AI 对话$/ }).click();
   await p.waitForTimeout(700);
 });
 
 await step('配一个假模型', async () => {
-  await p.locator('.aichat-tab', { hasText: '模型' }).click();
-  await p.waitForTimeout(500);
+  await toSettingsRoot();
+  await p.locator('.settings-nav-title', { hasText: /^AI$/ }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.settings-hub-title', { hasText: /^模型$/ }).click();
+  await p.waitForTimeout(700);
   await p.getByRole('button', { name: '添加模型' }).click();
   await p.waitForTimeout(400);
   await p.locator('.field', { hasText: '别名' }).locator('input').fill('e2e');
@@ -101,6 +130,7 @@ await step('配一个假模型', async () => {
 });
 
 await step('发一句话，让它把整条操作流跑完', async () => {
+  await ensureAiPage();
   await p.locator('.aichat-tab', { hasText: '聊天' }).click();
   await p.waitForTimeout(400);
   await p.locator('.aichat-input textarea').fill('按我说的把这一批改动做完');

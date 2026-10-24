@@ -18,11 +18,17 @@
 //   S9  多 pending 拦截：第一条没处理时第二条发不出去
 //   S10 混合：新增/修改/删除/净零 四组同堂，逐组核对
 //   S11 已执行后「放弃改动」：整轮回退，自动留底
+//   S12 暂存期间数据被外人动过（合并导入）：执行被拦截，放弃后外部改动完好
 //
 // 用法：
 //   PORT=8794 node tools/e2e/fake-ai-matrix.mjs   # 假模型服务
 //   npx vite preview --port 4173                  # 或 dev :5173
 //   node tools/e2e/review-matrix-e2e.mjs [url]
+//
+// 导航注意：设置页带子页的入口（AI / 备份与分享 / 功能体验）在子页激活时，
+// 左侧目录被 CSS 整个藏掉、页头换成 ‹ 返回键，且点底部 tab「设置」不会
+// 重置子页状态——所以每次要进目录都先走 toSettingsRoot() 点返回键爬回去，
+// 直接点 .settings-nav-title 会等到超时（元素在 DOM 里但不可见）。
 
 import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
 
@@ -70,15 +76,29 @@ const boot = async (p) => {
   }
 };
 
-const setupModel = async (p) => {
+/**
+ * 回到设置目录一级页。子页激活时左侧目录被 CSS 整个藏掉，页头换成 ‹ 返回键，
+ * 而且点底部 tab「设置」不会重置子页状态——所以必须先一路点返回键爬回目录。
+ * 最多三层：AI 对话 → AI → 目录。
+ */
+const toSettingsRoot = async (p) => {
   await p.locator('.tabbar-item', { hasText: '设置' }).click();
-  await p.waitForTimeout(400);
-  await p.locator('.settings-nav-item', { hasText: '功能体验' }).click();
-  await p.waitForTimeout(400);
-  await p.locator('.settings-hub-item', { hasText: 'AI 对话' }).click();
-  await p.waitForTimeout(700);
-  await p.locator('.aichat-tab', { hasText: '模型' }).click();
   await p.waitForTimeout(500);
+  for (let i = 0; i < 3; i++) {
+    const back = p.locator('.page-head .back-btn');
+    if (!(await back.count())) break;
+    if (!(await back.first().isVisible().catch(() => false))) break;
+    await back.first().click().catch(() => {});
+    await p.waitForTimeout(400);
+  }
+};
+
+const setupModel = async (p) => {
+  await toSettingsRoot(p);
+  await p.locator('.settings-nav-title', { hasText: /^AI$/ }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.settings-hub-title', { hasText: /^模型$/ }).click();
+  await p.waitForTimeout(700);
   await p.getByRole('button', { name: '添加模型' }).click();
   await p.waitForTimeout(400);
   await p.locator('.field', { hasText: '别名' }).locator('input').fill('e2e');
@@ -97,11 +117,10 @@ const setupModel = async (p) => {
 /** 确保当前停在 AI 对话页（底部 tab 的 section 状态会保留，探测一下更稳） */
 const ensureAiPage = async (p) => {
   if (await p.locator('.aichat-tabs').count()) return;
-  await p.locator('.tabbar-item', { hasText: '设置' }).click();
-  await p.waitForTimeout(500);
-  await p.locator('.settings-nav-item', { hasText: '功能体验' }).click();
+  await toSettingsRoot(p);
+  await p.locator('.settings-nav-title', { hasText: /^AI$/ }).click();
   await p.waitForTimeout(400);
-  await p.locator('.settings-hub-item', { hasText: 'AI 对话' }).click();
+  await p.locator('.settings-hub-title', { hasText: /^AI 对话$/ }).click();
   await p.waitForTimeout(700);
 };
 
@@ -130,8 +149,6 @@ const libText = async (p) => {
 };
 
 const gotoSnaps = async (p) => {
-  await p.locator('.tabbar-item', { hasText: '设置' }).click();
-  await p.waitForTimeout(500);
   await ensureAiPage(p);
   await p.locator('.aichat-tab', { hasText: '成果' }).click();
   await p.waitForTimeout(900);
@@ -194,7 +211,8 @@ const scenario = async (browser, name, fn) => {
   try {
     await fn(p);
   } catch (e) {
-    console.log(`  ✗ 场景异常：${String(e).slice(0, 300)}`);
+    // 别截太短：Playwright 的 call log 才是定位点击超时的关键信息
+    console.log(`  ✗ 场景异常：${String(e).slice(0, 3000)}`);
     failures.push(`${name}: 异常`);
   }
   await p.context().close();
@@ -292,10 +310,9 @@ await scenario(b, 'S3 纯删除：T2 还在、T3 消失', async (p) => {
     names.every((n) => !has(t2.persons, n) && !has(t2.events, n) && !has(t2.collections, n)),
     JSON.stringify(names),
   );
-  // 回收站里应该能找到它们（软删可恢复）
-  await p.locator('.tabbar-item', { hasText: '设置' }).click();
-  await p.waitForTimeout(600);
-  await p.locator('.settings-nav-item', { hasText: '归档与回收' }).click().catch(() => {});
+  // 回收站里应该能找到它们（软删可恢复）。先爬回设置目录——子页里导航是藏着的
+  await toSettingsRoot(p);
+  await p.locator('.settings-nav-title', { hasText: /^归档与回收$/ }).click();
   await p.waitForTimeout(900);
   const archText = await p.evaluate(() => document.body.innerText);
   const inArchive = names.filter((n) => has(archText, n));
@@ -469,6 +486,58 @@ await scenario(b, 'S11 已执行后「放弃改动」：整轮回退', async (p)
   await gotoSnaps(p);
   const list = await snapList(p);
   check('S11：回退后列表保留记录（原成果 + auto 留底）', list.length >= 2, JSON.stringify(list.map((x) => x.title)));
+});
+
+await scenario(b, 'S12 暂存期间外部改动：执行被拦截、放弃后改动完好', async (p) => {
+  await boot(p);
+  await setupModel(p);
+  await send(p, '新增一批数据');
+  await gotoSnaps(p);
+  const list1 = await snapList(p);
+  check('暂存 1 条待执行', list1.length === 1 && list1[0].status === '待执行', JSON.stringify(list1));
+
+  // 暂存期间做一次「合并导入」——往库里塞一个外部人物，模拟用户改数据 / 导备份
+  const libFile = '/tmp/matrix-import.drp.json';
+  await (await import('node:fs/promises')).writeFile(
+    libFile,
+    JSON.stringify({
+      schemaVersion: 11,
+      meta: { id: 'ext', name: '外部导入', exportedAt: new Date().toISOString(), app: 'e2e', deviceId: 'e2e' },
+      attributeDefs: [],
+      persons: [{ id: 'ext-1', displayName: 'M-外部人物', hlc: 'zzzzzzzzzz-e2e' }],
+      attrHistory: [],
+      events: [],
+      collections: [],
+      members: [],
+    }),
+  );
+  await toSettingsRoot(p);
+  await p.locator('.settings-nav-title', { hasText: /^备份与分享$/ }).click();
+  await p.waitForTimeout(400);
+  await p.locator('.settings-hub-title', { hasText: /^数据备份$/ }).click();
+  await p.waitForTimeout(700);
+  await p.locator('input[type=file]').setInputFiles(libFile);
+  await p.waitForSelector('.alert-ok', { timeout: 30000 });
+  const impText = await p.locator('.alert-ok').textContent();
+  check('合并导入成功', has(impText, '导入完成'), impText);
+  const tExt = await libText(p);
+  check('外部人物已进真实库（暂存期间的数据变化）', has(tExt.persons, 'M-外部人物'));
+
+  // 回到成果点执行：应当被拦截，而不是把外部改动冲掉
+  await gotoSnaps(p);
+  await execSnap(p);
+  const list2 = await snapList(p);
+  check('执行被拦截：仍是待执行', list2.length === 1 && list2[0].status === '待执行', JSON.stringify(list2));
+  const errText = await p.locator('.aichat-err').textContent().catch(() => '');
+  check('拦截提示说明原因', has(errText, '执行已拦截') && has(errText, '被其他操作改过'), errText);
+
+  // 放弃这轮：外部改动必须完好，AI 的改动不准混进来
+  await discardSnap(p);
+  const list3 = await snapList(p);
+  check('放弃后无成果卡', list3.length === 0, JSON.stringify(list3));
+  const tEnd = await libText(p);
+  check('放弃后外部人物还在', has(tEnd.persons, 'M-外部人物'));
+  check('放弃后 AI 的人物没进来', !has(tEnd.persons, 'M-新人物'));
 });
 
 await b.close();
