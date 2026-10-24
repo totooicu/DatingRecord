@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listFiles, type StoredFile } from '../../core/repo/files';
 import { objectUrlFor, forgetUrl } from '../../core/db/blob';
+import { getPlaylist, setPlaylist } from '../../core/music/playlist';
 import { FilesPanel } from '../files';
 import { CollisionModal } from '../files/CollisionModal';
 import { useUploader } from '../files/useUploader';
@@ -22,10 +23,6 @@ const LOOP_LABEL: Record<LoopMode, string> = {
 
 const SPEEDS = [0.5, 1, 1.25, 1.5, 2];
 
-function isAudio(f: StoredFile): boolean {
-  return f.mime.startsWith('audio/');
-}
-
 function fmtTime(s: number): string {
   if (!isFinite(s) || s < 0) return '0:00';
   const m = Math.floor(s / 60);
@@ -34,7 +31,11 @@ function fmtTime(s: number): string {
 }
 
 export function MusicPanel() {
-  const [tracks, setTracks] = useState<StoredFile[]>(() => listFiles().filter(isAudio));
+  const [tracks, setTracks] = useState<StoredFile[]>(() => {
+    const ids = getPlaylist();
+    const all = listFiles();
+    return ids.map((id) => all.find((f) => f.id === id)).filter(Boolean) as StoredFile[];
+  });
   const [current, setCurrent] = useState<StoredFile | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState<LoopMode>('list');
@@ -47,9 +48,13 @@ export function MusicPanel() {
 
   const { busy, ask, inputRef, upload, openPicker } = useUploader((msg) => toast(msg));
 
+  useEffect(() => {
+    setPlaylist(tracks.map((t) => t.id));
+  }, [tracks]);
+
   const refresh = () => {
     const all = listFiles();
-    setTracks((ts) => ts.length ? ts : all.filter(isAudio));
+    setTracks((ts) => ts.map((t) => all.find((f) => f.id === t.id) ?? t));
   };
 
   useEffect(() => {

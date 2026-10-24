@@ -15,6 +15,7 @@ import { isPrivacyMode } from '../../privacy';
 import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
 import { FILE_REF_PREFIX } from '../markdown';
+import { isInPlaylist as isInMusicPlaylist } from '../music/playlist';
 
 export interface StoredFile {
   id: string;
@@ -341,13 +342,14 @@ export function countRefs(file: StoredFile | string): number {
 }
 
 /**
- * 文件被引用的总处数：事件正文 + 人物头像/图标 + 事件集图标。
+ * 文件被引用的总处数：事件正文 + 人物头像/图标 + 事件集图标 + 音乐歌单。
  *
- * 行尾是否显示「未被引用」用的就是这三项；排序/筛选必须用同一口径，
+ * 行尾是否显示「未被引用」用的就是这几项；排序/筛选必须用同一口径，
  * 否则头像引用的文件会显示「1 个头像」却被当成 0 参与排序。
  */
 export function countTotalRefs(file: StoredFile): number {
-  return countRefs(file) + personsUsingFile(file).length + collectionsUsingFile(file).length;
+  const inMusic = isInMusicPlaylist(file.id) ? 1 : 0;
+  return countRefs(file) + personsUsingFile(file).length + collectionsUsingFile(file).length + inMusic;
 }
 
 /** 渲染用：拿到可放进 <img src> 的地址。映射文件直接返回源链接 */
