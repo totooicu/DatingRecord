@@ -158,6 +158,7 @@ export function LocationPanel() {
   const [threshold, setThreshold] = useState(5); // 米
   const [amapKey, setAmapKey] = useState(() => getAmapKey());
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -383,10 +384,8 @@ export function LocationPanel() {
         </>
       )}
 
-      <div ref={containerRef} className="map-leaflet" />
-
       {fileId && (
-        <div className="music-add" style={{ marginTop: 8 }}>
+        <div className="music-add" style={{ marginBottom: 8 }}>
           <label className="muted small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             去重阈值
             <input type="number" min="0" style={{ width: 70 }} value={threshold}
@@ -400,6 +399,8 @@ export function LocationPanel() {
           )}
         </div>
       )}
+
+      <div ref={containerRef} className="map-leaflet" />
 
       <ul className="music-list">
         {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
