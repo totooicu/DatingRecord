@@ -43,7 +43,7 @@ import {
 } from '../../core/calendar';
 import { useVersion } from '../../store';
 import { Modal } from '../common';
-import { CollectionIconView } from '../collections/CollectionIcon';
+import { CollectionIconView, defaultTextIcon } from '../collections/CollectionIcon';
 
 /** 初始窗口：当前月上下各留几个月的余量，滚动时再按需扩展 */
 const WINDOW = 3;
@@ -758,11 +758,17 @@ function weekSegments(week: DayCell[], bars: SpanBar[]): WeekSegment[] {
 function SpanBarView({ seg, onPick }: { seg: WeekSegment; onPick: () => void }) {
   const { bar } = seg;
   const range = bar.startKey === bar.endKey ? bar.startKey : `${bar.startKey} → ${bar.endKey}`;
+  // 底色跟事件集走：有自定义图标就用它的「浅底 + 同色系深字」配色；
+  // 没设图标则按集合名取默认散列色（和集合头像同一套）；连集合都没有才用主题色。
+  const auto = bar.toneSeed ? defaultTextIcon(bar.toneSeed) : null;
+  const bg = bar.icon?.bg ?? auto?.bg;
+  const fg = bar.icon?.fg ?? auto?.fg;
+  const tone = bg ? { background: bg, color: fg ?? 'var(--text)' } : undefined;
   return (
     <button
       type="button"
       className="cal-span"
-      style={{ gridRow: seg.row + 2, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}` }}
+      style={{ gridRow: seg.row + 2, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 2}`, ...tone }}
       onClick={onPick}
       title={`${bar.title}（${range}）`}
     >

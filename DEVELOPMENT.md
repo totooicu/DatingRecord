@@ -810,7 +810,10 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
   画一条横跨多列的色条（`collectSpanBars` → 月内裁剪 → 贪心分配 `lane`，先长的后短的，
   同一行不重叠）。跨周事件每周各画一段、首尾相接；跨月事件只画本月部分，被裁的端点显示
   ◀/▶ 延续箭头。点条 → 与点格子相同，回时间线只看那天。条内显示集合图标（复用
-  `CollectionIconView`）+ 标题，超长省略。
+  `CollectionIconView`）+ 标题，超长省略。**底色跟事件集走**：集合图标自带 `fg/bg`
+  就直接用；没设图标的集合用集合名跑 `defaultTextIcon()` 的散列色（和它的默认头像同色）；
+  一条集合都没挂的事件退回主题色（`color-mix(in srgb, var(--primary) 10%, var(--panel))`）。
+  不再写死粉色，换主题或改集合图标颜色，日历跟着变。
 - **筛选（人物 / 事件集）**：月卡片上方两枚胶囊按钮，点开是多选弹窗（手机 390px 放不下内联多选）。
   `CalendarFilter { personIds, collectionIds }` 在 `Calendar` 层持有，切月份不丢；
   组内 OR、组间 AND；事件集筛选走闭包表 `descendantIdsOf()`，选父集合自动含全部子孙。

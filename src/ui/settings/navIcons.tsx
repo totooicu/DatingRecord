@@ -237,6 +237,42 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M8.4 12.6h7.2M8.4 16h4.6" />
         </>,
       );
+    // 功能面板：2×2 的小组件格子
+    case 'panel':
+      return wrap(
+        <>
+          <rect x="4" y="4" width="6.6" height="6.6" rx="1.6" />
+          <rect x="13.4" y="4" width="6.6" height="6.6" rx="1.6" />
+          <rect x="4" y="13.4" width="6.6" height="6.6" rx="1.6" />
+          <rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.6" />
+        </>,
+      );
+    // 音乐：八分音符
+    case 'panelMusic':
+      return wrap(
+        <>
+          <path d="M9.4 17.4V6.2l8.2-1.8v9.4" />
+          <ellipse cx="7" cy="17.8" rx="2.4" ry="2" />
+          <ellipse cx="15.2" cy="15.8" rx="2.4" ry="2" />
+        </>,
+      );
+    // 定位：地图针
+    case 'panelLocation':
+      return wrap(
+        <>
+          <path d="M12 20.2s6.2-5.6 6.2-10a6.2 6.2 0 1 0-12.4 0c0 4.4 6.2 10 6.2 10z" />
+          <circle cx="12" cy="10" r="2.2" />
+        </>,
+      );
+    // 高精度定位：准星
+    case 'panelPrecise':
+      return wrap(
+        <>
+          <circle cx="12" cy="12" r="6.4" />
+          <path d="M12 2.8v3.2M12 18v3.2M2.8 12h3.2M18 12h3.2" />
+          <circle cx="12" cy="12" r="1.4" />
+        </>,
+      );
     // 库概览：仪表盘
     case 'overview':
       return wrap(

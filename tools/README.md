@@ -29,6 +29,7 @@
 | `e2e/location-service-e2e.mjs` | 定位「自动打点」后台服务回归（L1–L5）：开机即注册未运行服务；开始打点 head 出图标；**离开面板服务照跑**（图标在、行数继续涨——单例化后才成立）；服务页显示运行中、点「打开」回面板；停止后图标消失 | 需要 preview 服务：`node tools/e2e/location-service-e2e.mjs http://localhost:4173/`。定位权限用 Playwright context 级 mock，不需要真 GPS |
 | `e2e/music-migrate-e2e.mjs` | 自启动存档迁移回归（M1–M3）：旧版 `music-autostart` key 的老用户，升级后刷新应兑现自启动（head 出图标）、搬进统一存档 `dr.svc.autostart`、旧 key 清除 | 需要 preview 服务：`node tools/e2e/music-migrate-e2e.mjs http://localhost:4173/`。会往页面传一首 `/tmp/tone.wav` |
 | `e2e/music-playlist-e2e.mjs` | 歌单 `.drpl` 回归（P1–P7）：上传音频后新建歌单并带上队列、文件库按「歌单」筛选与预览、刷新恢复选中态、改名/描述、增删/排序写回文件、导入 `.drpl` 按 storedId/文件名对上曲目、删除当前歌单后曲目退回临时队列 | 需要 preview 服务：`node tools/e2e/music-playlist-e2e.mjs http://localhost:4173/`。自动生成 wav 与 `.drpl`，依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/settings-calendar-ui-e2e.mjs` | 设置入口与日历配色回归（S1–S2、C1）：功能体验 / 功能面板目录入口都有图标，功能面板三条子页与功能体验的图标渲染一致（防止 panel 一族漏配成空方块）；日历事件条底色按事件集分色，不再全部是写死的粉色 | 需要 preview 服务：`node tools/e2e/settings-calendar-ui-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 
 ## src/core/tools/
 
