@@ -42,7 +42,13 @@ export function getTasks(): TaskItem[] { return tasks; }
 /** 注册/更新一个服务（重复 id 覆盖） */
 export function upsertService(s: ServiceItem): void {
   const i = services.findIndex((x) => x.id === s.id);
-  if (i >= 0) services[i] = s; else services.push(s);
+  if (i >= 0) {
+    const next = services.slice();
+    next[i] = s;
+    services = next;
+  } else {
+    services = [...services, s];
+  }
   emit();
 }
 
@@ -54,14 +60,25 @@ export function removeService(id: string): void {
 /** 注册/更新一个任务 */
 export function upsertTask(t: TaskItem): void {
   const i = tasks.findIndex((x) => x.id === t.id);
-  if (i >= 0) tasks[i] = t; else tasks.push(t);
+  if (i >= 0) {
+    const next = tasks.slice();
+    next[i] = t;
+    tasks = next;
+  } else {
+    tasks = [...tasks, t];
+  }
   emit();
 }
 
 /** 任务完成后调用：状态变 done，图标变色 */
 export function markTaskDone(id: string): void {
-  const t = tasks.find((x) => x.id === id);
-  if (t && t.status !== 'done') { t.status = 'done'; emit(); }
+  const i = tasks.findIndex((x) => x.id === id);
+  if (i >= 0 && tasks[i].status !== 'done') {
+    const next = tasks.slice();
+    next[i] = { ...next[i], status: 'done' };
+    tasks = next;
+    emit();
+  }
 }
 
 /** 用户打开任务对应页面后调用：从 head 移除通知图标 */
