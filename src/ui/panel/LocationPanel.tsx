@@ -194,8 +194,16 @@ export function LocationPanel() {
     const latlngs = rows.map((r) => [r.lat, r.lng] as [number, number]);
     L.polyline(latlngs, { color: '#d9536b', weight: 2, opacity: 0.7 }).addTo(map);
     const icon = (map as any)._drIcon as L.DivIcon;
-    rows.forEach((r) => {
-      L.marker([r.lat, r.lng], { icon }).addTo(map)
+    rows.forEach((r, i) => {
+      const isLast = i === rows.length - 1;
+      const color = isLast ? '#2196F3' : '#d9536b';
+      const size = isLast ? 18 : 14;
+      const dotIcon = L.divIcon({
+        className: '',
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>`,
+        iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+      });
+      L.marker([r.lat, r.lng], { icon: dotIcon }).addTo(map)
         .bindPopup(`<div><strong>${r.ts}</strong><br/>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.note ? `<br/>${r.note}` : ''}</div>`);
     });
     map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
@@ -250,7 +258,20 @@ export function LocationPanel() {
 
   const locateMe = () => {
     getPosition()
-      .then((pos) => mapRef.current?.setView([pos.lat, pos.lng], 16))
+      .then((pos) => {
+        mapRef.current?.setView([pos.lat, pos.lng], 16);
+        // 绿色"我的位置" marker
+        if (mapRef.current) {
+          (mapRef.current as any)._meMarker?.remove();
+          const meIcon = L.divIcon({
+            className: '',
+            html: '<div style="width:20px;height:20px;border-radius:50%;background:#4CAF50;border:3px solid #fff;box-shadow:0 0 8px rgba(76,175,80,0.6)"></div>',
+            iconSize: [20, 20], iconAnchor: [10, 10],
+          });
+          const m = L.marker([pos.lat, pos.lng], { icon: meIcon }).addTo(mapRef.current);
+          (mapRef.current as any)._meMarker = m;
+        }
+      })
       .catch(() => toast('定位失败'));
   };
 
@@ -317,22 +338,22 @@ export function LocationPanel() {
 
   return (
     <div className="music-panel">
+      <div className="music-add" style={{ marginBottom: 8 }}>
+        <input type="password" className="music-name-input" value={amapKey}
+          onChange={(e) => setAmapKey(e.target.value)}
+          placeholder="高德 Web key" />
+        <button className="music-add-btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => {
+          try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
+          toast('key 已保存');
+        }}>保存</button>
+      </div>
+
       <div className="music-now">
         <div className="music-disc">📍</div>
         <div className="music-meta">
           <div className="music-title">{current ? current.name : '未选择文件'}</div>
           <div className="music-sub muted small">{rows.length} 条记录</div>
         </div>
-      </div>
-
-      <div className="music-add" style={{ marginBottom: 8 }}>
-        <input className="music-name-input" value={amapKey}
-          onChange={(e) => setAmapKey(e.target.value)}
-          placeholder="高德 Web key（lbs.amap.com 申请）" />
-        <button className="music-add-btn" onClick={() => {
-          try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
-          toast('key 已保存');
-        }}>保存 key</button>
       </div>
 
       {!fileId && (
@@ -357,23 +378,26 @@ export function LocationPanel() {
             <button className="music-add-btn" onClick={locateMe}>我的位置</button>
             <button className="music-add-btn" onClick={() => { setFileId(null); setRows([]); }}>切换文件</button>
           </div>
-          <div className="music-add" style={{ marginTop: 8 }}>
-            <label className="muted small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              去重阈值
-              <input type="number" min="0" style={{ width: 70 }} value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value) || 0)} />
-              米内视为同一点
-            </label>
-            {auto ? (
-              <button className="music-add-btn" onClick={stopAuto}>⏹ 停止自动打点</button>
-            ) : (
-              <button className="music-add-btn primary" onClick={startAuto}>▶ 自动打点（1秒/次）</button>
-            )}
-          </div>
         </>
       )}
 
       <div ref={containerRef} className="map-leaflet" />
+
+      {fileId && (
+        <div className="music-add" style={{ marginTop: 8 }}>
+          <label className="muted small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            去重阈值
+            <input type="number" min="0" style={{ width: 70 }} value={threshold}
+              onChange={(e) => setThreshold(Number(e.target.value) || 0)} />
+            米
+          </label>
+          {auto ? (
+            <button className="music-add-btn" onClick={stopAuto}>⏹ 停止</button>
+          ) : (
+            <button className="music-add-btn primary" onClick={startAuto}>▶ 自动打点</button>
+          )}
+        </div>
+      )}
 
       <ul className="music-list">
         {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
