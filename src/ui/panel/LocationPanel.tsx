@@ -192,11 +192,11 @@ export function LocationPanel() {
     map.eachLayer((layer) => { if (!(layer instanceof L.TileLayer)) map.removeLayer(layer); });
     if (rows.length === 0) return;
     const latlngs = rows.map((r) => [r.lat, r.lng] as [number, number]);
-    L.polyline(latlngs, { color: '#d9536b', weight: 2, opacity: 0.7 }).addTo(map);
+    L.polyline(latlngs, { color: '#FFC107', weight: 2, opacity: 0.7 }).addTo(map);
     rows.forEach((r, i) => {
       const isLast = i === rows.length - 1;
-      const color = isLast ? '#2196F3' : '#d9536b';
-      const size = isLast ? 18 : 14;
+      const color = isLast ? '#2196F3' : '#FFC107';
+      const size = isLast ? 18 : 12;
       const dotIcon = L.divIcon({
         className: '',
         html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>`,
@@ -264,8 +264,8 @@ export function LocationPanel() {
           (mapRef.current as any)._meMarker?.remove();
           const meIcon = L.divIcon({
             className: '',
-            html: '<div style="width:20px;height:20px;border-radius:50%;background:#4CAF50;border:3px solid #fff;box-shadow:0 0 8px rgba(76,175,80,0.6)"></div>',
-            iconSize: [20, 20], iconAnchor: [10, 10],
+            html: '<div style="width:22px;height:22px;border-radius:50%;background:#2196F3;border:3px solid #fff;box-shadow:0 0 10px rgba(33,150,243,0.7)"></div>',
+            iconSize: [22, 22], iconAnchor: [11, 11],
           });
           const m = L.marker([pos.lat, pos.lng], { icon: meIcon }).addTo(mapRef.current);
           (mapRef.current as any)._meMarker = m;
@@ -401,7 +401,19 @@ export function LocationPanel() {
       <ul className="music-list">
         {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
         {rows.slice().reverse().map((r, i) => (
-          <li key={i} className="music-row" onClick={() => mapRef.current?.setView([r.lat, r.lng], 16)}>
+          <li key={i} className="music-row" onClick={() => {
+            mapRef.current?.setView([r.lat, r.lng], 16);
+            if (mapRef.current) {
+              (mapRef.current as any)._selMarker?.remove();
+              const selIcon = L.divIcon({
+                className: '',
+                html: '<div style="width:24px;height:24px;border-radius:50%;background:#d9536b;border:3px solid #fff;box-shadow:0 0 10px rgba(217,83,107,0.7)"></div>',
+                iconSize: [24, 24], iconAnchor: [12, 12],
+              });
+              const m = L.marker([r.lat, r.lng], { icon: selIcon }).addTo(mapRef.current);
+              (mapRef.current as any)._selMarker = m;
+            }
+          }}>
             <span className="music-row-idx">{rows.length - i}</span>
             <span className="music-row-name">
               {new Date(r.ts).toLocaleString()} · {r.lat.toFixed(6)},{r.lng.toFixed(6)}
