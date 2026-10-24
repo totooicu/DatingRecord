@@ -386,12 +386,11 @@ export function renameFile(id: string, name: string): void {
   });
 }
 
-/** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录这类追加写场景用。 */
+/** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录这类追加写场景用，不记 undo。 */
 export async function overwriteFileContent(id: string, blob: Blob): Promise<void> {
   await putBlob(id, blob);
   transact(() => {
     run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
-    appendOplog('attachment', id, 'update', { size: blob.size });
   });
 }
 
