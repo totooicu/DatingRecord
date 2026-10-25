@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { pushBackLayer } from './back';
 import { APP_VERSION, BUILD_TIME, fmtTime } from '../core/buildInfo';
+import { shellEnv } from '../core/compat/bridge';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -254,18 +255,27 @@ export function PageHead({
  * 版本条：人物主页 head 之上的那一行小字，形如「网:2026-10-25 18:32」。
  * 时间是构建注入的 BUILD_TIME（Asia/Shanghai）。
  *
- * 曾经并排显示「壳:… | 网:…」（壳的 builtAt / commit + 配对状态），2026-10-26
- * 连同「判断是不是在壳里」的那套逻辑一起删了：网页在壳里和在浏览器里行为一致，
- * 就不该再拿「在不在壳里」去做任何决定，版本条也只报网页自己这一半。
+ * ⚠️ 2026-10-26 之后临时诊断：之前把「判断是不是在壳里」整套删了（含版本条「壳:…」半），
+ * 版本条只报网页自己这一半。现在临时恢复「读壳 getEnv + 展示」，用于验证
+ * 「网页读不到壳版本时间」是否就是删这段导致的。只展示，不分支判断。
  */
 export function VersionStrip() {
   const webTime = fmtTime(BUILD_TIME, 'Asia/Shanghai');
+  const shell = shellEnv();
+  const title = shell
+    ? `壳 ${shell.builtAt}（v${shell.version} @ ${shell.commit}）· 网 ${webTime}（v${APP_VERSION}） · 双击刷新`
+    : `网 ${webTime}（v${APP_VERSION}） · 双击刷新`;
   return (
     <div
       className="version-strip"
-      title={`网 ${webTime}（v${APP_VERSION}） · 双击刷新`}
+      title={title}
       onDoubleClick={() => location.reload()}
     >
+      {shell && (
+        <span className="version-shell">
+          壳:{shell.builtAt}（v{shell.version} @ {shell.commit}）
+        </span>
+      )}
       <span>网:{webTime}</span>
     </div>
   );

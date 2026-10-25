@@ -153,3 +153,45 @@ export function engineInfo(): EngineInfo {
         : 'browser',
   };
 }
+
+/**
+ * 诊断用：读壳的 getEnv()。
+ *
+ * 壳通过 addJavascriptInterface 把 JsBridge 注册成 window.AndroidBridge，
+ * getEnv() 是同步 Java 方法，直接返回 JSON 字符串（含 app/version/builtAt/commit）。
+ * 普通浏览器里 window.AndroidBridge 不存在，本函数返回 null。
+ *
+ * ⚠️ 这是 2026-10-26 之后的临时诊断：之前把「判断是不是在壳里」整套删了，
+ * 版本条不再显示壳的那一半；现在要验证「网页读不到壳版本时间」是否就是删这段导致，
+ * 所以临时恢复「读 getEnv + 展示」。它只做展示，不拿返回值做任何业务分支判断。
+ */
+export interface ShellEnv {
+  app: string;
+  version: string;
+  builtAt: string;
+  commit: string;
+  platform?: string;
+  isApp?: boolean;
+  bridge?: string;
+}
+
+export function shellEnv(): ShellEnv | null {
+  try {
+    const bridge = (window as unknown as { AndroidBridge?: { getEnv?: () => string } }).AndroidBridge;
+    const raw = bridge?.getEnv?.();
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<ShellEnv>;
+    if (!o || typeof o !== 'object') return null;
+    return {
+      app: o.app ?? '',
+      version: o.version ?? '',
+      builtAt: o.builtAt ?? '',
+      commit: o.commit ?? '',
+      platform: o.platform,
+      isApp: o.isApp,
+      bridge: o.bridge,
+    };
+  } catch {
+    return null;
+  }
+}
