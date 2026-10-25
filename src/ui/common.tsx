@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
+import { pushBackLayer } from './back';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -39,6 +40,14 @@ export function Modal({
     return () => setModalOpen(-1);
   }, []);
 
+  // 壳的系统返回键先关最上层弹窗。用 ref 存最新的 onClose，登记只做一次——
+  // 否则下层弹窗重渲染会把自己顶到栈顶，把上层的返回顺序打乱。
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  useEffect(() => pushBackLayer(() => closeRef.current()), []);
+
   const cls = ['modal', wide ? 'modal-wide' : '', media ? 'modal-media' : ''].filter(Boolean).join(' ');
 
   return (
@@ -66,6 +75,41 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
       </span>
       {children}
     </label>
+  );
+}
+
+/**
+ * 所有「从本地选文件」共用的 input。
+ *
+ * 统一两件事：只在真正选到文件时回调；回调前先把 value 清空，
+ * 这样处理失败、提前 return、连续选同一个文件时都不会卡住不动。
+ */
+export function FilePickInput({
+  accept = '*/*',
+  multiple = false,
+  onFiles,
+  inputRef,
+}: {
+  accept?: string;
+  multiple?: boolean;
+  onFiles: (files: File[]) => void;
+  inputRef?: RefObject<HTMLInputElement>;
+}) {
+  const localRef = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? localRef;
+  return (
+    <input
+      ref={ref}
+      type="file"
+      accept={accept}
+      multiple={multiple}
+      hidden
+      onChange={(e) => {
+        const files = Array.from(e.currentTarget.files ?? []);
+        e.currentTarget.value = '';
+        if (files.length) onFiles(files);
+      }}
+    />
   );
 }
 
@@ -194,9 +238,7 @@ export function PageHead({
         </button>
       )}
       <h2 className="page-head-title">{title}</h2>
-      <div className="page-head-right">
-        {right}
-      </div>
+      {right && <div className="page-head-right">{right}</div>}
     </div>
   );
 }

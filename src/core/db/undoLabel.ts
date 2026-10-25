@@ -15,6 +15,7 @@ const ENTITY_NAME: Record<string, string> = {
   collection_member: '事件集成员',
   event_message: '消息',
   file: '文件',
+  memoir: '回忆录',
   setting: '设置',
 };
 

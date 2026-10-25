@@ -267,6 +267,8 @@ export interface SpanBar {
   clippedEnd: boolean;
   /** 取第一个集合的图标，条内小图标复用 CollectionIconView */
   icon: CollectionIcon | null;
+  /** 第一个集合的名字：没设图标时按它取默认配色，保证同一集合的事件同色 */
+  toneSeed: string;
   /** 第几行；同一行内的条互不重叠 */
   lane: number;
 }
@@ -303,8 +305,10 @@ export function collectSpanBars(
     const cols = collectionsOfEvent(e.id);
     const colIds = cols.map((c) => c.id);
     if (!match(e, colIds)) continue;
-    const firstId = cols[0]?.id ?? e.primaryCollectionId;
-    if (firstId) icon = getCollection(firstId)?.icon ?? null;
+    const first = cols[0] ?? (e.primaryCollectionId ? getCollection(e.primaryCollectionId) : undefined);
+    icon = first?.icon ?? null;
+    // 没设图标时用集合名散列出默认配色；连集合都没有才退回主题色
+    const toneSeed = first?.name ?? '';
 
     bars.push({
       eventId: e.id,
@@ -314,6 +318,7 @@ export function collectSpanBars(
       clippedStart,
       clippedEnd,
       icon,
+      toneSeed,
       lane: 0,
     });
   }

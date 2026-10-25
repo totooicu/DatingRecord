@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { pushBackLayer } from '../back';
 import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { uploadFileQuiet } from '../../core/files';
 import { getSmallLimit } from '../filePrefs';
 import { bump } from '../../store';
-import { Modal } from '../common';
+import { FilePickInput, Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from './MarkdownView';
 import { MarkdownToolbar } from './MarkdownToolbar';
@@ -72,9 +73,12 @@ export function MarkdownEditor({
       if (e.key === 'Escape') setFull(false);
     };
     window.addEventListener('keydown', onKey);
+    // 安卓壳的系统返回键同样退出全屏（和 Esc 一个手感）
+    const offBack = pushBackLayer(() => setFull(false));
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
+      offBack();
     };
   }, [full]);
 
@@ -90,7 +94,7 @@ export function MarkdownEditor({
   // 切换全屏、程序化插入文字后，textarea 的滚动位置可能变，高亮层补一次
   useLayoutEffect(syncScroll, [value, full, mode]);
 
-  const pick = async (list: FileList | null) => {
+  const pick = async (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
     setBusy(true);
     setErr(null);
@@ -107,7 +111,6 @@ export function MarkdownEditor({
       setErr(e instanceof Error ? e.message : '文件上传失败');
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
@@ -204,13 +207,11 @@ export function MarkdownEditor({
         <div className="md-preview muted">还没有内容</div>
       )}
 
-      <input
-        ref={fileRef}
-        type="file"
+      <FilePickInput
+        inputRef={fileRef}
         multiple
-        hidden
         accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json"
-        onChange={(e) => void pick(e.target.files)}
+        onFiles={(files) => void pick(files)}
       />
       {busy && <p className="muted small">正在上传…</p>}
       {err && <p className="warn-line">{err}</p>}

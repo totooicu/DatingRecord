@@ -16,7 +16,7 @@
 /* ---------- 按钮 ---------- */
 .btn {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--panel);
   border-radius: 8px;
   padding: 7px 14px;
   white-space: nowrap;

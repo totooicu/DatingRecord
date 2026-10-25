@@ -107,7 +107,7 @@
 
 - 版本时间 = `vite.config.ts` 中 `__BUILD_TIME__: new Date().toISOString()` 在构建那一刻取的值；不构建就不会变。
 - **线上时间由 CI 产生**：`deploy-pages.yml` 在 push 到 main 后执行 `pnpm build` 并覆盖 `gh-pages`。本机 `npm run build` 只作为合并门禁，它的时间不会出现在线上。
-- 合并推送后等该 run 变绿，打开「人物」主页面，标题上方的「最新版本 · …」应与**这次 Actions 构建**的时间一致（比本地门禁构建晚几十秒属正常）。
+- 合并推送后等该 run 变绿，打开「人物」主页面，标题上方的「最新版本 · …」应与**这次 Actions 构建**的时间一致（比本地门禁构建晚几十秒属正常）；双击这一行可原地重新加载。
 - 时间没前进 = 发布没生效（部署未完成或浏览器仍命中旧 SW），此时不要判断成功能没写对。
 - **禁止**手改 `src/core/buildInfo.ts`、禁止把 `BUILD_TIME` 写成常量，那等于伪造版本号。
 
@@ -215,7 +215,7 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 | `repository` | 集成（临时 SQLite） | CRUD + 索引命中 + 关联查询 |
 | `io` | **往返测试** | 导出 → 导入，数据必须完全等价（这条最容易出隐性 bug） |
 | `app-core` | 用例测试 | 主要成功路径 + 关键失败路径 |
-| e2e | 关键流程 | 建人物 → 记事件 → 归集 → 导出 → 导入 |
+| e2e | 关键流程 | 建人物 → 记事件 → 归集 → 导出 → 导入；AI 审核后执行矩阵（`review-matrix-e2e`）；服务/任务两层体系（`runtime-e2e`） |
 
 ## 1.5 Definition of Done（完成标准）
 
@@ -343,6 +343,213 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 **输入与轮次约定**（在 UI / agent 层）：
 - 对话框 `Enter` **只换行**，`Cmd/Ctrl+Enter` 才发送——换行不能误触发送（见 `LabAiSection.tsx` 的 `onKeyDown`）。
 - `runAgentTurn` 的 `maxRounds` **不硬性封顶**：`const maxRounds = opts.maxRounds; if (maxRounds && rounds > maxRounds)`——没传就一路跑到模型主动收尾，不限制 AI 的思考轮次。
+
+## 1.12 「服务 / 任务」两层体系（后台运行时）
+
+一次性的后台工作叫**任务**（AI 正在回复你）；常驻后台的东西叫**服务**（背景音乐）。两者的状态都放在模块级单例里，UI 只是订阅式视图——**组件卸载不影响单例继续跑**，这是"离开聊天页 AI 不中断"的根本原因。
+
+| 文件 | 职责 |
+|---|---|
+| `src/core/runtime/store.ts` | 任务/服务的响应式数据中心（pub/sub，仿 `toast` 模式）：`useTasks/useServices` + `addTask/finishTask/markTaskRead/updateTask/removeTask` + `registerService/setServiceRunning/setServiceAutostart/setServiceDetail`。只存状态，不碰 UI。**自启动存档**也归这里：`dr.svc.autostart` 一张表记所有开了自启动的服务，`registerService(s, start?)` 接收服务交出的启动函数，`restoreAutostartServices()` 在应用加载完毕后统一点名恢复 |
+| `src/core/runtime/aiChat.ts` | AI 聊天全局单例：轮次执行态（busy/activity/items/history/session）原来在 `LabAiSection` 的 state 里，离开即卸载丢失；现在 `sendTurn` 由单例驱动，页面只订阅。发送即 `addTask({kind:'ai-chat'})`，成功 `stageAiTurn` 后 `finishTask(true)`，失败 `revertAiTurn` 后 `finishTask(false)` |
+| `src/core/runtime/music.ts` | 背景音乐服务单例：`<audio>` 用 `document.createElement` 全局托管（原来在 `MusicPanel` 里，离开即停）；`registerService(..., startService)` 交出启动函数，自启动存 store 统一存档（旧 key `music-autostart` 首次开机自动搬迁并清除）；**服务运行态由 audio 的 play/pause 事件驱动**——播放/暂停/切歌/自动下一首全经过事件，head 图标不会和实际声音脱节。歌单（`.drpl`）选中后是队列的持久化真相：增删/排序防抖 350ms 写回文件，`pagehide` / `visibilitychange:hidden` 时强制落盘；没选歌单则退回旧的 localStorage 临时队列 |
+| `src/core/runtime/locationAuto.ts` | 定位「自动打点」服务单例：每秒取 GPS、按阈值去重写回 `.drloc`。定时器与写入串行链在单例里——离开定位面板照打（服务语义）；面板 `LocationPanel` 只是订阅式视图 + 地图渲染，显示坐标统一走 `applyOffset(原始点, 文件 offset)`。**支持自启动**：`registerAutoService` 交出 `startAutoService` 启动函数，`restoreAutostartServices()` 统一恢复；`fileReady` 标志保证「文件内容读完才起服务」，避免先写空把旧点覆盖掉。没选文件时自启动拉不起来（留「未选择打点文件，暂无法自启动」说明） |
+| `src/core/runtime/nav.ts` | 全局导航（`setNavHandler`/`navigate`，仿 `setEventOpener` 一族）：App 注册实现，head 图标/服务页借此跨页跳到指定设置子页 |
+| `src/ui/runtime/HeadStatus.tsx` | head 右侧状态区：活动/未读任务图标（运行中蓝色脉冲、完成绿、失败红，带未读角标）、运行中服务图标（悬停显示 `标题 · 当前活动 · 待办`）、「服务」「任务」入口。挂在主页 head、时间线/日历 `PageHead` 与设置页 `PageHead` 的 right 槽 |
+
+**任务语义**：`addTask` 同 kind 顶掉旧的 finished 记录；`finishTask` 完成即置 `unread:true`（即便之前在聊天页清过未读——完成本身是新的通知）；点图标/点开来源页 `markTaskRead` 清未读，**进行中的只跳不清**；任务页可手动 `removeTask`。
+
+**服务语义**：`registerService(s, start?)` 幂等；自启动以存档 `dr.svc.autostart` 为准（注册时覆盖调用方传入值，checkbox 才和"刷新后会不会自启"一致），`setServiceAutostart` 写存档 + 翻 store；被浏览器自动播放策略拦住时 note 置「待播放：点一下恢复」，running 仍为 true（服务在，等一个手势）。开机顺序：App 一个 effect 里先 `initMusicService()` + `initLocationAutoService()` 完成注册，再 `restoreAutostartServices()` 统一恢复——新服务要自启动，只管注册时交启动函数，不自己碰存档。
+
+**踩过的坑**：① `setAutostart` 最初只改 localStorage 和 running，没同步 store 的 `autostart`——受控 checkbox 每次重渲染都被打回原值，表现为"点了开关没反应"。凡是单例状态被 UI 受控渲染的，写入口必须同时更新 store。② 服务运行态最初只在 `startService` 里置，用户在面板点播放走的是 `toggle → a.play()` 另一条路——head 图标不出现、服务页显示"已停止"但歌在放。改成由 audio 的 play/pause 事件驱动后才根治（事件覆盖所有播放路径，包括切歌和自动下一首的瞬时空档）。
+
+**回归**：`node tools/e2e/runtime-e2e.mjs`（R1–R9：离开页面不中断、变色、点跳清通知/进行中不清、入口页、自启动、默认关闭、任务页清除、失败变红、播放/暂停驱动服务图标）；定位打点服务另有 `node tools/e2e/location-service-e2e.mjs`（L1–L5）；定位文件格式与分段页有 `node tools/e2e/location-format-tabs-e2e.mjs`（D1–D9）；自启动存档迁移（旧 `music-autostart` key 的老用户）有 `node tools/e2e/music-migrate-e2e.mjs`（M1–M3）。
+
+**顺带修的预存 bug**：`7dc62fb` 抽歌单持久化时丢了"空歌单则收养所有音频"的逻辑——"从本地添加"上传后文件进了文件库但歌单显示 0 首。现在 `getPlaylist()` 在 key 从未存在过时播种为全部音频（落库一次，之后用户删空就是真的空）；`useUploader.upload()` 返回本次落库的文件，MusicPanel 上传后直接 `addTracks`，两种路径都兜住。
+
+### 1.12a 歌单：文件库里的 `.drpl`
+
+**定位**：歌单不做独立表，就是文件库里一条普通附件。这样备份 / 坚果云同步 / 分享 / 隐私 / 类型筛选 / 预览全部自动覆盖，后续功能（事件正文引用、数据分析选歌、AI 操作）只需要认 `file.id`，不必另接一套存储。
+
+**格式**（`core/music/format.ts`）：扩展名 `.drpl`，MIME `application/x-dr-playlist`，正文是 JSON：
+
+```json
+{ "format": "dr.playlist", "version": 1, "name": "夜跑", "description": "",
+  "createdAt": "…", "updatedAt": "…",
+  "tracks": [{ "id": "f_…", "storedId": "sha-…", "name": "a.mp3", "mime": "audio/mpeg", "size": 123 }] }
+```
+
+曲目同时记本机附件 `id`、内容寻址 `storedId` 和名称快照。解析按 **id → storedId → 唯一文件名** 依次兜底，换设备 / 重新导入后仍能对上；对不上的条目进 `missing` 计数并显示，编辑时不会把缺失条目静默丢掉。写入时 `name` 以文件名去 `.drpl` 为准（改名同时改文件名），`updatedAt` 自动刷新。
+
+**代码分工**：
+
+| 文件 | 职责 |
+|---|---|
+| `core/music/format.ts` | 纯格式层：判定、解析/序列化、名称清洗、`resolvePlaylistTracks` |
+| `core/music/playlistFile.ts` | 文件库 CRUD：`listPlaylists/createPlaylist/readPlaylist/writePlaylist/updatePlaylistMeta/deletePlaylist/importPlaylistText`；选中态存 localStorage `dr.music.active-playlist` |
+| `core/runtime/music.ts` | 队列真相：选中歌单后增删/排序防抖写回；`saveChain` 串行 + `saveRev` 版本号 + `dirty` 门，防止旧快照后落盖掉新内容；`pagehide` / `visibilitychange:hidden` 强制 flush；`openPlaylist/detachPlaylist/saveQueueAsPlaylist/renameActivePlaylist/deleteActivePlaylist` |
+| `ui/panel/MusicPanel.tsx` | 歌单条：下拉切换、新建（可带上当前队列）、导入、改名/改描述、删除、保存状态与缺失提示 |
+| `ui/preview/PlaylistPreview.tsx` | 文件库点开 `.drpl` 的预览：曲目表 + 缺失项 + 一键播放 |
+| `core/tools/playlists.ts` | `playlist.*` 六个工具，CLI / AI 与 UI 共用实现 |
+| `ui/files/*` + `ui/preview/kind.ts` | 新增「歌单」筛选类型；`FilesSection compact` 给音乐面板提供只列音频的紧凑选择器 |
+
+**运行时规则**：没选歌单时仍用旧的 localStorage 队列（UI 显示「临时队列（未保存）」），删除当前歌单或歌单文件被外部删掉时，曲目保留为临时队列，不连坐删除音频；开机按 `active-playlist` 异步恢复，恢复失败自动退回临时队列。`writePlaylist` 走 `overwriteFileContent`，后者现在会同步重算 `sha256`（`stored_id` 不变，旧引用不受影响）。
+
+**回归**：`node tools/e2e/music-playlist-e2e.mjs [url]`（P1–P7：上传+新建、文件库筛选/预览、刷新恢复、改名改描述、增删排序写回、导入 `.drpl`、删除后回临时队列）。
+
+### 1.12b 定位：文件库里的 `.drloc`
+
+**定位**：定位记录和歌单一样，不做独立表，就是文件库里一条普通附件。旧版把点写成 `.csv`，和人手建的表格混在一起、文件页筛不出来；现在换成独一份的 `.drloc`（JSON），备份 / 同步 / 分享 / 隐私 / 类型筛选 / 预览全部复用文件库。
+
+**格式**（`core/location/format.ts`）：扩展名 `.drloc`，MIME `application/x-dr-location`，正文是 JSON：
+
+```json
+{ "format": "dr.location", "version": 1, "name": "夜跑",
+  "offset": { "lat": 0.000123, "lng": -0.000456 },
+  "points": [{ "ts": "…", "lat": 31.2304, "lng": 121.4737, "accuracy": 5, "note": "" }],
+  "createdAt": "…", "updatedAt": "…" }
+```
+
+`points` 永远是**原始坐标**；`offset` 是这个文件相对底图的整体修正量（单位：度，正值向北 / 向东）。显示、列表、地图、预览统一走 `applyOffset(points, offset)`，所以改偏移只是整体平移，不改写任何一条点。
+
+**面板三种修正方式**：文件里只存度，界面提供三种填法，结果都只是改 `offset`：
+
+| 方式 | 填什么 | 换算 |
+|---|---|---|
+| 度数 | `Δlat` / `Δlng`（度） | 原样写入 |
+| 距离 | 南北 / 东西多少米 | `Δlat = north / 111320`，`Δlng = east / (111320 × cos(参考纬度))`，参考纬度取点的平均纬度 |
+| 目标 | 第 1 个点应该落在的经纬度 | `offset = 目标 − 第 1 个点原始坐标`；两项都留空 = 不偏移（归零） |
+
+目标方式锚定**第 1 个点**而不是平均值：平均纬度会随补点漂移，起点不会。没有点时三种方式一起禁用（算不出参考纬度 / 没有锚点），先打点再修正。CLI / AI 的 `location.create` / `location.save` 同样三选一：`offset`（度）/ `offsetMeters: { north, east }`（米）/ `target: { lat, lng }`，同时给多个会报错；`location.get` 回传 `offset`、`offsetMeters`、`refLat`、`anchor`（第 1 个原始点）和 `target`（它修正后的坐标），三种表示可互相换算。
+
+**代码分工**：
+
+| 文件 | 职责 |
+|---|---|
+| `core/location/format.ts` | 纯格式层：判定、解析/序列化、名称清洗、`applyOffset`、米/度换算（`refLatOf` / `offsetFromMeters` / `metersFromOffset`）、旧 CSV 解析 |
+| `core/location/locationFile.ts` | 文件库 CRUD：`listLocations/createLocation/readLocation/writeLocation/importLocationText/deleteLocation`；选中态存 localStorage `dr.locationFileId` |
+| `core/runtime/locationAuto.ts` | 自动打点服务单例：原始点、offset、当前 GPS 蓝点、`rev` 结构版本都在这里；`saveChain` 串行落盘，偏移编辑与自动打点不会互相覆盖；手动 `punch` 返回新点下标，`removePoint` 按序删点 |
+| `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact`，位置修正支持度数 / 距离 / 目标三种填法；记录页逐点删除，一次只渲染最近 300 条 |
+| `ui/preview/LocationPreview.tsx` | 文件库点开 `.drloc` 的预览：点位表 + 偏移说明 |
+| `core/tools/locations.ts` | `location.*` 八个工具（list/get/create/save/add/remove/import/delete），CLI / AI 与 UI 共用实现 |
+
+**地图约定**：线宽 4px，点直径固定 2×线宽 = 8px；当前位置蓝色、文件历史点黄色、选中点红色。蓝点只来自本次定位，不写进文件，只有打点才追加。
+
+**大量点时**：自动打点每秒都会刷新「当前 GPS」，但只有**点结构变化**（新增 / 删除 / 换文件 / 改偏移）才重建地图图层——`rev` 不含原地去重的时间戳更新；选中点只换单个图标，蓝点单独一个 marker。记录列表切片渲染最近 300 条，可「显示更早」。原地不动时落盘最多 15 秒一次（新增点仍立即写）。几万点的文件仍会在**首次建图层**和**整篇 JSON 重写**上变慢，建议按行程分文件存。
+
+**运行时规则**：自动打点是后台服务，离开面板仍按阈值记录；恢复上次文件失败（被删 / 内容损坏）时回到未选择状态，不拿空队列覆盖文件。旧 CSV 不原地改写，导入时统一转成新的 `.drloc`。
+
+**回归**：`node tools/e2e/location-format-tabs-e2e.mjs [url]`（D1–D9 + D5b–D5e：分段切换、新建、空文件不能米制换算、导入带偏移的 `.drloc`、地图配色与尺寸、按米改偏移写回且原始点不变、度数 / 目标两种填法及目标留空归零、文件库筛选/预览、旧 CSV 转换、逐点删除、300 条分页）；后台服务语义见 `location-service-e2e.mjs`（L1–L5）。
+
+### 1.13 取色面板：彩虹 + 历史 + HEX / RGB
+
+凡是「要挑颜色」的地方都用同一个面板（`ui/color/ColorPicker.tsx`）：
+
+| 入口 | 用法 |
+|---|---|
+| 事件集 / 人物图标的前景、背景 | 预设色块后面的「＋」展开面板，弹窗内嵌（`compact`），背景允许选「透明」 |
+| 自定义属性（类型 = 颜色） | 色块按钮点开面板，展开在字段下方 |
+| 设置 → 外观 → 自定义颜色 | 按钮展开面板，主题色立即生效 |
+
+**布局与交互**：左边是彩虹渐变（横向色相、纵向白→纯色→黑，`hsl(h, 100, l)`），拖动即取色；右边一列是**全局历史颜色**（最多 16 个，最近用的排最前）；下面一行是 HEX 与 RGB 输入，外加当前色预览块。历史的存储键是 `dr.recentColors`（localStorage，只存本机、不进备份），`ui/color/history.ts` 用模块级缓存 + 订阅让同页多个面板同步。
+
+**数值约定**：落库统一小写 `#rrggbb`（`normalizeHex` 兼容 `#rgb` / `#rrggbb` / `rgb(r,g,b)` / 三个裸数字）；HEX 只在凑齐 6 位时提交，3 位简写在失焦时展开；RGB 三个框组内切换不提交，焦点离开整组才提交——主题色会把过浅的颜色压暗，逐位提交会让后一位基于被压暗的值计算，数值自己跑掉。主题面板传 `live={false}`，拖动时只本地预览、松手才应用，避免「自动加深」和手指打架。
+
+**代码分工**：`ui/color/color.ts`（解析 / HEX↔RGB↔HSL）、`ui/color/history.ts`（历史存取 + hook）、`ui/color/ColorPicker.tsx`（面板）、`styles/color.css`（样式）。
+
+**回归**：`node tools/e2e/color-picker-e2e.mjs [url]`（C1–C6：彩虹在左历史在右、HEX 应用、RGB 应用、彩虹拖动、历史刷新保留、图标自定义色保存生效并进入历史）。
+
+### 1.14 软件适配测试：安卓壳自检（设置 → 功能体验 → 软件适配测试）
+
+来源是安卓壳项目 `geckoview_example` 的 `assets/test.html`：一个纯 HTML 页，用 `window.postMessage` 调原生桥。那个壳现在已经从 GeckoView 切到系统 WebView：网页侧要的权限回调从 `GeckoSession.PermissionDelegate.onMediaPermissionRequest` 换成 `WebChromeClient.onPermissionRequest`，桥协议没变（`gv-bridge-*`），所以这一页不用跟着改。这一页把同样的检查项搬进应用，换成本项目的卡片样式，另加一张「本软件依赖」——适配一个新壳时，先看 WebAssembly / IndexedDB 在不在，比逐项点原生能力更快定位问题。
+
+| 卡 | 走哪条路 | 检查什么 |
+|---|---|---|
+| 引擎信息 | 标准 | UA、SecureContext、Gecko 判定、Android、显示模式 |
+| 原生桥状态 | postMessage | 读 `<html data-gv-bridge-*>` 注入标记，再 ping 一次（3s 超时） |
+| 应用依赖 | 标准 | WebAssembly / IndexedDB / Blob 下载 / Service Worker / PointerEvent / 存储配额 / 屏幕 |
+| 麦克风 | 标准 API | `getUserMedia`，三档约束依次试（默认 → 原始音频 → 指定 deviceId）+ 音量条；失败时列出每档结果与「怎么办」 |
+| 定位 | 标准 API | `geolocation.getCurrentPosition`（不开高精度，10s 超时） |
+| 蓝牙 · 中心设备 | 桥 | `ble.status / startScan / stopScan / connect / read / write / subscribe / disconnect`，设备与 GATT 来自事件 |
+| 蓝牙 · 外设 | 桥 | `ble.peripheral.start / stop / setValue`，连接、写入、订阅走事件 |
+| 文件 · 私有 | 桥 | `file.writePrivate / appendPrivate / readPrivate / listPrivate / deletePrivate` |
+| 文件 · 公共 | 桥 | `file.writePublic / readPublic / deletePublic`（读取与删除只认最后写入的 uri） |
+| 录屏 | 桥 | `screen.start / stop / status / thumbnail` |
+
+**协议**（与壳里那份 `test.html` 一字不差，改一边必须同步另一边）：
+
+- 请求 `window.postMessage({ type: 'gv-bridge-request', id, action, params }, '*')`
+- 响应 `{ type: 'gv-bridge-response', id, ok, result | error }`
+- 事件 `{ type: 'gv-bridge-event', event, data }`（`ble.deviceFound` / `ble.services` / `ble.characteristicChanged` / `screen.recordingStopped` …）
+- 文本走 UTF-8 → base64（`toBase64` / `fromBase64`）；`btoa` 只吃 Latin-1，中文必须自己编码
+- 桥根本不存在时 15s 的默认超时太浪费，ping 单独用 3s
+
+**状态与汇总**：每张卡测完向 `ui/compat/report.ts` 报到（模块级 Map），顶部汇总只给「通过 / 失败 / 未测」计数与逐项 ✓✗，不打分——「麦克风被拒」和「壳没注入桥」不是一类问题，混成一个分数会误导。状态活在模块里，离开页面再回来还在（蓝牙授权、录屏授权都要过系统弹窗，重来一遍很烦）。
+
+**判定口径**：普通浏览器里桥显示「未注入 / 超时」是正常的，标准 API 那几张卡照样能测；应用依赖只把 WebAssembly / IndexedDB / Blob 三条算进汇总（缺一样就开不了库、存不住、导不出），Service Worker / PointerEvent 缺了不影响能不能用。
+
+**麦克风为什么单独一套逻辑**：`NotReadableError · Could not start audio source` 在 Android 上几乎都不是页面代码的问题——AudioRecord 根本没起来。排查顺序按可能性从高到低：麦克风被别的应用占着 → 系统麦克风 / 隐私开关关掉 → 壳的录音权限（`RECORD_AUDIO` + `WebChromeClient.onPermissionRequest`；旧 GeckoView 壳是 `PermissionDelegate.onMediaPermissionRequest`。当前壳已用录音 / 录屏验证过，所以这一条基本可以先排除）→ 默认约束跟这台设备对不上。所以 `ui/compat/mic.ts` 按「默认 → 原始音频（关回声消除 / 降噪 / 自动增益）→ 指定某个 audioinput 的 deviceId」依次试，权限类错误（`NotAllowedError` / `SecurityError`）立即收手不再弹窗；每档之间留 250ms 让上一档松手；每次请求前先停掉自己上一次握着的流（同一页面重复申请在部分机型上也直接报 `NotReadableError`）。失败时页面列出：`enumerateDevices()` 里 audioinput 的数量与名字、Permissions API 的 microphone 状态、每档的错误名与原文，以及对最后一条错误的「怎么办」。
+
+在此基础上还有三条安卓壳上的实战修正（2026-10-25）：
+
+1. **权限被拒单独一路**：`navigator.permissions.query` 报 `denied` 时连 `getUserMedia` 都不调——安卓壳 / WebView 对拒绝过的来源会一直记住、不再弹框，反复重点只是反复失败。页面直接给「怎么恢复」（设置 → 应用 → 权限 → 麦克风 / 浏览器站点设置），汇总记 ✗。
+2. **授权后才重新枚举设备**：WebView 在 `RECORD_AUDIO` 授予前返回的 audioinput 是空 label、甚至空 deviceId，「指定设备」档拿授权前的清单去 `exact` 只会换来 `OverconstrainedError`。第一档失败后重新枚举一次，真名才拿得到。
+3. **占用释放等待 + 音量条激活**：`NotReadableError` 常是麦克风被别的应用占着，补一次 1.5s 后的默认档重试；音量条这边，安卓 WebView 默认「媒体播放需要用户手势」，探测链上的 `await` 会断掉手势上下文，`AudioContext` 停在 `suspended`、频谱恒 0（页面显示「已授权」但条不动，最像「录音坏了」）。所以创建后主动 `resume()`，仍不醒就挂一次性 `pointerdown`，用户点一下页面即激活。
+
+**壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未注入——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
+
+**同时下线**：功能面板里的「高精度定位」（高德官方 demo 诊断页）已删除，`panelPrecise` 路由、图标与组件一并移除——定位诊断由这一页的「定位」卡承担，它不依赖高德 key。
+
+**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K11）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）；K10 mock Permissions API 报 denied，验证不调 getUserMedia、给「怎么恢复」指引、汇总 ✗；K11 断言授权后 AudioContext 是 running（防 suspended 让音量条恒 0 的回归）。
+
+### 1.15 连续定位：壳里交给原生前台服务
+
+**问题**：页面「自动打点」是 1s 的 `setInterval`，WebView 退到后台后 JavaScript 定时器会被系统冻住，记录就断了。壳（`geckoview_example`）新增了一个前台服务 `LocationTrackingService`：退到后台、熄屏照记，频率状态机（走 1s / 手机动 30s / 不动 60s）和 `appendPoint()` 去重都是页面那套的原生复刻。
+
+**分工**：壳里连续记录归原生，页面只做三件事——推配置、收点、补历史。普通浏览器没有桥，原样走页面定时器，两套互斥。
+
+| 环节 | 谁做 | 怎么走 |
+|---|---|---|
+| 配置 | 页面 | `localStorage['dr.autoLocation']` 存 `{enabled, thresholdM, moveThresholdM}`；壳在 `onPageFinished` 主动读一次，所以页面就算没调桥，原生也有最新配置 |
+| 开关 | 页面 | `location.setConfig`（`enabled` 变化即启停原生服务）；停止时也推一次 `enabled:false` |
+| 配置改动 | 页面 | 阈值输入框逐键触发，存档同步写、桥调用压 400ms 抖动，只发最后一次 |
+| 记录 | 壳 | 原生服务写自己的 JSONL，并推 `location.point` 事件 |
+| 落盘 | 页面 | 事件点与 `location.getHistory` 的点都走同一个 `appendPoint()` 写进当前 `.drloc` |
+| 补历史 | 页面 | 启动接管、文件读完后、`visibilitychange` 回到前台，各拉一次 `location.getHistory` |
+| 重启接管 | 页面 | `dr.autoLocation.enabled=true` + 桥在 → 问 `location.status`：在跑就挂上，没跑按存档再推一次 `setConfig` |
+
+**游标**：`location.getHistory` 每次返回全量（壳不分文件），所以用 `localStorage['dr.autoLocation.cursor']` 记「已合并到的最大原生时间戳」，只合并更新的点。用时间戳而不是壳的 `rev`，是因为 `location.clearHistory` 会把 `rev` 归零。游标在持久化成功之后才前进。
+
+**自启动开关在壳里退居次要**：原生服务本来就按 `enabled` 起停，刷新 / 重开应用时页面按 `enabled` 接管——不能因为没勾「自启动」就把正在跑的服务显示成没开（否则原生记的点没人合并）。`dr.svc.autostart` 仍管普通浏览器里的页面定时器。
+
+**坐标**：原生给的是 `LocationManager` 的 WGS-84，页面记的是 GCJ-02（高德底图 / `fallbackBrowser` 都转成 GCJ），所以合并前统一 `wgs84ToGcj02()`。不换算的话同一份 `.drloc` 里会混进两套坐标系，图上偏几百米。
+
+**降级**：`nativeLocationAvailable()` 看的是壳注入时写在 `<html>` 上的 `data-gv-bridge-injected`。旧壳没有 `location.*` 时 `setConfig` 会立刻报错（未知 action），页面自动退回定时器并把说明写到服务行上，不会两边同时记。
+
+**界面**：壳里运行时面板阈值行下方一行小字「记录由安卓壳的原生服务接管…」，服务页那行的备注是「由壳的原生服务记录，退到后台也继续」。
+
+**回归**：`node tools/e2e/location-native-e2e.mjs [url]`（N1–N5）。用 `addInitScript` 装假壳（注入标记 + `location.*` + `location.point`，原生点与运行态放 `sessionStorage` 以撑过刷新）：N1 开始打点推 `enabled=true/thresholdM=5` 且页面 GPS 一次没取；N2 事件点落进文件并按 GCJ-02 显示；N3 远处新增、原地重复只刷新时间；N4 刷新后接管（问 `status`、拉 `getHistory` 补挂起期间的点、再刷新不重放）；N5 改阈值与停止都同步给壳。
+
+### 1.16 返回键：壳转发事件，页面决定退到哪
+
+**问题**：这是个单页应用，页面切换全在 React 状态里，从不写 `history`——`WebView.canGoBack()` 永远是 false。壳如果自己 `finish()`，用户会从任意子页直接退出应用。
+
+**壳的做法**（`WebViewActivity.onBackKey`）：页面加载完后不再自己退，而是发 `ui.backPressed`（`data.atRoot = !canGoBack`，只说明 WebView 历史栈），并起一个 3 秒定时器；页面用 `ui.goBack`（已退一层）或 `ui.finish`（退出应用）回执，回执即取消兜底。3 秒没动静，壳按 `canGoBack ? goBack : finish` 兜底。
+
+**页面的顺序**（`src/ui/back.ts` + `App.handleShellBack`），和屏幕上的返回按钮保持一致：
+
+1. 浮层：后进先出。`Modal` 与聊天 / 正文编辑的全屏态各自 `pushBackLayer()`，最后打开的先关；
+2. 人物 / 事件集详情 → 列表（`backToList()`，保留「从成果详情跳来」的来路）；
+3. 服务 / 任务页 → 来之前那一页（`returnView`）；
+4. 设置子页 → 父级（`parentOf`），父级为空则回目录；
+5. 日历点进来的「只看某天」时间线 → 日历；
+6. 以上都没有 → `ui.finish`。
+
+每一次页面自己退了一层都回 `ui.goBack`。因为 SPA 不写 history，这个回执不会让 WebView 再多退一格，作用只是告诉壳「这一下已经用掉，别兜底」；列表 / 时间线 / 日历的根上不冒充 `goBack`，直接 `finish`。
+
+**事件订阅要能独立工作**：返回键用不着发任何请求，页面刚起来可能一次 `invoke` 都没有，所以 `onBridgeEvent()` 自己会装 `message` 监听，不依赖别处先调过桥。
+
+**回归**：`node tools/e2e/shell-back-e2e.mjs [url]`（B1–B6）。假壳除了应答 `ui.goBack / ui.finish`，还照抄了 3 秒兜底并计数：B1 详情回列表且等过 3 秒兜底仍为 0；B2 图标弹窗只关弹窗、详情不动；B3 设置子页 → 父级 → 目录 → `ui.finish`；B4 日历某天 → 时间线 → 回日历；B5 新建事件弹窗里的全屏编辑先退全屏再关弹窗；B6 列表根上返回只发 `ui.finish`。
 
 ---
 
@@ -474,6 +681,7 @@ interface SqlDriver {
 
 - 卡片/列表双视图；按标签、分组、归档状态筛选；按名称、创建时间、最近互动时间、任意属性字段排序。
 - 显示关键统计角标：事件数、最近见面天数、平均评分。
+- 标题上方的「最新版本 · …」显示构建时间（`__BUILD_TIME__`）；**双击这一行重新加载页面**，用来确认线上是不是最新版。SW 的导航请求是网络优先，刷新一次就能拿到新的 `index.html`；双击前关掉双击缩放与文字选中（`touch-action: manipulation` + `user-select: none`），否则手机上第二下会被当成缩放/选词。
 
 ### F-P07 人物详情 — P0
 
@@ -672,6 +880,9 @@ interface SqlDriver {
 - **写入口单独一个 `setCollectionIcon()`**：图标是纯展示属性，走 `updateCollection`
   会把名称/状态/成员一起惊动，撤销提示条也会说成「修改事件集」。它自带幂等
   （值没变就不落 oplog），传 `null` 表示恢复默认外观（浅粉底 + 主色首字）。
+- **自定义配色**：前景 / 背景在预设色块之外还有「＋」，展开统一取色面板（彩虹渐变 +
+  历史色 + HEX / RGB，见 1.13）；图片类只给背景色。选过的颜色进全局历史
+  `dr.recentColors`，下次在任何取色入口都能直接点。
 - **图库分栏只看 MIME**：`svg` tab 收 `image/svg+xml`，`image` tab 收其余 `image/*`，
   同一张图不会两边都出现；保存前还会再查一次文件是否还在库里
   （上传到保存之间有 500ms 持久化窗口，期间被回收就明确报错而不是存个空方块）。
@@ -757,7 +968,10 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
   画一条横跨多列的色条（`collectSpanBars` → 月内裁剪 → 贪心分配 `lane`，先长的后短的，
   同一行不重叠）。跨周事件每周各画一段、首尾相接；跨月事件只画本月部分，被裁的端点显示
   ◀/▶ 延续箭头。点条 → 与点格子相同，回时间线只看那天。条内显示集合图标（复用
-  `CollectionIconView`）+ 标题，超长省略。
+  `CollectionIconView`）+ 标题，超长省略。**底色跟事件集走**：集合图标自带 `fg/bg`
+  就直接用；没设图标的集合用集合名跑 `defaultTextIcon()` 的散列色（和它的默认头像同色）；
+  一条集合都没挂的事件退回主题色（`color-mix(in srgb, var(--primary) 10%, var(--panel))`）。
+  不再写死粉色，换主题或改集合图标颜色，日历跟着变。
 - **筛选（人物 / 事件集）**：月卡片上方两枚胶囊按钮，点开是多选弹窗（手机 390px 放不下内联多选）。
   `CalendarFilter { personIds, collectionIds }` 在 `Calendar` 层持有，切月份不丢；
   组内 OR、组间 AND；事件集筛选走闭包表 `descendantIdsOf()`，选父集合自动含全部子孙。

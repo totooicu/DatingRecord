@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { createCollection, getTree, type TreeNode } from '../../core/repo/collections';
 import { useVersion, bump } from '../../store';
 import { CollectionIconView } from './CollectionIcon';
+import { HeadStatus } from '../runtime/HeadStatus';
 
 export function CollectionTree({
   selectedId,
@@ -70,6 +71,7 @@ export function CollectionTree({
     <div className="pane-body">
       <div className="pane-head home-head">
         <strong>事件集</strong>
+        <HeadStatus />
         <span className="pane-head-actions">
           {children}
           <button className="icon-btn" onClick={() => setCreating(true)} title="新建事件集">

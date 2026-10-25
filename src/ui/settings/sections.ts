@@ -16,6 +16,7 @@
 
 export type SettingsKey =
   | 'backup'
+  | 'appearance'
   | 'backupData'
   | 'sync'
   | 'share'
@@ -32,13 +33,12 @@ export type SettingsKey =
   | 'labEdge'
   | 'labChat'
   | 'labDraft'
+  | 'labCompat'
   | 'ai'
   | 'aiModel'
   | 'panel'
   | 'panelMusic'
-  | 'panelLocation'
-  | 'panelPrecise'
-  | 'background';
+  | 'panelLocation';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
@@ -58,6 +58,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'sync', title: '坚果云备份', hint: '只传变化分片的增量同步', group: 'general' },
   { key: 'share', title: '分享', hint: '向导导出 / 导入 .drshare.zip', group: 'general' },
   { key: 'remote', title: '跨设备操作', hint: '把本机库当作服务端 / 连到别的设备', group: 'general' },
+  { key: 'appearance', title: '外观', hint: '主题色 · 底色 · 实时预览', group: 'general' },
   // AI 单独成组：「AI」是入口页，AI 对话 / 聊天提取 / 模型是它的三个子页。
   // 目录上只占一行，点进去才看到二级目录——和「功能体验」「备份与分享」同一套路。
   { key: 'ai', title: 'AI', hint: '对话 · 聊天提取 · 模型', group: 'ai' },
@@ -72,15 +73,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // 功能体验（trial）：只剩还没毕业的试验功能；AI 对话与聊天提取已搬到 AI 组。
   { key: 'lab', title: '功能体验', hint: '新功能试用区', group: 'trial' },
   { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
+  // 换机器 / 换壳之后先跑一遍：标准 API + 原生桥 + 本软件依赖，见 DEVELOPMENT 1.14
+  { key: 'labCompat', title: '软件适配测试', hint: '壳 / 内核 / 原生桥自检', group: 'trial' },
   // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
   // 功能面板（panel）：独立小组件空间，挂歌单、数据分析板等。
   // 放在功能体验组里：还在试验期，用顺了再搬去该去的地方。
   { key: 'panel', title: '功能面板', hint: '背景音乐 · 定位记录 · 数据分析', group: 'trial' },
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
-  { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹', group: 'trial' },
-  { key: 'panelPrecise', title: '高精度定位', hint: '高德官方 demo 诊断', group: 'trial' },
-  { key: 'background', title: '后台服务', hint: '运行中的服务管理', group: 'trial' },
+  { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹（.drloc）', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -102,9 +103,9 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   ai: ['labAi', 'labChat', 'aiModel'],
-  lab: ['labEdge', 'labDraft'],
+  lab: ['labEdge', 'labDraft', 'labCompat'],
   backup: ['backupData', 'sync', 'share', 'remote'],
-  panel: ['panelMusic', 'panelLocation', 'panelPrecise'],
+  panel: ['panelMusic', 'panelLocation'],
 };
 
 /** 这个 key 是不是某个入口页的子页 */

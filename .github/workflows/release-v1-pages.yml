@@ -1,0 +1,104 @@
+name: Release v1 snapshot to GitHub Pages
+
+# 把某个 tag 的构建产物发布到 gh-pages 的 releases/v<大版本>/ 下，作为「冻结的线上版本」。
+#
+# 为什么要单独一条：日常的 deploy-pages.yml 跟着 main 走，根路径永远是最新版（测试/日常用）；
+# 壳装在用户手机上收不回来，它得指向一个**不会自己变**的地址。所以：
+#
+#   根路径 /DatingRecord/                  → 最新（浏览器、自己看）
+#   /DatingRecord/releases/v1/            → v1 快照（壳固定加载这一份）
+#
+# 触发方式只有打 tag（v1.x）或手动补发。不要改成 push main——那样快照就跟着变了，等于没冻结。
+#
+# 壳侧对应：WebViewActivity.DEFAULT_URL 指向 .../DatingRecord/releases/v1/。
+
+on:
+  push:
+    tags: ['v1.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 只有本流程自己在排队；不能和日常部署共用 group，否则主分支部署会把正在跑的
+# 发布任务取消掉（cancel-in-progress）。并发推 gh-pages 的情况靠下面的 rebase 重试兜住。
+concurrency:
+  group: release-v1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # 快照目录固定按大版本，v1.x 都写到 releases/v1/
+      RELEASE_DIR: releases/v1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: 把构建产物写进 gh-pages 的 releases/v1/
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "发布版本：${VERSION}（目录 ${RELEASE_DIR}）"
+
+          git clone --branch gh-pages --single-branch \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ghp
+          cd ghp
+          git config user.name "deploy bot"
+          git config user.email "bot@localhost"
+
+          # 只替换本版本的快照目录，别的（根路径产物、assets、别的版本）一律不碰
+          rm -rf "${RELEASE_DIR}"
+          mkdir -p "${RELEASE_DIR}"
+          cp -R ../dist/. "${RELEASE_DIR}/"
+          # Jekyll 会忽略下划线开头的文件；根目录放一个就够，已存在则忽略
+          touch .nojekyll
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "快照无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore: 发布 v${VERSION} 快照到 ${RELEASE_DIR}（tag ${{ github.ref_name }}）"
+
+          # 日常部署可能同时在推 gh-pages，非快进时 rebase 再来
+          for i in 1 2 3; do
+            if git push origin gh-pages; then
+              echo "已推送"
+              break
+            fi
+            echo "推送失败，第 ${i} 次重试（rebase 到最新 gh-pages）"
+            git pull --rebase origin gh-pages
+          done
+
+      - name: 校验线上快照
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${RELEASE_DIR}/version.json"
+          echo "等待 Pages 生效：${URL}"
+          for i in $(seq 1 20); do
+            BODY="$(curl -fsS "$URL" || true)"
+            if echo "$BODY" | grep -q "\"release\": \"${VERSION}\""; then
+              echo "$BODY" | head -8
+              echo "快照已生效：${VERSION}"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "快照校验未通过：${URL}"
+          exit 1

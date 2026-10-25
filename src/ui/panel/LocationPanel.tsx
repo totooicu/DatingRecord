@@ -1,440 +1,778 @@
-// 功能面板 · 定位（记录 + 地图合并页）。
+// 功能面板 · 定位。
 //
-// 一页搞定：选/建 CSV 文件 → 地图上看轨迹 → 点「记录位置」打点写回 CSV，
-// 点「我的位置」地图飞到当前 GPS。
+// 页面拆成四个切换区（借 AI 对话页那套分段切换条）：
+//   地图 —— 轨迹、蓝点（当前位置）、黄点（文件记录）、红点（选中）
+//   记录 —— 打点 / 自动打点 / 阈值 / 点位列表
+//   文件 —— 新建 / 选择 / 导入 .drloc（兼容旧 CSV）/ 经纬度偏移修正
+//   说明 —— 高德 key 与格式说明
+//
+// 数据与自动打点定时器在 core/runtime/locationAuto.ts 单例里：
+// 离开本页照样打点（服务语义），本页只是订阅式视图 + 地图渲染。
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getFile, type StoredFile } from '../../core/repo/files';
-import { getBlob } from '../../core/db/blob';
-import { uploadFile } from '../../core/files';
+import { FilePickInput } from '../common';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
-import { upsertService, getAutostart, setAutostart } from '../../core/background/center';
-import { startLocationService, stopLocationService, isLocationServiceRunning, getServiceRows, getServiceFileId, openFile, manualRecord, setServiceThreshold, setServiceFileId } from '../../core/background/locationService';
+import { bump } from '../../store';
+import { createLocation, importLocationText, readLocation } from '../../core/location/locationFile';
+import {
+  applyOffset,
+  metersFromOffset,
+  offsetFromMeters,
+  refLatOf,
+  type LocationOffset,
+  type LocationPoint,
+} from '../../core/location/format';
+import {
+  getAmapKey,
+  locateMe as locateOnce,
+  openLocationFile,
+  punch,
+  removePoint,
+  setAmapKey,
+  setLocationOffset,
+  setThreshold,
+  startAuto,
+  stopAuto,
+  useLocationAuto,
+} from '../../core/runtime/locationAuto';
 
-function getAmapKey(): string {
-  try { return localStorage.getItem('dr.amapKey') || ''; } catch { return ''; }
+type TabKey = 'map' | 'record' | 'file' | 'help';
+
+/** 位置修正的三种填法：度数偏移 / 距离偏移 / 目标坐标 */
+type OffsetMode = 'deg' | 'm' | 'target';
+
+const OFFSET_MODES: { key: OffsetMode; label: string }[] = [
+  { key: 'deg', label: '度数' },
+  { key: 'm', label: '距离' },
+  { key: 'target', label: '目标' },
+];
+
+/** 线宽 4 → 点直径 2×线粗 = 8；蓝/黄/红都同一尺寸，只靠颜色区分 */
+const LINE_WEIGHT = 4;
+const DOT_SIZE = LINE_WEIGHT * 2;
+const COLOR_LINE = '#FFC107';
+const COLOR_POINT = '#FFC107';
+const COLOR_CURRENT = '#2196F3';
+const COLOR_SELECTED = '#E53935';
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
-let amapLoading: Promise<any> | null = null;
-function loadAmap(): Promise<any> {
-  const key = getAmapKey();
-  if (!key) return Promise.reject(new Error('未配置高德 key'));
-  if ((window as any).AMap) return Promise.resolve((window as any).AMap);
-  if (amapLoading) return amapLoading;
-  amapLoading = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = `https://webapi.amap.com/maps?v=1.4.15&key=${key}`;
-    s.onload = () => resolve((window as any).AMap);
-    s.onerror = reject;
-    document.head.appendChild(s);
+
+function dotIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${DOT_SIZE}px;height:${DOT_SIZE}px;border-radius:50%;background:${color};box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></div>`,
+    iconSize: [DOT_SIZE, DOT_SIZE],
+    iconAnchor: [DOT_SIZE / 2, DOT_SIZE / 2],
   });
-  return amapLoading;
 }
 
-/** 优先用高德定位，失败回退浏览器原生 */
-function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> {
-  return loadAmap().then(
-    (AMap) =>
-      new Promise<{ lat: number; lng: number; accuracy: number }>((resolve, reject) => {
-        AMap.plugin('AMap.Geolocation', () => {
-          const g = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000 });
-          g.getCurrentPosition((status: string, result: any) => {
-            if (status === 'complete' && result.position) {
-              resolve({ lat: result.position.lat, lng: result.position.lng, accuracy: result.accuracy || 0 });
-            } else {
-              fallbackBrowser().then(resolve, reject);
-            }
-          });
-        });
-      }),
-  ).catch(() => fallbackBrowser());
+function fmtTime(ts: string): string {
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
 }
 
-function fallbackBrowser(): Promise<{ lat: number; lng: number; accuracy: number }> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) { reject(new Error('不支持定位')); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        // 浏览器原生返回 WGS-84，转 GCJ-02 才能和高德地图对齐
-        const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
-        resolve({ lat: gcj.lat, lng: gcj.lng, accuracy: pos.coords.accuracy });
-      },
-      (err) => reject(err),
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
-  });
-}
-
-interface Row {
-  ts: string;
-  lat: number;
-  lng: number;
-  accuracy: number;
-  note: string;
-}
-
-function toCsv(rows: Row[]): string {
-  const head = '时间,纬度,经度,精度(米),备注\n';
-  const body = rows
-    .map((r) => {
-      const d = new Date(r.ts);
-      const t = `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
-      return `"${t}",${r.lat.toFixed(6)},${r.lng.toFixed(6)},${Math.round(r.accuracy)},"${r.note.replace(/"/g, '""')}"`;
-    })
-    .join('\n');
-  return head + body + '\n';
-}
-
-function parseCsv(text: string): Row[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const out: Row[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.map((p) => p.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim()) ?? [];
-    if (parts.length < 3) continue;
-    const lat = Number(parts[1]);
-    const lng = Number(parts[2]);
-    if (!isFinite(lat) || !isFinite(lng)) continue;
-    out.push({ ts: parts[0], lat, lng, accuracy: Number(parts[3]) || 0, note: parts[4] || '' });
-  }
-  return out;
-}
-
-// WGS-84 → GCJ-02（火星坐标）转换，国内地图必须转
-const PI = Math.PI;
-const A = 6378245.0;
-const EE = 0.00669342162296594323;
-function outOfChina(lat: number, lng: number): boolean {
-  return lng < 72.004 || lng > 137.8347 || lat < 0.8899 || lat > 55.8271;
-}
-function transformLat(x: number, y: number): number {
-  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
-  ret += ((20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0) / 3.0;
-  ret += ((20.0 * Math.sin(y * PI) + 40.0 * Math.sin((y / 3.0) * PI)) * 2.0) / 3.0;
-  ret += ((160.0 * Math.sin((y / 12.0) * PI) + 320 * Math.sin((y * PI) / 30.0)) * 2.0) / 3.0;
-  return ret;
-}
-function transformLng(x: number, y: number): number {
-  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
-  ret += ((20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0) / 3.0;
-  ret += ((20.0 * Math.sin(x * PI) + 40.0 * Math.sin((x / 3.0) * PI)) * 2.0) / 3.0;
-  ret += ((150.0 * Math.sin((x / 12.0) * PI) + 300.0 * Math.sin((x / 30.0) * PI)) * 2.0) / 3.0;
-  return ret;
-}
-function wgs84ToGcj02(lat: number, lng: number): { lat: number; lng: number } {
-  if (outOfChina(lat, lng)) return { lat, lng };
-  let dLat = transformLat(lng - 105.0, lat - 35.0);
-  let dLng = transformLng(lng - 105.0, lat - 35.0);
-  const radLat = (lat / 180.0) * PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - EE * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
-  dLat = (dLat * 180.0) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI);
-  dLng = (dLng * 180.0) / ((A / sqrtMagic) * Math.cos(radLat) * PI);
-  return { lat: lat + dLat, lng: lng + dLng };
-}
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'map', label: '地图' },
+  { key: 'record', label: '记录' },
+  { key: 'file', label: '文件' },
+  { key: 'help', label: '说明' },
+];
 
 export function LocationPanel() {
-  const [fileId, setFileId] = useState<string | null>(() => {
-    try { return localStorage.getItem('dr.locationFileId') || null; } catch { return null; }
-  });
-  const [fileName, setFileName] = useState('');
-  const [rows, setRows] = useState<Row[]>([]);
-  const [busy, setBusy] = useState(false);
+  const la = useLocationAuto();
+  const { fileId, fileName, rows, offset, current, threshold, running: auto, native, busy } = la;
+
+  const [tab, setTab] = useState<TabKey>('map');
   const [note, setNote] = useState('');
   const [picking, setPicking] = useState(false);
-  const [auto, setAuto] = useState(false);
-  const [threshold, setThreshold] = useState(5); // 米
-  const [amapKey, setAmapKey] = useState(() => getAmapKey());
+  const [newName, setNewName] = useState('');
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  /** 位置修正是「三选一」的填法，输入框含义随模式变化 */
+  const [offsetMode, setOffsetMode] = useState<OffsetMode>('m');
+  const [offsetA, setOffsetA] = useState('0');
+  const [offsetB, setOffsetB] = useState('0');
+  const [amapKey, setAmapKeyState] = useState(getAmapKey);
+  /** 记录页一次渲染多少条：点可能上万，全量 DOM 会卡 */
+  const [listLimit, setListLimit] = useState(300);
+
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // 用 ref 存最新 rows/fileId，避免 setInterval 闭包拿旧值
-  const rowsRef = useRef<Row[]>([]);
-  const fileIdRef = useRef<string | null>(null);
-  rowsRef.current = rows;
-  fileIdRef.current = fileId;
+  const importRef = useRef<HTMLInputElement>(null);
+  /** 轨迹图层（线 + 历史点）；蓝点单独一层，避免每秒定位重画整条轨迹 */
+  const trackRef = useRef<L.LayerGroup | null>(null);
+  const pointMarkers = useRef<L.Marker[]>([]);
+  const currentMarker = useRef<L.Marker | null>(null);
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selectedIdx;
+  /** 已经对哪个文件做过 fitBounds：自动打点持续加点时不再反复缩放 */
+  const fittedFile = useRef<string | null>(null);
 
-  const current = fileId ? getFile(fileId) : null;
+  /** 参考纬度：按点的平均纬度把米换算成度；没有点就没法换算经度 */
+  const refLat = useMemo(() => refLatOf(rows), [fileId, la.rev]);
+  /** 目标坐标的锚点：文件第 1 个点（原始坐标）。用固定的起点而不是平均值，补点时才不会偷偷改变目标 */
+  const anchor = rows.length > 0 ? { lat: rows[0].lat, lng: rows[0].lng } : null;
 
-  // 初始化地图
+  const withOffset = (p: LocationPoint): LocationPoint => ({
+    ...p,
+    lat: p.lat + offset.lat,
+    lng: p.lng + offset.lng,
+  });
+
+  const selected = selectedIdx !== null && rows[selectedIdx] ? withOffset(rows[selectedIdx]) : null;
+
+  /** 只渲染最近 listLimit 条，避免几千个 DOM 节点拖慢每秒刷新 */
+  const shownRows = useMemo(() => {
+    const start = Math.max(0, rows.length - listLimit);
+    const out: { p: LocationPoint; idx: number }[] = [];
+    for (let i = rows.length - 1; i >= start; i -= 1) out.push({ p: withOffset(rows[i]), idx: i });
+    return out;
+    // offset / rows 都会变，但只切片最近 N 条，成本是 O(N) 而不是 O(总点数)
+  }, [rows, offset.lat, offset.lng, listLimit]);
+
+  const saveText =
+    la.saving === 'saving'
+      ? '保存中…'
+      : la.saving === 'error'
+        ? '保存失败'
+        : la.saving === 'saved'
+          ? '已保存'
+          : '自动保存';
+
+  // 输入框跟当前文件 / 模式同步：文件里只存度数，三种填法互相换算后显示
+  useEffect(() => {
+    if (refLat == null || !anchor) {
+      setOffsetA('0');
+      setOffsetB('0');
+      return;
+    }
+    if (offsetMode === 'deg') {
+      setOffsetA(String(offset.lat));
+      setOffsetB(String(offset.lng));
+      return;
+    }
+    if (offsetMode === 'target') {
+      // 目标 = 锚点原始坐标 + 偏移
+      setOffsetA((anchor.lat + offset.lat).toFixed(6));
+      setOffsetB((anchor.lng + offset.lng).toFixed(6));
+      return;
+    }
+    const m = metersFromOffset(offset, refLat);
+    const fmt = (n: number) => String(Math.round(n * 100) / 100);
+    setOffsetA(fmt(m.north));
+    setOffsetB(fmt(m.east));
+  }, [fileId, offset.lat, offset.lng, refLat, offsetMode, anchor?.lat, anchor?.lng]);
+
+  useEffect(() => {
+    setSelectedIdx(null);
+    setListLimit(300);
+    fittedFile.current = null;
+  }, [fileId]);
+
+  // 初始化地图（只一次）
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const icon = L.divIcon({
-      className: '',
-      html: '<div style="width:14px;height:14px;border-radius:50%;background:#d9536b;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>',
-      iconSize: [14, 14], iconAnchor: [7, 7],
-    });
-    mapRef.current = L.map(containerRef.current).setView([30.2741, 120.1551], 12);
-    L.control.scale({ imperial: false, metric: true }).addTo(mapRef.current);
-    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
-      subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图',
-    }).addTo(mapRef.current);
-    (mapRef.current as any)._drIcon = icon;
-    setTimeout(() => mapRef.current?.invalidateSize(), 100);
+    const map = L.map(containerRef.current).setView([30.2741, 120.1551], 12);
+    mapRef.current = map;
+    L.control.scale({ imperial: false, metric: true }).addTo(map);
+    L.tileLayer(
+      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+      { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图' },
+    ).addTo(map);
+    trackRef.current = L.layerGroup().addTo(map);
+    setTimeout(() => map.invalidateSize(), 100);
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      trackRef.current = null;
+      pointMarkers.current = [];
+      currentMarker.current = null;
+    };
   }, []);
 
-  // 数据变化重画
+  // 切回地图页时补一次尺寸计算：隐藏期间容器宽高是 0
   useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-    map.eachLayer((layer) => { if (!(layer instanceof L.TileLayer)) map.removeLayer(layer); });
-    if (rows.length === 0) return;
-    const latlngs = rows.map((r) => [r.lat, r.lng] as [number, number]);
-    L.polyline(latlngs, { color: '#FFC107', weight: 2, opacity: 0.7 }).addTo(map);
-    rows.forEach((r, i) => {
-      const isLast = i === rows.length - 1;
-      const isSelected = i === selectedIdx;
-      const color = isSelected ? '#d9536b' : isLast ? '#2196F3' : '#FFC107';
-      const size = isSelected ? 22 : isLast ? 18 : 12;
-      const glow = isSelected ? 'box-shadow:0 0 10px rgba(217,83,107,0.7);' : '';
-      const dotIcon = L.divIcon({
-        className: '',
-        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4);${glow}"></div>`,
-        iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-      });
-      L.marker([r.lat, r.lng], { icon: dotIcon }).addTo(map)
-        .bindPopup(`<div><strong>${r.ts}</strong><br/>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.note ? `<br/>${r.note}` : ''}</div>`);
-    });
-    map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
-  }, [rows, selectedIdx]);
+    if (tab !== 'map') return;
+    const t = setTimeout(() => mapRef.current?.invalidateSize(), 80);
+    return () => clearTimeout(t);
+  }, [tab]);
 
-  const selectExisting = async (f: StoredFile) => {
-    const n = await openFile(f.id);
-    setRows(getServiceRows());
-    setFileId(f.id);
-    setFileName(f.name);
-    setPicking(false);
-    toast(`已打开「${f.name}」，${n} 条记录`);
+  // 轨迹结构变化才重建（新增 / 删除 / 换文件 / 改偏移）；
+  // 自动打点去重只改最后一条时间，不会触发这里。选中和蓝点各走各的。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = trackRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    pointMarkers.current = [];
+
+    const pts = applyOffset(rows, offset);
+    if (pts.length > 1) {
+      L.polyline(
+        pts.map((r) => [r.lat, r.lng] as [number, number]),
+        { color: COLOR_LINE, weight: LINE_WEIGHT, opacity: 0.75 },
+      ).addTo(layer);
+    }
+
+    const sel = selectedRef.current;
+    pts.forEach((r, i) => {
+      const marker = L.marker([r.lat, r.lng], {
+        icon: dotIcon(i === sel ? COLOR_SELECTED : COLOR_POINT),
+        zIndexOffset: i === sel ? 1000 : 0,
+      })
+        .on('click', () => setSelectedIdx(i))
+        .bindPopup(
+          `<div><strong>${esc(fmtTime(r.ts))}</strong><br/>${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}` +
+            `${r.accuracy ? `<br/>±${Math.round(r.accuracy)}m` : ''}${r.note ? `<br/>${esc(r.note)}` : ''}</div>`,
+        );
+      marker.addTo(layer);
+      pointMarkers.current.push(marker);
+    });
+
+    if (pts.length > 0 && fittedFile.current !== fileId) {
+      fittedFile.current = fileId;
+      map.fitBounds(L.latLngBounds(pts.map((r) => [r.lat, r.lng] as [number, number])).pad(0.2));
+    }
+    // rows / offset 是这条 effect 的数据源；用 rev + 偏移值当依赖，避免每秒重画
+  }, [la.rev, offset.lat, offset.lng, fileId]);
+
+  // 选中只换图标，不重建整层
+  useEffect(() => {
+    pointMarkers.current.forEach((m, i) => {
+      m.setIcon(dotIcon(i === selectedIdx ? COLOR_SELECTED : COLOR_POINT));
+      m.setZIndexOffset(i === selectedIdx ? 1000 : 0);
+    });
+  }, [selectedIdx]);
+
+  // 蓝点属于「现在」，不写进文件；单独更新，自动打点每秒只动它一个
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!current) {
+      if (currentMarker.current) {
+        map.removeLayer(currentMarker.current);
+        currentMarker.current = null;
+      }
+      return;
+    }
+    const popup =
+      `<div><strong>当前位置</strong><br/>${current.lat.toFixed(6)}, ${current.lng.toFixed(6)}` +
+      `${current.accuracy ? `<br/>±${Math.round(current.accuracy)}m` : ''}</div>`;
+    if (currentMarker.current) {
+      currentMarker.current.setLatLng([current.lat, current.lng]);
+      currentMarker.current.setPopupContent(popup);
+    } else {
+      currentMarker.current = L.marker([current.lat, current.lng], {
+        icon: dotIcon(COLOR_CURRENT),
+        zIndexOffset: 2000,
+      })
+        .addTo(map)
+        .bindPopup(popup);
+    }
+  }, [current]);
+
+  const selectPoint = (idx: number) => {
+    setSelectedIdx(idx);
+    const p = rows[idx] ? withOffset(rows[idx]) : null;
+    if (p) mapRef.current?.setView([p.lat, p.lng], 16);
+    setTab('map');
+  };
+
+  const openExisting = async (f: { id: string; name: string }) => {
+    try {
+      const doc = await readLocation(f.id);
+      openLocationFile(f.id, f.name, doc);
+      setPicking(false);
+      setTab('record');
+      toast(`已打开「${f.name}」，${doc.points.length} 个点`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const createNew = async () => {
-    const name = fileName.trim() || '定位记录.csv';
-    const blob = new Blob([toCsv([])], { type: 'text/csv;charset=utf-8' });
-    const file = new File([blob], name, { type: 'text/csv' });
-    const out = await uploadFile(file, { smallLimit: 5 * 1024 * 1024 });
-    const f = out.kind === 'created' ? out.file : out.kind === 'reused' ? out.file : null;
-    if (f) {
-      setServiceFileId(f.id);
-      setRows([]);
-      setFileId(f.id);
-      setFileName(f.name);
+    try {
+      const f = await createLocation({ name: newName.trim() || '定位记录' });
+      const doc = await readLocation(f);
+      openLocationFile(f.id, f.name, doc);
+      setNewName('');
+      setTab('record');
+      bump();
       toast(`已创建「${f.name}」`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const importFile = async (files: File[]) => {
+    const f = files[0];
+    if (!f) return;
+    try {
+      const saved = await importLocationText(await f.text(), f.name);
+      const doc = await readLocation(saved);
+      openLocationFile(saved.id, saved.name, doc);
+      setTab('record');
+      bump();
+      toast(`已导入「${saved.name}」，${doc.points.length} 个点`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
     }
   };
 
   const record = async () => {
-    if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
-    setBusy(true);
-    const r = await manualRecord(note.trim());
-    setBusy(false);
-    if (r) {
-      setRows([...getServiceRows()]);
+    if (!fileId) {
+      toast('先选或新建一个定位文件');
+      setTab('file');
+      return;
+    }
+    try {
+      const r = await punch(note);
       setNote('');
-      mapRef.current?.setView([r.lat, r.lng], 16);
-      toast('已记录并保存');
-    } else {
-      toast('定位失败');
+      if (r) {
+        setSelectedIdx(r.index);
+        mapRef.current?.setView([r.point.lat + offset.lat, r.point.lng + offset.lng], 16);
+        toast('已记录并保存');
+      }
+    } catch (e) {
+      toast(`定位失败：${e instanceof Error ? e.message : e}`);
     }
   };
 
   const locateMe = () => {
-    getPosition()
-      .then((pos) => {
-        mapRef.current?.setView([pos.lat, pos.lng], 16);
-        // 绿色"我的位置" marker
-        if (mapRef.current) {
-          (mapRef.current as any)._meMarker?.remove();
-          const meIcon = L.divIcon({
-            className: '',
-            html: '<div style="width:22px;height:22px;border-radius:50%;background:#2196F3;border:3px solid #fff;box-shadow:0 0 10px rgba(33,150,243,0.7)"></div>',
-            iconSize: [22, 22], iconAnchor: [11, 11],
-          });
-          const m = L.marker([pos.lat, pos.lng], { icon: meIcon }).addTo(mapRef.current);
-          (mapRef.current as any)._meMarker = m;
-        }
+    locateOnce()
+      .then((fix) => {
+        if (fix) mapRef.current?.setView([fix.lat, fix.lng], 16);
+        else toast('定位失败');
       })
       .catch(() => toast('定位失败'));
   };
 
-  const startAuto = async () => {
-    if (!fileId) { toast('先选或新建一个 CSV 文件'); return; }
-    setServiceThreshold(threshold);
-    const ok = await startLocationService();
-    if (!ok) { toast('启动失败'); return; }
-    setAuto(true);
-    setRows(getServiceRows());
-    upsertService({
-      id: 'location-auto', name: '自动打点', icon: '📍',
-      running: true, autostart: getAutostart('location-auto'),
-      onStop: () => stopAuto(),
-      onToggleAuto: (on) => setAutostart('location-auto', on),
-    });
-    toast('自动打点已开始（每秒）');
-  };
-
-  const stopAuto = () => {
-    stopLocationService();
-    setAuto(false);
-    upsertService({
-      id: 'location-auto', name: '自动打点', icon: '📍',
-      running: false, autostart: getAutostart('location-auto'),
-      onStart: () => startAuto(),
-      onToggleAuto: (on) => setAutostart('location-auto', on),
-    });
-  };
-
-  // 组件挂载时：如果全局服务在跑，同步状态
-  useEffect(() => {
-    if (isLocationServiceRunning()) {
-      setAuto(true);
-      const fid = getServiceFileId();
-      if (fid) {
-        setFileId(fid);
-        const f = getFile(fid);
-        if (f) setFileName(f.name);
-      }
-      setRows(getServiceRows());
-    }
-  }, []);
-
-  // 全局服务跑着时，定期同步 rows 到 UI
-  useEffect(() => {
-    if (!auto) return;
-    const iv = window.setInterval(() => {
-      const srows = getServiceRows();
-      if (srows.length !== rows.length) setRows([...srows]);
-    }, 500);
-    return () => clearInterval(iv);
-  }, [auto, rows.length]);
-
-  // 阈值改动实时同步到全局服务
-  useEffect(() => {
-    setServiceThreshold(threshold);
-    try { localStorage.setItem('dr.locationThreshold', String(threshold)); } catch {}
-  }, [threshold]);
-
-  // 记住上次选的文件
-  useEffect(() => {
+  const removeAt = async (idx: number) => {
+    const p = rows[idx] ? withOffset(rows[idx]) : null;
+    if (!p) return;
+    if (!window.confirm(`删除第 ${idx + 1} 个点（${fmtTime(p.ts)}）？`)) return;
     try {
-      if (fileId) localStorage.setItem('dr.locationFileId', fileId);
-      else localStorage.removeItem('dr.locationFileId');
-    } catch {}
-  }, [fileId]);
+      const left = await removePoint(idx);
+      if (left == null) {
+        toast('这个点已经不存在了');
+        return;
+      }
+      setSelectedIdx((cur) => (cur == null ? null : cur === idx ? null : cur > idx ? cur - 1 : cur));
+      toast(`已删除并保存，剩 ${left} 个点`);
+    } catch (e) {
+      toast(`删除失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
 
-  // 首次加载：如果有记住的 fileId，自动读文件
-  useEffect(() => {
+  const saveOffset = async () => {
     if (!fileId) return;
-    const f = getFile(fileId);
-    if (!f) { setFileId(null); return; }
-    setFileName(f.name);
-    getBlob(fileId).then((blob) => {
-      if (!blob) return;
-      blob.text().then((text) => setRows(parseCsv(text)));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (refLat == null) {
+      toast('文件还没有点，先打点再修正位置');
+      return;
+    }
+    let next: LocationOffset;
+    if (offsetMode === 'target') {
+      const a = offsetA.trim();
+      const b = offsetB.trim();
+      if (!a && !b) {
+        next = { lat: 0, lng: 0 }; // 留空 = 不偏移
+      } else if (!a || !b) {
+        toast('目标经纬度要一起填，或都留空表示不偏移');
+        return;
+      } else {
+        const lat = Number(a);
+        const lng = Number(b);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          toast('目标经纬度要填数字（单位：度）');
+          return;
+        }
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          toast('目标经纬度超出范围');
+          return;
+        }
+        if (!anchor) {
+          toast('目标坐标以第 1 个点为锚点，文件里还没有点');
+          return;
+        }
+        next = { lat: lat - anchor.lat, lng: lng - anchor.lng };
+      }
+    } else if (offsetMode === 'deg') {
+      const lat = Number(offsetA);
+      const lng = Number(offsetB);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast('偏移度数要填数字（单位：度）');
+        return;
+      }
+      next = { lat, lng };
+    } else {
+      const north = Number(offsetA);
+      const east = Number(offsetB);
+      if (!Number.isFinite(north) || !Number.isFinite(east)) {
+        toast('偏移距离要填数字（单位：米）');
+        return;
+      }
+      next = offsetFromMeters(north, east, refLat);
+    }
+    try {
+      await setLocationOffset(next);
+      fittedFile.current = null; // 偏移变了，让地图重新框住轨迹
+      toast(
+        offsetMode === 'target'
+          ? next.lat || next.lng
+            ? '已按目标坐标修正并写入文件'
+            : '目标留空，偏移已归零'
+          : '偏移已写入文件',
+      );
+    } catch (e) {
+      toast(`保存失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const clearOffset = async () => {
+    if (!fileId) return;
+    setOffsetA('0');
+    setOffsetB('0');
+    try {
+      await setLocationOffset({ lat: 0, lng: 0 });
+      fittedFile.current = null;
+      toast('偏移已归零');
+    } catch (e) {
+      toast(`保存失败：${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const saveKey = () => {
+    setAmapKey(amapKey);
+    toast('高德 key 已保存');
+  };
 
   return (
-    <div className="music-panel">
-      <div className="music-add" style={{ marginBottom: 8 }}>
-        <input type="password" className="music-name-input" value={amapKey}
-          onChange={(e) => setAmapKey(e.target.value)}
-          placeholder="高德 Web key" />
-        <button className="music-add-btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => {
-          try { localStorage.setItem('dr.amapKey', amapKey.trim()); } catch {}
-          toast('key 已保存');
-        }}>保存</button>
+    <div className="loc-panel">
+      <div className="aichat-tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={tab === t.key ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+            {t.key === 'record' && rows.length > 0 && <span className="aichat-tab-n">{rows.length}</span>}
+          </button>
+        ))}
       </div>
 
-      <div className="music-now">
-        <div className="music-disc">📍</div>
-        <div className="music-meta">
-          <div className="music-title">{current ? current.name : '未选择文件'}</div>
-          <div className="music-sub muted small">{rows.length} 条记录</div>
+      {/* ---------- 地图 ---------- */}
+      <div className="loc-view" hidden={tab !== 'map'}>
+        <div className="loc-legend">
+          <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_CURRENT }} />当前位置</span>
+          <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_POINT }} />文件记录</span>
+          <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_SELECTED }} />选中</span>
+          <span className="muted small">{rows.length} 个点</span>
         </div>
+        <div ref={containerRef} className="map-leaflet loc-map" />
+        <div className="music-add">
+          <button className="music-add-btn" onClick={locateMe}>定位到我的位置</button>
+          <button className="music-add-btn" onClick={() => setTab('record')}>去记录</button>
+        </div>
+        {selected ? (
+          <div className="loc-card">
+            <div className="loc-card-head">
+              <strong>选中的点</strong>
+              <span className="muted small">{fmtTime(selected.ts)}</span>
+            </div>
+            <div className="loc-coord">{selected.lat.toFixed(6)}, {selected.lng.toFixed(6)}</div>
+            <div className="muted small">
+              {selected.accuracy ? `±${Math.round(selected.accuracy)}m` : '精度未知'}
+              {selected.note ? ` · ${selected.note}` : ''}
+            </div>
+          </div>
+        ) : (
+          <p className="muted small">点地图上的黄点可查看坐标；红点表示当前选中。</p>
+        )}
       </div>
 
-      {!fileId && (
-        <>
-          <input className="music-name-input" value={fileName} onChange={(e) => setFileName(e.target.value)}
-            placeholder="新文件名（默认 定位记录.csv）" />
-          <div className="music-add">
-            <button className="music-add-btn primary" onClick={createNew}>新建文件</button>
-            <button className="music-add-btn" onClick={() => setPicking(true)}>选已有 CSV</button>
+      {/* ---------- 记录 ---------- */}
+      <div className="loc-view" hidden={tab !== 'record'}>
+        {!fileId ? (
+          <div className="loc-empty">
+            <p>还没有选择定位文件。</p>
+            <button className="music-add-btn primary" onClick={() => setTab('file')}>去选择 / 新建</button>
           </div>
-        </>
-      )}
-
-      {fileId && (
-        <>
-          <input className="music-name-input" value={note} onChange={(e) => setNote(e.target.value)}
-            placeholder="备注（可选，手动打点时带）" />
-          <div className="music-add">
-            <button className="music-add-btn primary" onClick={record} disabled={busy || auto}>
-              {busy ? '定位中…' : '记录位置'}
-            </button>
-            <button className="music-add-btn" onClick={locateMe}>我的位置</button>
-            <button className="music-add-btn" onClick={() => { setFileId(null); setRows([]); }}>切换文件</button>
-          </div>
-        </>
-      )}
-
-      {fileId && (
-        <div className="music-add" style={{ marginBottom: 8 }}>
-          <label className="muted small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            去重阈值
-            <input type="number" min="0" style={{ width: 70 }} value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value) || 0)} />
-            米
-          </label>
-          {auto ? (
-            <button className="music-add-btn" onClick={stopAuto}>⏹ 停止</button>
-          ) : (
-            <button className="music-add-btn primary" onClick={startAuto}>▶ 自动打点</button>
-          )}
-        </div>
-      )}
-
-      <div ref={containerRef} className="map-leaflet" />
-
-      <ul className="music-list">
-        {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
-        {rows.slice().reverse().map((r, i) => {
-          const realIdx = rows.length - 1 - i;
-          const isSel = realIdx === selectedIdx;
-          return (
-          <li key={i} className="music-row" style={isSel ? { background: '#ffe8ec', borderLeft: '3px solid #d9536b' } : {}}
-            onClick={() => {
-              setSelectedIdx(realIdx);
-              mapRef.current?.setView([r.lat, r.lng], 16);
-            }}>
-            <span className="music-row-idx">{rows.length - i}</span>
-            <span className="music-row-name">
-              {new Date(r.ts).toLocaleString()} · {r.lat.toFixed(6)},{r.lng.toFixed(6)}
-              {r.note ? ` · ${r.note}` : ''}
-            </span>
-            <span className="music-row-size muted small">±{Math.round(r.accuracy)}m</span>
-          </li>
-          );
-        })}
-      </ul>
-
-      {picking && (
-        <div className="music-picker-mask" onClick={() => setPicking(false)}>
-          <div className="music-picker" onClick={(e) => e.stopPropagation()}>
-            <div className="music-picker-head">
-              <strong>选定位 CSV</strong>
-              <button onClick={() => setPicking(false)}>✕</button>
+        ) : (
+          <>
+            <div className="loc-card">
+              <div className="loc-card-head">
+                <strong>{fileName}</strong>
+                <span className={la.saving === 'error' ? 'music-save-state is-error' : 'music-save-state'}>{saveText}</span>
+              </div>
+              <div className="muted small">
+                {rows.length} 个点 · 偏移 Δ{offset.lat.toFixed(6)}, Δ{offset.lng.toFixed(6)}
+              </div>
             </div>
-            <div className="music-picker-body">
-              <FilesPanel onPick={(f) => selectExisting(f)} />
+
+            <input
+              className="music-name-input"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="备注（可选，手动打点时带上）"
+            />
+            <div className="music-add">
+              <button className="music-add-btn primary" onClick={record} disabled={busy || auto}>
+                {busy ? '定位中…' : '记录位置'}
+              </button>
+              <button className="music-add-btn" onClick={locateMe}>我的位置</button>
+              <button className="music-add-btn" onClick={() => setTab('file')}>切换文件</button>
             </div>
+
+            <div className="loc-row">
+              <label className="muted small">
+                去重阈值
+                <input
+                  type="number"
+                  min={0}
+                  className="loc-num"
+                  value={threshold}
+                  onChange={(e) => setThreshold(Number(e.target.value) || 0)}
+                />
+                米
+              </label>
+              {auto ? (
+                <button className="music-add-btn" onClick={stopAuto}>⏹ 停止自动打点</button>
+              ) : (
+                <button
+                  className="music-add-btn primary"
+                  onClick={() => {
+                    if (!startAuto()) toast('先选或新建一个定位文件');
+                  }}
+                >
+                  ▶ 自动打点
+                </button>
+              )}
+            </div>
+            {auto && native && (
+              <p className="muted small loc-native-hint">
+                记录由安卓壳的原生服务接管：退到后台、熄屏都继续，回到这一页会把断开的点补回来。
+              </p>
+            )}
+
+            <ul className="music-list loc-list">
+              {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
+              {shownRows.map(({ p: r, idx }) => {
+                const isSel = idx === selectedIdx;
+                return (
+                  <li
+                    key={`${r.ts}-${idx}`}
+                    className={`music-row${isSel ? ' on' : ''}`}
+                    onClick={() => selectPoint(idx)}
+                  >
+                    <span className="music-row-idx">{idx + 1}</span>
+                    <span className="music-row-name">
+                      {fmtTime(r.ts)} · {r.lat.toFixed(6)},{r.lng.toFixed(6)}
+                      {r.note ? ` · ${r.note}` : ''}
+                    </span>
+                    <span className="music-row-size muted small">±{Math.round(r.accuracy)}m</span>
+                    <button
+                      type="button"
+                      className="loc-del"
+                      aria-label={`删除第 ${idx + 1} 个点`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeAt(idx);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+              {rows.length > listLimit && (
+                <li className="loc-more">
+                  <button
+                    type="button"
+                    className="music-add-btn"
+                    onClick={() => setListLimit((n) => n + 300)}
+                  >
+                    显示更早的 300 个（还有 {rows.length - listLimit} 个）
+                  </button>
+                </li>
+              )}
+            </ul>
+          </>
+        )}
+      </div>
+
+      {/* ---------- 文件 ---------- */}
+      <div className="loc-view" hidden={tab !== 'file'}>
+        {picking ? (
+          <>
+            <div className="music-pick-back">
+              <button className="music-add-btn" onClick={() => setPicking(false)}>← 返回</button>
+              <span className="muted small">点文件即可打开</span>
+            </div>
+            <FilesPanel onPick={(f) => void openExisting(f)} onlyKinds={['location']} pickLabel="打开" compact />
+          </>
+        ) : (
+          <>
+            <div className="loc-card">
+              <div className="loc-card-head">
+                <strong>{fileId ? fileName : '未选择定位文件'}</strong>
+                <span className="muted small">{rows.length} 个点</span>
+              </div>
+              <p className="muted small">
+                定位数据保存在文件库的 <code>.drloc</code> 文件里，可按「定位」类型筛选、随备份同步。
+              </p>
+              {fileId && (
+                <button className="music-add-btn" onClick={() => openLocationFile(null, '', null)}>
+                  关闭当前文件
+                </button>
+              )}
+            </div>
+
+            <div className="loc-row">
+              <input
+                className="music-name-input"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="新文件名（默认 定位记录）"
+              />
+              <button className="music-add-btn primary" onClick={createNew}>新建</button>
+            </div>
+            <div className="music-add">
+              <button className="music-add-btn" onClick={() => setPicking(true)}>选已有定位文件</button>
+              <button className="music-add-btn" onClick={() => importRef.current?.click()}>导入 .drloc / 旧 CSV</button>
+            </div>
+            <FilePickInput
+              inputRef={importRef}
+              accept=".drloc,application/x-dr-location,.csv,text/csv"
+              onFiles={(files) => void importFile(files)}
+            />
+
+            <div className="loc-card">
+              <div className="loc-card-head">
+                <strong>位置修正</strong>
+                <span className="muted small">三种填法任选</span>
+              </div>
+              {refLat == null || !anchor ? (
+                <p className="muted small">文件还没有点：先打点，再来修正位置（换算需要点位）。</p>
+              ) : (
+                <p className="muted small">
+                  锚点（第 1 个点）{anchor.lat.toFixed(6)}, {anchor.lng.toFixed(6)} · 当前 Δ
+                  {offset.lat.toFixed(6)}, Δ{offset.lng.toFixed(6)} · 参考纬度 {refLat.toFixed(4)}°
+                </p>
+              )}
+              <div className="loc-modes" role="group" aria-label="修正方式">
+                {OFFSET_MODES.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    className={offsetMode === m.key ? 'loc-mode on' : 'loc-mode'}
+                    aria-pressed={offsetMode === m.key}
+                    onClick={() => setOffsetMode(m.key)}
+                    disabled={!fileId || refLat == null}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <p className="muted small">
+                {offsetMode === 'deg'
+                  ? '直接填经纬度偏移（度）：正值向北 / 向东，文件里存的就是这两个数。'
+                  : offsetMode === 'target'
+                    ? '把第 1 个点（锚点）放到指定经纬度；两项都留空保存 = 不偏移。'
+                    : refLat == null
+                      ? '先打点，再按距离设置偏移（经度换算需要参考纬度）。'
+                      : `按南北 / 东西多少米填，保存时用平均纬度 ${refLat.toFixed(4)}° 换算成度。`}
+              </p>
+              <div className="loc-offset">
+                <label>
+                  {offsetMode === 'deg'
+                    ? '纬度偏移（度，正=向北）'
+                    : offsetMode === 'target'
+                      ? '目标纬度'
+                      : '南北（米，正=向北）'}
+                  <input
+                    className="music-name-input"
+                    inputMode="decimal"
+                    value={offsetA}
+                    onChange={(e) => setOffsetA(e.target.value)}
+                    placeholder={offsetMode === 'target' ? '留空=不偏移' : '0'}
+                    disabled={refLat == null}
+                  />
+                </label>
+                <label>
+                  {offsetMode === 'deg'
+                    ? '经度偏移（度，正=向东）'
+                    : offsetMode === 'target'
+                      ? '目标经度'
+                      : '东西（米，正=向东）'}
+                  <input
+                    className="music-name-input"
+                    inputMode="decimal"
+                    value={offsetB}
+                    onChange={(e) => setOffsetB(e.target.value)}
+                    placeholder={offsetMode === 'target' ? '留空=不偏移' : '0'}
+                    disabled={refLat == null}
+                  />
+                </label>
+              </div>
+              <div className="music-add">
+                <button
+                  className="music-add-btn primary"
+                  onClick={saveOffset}
+                  disabled={!fileId || refLat == null || la.saving === 'saving'}
+                >
+                  保存修正
+                </button>
+                <button className="music-add-btn" onClick={clearOffset} disabled={!fileId}>
+                  归零
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ---------- 说明 ---------- */}
+      <div className="loc-view" hidden={tab !== 'help'}>
+        <div className="loc-card">
+          <div className="loc-card-head">
+            <strong>高德 Web key</strong>
+            <span className="muted small">只存本机</span>
           </div>
+          <div className="loc-row">
+            <input
+              type="password"
+              className="music-name-input"
+              value={amapKey}
+              onChange={(e) => setAmapKeyState(e.target.value)}
+              placeholder="高德 Web 服务 key"
+            />
+            <button className="music-add-btn" onClick={saveKey}>保存</button>
+          </div>
+          <p className="muted small">不填也能用：会退回浏览器原生定位，精度略低。</p>
         </div>
-      )}
+
+        <div className="loc-card">
+          <strong>文件与偏移</strong>
+          <p className="muted small">
+            <code>.drloc</code> 是应用自己的定位格式（JSON），里面保存点的时间、经纬度、精度、备注，
+            以及这个文件整体的经纬度偏移（单位：度，正值向北 / 向东）。面板提供三种修正方式：
+            <strong>度数</strong>（直接填偏移角）、<strong>距离</strong>（填南北 / 东西多少米，按平均纬度换算）、
+            <strong>目标</strong>（把第 1 个点放到指定经纬度，留空 = 不偏移）。三种方式结果都只改 offset，
+            原始点不动；旧版 CSV 可以通过「导入」转成 <code>.drloc</code>，原 CSV 不会被改写。
+          </p>
+          <p className="muted small">
+            记录页可以逐点删除；点很多时只先渲染最近 300 条，可继续「显示更早」。自动打点是后台服务：
+            离开本页仍会按阈值继续记录，原地不动时最多 15 秒落一次盘。
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

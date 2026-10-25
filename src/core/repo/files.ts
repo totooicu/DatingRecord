@@ -15,6 +15,7 @@ import { isPrivacyMode } from '../../privacy';
 import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
 import { FILE_REF_PREFIX } from '../markdown';
+import { sha256Hex } from '../files/naming';
 import { isInPlaylist as isInMusicPlaylist } from '../music/playlist';
 
 export interface StoredFile {
@@ -282,20 +283,24 @@ export function eventsReferencingFile(file: StoredFile | string): FileRefEvent[]
       ? [file]
       : Array.from(new Set([file.storedId, file.id].filter(Boolean)));
   if (keys.length === 0) return [];
-  // 事件正文在 events.content；聊天形式的事件把每条消息放在 event_messages.body，
-  // 两处都要算，否则聊天里插入的图片会被当成「未被引用」，孤儿回收时直接删掉。
+  // 事件正文在 events.content；聊天形式的事件把每条消息放在 event_messages.body；
+  // 配图还有一处 events.media_json（事件详情/回忆录用的是它）。三处都要算，
+  // 否则这些图会被标成「未被引用」，孤儿回收时直接删掉。
   const evWhere = keys.map(() => 'content LIKE ?').join(' OR ');
   const msgWhere = keys.map(() => 'body LIKE ?').join(' OR ');
+  const mediaWhere = keys.map(() => 'json_each.value = ?').join(' OR ');
   return queryAll<{ id: string; title: string; start_ts: number | null; created_at: string }>(
     `SELECT id, title, start_ts, created_at FROM events e
      WHERE deleted_at IS NULL
-       AND (${evWhere} OR EXISTS (
-         SELECT 1 FROM event_messages m
-         WHERE m.event_id = e.id AND m.deleted_at IS NULL AND (${msgWhere})
-       ))
+       AND (${evWhere}
+         OR EXISTS (SELECT 1 FROM json_each(e.media_json) WHERE ${mediaWhere})
+         OR EXISTS (
+           SELECT 1 FROM event_messages m
+           WHERE m.event_id = e.id AND m.deleted_at IS NULL AND (${msgWhere})
+         ))
        ${isPrivacyMode() ? 'AND is_private = 0' : ''}
      ORDER BY COALESCE(start_ts, 0) DESC, created_at DESC`,
-    [...keys, ...keys].map((k) => `%${FILE_REF_PREFIX}${k}%`),
+    [...keys.map((k) => `%${FILE_REF_PREFIX}${k}%`), ...keys, ...keys.map((k) => `%${FILE_REF_PREFIX}${k}%`)],
   ).map((r) => ({
     id: r.id,
     title: r.title || '（无标题）',
@@ -388,11 +393,15 @@ export function renameFile(id: string, name: string): void {
 
 /** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录每秒追加写，不记 undo。 */
 export async function overwriteFileContent(id: string, blob: Blob): Promise<void> {
+  // 内容变了，sha256 也得跟着变（stored_id 保持不动，正文里的旧引用照常可用）。
+  // 非安全上下文算不出 hash（''），此时只更新大小，别把原有 hash 抹掉。
+  const sha = await sha256Hex(blob);
   suspendUndo();
   try {
     await putBlob(id, blob);
     transact(() => {
-      run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
+      if (sha) run('UPDATE attachments SET size = ?, sha256 = ? WHERE id = ?', [blob.size, sha, id]);
+      else run('UPDATE attachments SET size = ? WHERE id = ?', [blob.size, id]);
     });
   } finally {
     resumeUndo();

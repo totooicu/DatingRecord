@@ -3,9 +3,6 @@ import { Timeline, TimelineFilters, defaultFilter, type TimelineFilter } from '.
 import { Settings } from './settings/Settings';
 import { EventForm } from './event';
 import { PageHead, useModalOpenCount } from './common';
-import { BackgroundIcons } from './background/BackgroundIcons';
-import { startLocationService, stopLocationService } from '../core/background/locationService';
-import { upsertService } from '../core/background/center';
 import { PersonsPane, CollectionsPane } from './Panes';
 import { Welcome } from './Welcome';
 import { TopBar } from './TopBar';
@@ -24,8 +21,17 @@ import { hides, usePrivacyMode } from '../privacy';
 import { setPersonOpener } from './openPerson';
 import { setCollectionOpener } from './openCollection';
 import { peekSnapReturn } from './snapReturn';
-import { canLeave } from './navGuard';
+import { setNavHandler } from '../core/runtime/nav';
+import { initMusicService } from '../core/runtime/music';
+import { initLocationAutoService } from '../core/runtime/locationAuto';
+import { restoreAutostartServices } from '../core/runtime/store';
+import { HeadStatus } from './runtime/HeadStatus';
+import { ServicesPage } from './runtime/ServicesPage';
+import { TasksPage } from './runtime/TasksPage';
 import type { TabKey } from './icons';
+import type { SettingsKey } from './settings/sections';
+import { parentOf } from './settings/sections';
+import { ackBackHandled, askShellFinish, closeTopLayer, onShellBackPressed } from './back';
 
 /**
  * 页面栈视图状态。
@@ -37,12 +43,20 @@ type View =
   | { k: 'detail'; s: 'persons' | 'collections'; id: string }
   | { k: 'timeline' }
   | { k: 'calendar' }
-  | { k: 'settings' };
+  | { k: 'settings' }
+  | { k: 'services' }
+  | { k: 'tasks' };
 
 export default function App() {
   const v = useVersion();
   const privacy = usePrivacyMode();
   const [view, setView] = useState<View>({ k: 'list', s: 'persons' });
+  // 带「从成果详情跳出来看过对象」的来路时，自动落到 AI 对话子页
+  const [settingsSub, setSettingsSub] = useState<SettingsKey | null>(() =>
+    peekSnapReturn() ? 'labAi' : null,
+  );
+  /** 从服务/任务页返回时回到来之前那一页 */
+  const returnView = useRef<View>({ k: 'list', s: 'persons' });
   const [personId, setPersonId] = useState<string | null>(null);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
@@ -61,23 +75,6 @@ export default function App() {
   const scrollMemo = useRef<Record<string, number>>({});
   // 弹窗打开时收起 FAB，避免浮层压住弹窗内容
   const modalCount = useModalOpenCount();
-
-  // 应用启动：检查自启动服务
-  useEffect(() => {
-    try {
-      if (localStorage.getItem('dr.autostart.location-auto') === '1') {
-        startLocationService().then((ok) => {
-          if (ok) {
-            upsertService({
-              id: 'location-auto', name: '自动打点', icon: '📍',
-              running: true, autostart: true,
-              onStop: () => { stopLocationService(); upsertService({ id: 'location-auto', name: '自动打点', icon: '📍', running: false, autostart: true }); },
-            });
-          }
-        });
-      }
-    } catch {}
-  }, []);
 
   // 文件库里点「引用它的事件」→ 切到时间线并打开那条事件
   useEffect(() => {
@@ -122,11 +119,36 @@ export default function App() {
   }, [v, personId, collectionId]);
 
   const section: TabKey =
-    view.k === 'timeline' || view.k === 'settings' || view.k === 'calendar' ? view.k : view.s;
+    view.k === 'timeline' || view.k === 'calendar'
+      ? view.k
+      : view.k === 'settings' || view.k === 'services' || view.k === 'tasks'
+        ? (view.k as TabKey)
+        : view.s;
+
+  // 全局导航处理器：head 状态图标、服务/任务页都通过它切换页面
+  useEffect(() => {
+    setNavHandler((t) => {
+      if (t.type === 'page') {
+        returnView.current = view;
+        setView({ k: t.key });
+      } else {
+        setSettingsSub(t.key as SettingsKey);
+        setView({ k: 'settings' });
+      }
+    });
+    return () => setNavHandler(null);
+  }, [view]);
+
+  // 开软件时：先让各服务注册（背景音乐 / 自动打点），再统一检查存档里
+  // 开了自启动的服务把它们拉起来——「刷新后服务不丢」靠的就是这一步。
+  // 服务要自启动，只管在 registerService 时交出启动函数，不用自己碰存档。
+  useEffect(() => {
+    initMusicService();
+    initLocationAutoService();
+    restoreAutostartServices();
+  }, []);
 
   const gotoTab = (key: TabKey) => {
-    // AI 忙着的时候不让切走：这一轮会中断，会话还在组件 state 里
-    if (!canLeave()) return;
     setKeyword('');
     if (key === 'timeline') setView({ k: 'timeline' });
     else if (key === 'calendar') setView({ k: 'calendar' });
@@ -166,6 +188,50 @@ export default function App() {
     setPersonId(nextId);
     setView({ k: 'list', s: 'persons' });
   }, []);
+
+  /**
+   * 安卓壳的系统返回键（ui.backPressed）：浮层 → 详情 → 服务/任务 → 设置子页 →
+   * 按天看的时间线，退无可退才让壳退出应用。
+   * 顺序和页面上的返回按钮一致，用户不用记两套。
+   */
+  const handleShellBack = useCallback(() => {
+    if (closeTopLayer()) {
+      // 弹窗自己关了：回执告诉壳「这一下已经用掉」，别让它 3 秒后兜底再退
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'detail') {
+      backToList();
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'services' || view.k === 'tasks') {
+      setView(returnView.current);
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'settings' && settingsSub !== null) {
+      setSettingsSub(parentOf(settingsSub) ?? null);
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'timeline' && filter.dayLabel) {
+      // 「只看某天」是从日历点进来的，退回日历而不是退回时间线全量
+      setKeyword('');
+      setFilter(defaultFilter);
+      setView({ k: 'calendar' });
+      ackBackHandled();
+      return;
+    }
+    askShellFinish();
+  }, [view, settingsSub, filter, backToList]);
+
+  // 壳的事件监听是 window 级的，只订阅一次；处理器用 ref 走最新闭包
+  const shellBackRef = useRef(handleShellBack);
+  useEffect(() => {
+    shellBackRef.current = handleShellBack;
+  });
+  useEffect(() => onShellBackPressed(() => shellBackRef.current()), []);
 
   // 回到列表页时还原滚动位置
   useEffect(() => {
@@ -231,7 +297,7 @@ export default function App() {
         )}
         {view.k === 'timeline' && (
           <div className="pane pane-solo">
-            <PageHead title="时间线" />
+            <PageHead title="时间线" right={<HeadStatus />} />
             <TimelineFilters filter={filter} onChange={setFilter} />
             <Timeline
               filter={filter}
@@ -245,15 +311,21 @@ export default function App() {
         )}
         {view.k === 'calendar' && (
           <div className="pane pane-solo">
-            <PageHead title="日历" />
+            <PageHead title="日历" right={<HeadStatus />} />
             <Calendar onPickDay={pickDay} />
           </div>
         )}
         {view.k === 'settings' && (
           <div className="pane pane-solo">
             {/* 标题由 Settings 自己渲染：子页要把标题换成该设置项的名字 */}
-            <Settings />
+            <Settings sub={settingsSub} onSub={setSettingsSub} />
           </div>
+        )}
+        {view.k === 'services' && (
+          <ServicesPage onBack={() => setView(returnView.current)} />
+        )}
+        {view.k === 'tasks' && (
+          <TasksPage onBack={() => setView(returnView.current)} />
         )}
       </div>
 
@@ -261,10 +333,9 @@ export default function App() {
 
       <UndoSnackbar />
       <ToastHost />
-      <BackgroundIcons />
 
-      {/* 设置页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
-      {modalCount === 0 && section !== 'settings' && (
+      {/* 设置 / 服务 / 任务页没有「记一件事」的语境，按钮只会挡住内容，直接不渲染 */}
+      {modalCount === 0 && !['settings', 'services', 'tasks'].includes(section) && (
         <button className="fab" onClick={() => setQuickEvent(true)} aria-label="记一件事">
           ＋
         </button>

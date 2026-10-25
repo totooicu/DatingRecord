@@ -33,26 +33,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { bump, useVersion } from '../../store';
 import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
 import { findByAlias, getDefaultModel, listModels, type AiModel } from '../../core/ai';
-import { agentSystemPrompt, runAgentTurn, type AgentEvent, type AgentMessage } from '../../core/ai/agent';
+// 轮次执行已抽到 core/runtime/aiChat 单例，本组件只做订阅式视图
+import { type AiItem as Item, loadSessionInto, markChatRead, newSession as aiNewSession, removeItem as aiRemoveItem, sendTurn, setErr as setAiErr, setItems as aiSetItems, stopTurn, useAiChat } from '../../core/runtime/aiChat';
 import {
   MAX_ATTACHMENTS,
-  attachText,
   fmtSize,
   fromFile,
   fromStored,
-  imagesOf,
   previewOf,
   type Attachment,
 } from '../../core/ai/attach';
 import {
-  createSession,
   deleteSessions,
   listSessions,
   renameSession,
-  saveSession,
-  titleOf,
   type AiSession,
-  type SessionItem,
 } from '../../core/ai/sessions';
 import {
   applyPendingSnapshot,
@@ -62,11 +57,9 @@ import {
   listSnapshots,
   renamePendingRecord,
   restoreSnapshot,
-  revertAiTurn,
-  stageAiTurn,
+  summarizeOps,
   fmtSnapTime,
   fmtBytes,
-  summarizeOps,
   type SnapMeta,
   type SnapTarget,
 } from '../../core/snapshots';
@@ -75,26 +68,14 @@ import { openPerson } from '../openPerson';
 import { openEvent } from '../openEvent';
 import { openCollection } from '../openCollection';
 import { PencilIcon } from '../files/rowIcons';
-import { Modal } from '../common';
+import { FilePickInput, Modal } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
-import { setNavGuard } from '../navGuard';
 import { clearSnapReturn, setSnapReturn, takeSnapReturn } from '../snapReturn';
 import { showToast } from '../toast';
 
-interface Item {
-  kind: 'user' | 'assistant';
-  text: string;
-  /** 这一轮里调用了哪些工具 */
-  tools?: string[];
-  /** 这一轮的自动快照（可回退） */
-  snapshotId?: string | null;
-  /** 这一轮改动暂存在哪条成果里（待执行 / 放弃） */
-  pendingId?: string | null;
-  /** 用户消息带的附件（只在界面上展示，正文已拼进 text 发给模型） */
-  attachments?: Attachment[];
-}
+// Item（聊天气泡）类型由 aiChat 单例导出（见上方 import），与运行时共用同一份。
 
 type TabKey = 'chat' | 'history' | 'snap' | 'help';
 
@@ -388,9 +369,10 @@ export function LabAiSection() {
     setModels(listModels());
   }, [v]);
   const [alias, setAlias] = useState<string>(() => getDefaultModel()?.alias ?? listModels()[0]?.alias ?? '');
-  const [history, setHistory] = useState<AgentMessage[]>(() => listSessions()[0]?.messages ?? []);
-  const [items, setItems] = useState<Item[]>(() => (listSessions()[0]?.items ?? []) as Item[]);
-  const [sessionId, setSessionId] = useState<string | null>(() => listSessions()[0]?.id ?? null);
+  // 聊天的轮次执行态（busy / items / history / sessionId / activity / roundNo / err）
+  // 全部来自 aiChat 单例：离开本页单例照跑，回来重新订阅即可看到完整进度。
+  const ai = useAiChat();
+  const { items, busy, activity, roundNo, err, sessionId } = ai;
   // 输入框里没发出去的文字也留底（开关在「功能体验 → 未完成的记录」）
   const [inputDraft] = useState(() => loadDraft<{ text: string }>('ai-input'));
   const [input, setInput] = useState(inputDraft?.data.text ?? '');
@@ -398,11 +380,6 @@ export function LabAiSection() {
     inputDraft ? inputDraft.updatedAt : null,
   );
   const [atts, setAtts] = useState<Attachment[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [activity, setActivity] = useState<string[]>([]);
-  /** 当前第几轮（模型↔工具往返），状态条上显示 */
-  const [roundNo, setRoundNo] = useState(0);
-  const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>('chat');
   const [snaps, setSnaps] = useState(() => listSnapshots());
   /** 正在看详情的快照（点列表项弹出：这一轮到底做了什么） */
@@ -428,7 +405,6 @@ export function LabAiSection() {
   const [renameText, setRenameText] = useState('');
   /** 顶部四个键：长时间没人点就收矮，点一下恢复正常高度 */
   const [tabsTight, setTabsTight] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const seq = useRef(0);
@@ -495,66 +471,45 @@ export function LabAiSection() {
 
   const wakeTabs = () => setTabsTight(false);
 
-  // 忙的时候两道防线，都是防「手滑一下，一轮工具调用全白跑」——
-  // 会话还在组件 state 里，刷新更是连记录都不剩：
-  // ① 导航入口（底部 Tab、设置返回/切页）统一问 navGuard，不让走就 toast 原因；
-  // ② 刷新 / 关标签页交给浏览器原生确认（beforeunload）。
+  // 应用内离开已放开（AI 在后台照跑，状态在 aiChat 单例里），只保留刷新 / 关标签页的
+  // 原生确认——这一轮在浏览器卸载时会被中断，白跑且可能写了一半的数据。
   useEffect(() => {
     if (!busy) return;
-    setNavGuard(() => 'AI 还在干活，现在离开会中断这一轮。等它做完，或先点「停止」。');
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
-      setNavGuard(null);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
   }, [busy]);
 
-  /** 把当前对话落盘成会话：没有会话就新建，有就更新。标题取首条用户消息 */
-  const persistSession = (hist: AgentMessage[], its: Item[]) => {
-    const firstUser = its.find((x) => x.kind === 'user');
-    const title = titleOf(firstUser?.text ?? '');
-    const now = new Date().toISOString();
-    let id = sessionId;
-    const existing = id ? sessions.find((s) => s.id === id) : undefined;
-    if (!existing) {
-      const created = createSession();
-      id = created.id;
-      setSessionId(id);
-    }
-    const next: AiSession = {
-      id: id!,
-      title,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      messages: hist,
-      items: its as SessionItem[],
-    };
-    saveSession(next);
-  };
+  // 打开 AI 对话页即视为已读：head 上「完成的任务」通知消失
+  useEffect(() => {
+    markChatRead();
+  }, []);
 
-  /** 从历史会话里载入一段对话：恢复上下文，切回聊天继续 */
+  // 一轮跑完（busy 从 true 变 false）刷新成果 / 会话列表，避免看到旧数据
+  useEffect(() => {
+    if (!busy) {
+      reloadSnaps();
+      reloadSessions();
+    }
+  }, [busy]);
+
+  /** 从历史会话里载入一段对话：恢复上下文，切回聊天继续（状态由单例接管） */
   const loadSession = (id: string) => {
-    const s = sessions.find((x) => x.id === id);
-    if (!s) return;
-    setSessionId(s.id);
-    setHistory(s.messages);
-    setItems(s.items as Item[]);
+    loadSessionInto(id);
     setRollbackId(null);
-    setErr(null);
+    setAiErr(null);
     switchTab('chat');
   };
 
   /** 开一段新对话：清空上下文（不删历史会话里的旧记录） */
   const newSession = () => {
-    setSessionId(null);
-    setHistory([]);
-    setItems([]);
+    aiNewSession();
     setRollbackId(null);
-    setErr(null);
     setInput('');
     setAtts([]);
     setItemMenu(null);
@@ -571,10 +526,8 @@ export function LabAiSection() {
 
   /** 聊天页单条对话：从界面与会话记录里删掉这条 */
   const removeItem = (index: number) => {
-    const next = items.filter((_, i) => i !== index);
-    setItems(next);
+    aiRemoveItem(index);
     setItemMenu(null);
-    if (sessionId) persistSession(history, next);
     showToast('已删除这条消息');
   };
 
@@ -623,24 +576,23 @@ export function LabAiSection() {
     setAtts((cur) => {
       const room = MAX_ATTACHMENTS - cur.length;
       if (room <= 0) {
-        setErr(`一次最多带 ${MAX_ATTACHMENTS} 个附件`);
+        setAiErr(`一次最多带 ${MAX_ATTACHMENTS} 个附件`);
         return cur;
       }
-      if (list.length > room) setErr(`一次最多带 ${MAX_ATTACHMENTS} 个附件，多出的没有加上`);
+      if (list.length > room) setAiErr(`一次最多带 ${MAX_ATTACHMENTS} 个附件，多出的没有加上`);
       return [...cur, ...list.slice(0, room)];
     });
   };
 
-  const pickFiles = async (list: FileList | null) => {
-    if (!list || list.length === 0) return;
-    setErr(null);
+  const pickFiles = async (list: FileList | File[]) => {
+    if (list.length === 0) return;
+    setAiErr(null);
     const out: Attachment[] = [];
     for (const f of Array.from(list)) {
       seq.current += 1;
       out.push(await fromFile(f, `f${seq.current}`));
     }
     addAtts(out);
-    if (fileRef.current) fileRef.current.value = '';
   };
 
   // 输入变化就落一份草稿：打了一大段手滑刷新，回来原样还在。
@@ -658,7 +610,7 @@ export function LabAiSection() {
 
   /** 从文件库挑：文件本来就在库里，这里只把它读出来随消息发送 */
   const pickStored = async (f: StoredFile) => {
-    setErr(null);
+    setAiErr(null);
     setLibOpen(false);
     seq.current += 1;
     addAtts([await fromStored(f, `s${seq.current}`)]);
@@ -666,153 +618,47 @@ export function LabAiSection() {
 
   const removeAtt = (key: string) => setAtts((s) => s.filter((a) => a.key !== key));
 
-  const send = async (text: string) => {
+  const send = (text: string) => {
     const t = text.trim();
     // 只有附件、没有文字也可以发（「看看这张图」这种）
     if ((!t && atts.length === 0) || busy) return;
     if (!model) {
-      setErr('还没有可用的模型。去「设置 → AI → 模型」配一个别名和密钥。');
+      setAiErr('还没有可用的模型。去「设置 → AI → 模型」配一个别名和密钥。');
       return;
     }
     // 上一轮的改动还没确认：先让用户执行或放弃，避免两批改动互相覆盖
     if (hasPendingSnapshot()) {
-      setErr('还有一份成果没确认。先去「成果」里点「执行」或「放弃」，再继续聊。');
+      setAiErr('还有一份成果没确认。先去「成果」里点「执行」或「放弃」，再继续聊。');
       return;
     }
-    setErr(null);
+    // 把文字 + 附件交给 aiChat 单例去跑：离开本页单例照跑，head 上任务图标照常变色
     const sent = atts;
     setInput('');
     setAtts([]);
-    // 先记住这条用户气泡：下面拼完整列表（含助手回复）时要用它，
-    // 否则用闭包里的 items 会把刚加的这条冲掉。
-    const userItem: Item = { kind: 'user', text: t || '（只发了附件）', attachments: sent };
-    setItems((s) => [...s, userItem]);
-    setActivity([]);
-    setRoundNo(0);
-    setBusy(true);
-
-    const ac = new AbortController();
-    abortRef.current = ac;
-    // 系统提示只在第一轮注入，之后跟着对话历史走
-    const base: AgentMessage[] = history.length ? history : [{ role: 'system', content: agentSystemPrompt() }];
-
-    // 附件拼进正文：文本贴原文，图片另走 images（多模态）
-    const body = [attachText(sent), t].filter(Boolean).join('\n\n');
-    const imgs = imagesOf(sent);
-    const userMsg: AgentMessage = imgs.length
-      ? { role: 'user', content: body, images: imgs }
-      : { role: 'user', content: body };
-
-    const onEvent = (e: AgentEvent) => {
-      if (e.type === 'round') {
-        setRoundNo(e.n);
-      } else if (e.type === 'tool_start') {
-        const argKeys = Object.keys(e.args).filter((k) => e.args[k] !== undefined && e.args[k] !== null && e.args[k] !== '');
-        setActivity((s) => [...s, `调用 ${e.name}${argKeys.length ? `（${argKeys.join('、')}）` : ''}`]);
-      } else if (e.type === 'tool_end') {
-        setActivity((s) => [...s, `${e.ok ? '完成' : '失败'} ${e.name}${e.ok ? '' : `：${e.preview}`}`]);
-      } else if (e.type === 'snapshot') {
-        setActivity((s) => [...s, e.id ? '已自动备份当前数据' : '自动备份失败（仍可继续，但无法一键回退）']);
-      } else if (e.type === 'error') {
-        setErr(e.message);
-      }
-    };
-
-    try {
-      // 连续对话里复用上一轮的快照：建人→记事件→整理这种多步任务跨几轮时，
-      // 所有改动归到同一条成果，而不是每发一条消息就拍一条新快照。
-      const lastSnap = [...items].reverse().find((x) => x.kind === 'assistant' && x.snapshotId);
-      const res = await runAgentTurn({
-        model,
-        history: [...base, userMsg],
-        signal: ac.signal,
-        onEvent,
-        resumeSnapshotId: lastSnap?.snapshotId ?? null,
-      });
-      // 失败不算「发过」：把这条气泡撤掉，原文和附件退回输入框，
-      // 用户改一改就能重发，不会在记录里留下一条永远没有回应的提问。
-      if (res.error) {
-        // 失败这一轮里已经写进去的东西也要退回去：只撤回消息、数据却改了，最让人糊涂
-        if (res.snapshotId) await revertAiTurn(res.snapshotId);
-        setItems((s) => s.filter((x) => x !== userItem));
-        setInput(t);
-        setAtts(sent);
-        setErr(res.error);
-        reloadSnaps();
-        return;
-      }
-      const hist = res.messages;
-      setHistory(hist);
-      // 写库这一轮不直接生效：把「改之后」暂存成一份成果，库先退回原样，
-      // 等用户在「成果」里点「执行」才真正写进去。
-      const staged = res.snapshotId
-        ? await stageAiTurn(res.snapshotId, res.ops, summarizeOps(res.ops))
-        : null;
-      const pendingId = staged?.id ?? null;
-      if (res.snapshotId && !staged) setRollbackId(res.snapshotId);
-      const last = [...hist].reverse().find((m) => m.role === 'assistant' && !(m.role === 'assistant' && m.toolCalls?.length));
-      const replyText = last && last.role === 'assistant' ? last.content : '';
-      const nextItems: Item[] = [
-        ...items,
-        userItem,
-        {
-          kind: 'assistant',
-          text: replyText || (res.aborted ? '（已停止）' : '（这一轮没有文本回复）'),
-          tools: res.usedTools.length ? res.usedTools : undefined,
-          snapshotId: staged ? null : res.snapshotId,
-          pendingId,
-        },
-      ];
-      setItems(nextItems);
-      reloadSnaps();
-      // 明确告诉用户「干完了」：以前忙完只是停止按钮消失，不盯着看根本不知道
-      showToast(
-        staged
-          ? '改动已暂存，去「成果」确认后执行'
-          : res.snapshotId
-            ? '这一轮库没有变化，自动备份已留在「成果」里'
-            : res.aborted
-              ? '已停止本轮'
-              : 'AI 已完成，可以继续提问或离开',
-      );
-      // 落盘：被中断也能从历史会话里找回并继续
-      persistSession(hist, nextItems);
-      reloadSessions();
-    } catch (e) {
-      // 抛异常同样按失败处理：撤掉气泡、把内容退回输入框
-      setItems((s) => s.filter((x) => x !== userItem));
-      setInput(t);
-      setAtts(sent);
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-      setActivity([]);
-      setRoundNo(0);
-      abortRef.current = null;
-    }
+    void sendTurn(t, sent, model);
   };
 
-  const stop = () => abortRef.current?.abort();
+  const stop = () => stopTurn();
 
   const rollback = async (id: string) => {
-    setErr(null);
+    setAiErr(null);
     if (!window.confirm('拒绝这次改动？\n数据会回退到 AI 动手之前。当前状态会自动留底，踩错了还能再退回来。')) return;
     clearSnapReturn();
     const ok = await restoreSnapshot(id);
     if (!ok) {
       // 备份字节丢失时不能假装成功：数据没变，提示条却关掉了，用户以为回退过
-      setErr('回退失败：这份备份的数据不见了，可能已被清理。');
+      setAiErr('回退失败：这份备份的数据不见了，可能已被清理。');
       reloadSnaps();
       return;
     }
     bump();
     reloadSnaps();
     setRollbackId(null);
-    setItems((s) => [...s, { kind: 'assistant', text: '已按这份成果回退数据。' }]);
+    aiSetItems([...items, { kind: 'assistant', text: '已按这份成果回退数据。' }]);
   };
 
   const removeSnap = async (id: string) => {
-    setErr(null);
+    setAiErr(null);
     if (!window.confirm('确认接受这次改动？\n接受后这条成果记录会被关掉，数据保留不变。')) return;
     clearSnapReturn();
     await deleteSnapshot(id);
@@ -821,24 +667,23 @@ export function LabAiSection() {
 
   /** 审核通过：把暂存的那份库换进来，这一轮改动才真正生效 */
   const applySnap = async (id: string) => {
-    setErr(null);
+    setAiErr(null);
     if (!window.confirm('确认执行这轮改动？\n执行后这些记录才会真正进库。')) return;
     const r = await applyPendingSnapshot(id);
     if (r === 'stale') {
       // 暂存期间库被外人动过：照旧执行会把那些改动连锅端掉，且撤销栈已清零。
       // 拦住，指一条稳妥的路——放弃这轮，让 AI 照着现在的数据重做。
-      setErr('执行已拦截：暂存这份成果期间，库里的数据被其他操作改过（手动改动 / 导入 / 同步）。为避免冲掉那些改动，请先「放弃」这轮成果，再让 AI 重新做。');
+      setAiErr('执行已拦截：暂存这份成果期间，库里的数据被其他操作改过（手动改动 / 导入 / 同步）。为避免冲掉那些改动，请先「放弃」这轮成果，再让 AI 重新做。');
       reloadSnaps();
       return;
     }
     if (r === 'gone') {
-      setErr('执行失败：暂存的改动不见了，可能已被清理。请重试或放弃。');
+      setAiErr('执行失败：暂存的改动不见了，可能已被清理。请重试或放弃。');
       reloadSnaps();
       return;
     }
     const nextItems = items.map((it) => (it.pendingId === id ? { ...it, pendingId: null } : it));
-    setItems(nextItems);
-    persistSession(history, nextItems);
+    aiSetItems(nextItems);
     reloadSnaps();
     setSnapDetail(null);
     // 成果已执行：还开着的记录详情弹窗跟着关，否则保存改名会扑空
@@ -848,12 +693,11 @@ export function LabAiSection() {
 
   /** 不要这轮改动了：两份字节一起删掉，库本来就没动过 */
   const discardSnap = async (id: string) => {
-    setErr(null);
+    setAiErr(null);
     if (!window.confirm('放弃这轮改动？\n库里的数据不会变，这份成果会被删掉。')) return;
     await discardPendingSnapshot(id);
     const nextItems = items.map((it) => (it.pendingId === id ? { ...it, pendingId: null } : it));
-    setItems(nextItems);
-    persistSession(history, nextItems);
+    aiSetItems(nextItems);
     reloadSnaps();
     setSnapDetail(null);
     setRecordView(null);
@@ -907,7 +751,7 @@ export function LabAiSection() {
 
   const applyRejected = async () => {
     if (!snapDetail || rejected.size === 0) return;
-    setErr(null);
+    setAiErr(null);
     if (!window.confirm(`拒绝选中的 ${rejected.size} 项改动？\n其余改动保留。`)) return;
     const { revertDiffItems } = await import('../../core/snapshots/diff');
     const diff = snapDetail.diff;
@@ -1340,7 +1184,7 @@ export function LabAiSection() {
         )}
       </div>
 
-      <input ref={fileRef} type="file" multiple hidden accept="*/*" onChange={(e) => void pickFiles(e.target.files)} />
+      <FilePickInput inputRef={fileRef} multiple onFiles={(files) => void pickFiles(files)} />
 
       {libOpen && (
         <Modal title="文件库 · 选一个发给 AI" wide onClose={() => setLibOpen(false)}>

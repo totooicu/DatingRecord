@@ -21,19 +21,17 @@ export function useUploader(onNote: (text: string) => void) {
   const [ask, setAsk] = useState<PendingAsk | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const clearInput = () => {
-    if (inputRef.current) inputRef.current.value = '';
-  };
-
   /**
    * 逐个 await，不能并发：同一批里传两张一样的小图，
    * 第一张必须落库后第二张才能查重命中，并发会把两份都插进去。
+   * 返回本次落库的文件（调用方可能要接着用，如音乐面板把歌加进歌单）。
    */
   const upload = useCallback(
-    async (list: FileList | File[] | null) => {
-      if (!list || list.length === 0) return;
+    async (list: FileList | File[] | null): Promise<StoredFile[]> => {
+      if (!list || list.length === 0) return [];
       setBusy(true);
       const notes: string[] = [];
+      const done: StoredFile[] = [];
       try {
         for (const f of Array.from(list)) {
           let outcome: UploadOutcome = await uploadFile(f, { smallLimit: getSmallLimit() });
@@ -52,12 +50,15 @@ export function useUploader(onNote: (text: string) => void) {
           } else if (outcome.kind === 'created' && outcome.renamed) {
             notes.push(`「${f.name}」被存成 ${outcome.renamed}`);
           }
+          if ((outcome.kind === 'created' || outcome.kind === 'reused') && outcome.file) {
+            done.push(outcome.file);
+          }
         }
         bump();
         if (notes.length) onNote(notes.join('；'));
+        return done;
       } finally {
         setBusy(false);
-        clearInput();
       }
     },
     [onNote],

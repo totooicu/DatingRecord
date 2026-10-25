@@ -1,0 +1,268 @@
+/* 通用取色面板：彩虹区在左，历史色在右，下面 HEX / RGB 输入。
+   三处入口（图标配色、属性颜色、外观主题色）共用。 */
+
+.cp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cp-main {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* 彩虹：横向色相，纵向「白 → 纯色 → 黑」 */
+.cp-rainbow {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 132px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: crosshair;
+  touch-action: none;
+  outline: none;
+  background:
+    linear-gradient(to bottom, #fff 0%, rgba(255, 255, 255, 0) 50%, #000 100%),
+    linear-gradient(
+      to right,
+      #ff0000 0%,
+      #ffff00 17%,
+      #00ff00 33%,
+      #00ffff 50%,
+      #0000ff 67%,
+      #ff00ff 83%,
+      #ff0000 100%
+    );
+}
+
+.cp-rainbow:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.cp-knob {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* 历史色：窄列，最多两列小色块，放不下就滚 */
+.cp-history {
+  flex: 0 0 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cp-history-title {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cp-history-empty {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.cp-history-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-content: flex-start;
+  overflow-y: auto;
+  max-height: 108px;
+}
+
+.cp-hist {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.cp-hist.on {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.cp-trans {
+  margin-top: 2px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background:
+    repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 8px 8px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cp-trans.on {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 输入区：预览块 + HEX + RGB */
+.cp-inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cp-preview {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.cp-preview-empty {
+  background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 8px 8px;
+}
+
+.cp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cp-field input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.cp-hex {
+  width: 104px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.4px;
+  text-transform: lowercase;
+}
+
+.cp-rgb {
+  display: flex;
+  gap: 4px;
+}
+
+.cp-rgb input {
+  width: 46px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 0 4px;
+}
+
+/* 弹窗里的小号：彩虹矮一点，历史列更窄 */
+.cp-compact .cp-rainbow {
+  min-height: 104px;
+}
+
+.cp-compact .cp-history {
+  flex-basis: 92px;
+}
+
+.cp-compact .cp-history-grid {
+  max-height: 84px;
+}
+
+/* 自定义颜色的入口按钮：彩虹底 + 加号 */
+.icon-swatch-custom {
+  background: conic-gradient(
+    #ff0000,
+    #ffff00,
+    #00ff00,
+    #00ffff,
+    #0000ff,
+    #ff00ff,
+    #ff0000
+  );
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 属性里的颜色字段：一个色块按钮，点开才展开取色面板 */
+.color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.color-field-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.color-field-btn.on {
+  border-color: var(--primary);
+}
+
+.color-field-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.color-field-dot-empty {
+  background: repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 6px 6px;
+}
+
+.color-field-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.color-field-pop {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+/* 外观页：自定义入口 + 面板 */
+.theme-color-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.theme-picker {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}

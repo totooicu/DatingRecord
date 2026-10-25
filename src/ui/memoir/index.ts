@@ -1,0 +1,1 @@
+export { MemoirList } from './MemoirList';

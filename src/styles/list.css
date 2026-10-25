@@ -7,11 +7,16 @@
   font-size: 13px;
 }
 
-/* 人物列表标题上方的构建时间：居中、低对比，不跟标题抢注意力 */
+/* 人物列表标题上方的构建时间：居中、低对比，不跟标题抢注意力。
+   双击这一行刷新页面，所以关掉双击缩放与文字选中——否则手机上第二下会被
+   当成缩放/选词，dblclick 反而等不到。 */
 .pane-build-time {
   text-align: center;
   padding: 10px 14px 0;
   font-size: 11px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* 主页标题条：与「时间线」「日历」的 PageHead 同一套观感——
@@ -23,7 +28,7 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
   /* 和 .page-head 对齐：详情页、设置子页都是 44px，主页不能矮一截 */
   height: 44px;
@@ -34,20 +39,20 @@
 }
 
 .home-head > strong {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
-  text-align: center;
+  text-align: left;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 标题靠左，把后面的「服务 / 任务」与 ＋ 顶到右边 */
+  margin-right: auto;
 }
 
-/* 绝对定位，避免按钮宽度把标题挤得偏离正中 */
+/* 标题左、状态区与 ＋ 右：不再绝对定位，避免和状态区重叠 */
 .home-head > .icon-btn,
 .home-head > .pane-head-actions {
-  position: absolute;
-  right: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -113,7 +118,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f0a6ae, #d9536b);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 45%, #fff), var(--primary));
   color: #fff;
   display: inline-flex;
   align-items: center;

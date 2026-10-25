@@ -7,6 +7,8 @@ import { kindLabel, kindOf } from './kind';
 import { AudioView, ImageView, VideoView } from './MediaView';
 import { TextView } from './TextView';
 import { MarkdownPreview } from './MarkdownPreview';
+import { PlaylistPreview } from './PlaylistPreview';
+import { LocationPreview } from './LocationPreview';
 import { UnknownView } from './UnknownView';
 
 export function PreviewModal({ file, onClose }: { file: StoredFile; onClose: () => void }) {
@@ -53,6 +55,8 @@ export function PreviewModal({ file, onClose }: { file: StoredFile; onClose: () 
       {kind === 'image' && <ImageView id={file.id} name={file.name} mime={file.mime} />}
       {kind === 'video' && <VideoView id={file.id} name={file.name} mime={file.mime} />}
       {kind === 'audio' && <AudioView id={file.id} name={file.name} mime={file.mime} />}
+      {kind === 'location' && <LocationPreview file={file} />}
+      {kind === 'playlist' && <PlaylistPreview file={file} />}
       {kind === 'markdown' && <MarkdownPreview id={file.id} name={file.name} mime={file.mime} />}
       {kind === 'text' && <TextView id={file.id} name={file.name} mime={file.mime} />}
       {kind === 'unknown' && <UnknownView id={file.id} name={file.name} mime={file.mime} />}

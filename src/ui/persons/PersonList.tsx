@@ -4,6 +4,7 @@ import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
 import { BUILD_TIME, fmtBuildTime } from '../../core/buildInfo';
 import { Avatar } from './Avatar';
+import { HeadStatus } from '../runtime/HeadStatus';
 
 export function PersonList({
   selectedId,
@@ -54,12 +55,18 @@ export function PersonList({
 
   return (
     <div className="pane-body">
-      {/* 构建时间放在「人物」标题上方：主页面一眼就能看到线上是不是最新版 */}
-      <div className="pane-build-time muted small" title={BUILD_TIME}>
+      {/* 构建时间放在「人物」标题上方：主页面一眼就能看到线上是不是最新版。
+          双击这一行 = 重新加载。SW 的导航请求是网络优先，所以刷完拿到的就是线上最新版。 */}
+      <div
+        className="pane-build-time muted small"
+        title={`${BUILD_TIME} · 双击刷新`}
+        onDoubleClick={() => location.reload()}
+      >
         最新版本 · {fmtBuildTime()}
       </div>
       <div className="pane-head home-head">
         <strong>人物</strong>
+        <HeadStatus />
         <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">
           ＋
         </button>

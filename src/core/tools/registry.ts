@@ -11,6 +11,8 @@ import { EVENT_TOOLS } from './events';
 import { CHAT_TOOLS } from './chat';
 import { COLLECTION_TOOLS } from './collections';
 import { FILE_TOOLS } from './files';
+import { PLAYLIST_TOOLS } from './playlists';
+import { LOCATION_TOOLS } from './locations';
 import { SNAPSHOT_TOOLS } from './snapshots';
 import { IO_TOOLS } from './io';
 import { SYSTEM_TOOLS } from './system';
@@ -22,6 +24,8 @@ export const TOOLS: ToolDef[] = [
   ...CHAT_TOOLS,
   ...COLLECTION_TOOLS,
   ...FILE_TOOLS,
+  ...PLAYLIST_TOOLS,
+  ...LOCATION_TOOLS,
   ...SNAPSHOT_TOOLS,
   ...IO_TOOLS,
   ...SYSTEM_TOOLS,

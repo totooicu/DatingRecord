@@ -21,6 +21,12 @@ export function LabSection({ onPick }: { onPick: (k: SettingsKey) => void }) {
       hint: '自动框选 · 批量裁剪 · 图片不出浏览器',
     },
     {
+      key: 'labCompat',
+      title: '软件适配测试',
+      desc: '换机器 / 换壳之后先跑一遍：内核与安全上下文、原生桥、本软件依赖的 WebAssembly 等能力逐项自检。',
+      hint: '引擎 · 原生桥 · 麦克风 / 定位 / 蓝牙 / 文件 / 录屏',
+    },
+    {
       key: 'labDraft',
       title: '未完成的记录',
       desc: '还没提交的表单先在本地留一份草稿，刷新或误关页面之后回来接着填。',

@@ -9,6 +9,7 @@
 //   「删除」    先读列表，再 event.delete(软删) + person.archive(归档)
 //   「建了又删」collection.create 之后紧接着 collection.delete（净变化为零）
 //   「混合」    新增 + 修改 + 删除 + 建了又删 一锅端
+//   「失败」    直接回 HTTP 500（验证任务图标变红 + 回滚）
 //   其他        直接回文本，不调任何工具（验证「没改动不出成果」）
 //
 // 用法：PORT=8794 node tools/e2e/fake-ai-matrix.mjs
@@ -38,7 +39,7 @@ http
 
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
-    req.on('end', () => {
+    req.on('end', async () => {
       let body = {};
       try {
         body = JSON.parse(Buffer.concat(chunks).toString());
@@ -61,6 +62,20 @@ http
       const userText = String(
         msgs.filter((m) => m.role === 'user').map((m) => m.content ?? '').join(' '),
       );
+
+      // 失败场景（runtime-e2e 用）：含「失败」时直接回 500，
+      // 让 AI 轮次真的抛错，验证 head 任务图标变红 + 回滚。
+      if (userText.includes('失败')) {
+        res.writeHead(500, { ...CORS, 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: '假服务：这一轮故意失败' } }));
+        return;
+      }
+
+      // 慢响应场景（runtime-e2e 用）：含「慢慢」时每个回合都拖 1.2s，
+      // 让 AI 真正「进行中」一段时间，方便测「离开页面仍运行 + head 出图标」。
+      const SLOW = userText.includes('慢慢');
+      const nap = () => (SLOW ? new Promise((r) => setTimeout(r, 1200)) : Promise.resolve());
+      await nap();
 
       const send = (payload) => {
         res.writeHead(200, { ...CORS, 'content-type': 'application/json' });

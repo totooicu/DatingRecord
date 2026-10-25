@@ -13,6 +13,7 @@
 @import './styles/history.css';
 @import './styles/events.css';
 @import './styles/controls.css';
+@import './styles/color.css';
 @import './styles/modal.css';
 @import './styles/misc.css';
 @import './styles/responsive.css';
@@ -21,6 +22,7 @@
 @import './styles/files.css';
 @import './styles/preview.css';
 @import './styles/settings.css';
+@import './styles/appearance.css';
 @import './styles/remote.css';
 @import './styles/lock.css';
 @import './styles/enc.css';
@@ -30,8 +32,10 @@
 @import './styles/sync.css';
 @import './styles/ai.css';
 @import './styles/aichat.css';
-@import './styles/toast.css';
-@import './styles/share.css';
-
 @import './styles/extract.css';
 @import './styles/music.css';
+@import './styles/share.css';
+@import './styles/memoir.css';
+@import './styles/toast.css';
+@import './styles/runtime.css';
+@import './styles/compat.css';

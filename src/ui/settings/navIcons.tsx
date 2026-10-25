@@ -68,6 +68,16 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M9.9 11.6 12 9.5l2.1 2.1" />
         </>,
       );
+    // 外观：调色盘 + 三个色点
+    case 'appearance':
+      return wrap(
+        <>
+          <path d="M12 3.6a8.4 8.4 0 1 0 0 16.8c1.2 0 1.9-.8 1.9-1.8 0-.7-.3-1.2-.7-1.7-.3-.4-.5-.8-.5-1.2 0-.9.7-1.6 1.7-1.6h1.8a3.8 3.8 0 0 0 3.8-3.8c0-3.7-3.6-6.7-8-6.7z" />
+          <circle cx="8.2" cy="9" r="1" />
+          <circle cx="12" cy="7.4" r="1" />
+          <circle cx="7.4" cy="13.2" r="1" />
+        </>,
+      );
     // 隐私与安全（分组）：盾牌
     case 'security':
       return wrap(
@@ -209,6 +219,16 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <rect x="13.4" y="12.4" width="3.8" height="3.8" rx="0.9" />
         </>,
       );
+    // 软件适配测试：手机框 + 一个勾（这台机器上跑得通吗）
+    case 'labCompat':
+      return wrap(
+        <>
+          <rect x="6.6" y="2.8" width="10.8" height="18.4" rx="2.2" />
+          <path d="M10.4 5.4h3.2" />
+          <path d="M9.4 11.6l1.8 1.8 3.6-3.6" />
+          <path d="M10.6 18.4h2.8" />
+        </>,
+      );
     // 聊天提取：截图 + 向下箭头
     case 'labChat':
       return wrap(
@@ -225,6 +245,33 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M5.4 4.6h9.2l4 4v10.8H5.4z" />
           <path d="M14.4 4.6v4.2h4.2" />
           <path d="M8.4 12.6h7.2M8.4 16h4.6" />
+        </>,
+      );
+    // 功能面板：2×2 的小组件格子
+    case 'panel':
+      return wrap(
+        <>
+          <rect x="4" y="4" width="6.6" height="6.6" rx="1.6" />
+          <rect x="13.4" y="4" width="6.6" height="6.6" rx="1.6" />
+          <rect x="4" y="13.4" width="6.6" height="6.6" rx="1.6" />
+          <rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.6" />
+        </>,
+      );
+    // 音乐：八分音符
+    case 'panelMusic':
+      return wrap(
+        <>
+          <path d="M9.4 17.4V6.2l8.2-1.8v9.4" />
+          <ellipse cx="7" cy="17.8" rx="2.4" ry="2" />
+          <ellipse cx="15.2" cy="15.8" rx="2.4" ry="2" />
+        </>,
+      );
+    // 定位：地图针
+    case 'panelLocation':
+      return wrap(
+        <>
+          <path d="M12 20.2s6.2-5.6 6.2-10a6.2 6.2 0 1 0-12.4 0c0 4.4 6.2 10 6.2 10z" />
+          <circle cx="12" cy="10" r="2.2" />
         </>,
       );
     // 库概览：仪表盘

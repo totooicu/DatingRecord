@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { importFromFile } from '../../core/io';
 import { exportArchiveToFile } from '../../core/io';
 import { getMeta } from '../../core/db';
+import { FilePickInput } from '../common';
 import { Section, fmtMeta } from './Section';
 import { bump } from '../../store';
 
@@ -24,7 +25,7 @@ export function BackupSection() {
       setResult(
         `导入完成（${r.mode === 'merge' ? '合并' : '替换'}）：` +
           `属性 ${r.counts.defs}、人物 ${r.counts.persons}、事件 ${r.counts.events}、` +
-          `事件集 ${r.counts.collections}、成员 ${r.counts.members}；跳过 ${r.skipped}（本地更新）` +
+          `事件集 ${r.counts.collections}、成员 ${r.counts.members}、回忆录 ${r.counts.memoirs ?? 0}；跳过 ${r.skipped}（本地更新）` +
           (r.backupName ? `。已自动备份：${r.backupName}` : ''),
       );
     } catch (e) {
@@ -76,16 +77,10 @@ export function BackupSection() {
         <button className="btn" onClick={() => fileRef.current?.click()}>
           选择文件导入
         </button>
-        <input
-          ref={fileRef}
-          type="file"
+        <FilePickInput
+          inputRef={fileRef}
           accept=".zip,.drp.zip,application/zip"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void doImport(f);
-            e.target.value = '';
-          }}
+          onFiles={(files) => void doImport(files[0])}
         />
       </div>
 

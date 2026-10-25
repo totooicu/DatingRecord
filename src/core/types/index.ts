@@ -5,5 +5,6 @@ export * from './attribute';
 export * from './person';
 export * from './event';
 export * from './collection';
+export * from './memoir';
 export * from './common';
 export * from './share';
