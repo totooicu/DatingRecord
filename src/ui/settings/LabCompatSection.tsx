@@ -16,6 +16,8 @@ import {
   type BridgeDiagnostics,
   type EngineInfo,
 } from '../../core/compat/bridge';
+import { pairing, pairLabel, BRIDGE_PROTO, SHELL_MIN } from '../../core/compat/pairing';
+import { APP_VERSION } from '../../core/buildInfo';
 import { LabHead } from './LabEdgeSection';
 import { setTestResult } from '../compat/report';
 import { CompatCard, CompatRow, CompatStatus, CompatSummary, type StatusState } from '../compat/ui';
@@ -64,6 +66,47 @@ function EngineCard() {
         <dd>
           {info.displayMode}
           {info.standalone ? '（独立窗口）' : '（浏览器标签）'}
+        </dd>
+      </dl>
+    </CompatCard>
+  );
+}
+
+/* ---------------- 版本配对 ---------------- */
+
+/**
+ * 网页和壳各自会更新，配不上时才最容易被误判成「功能坏了」。
+ * 这一卡把三个数直接摆出来：网页版本、壳版本、桥协议。
+ */
+function PairingCard() {
+  const [pair, setPair] = useState(pairing);
+
+  const refresh = () => setPair(pairing());
+
+  useEffect(() => {
+    setPair(pairing());
+  }, []);
+
+  return (
+    <CompatCard
+      title="版本配对"
+      desc={`网页随时更新、壳发出去就收不回来，所以两边各报版本号。本版网页要求壳 ≥ ${SHELL_MIN}、桥协议 ${BRIDGE_PROTO}。`}
+      right={
+        <button className="btn" onClick={refresh}>
+          刷新
+        </button>
+      }
+    >
+      <dl className="compat-kv">
+        <dt>网页版本</dt>
+        <dd>{pair.web || APP_VERSION}</dd>
+        <dt>壳版本</dt>
+        <dd>{pair.shell || '(不在壳里)'}</dd>
+        <dt>桥协议</dt>
+        <dd>{pair.proto ? `proto ${pair.proto}（网页要 ${BRIDGE_PROTO}）` : `壳未上报（网页要 ${BRIDGE_PROTO}）`}</dd>
+        <dt>配对结果</dt>
+        <dd className={pair.state === 'ok' || pair.state === 'browser' ? 'compat-ok-text' : 'compat-err-text'}>
+          {pairLabel(pair.state)}
         </dd>
       </dl>
     </CompatCard>
@@ -238,6 +281,7 @@ export function LabCompatSection() {
       <CompatSummary />
 
       <EngineCard />
+      <PairingCard />
       <BridgeCard />
       <DepsCard />
       <MicCard />

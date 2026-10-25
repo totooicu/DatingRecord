@@ -40,8 +40,16 @@ const files = walk(dist)
   .sort((a, b) => a.link.localeCompare(b.link));
 
 const version = new Date().toISOString();
+// release / proto / shellMin 是「网页与壳配对」的三个数：
+//   release  本次构建的产品版本（package.json 的 version）
+//   proto    桥协议版本，壳与网页必须一致；壳不兼容时会自己报另一个数
+//   shellMin 这一版网页要求的最低壳版本，低于它的壳会在适配测试里提示升级壳
+const pkg = JSON.parse(readFileSync(resolve(here, '..', 'package.json'), 'utf8'));
 const out = {
   version,
+  release: pkg.version,
+  proto: 1,
+  shellMin: '1.0.0',
   link: '/index.html',
   subversion: files,
 };
