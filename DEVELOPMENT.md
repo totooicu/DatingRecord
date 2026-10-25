@@ -1183,6 +1183,27 @@ dating-record-YYYYMMDDHHmm.drp.zip/
 
 **AI 能力完整清单（31 项）见 `dating-record-ai-capabilities.md`；同步与跨端细节见 `dating-record-storage-sync.md`。**
 
+## 3.1 暂缓的体验项
+
+不是版本规划里的事，是「想清楚了但先不做」的视觉/交互想法。动手时直接按这里的结论来，省得重新推演。
+
+### N-01 音乐光晕（head 播放态指示）— 暂缓
+
+**想法**：音乐在放的时候，在页面 head 上叠一层随音乐动起来的光晕，`pointer-events: none` 不影响点击，作为「还在放歌」的全局提示。
+
+**已讨论的结论**（动手时直接采用）：
+
+- **位置**：放进 `PageHead` 内部，绝对定位插在 head 背景之上、文字之下（父级已是 stacking context，子元素用负 `z-index` 即可），必须 `overflow: hidden`，否则光会漏到下面的列表里。PWA 独立模式下补的 `safe-area-inset-top` 留白不铺光，只覆盖内容区。
+- **亮度**：**不要 80% 不透明的整片光**。图层 `opacity: 0.8`，但渐变本身峰值 alpha 只有 10%~15%，净效果 8%~12%——44px 的 head 里挤着标题、服务/任务计数和右侧按钮，再亮就是拿对比度换氛围。参数里只有这一条不能让。
+- **形态**：首选**底边律动线**（24~32 根 1~2px 竖条，高度 1~6px 起伏，顺手替代那条 1px 分隔线），叠一层极弱的横向流光。整块径向呼吸在 44px 高度里会压标题，那种更适合回忆播放器的 Modal。
+- **颜色**：取当前曲目封面主色，降饱和 + 提亮；深色主题用 `screen` / `plus-lighter`（只提亮不压暗字），浅色主题改用低 alpha 实色。换歌时色相过渡 600ms，本身就是「切歌了」的反馈。
+- **状态**：播放才动；暂停淡到 20% 并 `animation-play-state: paused`（别硬切 0，会闪）；停止/解除歌单淡出卸载；`document.hidden` 停 rAF，`prefers-reduced-motion` 降级成静态微光。
+- **范围**：暂定只开在事件集主页 + 回忆阅读器，给 `PageHead` 加开关，不默认全站亮。
+- **驱动**：先做「播放进度伪同步」——rAF 里读 `audio.currentTime`，按估算节拍脉冲，**不碰 Web Audio**。真频谱要 `createMediaElementSource`，一旦 AudioContext 被 iOS 挂起（切后台/来电/锁屏）整条链路静音，为氛围效果冒「放不出声」的风险不值。将来真要做，走 `OfflineAudioContext` 离线预分析成能量表再查表，而不是实时分析。
+- **性能**：只动 `transform` / `opacity`，不动 `filter: blur()` 和 `background-position`；高频信号直接写 CSS 变量到 DOM，不走 React state（`music.ts` 每次 patch 都会重渲染整个面板）。
+
+**动手前要定**：形态（律动线 / 横向流光）、范围（全站 head / 只在主页与回忆）、是否给用户一个「光晕效果」开关。
+
 ---
 
 # 附录
@@ -1231,3 +1252,4 @@ git status                                # 确认工作区干净
 | 7 | 跨端技术栈（TS 核心 / Flutter / Rust） | 存储同步篇 §11 | ⏳ 待定 |
 | 8 | 同步载体（对象存储 / WebDAV / 网盘） | 存储同步篇 §11 | ✅ 已定：坚果云 WebDAV + 内容寻址分片（见 F-S01） |
 | 9 | Git 远程仓库地址与认证 | — | ✅ 已配置：`origin → git@github.com:totooicu/DatingRecord.git`（SSH 已实测可用；HTTPS 亦可用） |
+| 10 | 音乐光晕的形态与生效范围 | 本手册 §3.1 N-01 | ⏸ 暂缓（方案已定，待决定形态/范围） |
