@@ -3,7 +3,7 @@
 // 播放形式和阅读形式共用同一份数据（见后续播放器），所以这里不做任何
 // 单页裁切：正文该多长就多长，手机上滚着看。
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { eventImageIds, getMemoir, memoirCoverId, memoirPages } from '../../core/repo/memoirs';
 import { getPlaylistFile } from '../../core/music/playlistFile';
 import { getMusicState, openPlaylist, toggle, useMusic } from '../../core/runtime/music';
@@ -12,7 +12,6 @@ import { formatTime } from '../../core/time';
 import { useVersion } from '../../store';
 import { openEvent } from '../openEvent';
 import { useBlobUrl } from '../preview/useBlobUrl';
-import { showToast as toast } from '../toast';
 import { hides } from '../../privacy';
 import type { DREvent } from '../../core/types';
 
@@ -47,18 +46,21 @@ export function MemoirReader({
     [memoir, v],
   );
   const started = useRef(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const playlistId = memoir?.playlistId ?? null;
   const playlistFile = playlistId ? getPlaylistFile(playlistId) : null;
-  const playing = !!playlistId && music.playlistId === playlistId && music.playing;
+  const attached = !!playlistId && music.playlistId === playlistId;
+  const playing = attached && music.playing;
 
   // 进阅读页自动起歌单；浏览器拦截自动播放时 runtime 会把 pendingPlay 标出来
   useEffect(() => {
     if (!playlistId) return;
     started.current = true;
+    setErr(null);
     void openPlaylist(playlistId, { play: true }).catch((e) => {
       started.current = false;
-      toast(e instanceof Error ? e.message : String(e));
+      setErr(e instanceof Error ? e.message : String(e));
     });
     return () => {
       if (!started.current) return;
@@ -67,17 +69,35 @@ export function MemoirReader({
     };
   }, [playlistId]);
 
+  /**
+   * 播放按钮不能只调 toggle()：如果歌单没挂上（打开失败 / 在音乐页换成了别的歌单），
+   * toggle 会去播「别的队列」，看起来就是点了没反应。这里先确保挂的是这本册子的歌单。
+   */
+  const play = async () => {
+    setErr(null);
+    if (!playlistId) return;
+    if (!attached) {
+      try {
+        await openPlaylist(playlistId, { play: true });
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+    toggle();
+  };
+
   if (!memoir) return <p className="muted">回忆录不存在或已删除。</p>;
 
   const coverId = memoirCoverId(memoir);
   const first = pages.find((p) => p.event)?.event;
   const last = [...pages].reverse().find((p) => p.event)?.event;
-  const span =
-    first && last
-      ? first.startTs && last.startTs
-        ? `${new Date(first.startTs).toLocaleDateString()} – ${new Date(last.startTs).toLocaleDateString()}`
-        : ''
-      : '';
+  const span = first && last
+    ? first.startTs && last.startTs
+      ? `${new Date(first.startTs).toLocaleDateString()} – ${new Date(last.startTs).toLocaleDateString()}`
+      : ''
+    : '';
+  const problem = err ?? (attached ? music.error : null);
 
   return (
     <section className="memoir-read">
@@ -108,14 +128,25 @@ export function MemoirReader({
         <div className="memoir-playlist">
           <span className="muted small">背景歌单</span>
           <strong>{playlistFile ? playlistFile.name.replace(/\.drpl$/i, '') : '歌单文件已不在文件库里'}</strong>
-          {playlistFile && (
-            <button className="btn btn-sm" onClick={() => toggle()}>
-              {playing ? '暂停' : music.pendingPlay ? '点击播放' : '播放'}
+          {playlistFile && !(attached && music.tracks.length === 0) && (
+            <button className="btn btn-sm" onClick={() => void play()}>
+              {playing ? '暂停' : attached && music.pendingPlay ? '点击播放' : '播放'}
             </button>
           )}
-          {playlistFile && music.playlistId === playlistId && music.playlistMissing > 0 && (
+          {attached && music.current && (
+            <span className="muted small memoir-now" title={music.current.name}>
+              {music.tracks.length} 首 · {music.current.name}
+            </span>
+          )}
+          {attached && music.playlistMissing > 0 && music.tracks.length > 0 && (
             <span className="muted small">{music.playlistMissing} 首找不到文件</span>
           )}
+          {attached && music.tracks.length === 0 && (
+            <span className="muted small">
+              歌单里的音频都找不到文件（{music.playlistMissing} 首），去「编辑」里重新挑几首。
+            </span>
+          )}
+          {problem && <span className="small memoir-playlist-err">{problem}</span>}
         </div>
       )}
 
