@@ -235,6 +235,12 @@
   flex-wrap: wrap;
 }
 
+.memoir-ai-input {
+  flex: 1 1 260px;
+  width: auto;
+  max-width: 560px;
+}
+
 .memoir-ai-panel {
   border: 1px dashed var(--border);
   border-radius: var(--radius);
