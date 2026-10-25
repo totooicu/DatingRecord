@@ -69,6 +69,8 @@ export interface MusicState {
   playlistMissing: number;
   /** 队列改动写回歌单文件的状态 */
   saving: SaveState;
+  /** 播放失败的原因（格式不支持 / 文件损坏），null = 正常 */
+  error: string | null;
 }
 
 let state: MusicState = {
@@ -84,6 +86,7 @@ let state: MusicState = {
   playlistName: null,
   playlistMissing: 0,
   saving: 'idle',
+  error: null,
 };
 const listeners = new Set<(s: MusicState) => void>();
 let audio: HTMLAudioElement | null = null;
@@ -133,6 +136,13 @@ function getAudio(): HTMLAudioElement {
   if (!audio) {
     audio = document.createElement('audio');
     audio.preload = 'auto';
+    // iOS / 部分 WebView：没挂进文档的 <audio> 调 play() 会被静默忽略（既不报错也不出声），
+    // 之前从阅读页点「播放」没反应就是这个原因。放进 body、缩成 1px 隐藏起来。
+    audio.setAttribute('playsinline', '');
+    audio.setAttribute('aria-hidden', 'true');
+    audio.style.cssText =
+      'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    if (typeof document !== 'undefined' && document.body) document.body.appendChild(audio);
     audio.addEventListener('timeupdate', () => {
       if (audio) patch({ progress: audio.currentTime });
     });
@@ -142,7 +152,7 @@ function getAudio(): HTMLAudioElement {
     // 服务运行态由音频事件驱动，不走调用点：播放/暂停/切歌/自动下一首
     // 全都会经过这两个事件，head 图标与服务页状态才不会和实际声音脱节。
     audio.addEventListener('play', () => {
-      patch({ playing: true, pendingPlay: false });
+      patch({ playing: true, pendingPlay: false, error: null });
       setServiceRunning(SERVICE_ID, true);
       setServiceNote(SERVICE_ID, undefined);
     });
@@ -151,6 +161,15 @@ function getAudio(): HTMLAudioElement {
       // 音乐停了服务也跟着停：head 图标消失、服务页显示已停止。
       // 播完自动下一首也会瞬过一下 pause，随后的 play 会再置回运行中。
       setServiceRunning(SERVICE_ID, false);
+    });
+    // 解码失败 / 格式不支持：play() 可能一直 reject，只标 pendingPlay 的话
+    // 用户会对着「点击播放」点了又点还是没声。这里留下一条明确的原因。
+    audio.addEventListener('error', () => {
+      const name = state.current?.name;
+      const msg = name ? `「${name}」放不了：文件损坏或格式不被浏览器支持` : '音频加载失败';
+      patch({ playing: false, error: msg });
+      setServiceRunning(SERVICE_ID, false);
+      setServiceNote(SERVICE_ID, '播放失败：格式可能不支持');
     });
     audio.addEventListener('ended', () => next(true));
   }
@@ -175,15 +194,20 @@ async function loadCurrent(autoPlay = true): Promise<void> {
   }
   const u = await objectUrlFor(cur.id);
   if (!u) {
-    patch({ playing: false });
+    patch({ playing: false, error: `「${cur.name}」的文件不在本机（可能还没同步过来）` });
     return;
   }
-  if (url && objectId) forgetUrl(objectId);
+  // 注意：同一个附件再加载一次时，objectUrlFor 会返回同一个缓存 URL。
+  // 这时如果照样 forgetUrl 掉「上一个」，撤掉的就是马上要用的这个 URL，
+  // 于是 src 指向已失效的 blob，报 NotSupportedError（听起来像格式不支持）。
+  // 只有换了另一首歌才需要回收旧的。
+  if (url && objectId && url !== u) forgetUrl(objectId);
   url = u;
   objectId = cur.id;
   const a = getAudio();
   a.src = u;
   a.playbackRate = state.speed;
+  patch({ error: null });
   if (!autoPlay) {
     patch({ progress: 0, duration: 0, pendingPlay: false });
     return;
@@ -192,11 +216,28 @@ async function loadCurrent(autoPlay = true): Promise<void> {
     await a.play();
     // 运行态由上面的 'play' 事件置上；这里只兜「被浏览器拦了」的情况
     patch({ playing: true, pendingPlay: false });
-  } catch {
-    // 浏览器禁止无手势播放：保持「运行中」但停在待播放态
+  } catch (e) {
+    markPlayFailure(e, cur.name);
+  }
+}
+
+/**
+ * play() 失败分两种：被浏览器拦（NotAllowedError，点一下就好）和真放不了
+ * （格式不支持 / 文件损坏）。后者再标成「待播放」就会让用户对着按钮点个不停。
+ */
+function markPlayFailure(e: unknown, name?: string): void {
+  if (e instanceof Error && e.name === 'NotAllowedError') {
     patch({ playing: false, pendingPlay: true });
     setServiceRunning(SERVICE_ID, true, '待播放：点一下恢复');
+    return;
   }
+  patch({
+    playing: false,
+    pendingPlay: false,
+    error: name ? `「${name}」放不了：浏览器可能不支持这种音频格式` : '音频播放失败',
+  });
+  setServiceRunning(SERVICE_ID, false);
+  setServiceNote(SERVICE_ID, '播放失败：格式可能不支持');
 }
 
 export function playAt(i: number): void {
@@ -221,7 +262,7 @@ export function toggle(): void {
     }
     a.play().then(
       () => patch({ playing: true, pendingPlay: false }),
-      () => patch({ playing: false, pendingPlay: true }),
+      (e) => markPlayFailure(e, state.current?.name),
     );
   } else {
     a.pause();
@@ -354,6 +395,7 @@ export async function openPlaylist(id: string, opts: { play?: boolean } = {}): P
       duration: 0,
       pendingPlay: false,
       saving: 'idle',
+      error: null,
     });
     setServiceDetail(SERVICE_ID, current?.name);
     if (opts.play && current) playAt(0);
@@ -377,7 +419,7 @@ export async function detachPlaylist(): Promise<void> {
   activeDoc = null;
   dirty = false;
   setActivePlaylistId(null);
-  patch({ playlistId: null, playlistName: null, playlistMissing: 0, saving: 'idle' });
+  patch({ playlistId: null, playlistName: null, playlistMissing: 0, saving: 'idle', error: null });
   setPlaylist(state.tracks.map((t) => t.id));
 }
 

@@ -1,11 +1,19 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+// 产品版本写在 package.json，构建时注入页面：壳与网页的版本配对靠它对齐，
+// 免得「页面说 1.0.0、包里其实是别的版本」。
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+  version: string;
+};
 
 export default defineConfig({
   plugins: [react()],
   base: './',
   define: {
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
     outDir: 'dist',

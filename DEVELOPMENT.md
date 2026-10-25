@@ -504,13 +504,19 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 ### 1.15 连续定位：壳里交给原生前台服务
 
-**问题**：页面「自动打点」是 1s 的 `setInterval`，WebView 退到后台后 JavaScript 定时器会被系统冻住，记录就断了。壳（`geckoview_example`）新增了一个前台服务 `LocationTrackingService`：退到后台、熄屏照记，频率状态机（走 1s / 手机动 30s / 不动 60s）和 `appendPoint()` 去重都是页面那套的原生复刻。
+**问题**：页面「自动打点」是 1s 的 `setInterval`，WebView 退到后台后 JavaScript 定时器会被系统冻住，记录就断了。壳（`geckoview_example`）新增了一个前台服务 `LocationTrackingService`：退到后台、熄屏照记，连续打点策略（`nextSampleMs()`）和 `appendPoint()` 去重都是页面那套的原生复刻。
+
+**连续打点策略**（v1.1.0 起，页面与壳同一份规则）：
+
+- `fixed`：每次固定等 `intervalBaseMs`（默认 1s）。
+- `backoff`：`n` = 连续落在同一个点的次数（去重命中 +1，新增点归零），下一次等 `min(base × 2^n, max)`。默认 1,1,1,2,4,8,16,32,64,64… 秒。位移产生新点就把 `n` 清零，走动时回到 1s。
+- 参数随 `location.setConfig` 一起推给壳：`strategy` / `intervalBaseMs` / `intervalMaxMs`。页面自己跑定时器时用同一个 `nextSampleMs()`；面板「连续打点」下拉可切换两种策略。
 
 **分工**：壳里连续记录归原生，页面只做三件事——推配置、收点、补历史。普通浏览器没有桥，原样走页面定时器，两套互斥。
 
 | 环节 | 谁做 | 怎么走 |
 |---|---|---|
-| 配置 | 页面 | `localStorage['dr.autoLocation']` 存 `{enabled, thresholdM, moveThresholdM}`；壳在 `onPageFinished` 主动读一次，所以页面就算没调桥，原生也有最新配置 |
+| 配置 | 页面 | `localStorage['dr.autoLocation']` 存 `{enabled, thresholdM, strategy, intervalBaseMs, intervalMaxMs}`；壳在 `onPageFinished` 主动读一次，所以页面就算没调桥，原生也有最新配置 |
 | 开关 | 页面 | `location.setConfig`（`enabled` 变化即启停原生服务）；停止时也推一次 `enabled:false` |
 | 配置改动 | 页面 | 阈值输入框逐键触发，存档同步写、桥调用压 400ms 抖动，只发最后一次 |
 | 记录 | 壳 | 原生服务写自己的 JSONL，并推 `location.point` 事件 |

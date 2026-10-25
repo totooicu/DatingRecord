@@ -19,51 +19,8 @@
   -webkit-user-select: none;
 }
 
-/* 主页标题条：与「时间线」「日历」的 PageHead 同一套观感——
-   整宽、16px 粗体、底部细线、滚动时吸顶；标题居中，操作按钮贴右。
-   只用在人物主页与事件集主页，筛选栏、设置导航仍走 .pane-head。 */
-.home-head {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  box-sizing: border-box;
-  /* 和 .page-head 对齐：详情页、设置子页都是 44px，主页不能矮一截 */
-  height: 44px;
-  padding: 10px 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  font-size: 16px;
-}
-
-.home-head > strong {
-  flex: 0 0 auto;
-  min-width: 0;
-  text-align: left;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* 标题靠左，把后面的「服务 / 任务」与 ＋ 顶到右边 */
-  margin-right: auto;
-}
-
-/* 标题左、状态区与 ＋ 右：不再绝对定位，避免和状态区重叠 */
-.home-head > .icon-btn,
-.home-head > .pane-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* 装成独立应用时页面顶到屏幕边缘，和 .page-head 一样补系统栏高度 */
-@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
-  .home-head {
-    padding-top: calc(10px + min(env(safe-area-inset-top, 0px), 48px));
-  }
-}
+/* 主页标题条原来在这里有一份 .home-head（复刻 PageHead 的左对齐变体），
+   现在人物/事件集主页直接用 PageHead 组件，标题与其它页一致居中。 */
 
 /* 只有装成独立应用时才真的顶到屏幕边缘，需要让开状态栏。
    普通浏览器标签页里地址栏已经让过位置，部分浏览器仍会误报 safe-area，

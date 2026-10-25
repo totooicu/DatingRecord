@@ -141,14 +141,6 @@
   min-width: 0;
 }
 
-/* 事件集列表标题栏：＋ 与「导入分享」并排 */
-.pane-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
 /* ---------- 导出：对象切换 ---------- */
 
 .share-export-row {

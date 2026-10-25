@@ -125,6 +125,19 @@
     display: none;
   }
 
+  /* 列表Pane自己的头要留：它是「人物 / 事件集」主页的标题条（服务/任务入口也在上面），
+     不属于被隐藏的详情顶栏 */
+  .pane-list .page-head {
+    display: flex;
+  }
+
+  /* 服务 / 任务是单栏二级页：宽屏没有左列表、也没有目录能指明位置，
+     头部（标题 + 返回键）必须留着——否则桌面上点进去连自己在哪、怎么退都不知道 */
+  .app.at-services .page-head,
+  .app.at-tasks .page-head {
+    display: flex;
+  }
+
   .pane-detail .detail {
     padding: 18px 22px;
     margin: 0;

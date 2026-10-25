@@ -128,6 +128,7 @@ node dist-cli/cli.cjs snapshot.restore --id snap_xxx   # 回退
 - `dating-record-storage-sync.md` — 跨端与同步设计
 - `docs/cli.md` — 命令行用法与工具注册表约定
 - `DEVELOPMENT.md` — 开发手册（流程规范、功能规格、路线图）
+- `RELEASE.md` — 发布与版本配对（网页版本 / 壳版本 / 桥协议，发版前必读）
 - `CLAUDE.md` — 项目约定
 
 ## 已知限制（试水版）

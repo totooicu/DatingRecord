@@ -372,6 +372,10 @@
   width: 70px;
   margin: 0 4px;
 }
+.loc-select {
+  width: auto;
+  min-width: 96px;
+}
 .loc-modes {
   display: flex;
   gap: 8px;
@@ -501,4 +505,9 @@
 }
 .file-item-picked .file-name {
   pointer-events: none;
+}
+
+.music-error {
+  color: var(--danger);
+  margin-top: 2px;
 }

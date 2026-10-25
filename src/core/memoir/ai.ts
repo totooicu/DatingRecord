@@ -60,11 +60,12 @@ function parseJson(text: string): unknown {
 
 /**
  * 给「还没被手改」的页生成导语与摘句。
+ * hint 是用户自己写的提示词（语气、详略、禁忌），只影响写法，不参与事实。
  * 返回合并后的 pages 和用的模型别名；调用方负责落库。
  */
 export async function generateMemoirPages(
   memoir: Memoir,
-  opts: { signal?: AbortSignal } = {},
+  opts: { signal?: AbortSignal; hint?: string } = {},
 ): Promise<{ pages: MemoirPage[]; modelAlias: string }> {
   const model = getDefaultModel();
   if (!model) throw new Error('还没有配置 AI 模型：去「设置 → AI」加一个模型再回来');
@@ -73,10 +74,11 @@ export async function generateMemoirPages(
   if (!targets.length) throw new Error('没有可生成的页：手改过的页会保留，先加几页或取消「已手改」');
 
   const material = targets.map((p, i) => pageMaterial(p, i)).join('\n\n');
+  const hint = (opts.hint ?? '').trim();
   const user = `这本回忆录叫《${memoir.title}》${memoir.subtitle ? `，副标题「${memoir.subtitle}」` : ''}。
 下面是需要写的页（最多 ${targets.length} 页）：
 
-${material}`;
+${material}${hint ? `\n\n用户的额外要求（只影响写法与语气，不要据此添加事实）：${hint}` : ''}`;
 
   const reply = await chat(model, {
     messages: [
