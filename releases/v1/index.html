@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="theme-color" content="#d9536b" />
+    <script>
+      // 首屏脚本：HTML 到达时主包还在下载，先把上次选的主题贴到 :root，
+      // 否则要先看几秒默认粉色启动页，再「啪」一下换色。
+      // 只认 -- 开头的字符串键，存储被禁时静默跳过。
+      (function () {
+        try {
+          var raw = localStorage.getItem('dr.appearance.vars.v1');
+          if (!raw) return;
+          var vars = JSON.parse(raw);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          for (var k in vars) {
+            if (k.indexOf('--') !== 0 || typeof vars[k] !== 'string') continue;
+            document.documentElement.style.setProperty(k, vars[k]);
+            if (k === '--primary' && meta) meta.setAttribute('content', vars[k]);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta name="description" content="朝汇当下，夕忆从前（Dawn Gather Dusk Recall）—— 本地优先的个人关系档案工具：人物 · 事件集 · 事件" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="朝汇夕思" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <title>朝汇夕思 · DawnRecall</title>
+    <!--
+      引擎约 685KB，是首屏最慢的一环，所以第一次要 preload：让浏览器和 JS/CSS
+      并行下载，别等主包解析完才发现要它。crossorigin 必填，否则会与 WASM
+      实例化时的凭证模式不匹配而重复下载一次。
+
+      但**只有没缓存时才 preload**：这行标签每次打开页面都会发一次请求，
+      而引擎下过一次之后就存在本地（Cache Storage 的 dr-wasm-v1 桶，
+      见 src/core/db/wasmCache.ts），JS 直接读本地、根本不需要网络。
+      以前不管有没有缓存都 preload，表现为「每次刷新都在重新下载数据库引擎」。
+    -->
+    <script>
+      (function () {
+        var attrs = {
+          rel: 'preload',
+          as: 'fetch',
+          type: 'application/wasm',
+          href: './sql-wasm.wasm',
+          crossorigin: 'anonymous',
+        };
+        function preload() {
+          var l = document.createElement('link');
+          for (var k in attrs) l.setAttribute(k, attrs[k]);
+          document.head.appendChild(l);
+        }
+        // 不能用 caches 就退回老做法：照旧 preload，功能不受影响
+        if (typeof caches === 'undefined' || !caches.has) {
+          preload();
+          return;
+        }
+        caches
+          .has('dr-wasm-v1')
+          .then(function (has) {
+            if (!has) return null;
+            return caches.open('dr-wasm-v1').then(function (c) {
+              return c.match('./sql-wasm.wasm');
+            });
+          })
+          .then(function (hit) {
+            if (!hit) preload();
+          })
+          .catch(preload);
+      })();
+    </script>
+    <!--
+      首屏加载态：内联在 HTML 里，JS/CSS 下载完成前就能看到。
+      应用要等 SQLite WASM（约 700KB）下载 + 初始化完成后才有内容，
+      没有这层会先白屏几十秒，在手机上会被当成「打不开」。
+    -->
+    <style>
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: var(--bg, #f6f5f3);
+        color: var(--text, #4a4640);
+        font: 14px/1.6 system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        z-index: 999;
+      }
+      #boot .boot-name {
+        display: flex;
+        align-items: baseline;
+        gap: 2px;
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--text, #2f2c28);
+        letter-spacing: 1px;
+        /* 入场结束后轻轻呼吸，静止不动会让人以为卡住了 */
+        animation: boot-name-breathe 2.6s ease-in-out 1.3s infinite;
+      }
+      /* 逐字浮入：每个字带一点延迟，读起来像被一个字一个字写出来 */
+      #boot .boot-name span {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(10px);
+        animation: boot-name-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #boot .boot-name span:nth-child(1) {
+        animation-delay: 0.1s;
+      }
+      #boot .boot-name span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      #boot .boot-name span:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+      #boot .boot-name span:nth-child(4) {
+        animation-delay: 0.4s;
+      }
+      #boot .boot-name span:nth-child(5) {
+        animation-delay: 0.5s;
+      }
+      #boot .boot-name span:nth-child(6) {
+        animation-delay: 0.6s;
+      }
+      @keyframes boot-name-in {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes boot-name-breathe {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.72;
+        }
+      }
+      /* 英文名：紧贴中文名下方，字号小、字距大，像个副标题而不是第二个标题 */
+      #boot .boot-name-en {
+        margin-top: -8px;
+        font-size: 11px;
+        letter-spacing: 4px;
+        color: #b3aca2;
+        opacity: 0;
+        animation: boot-slogan-in 0.9s ease-out 0.7s forwards;
+      }
+      /* 副名（短文 slogan）：名字逐字落定之后再浮现，不要和名字抢注意力 */
+      #boot .boot-slogan {
+        margin-top: -4px;
+        font-size: 12.5px;
+        letter-spacing: 3px;
+        color: #a9a29a;
+        opacity: 0;
+        animation: boot-slogan-in 0.9s ease-out 0.85s forwards;
+      }
+      /* 英文短句：比中文再淡一档，读不到也不影响理解 */
+      #boot .boot-slogan-en {
+        margin-top: -6px;
+        font-size: 11px;
+        letter-spacing: 1.2px;
+        color: #bcb5ac;
+        opacity: 0;
+        animation: boot-slogan-in 0.9s ease-out 1.05s forwards;
+      }
+      @keyframes boot-slogan-in {
+        to {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .boot-name,
+        #boot .boot-name span,
+        #boot .boot-name-en,
+        #boot .boot-slogan,
+        #boot .boot-slogan-en,
+        #boot .boot-progress-fill {
+          animation: none;
+          opacity: 1;
+          transform: none;
+        }
+      }
+      /* 进度条：确定态按 ratio 走，不确定态（拿不到字节数）来回扫，
+         总之不能出现「条子不动」，那和卡死没有区别 */
+      #boot .boot-progress {
+        width: 190px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--border, #e6e2dc);
+        overflow: hidden;
+      }
+      #boot .boot-progress-fill {
+        height: 100%;
+        width: 0;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--primary, #d9536b) 55%, #fff),
+          var(--primary, #d9536b)
+        );
+        transition: width 0.3s ease-out;
+      }
+      #boot .boot-progress.is-unknown .boot-progress-fill {
+        width: 40%;
+        transition: none;
+        animation: boot-slide 1.2s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        from {
+          margin-left: -40%;
+        }
+        to {
+          margin-left: 100%;
+        }
+      }
+      #boot .boot-tip {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted, #8b857c);
+        min-height: 1.6em;
+      }
+      #boot .boot-pct {
+        font-variant-numeric: tabular-nums;
+        color: #b3aca2;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-8IxDtWoO.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cm5FWz_K.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="boot">
+      <div class="boot-name">
+        <span>朝</span><span>汇</span><span>夕</span><span>思</span>
+      </div>
+      <div class="boot-name-en">DawnRecall</div>
+      <div class="boot-slogan">朝汇当下，夕忆从前</div>
+      <div class="boot-slogan-en">Dawn Gather Dusk Recall</div>
+      <div class="boot-progress" id="boot-progress">
+        <div class="boot-progress-fill" id="boot-fill"></div>
+      </div>
+      <div class="boot-tip">
+        <span id="boot-tip">正在启动…</span><span class="boot-pct" id="boot-pct"></span>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,53 @@
+{
+  "version": "2026-10-25T04:57:27.856Z",
+  "release": "1.0.1",
+  "proto": 1,
+  "shellMin": "1.0.0",
+  "link": "/index.html",
+  "subversion": [
+    {
+      "version": "618f3020920eec38",
+      "link": "/assets/diff-C8kj9s0Y.js"
+    },
+    {
+      "version": "51f05775a16c0328",
+      "link": "/assets/index-8IxDtWoO.js"
+    },
+    {
+      "version": "85d23fcd5ce69e5d",
+      "link": "/assets/index-Cm5FWz_K.css"
+    },
+    {
+      "version": "8be885f0a6a49903",
+      "link": "/edge-split.html"
+    },
+    {
+      "version": "3f35118bb99b7e96",
+      "link": "/icon-192.png"
+    },
+    {
+      "version": "049b2814e3efbe62",
+      "link": "/icon-512.png"
+    },
+    {
+      "version": "f071137e32b5d0bf",
+      "link": "/icon-maskable-512.png"
+    },
+    {
+      "version": "2cfb305505b57bb2",
+      "link": "/icon.svg"
+    },
+    {
+      "version": "034942c61a96ba77",
+      "link": "/index.html"
+    },
+    {
+      "version": "a0eca1b0a556139a",
+      "link": "/manifest.webmanifest"
+    },
+    {
+      "version": "f3aaaa47b7957d08",
+      "link": "/sql-wasm.wasm"
+    }
+  ]
+}
