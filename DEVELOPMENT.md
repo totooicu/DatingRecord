@@ -468,7 +468,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | 引擎信息 | 标准 | UA、SecureContext、Gecko 判定、Android、显示模式 |
 | 原生桥状态 | postMessage | 读 `<html data-gv-bridge-*>` 注入标记，再 ping 一次（3s 超时） |
 | 应用依赖 | 标准 | WebAssembly / IndexedDB / Blob 下载 / Service Worker / PointerEvent / 存储配额 / 屏幕 |
-| 麦克风 | 标准 API | `getUserMedia` + 音量条（AnalyserNode） |
+| 麦克风 | 标准 API | `getUserMedia`，三档约束依次试（默认 → 原始音频 → 指定 deviceId）+ 音量条；失败时列出每档结果与「怎么办」 |
 | 定位 | 标准 API | `geolocation.getCurrentPosition`（不开高精度，10s 超时） |
 | 蓝牙 · 中心设备 | 桥 | `ble.status / startScan / stopScan / connect / read / write / subscribe / disconnect`，设备与 GATT 来自事件 |
 | 蓝牙 · 外设 | 桥 | `ble.peripheral.start / stop / setValue`，连接、写入、订阅走事件 |
@@ -488,11 +488,13 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **判定口径**：普通浏览器里桥显示「未注入 / 超时」是正常的，标准 API 那几张卡照样能测；应用依赖只把 WebAssembly / IndexedDB / Blob 三条算进汇总（缺一样就开不了库、存不住、导不出），Service Worker / PointerEvent 缺了不影响能不能用。
 
+**麦克风为什么单独一套逻辑**：`NotReadableError · Could not start audio source` 在 Android 上几乎都不是页面代码的问题——AudioRecord 根本没起来，原因可能是壳没有真实的 `RECORD_AUDIO` 权限、麦克风被别的应用占着、系统麦克风 / 隐私开关关掉，或者只是默认约束跟这台设备对不上。所以 `ui/compat/mic.ts` 按「默认 → 原始音频（关回声消除 / 降噪 / 自动增益）→ 指定某个 audioinput 的 deviceId」依次试，权限类错误（`NotAllowedError` / `SecurityError`）立即收手不再弹窗；每档之间留 250ms 让上一档松手；每次请求前先停掉自己上一次握着的流（同一页面重复申请在部分机型上也直接报 `NotReadableError`）。失败时页面列出：`enumerateDevices()` 里 audioinput 的数量与名字、Permissions API 的 microphone 状态、每档的错误名与原文，以及对最后一条错误的「怎么办」。
+
 **壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未注入——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
 
 **同时下线**：功能面板里的「高精度定位」（高德官方 demo 诊断页）已删除，`panelPrecise` 路由、图标与组件一并移除——定位诊断由这一页的「定位」卡承担，它不依赖高德 key。
 
-**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K7）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路。
+**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K9）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）。
 
 ---
 

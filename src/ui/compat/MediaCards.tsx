@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { CompatCard, CompatRow, CompatStatus, type StatusState } from './ui';
 import { setTestResult } from './report';
+import { micErrorHint, permissionLabel, probeMic, trackSummary, type MicProbeResult } from './mic';
 
 /* ---------------- 麦克风 ---------------- */
 
@@ -13,6 +14,7 @@ export function MicCard() {
   const [state, setState] = useState<StatusState>('idle');
   const [text, setText] = useState('未测试');
   const [meterOn, setMeterOn] = useState(false);
+  const [diag, setDiag] = useState<MicProbeResult | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -41,45 +43,54 @@ export function MicCard() {
       setTestResult('mic', 'err', '无 getUserMedia');
       return;
     }
+    // 先把上一次握着的流放下：同一页面重复申请时，某些机型会直接报 NotReadableError
+    stop();
     setState('wait');
-    setText('请求中… 请在弹出的系统对话框里允许');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const tracks = stream.getAudioTracks();
-      const rate = tracks[0]?.getSettings().sampleRate;
-      setState('ok');
-      setText(`已授权。轨道数：${tracks.length}，采样率：${rate || '未知'}`);
-      setTestResult('mic', 'ok', rate ? `${Math.round(rate / 1000)} kHz` : '已授权');
-      setMeterOn(true);
-      try {
-        const Ctor =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!Ctor) throw new Error('不支持 AudioContext');
-        const ctx = new Ctor();
-        ctxRef.current = ctx;
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        ctx.createMediaStreamSource(stream).connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        const tick = () => {
-          analyser.getByteFrequencyData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i += 1) sum += data[i];
-          const level = (sum / data.length / 255) * 100;
-          if (meterRef.current) meterRef.current.style.width = `${level.toFixed(1)}%`;
-          rafRef.current = requestAnimationFrame(tick);
-        };
-        tick();
-      } catch (e) {
-        setText((t) => `${t}（音量监测不可用：${(e as Error).message}）`);
-      }
-    } catch (err) {
-      const e = err as DOMException | undefined;
+    setText('请求中… 会按「默认 → 原始音频 → 指定设备」依次试，可能要过几轮系统弹窗');
+    setDiag(null);
+
+    const r = await probeMic();
+    setDiag(r);
+
+    if (!r.stream) {
+      const last = r.failures[r.failures.length - 1];
       setState('err');
-      setText(`被拒绝或失败：${e?.name ?? String(err)} · ${e?.message ?? ''}`);
-      setTestResult('mic', 'err', e?.name ?? '失败');
+      setText(`被拒绝或失败：${last?.name ?? 'Error'} · ${last?.message ?? ''}`);
+      setTestResult('mic', 'err', last?.name ?? '失败');
+      return;
+    }
+
+    streamRef.current = r.stream;
+    const tracks = r.stream.getAudioTracks();
+    const param = trackSummary(r.track) || '参数未知';
+    const retried = r.failures.length ? `；前 ${r.failures.length} 档失败（${r.failures.map((f) => f.name).join(' / ')}）` : '';
+    setState('ok');
+    setText(`已授权（${r.okLabel}）。轨道数：${tracks.length}，${param}${retried}`);
+    setTestResult('mic', 'ok', r.okLabel);
+
+    setMeterOn(true);
+    try {
+      const Ctor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) throw new Error('不支持 AudioContext');
+      const ctx = new Ctor();
+      ctxRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      ctx.createMediaStreamSource(r.stream).connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 1) sum += data[i];
+        const level = (sum / data.length / 255) * 100;
+        if (meterRef.current) meterRef.current.style.width = `${level.toFixed(1)}%`;
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      setText((t) => `${t}（音量监测不可用：${(e as Error).message}）`);
     }
   };
 
@@ -89,8 +100,13 @@ export function MicCard() {
     setText('已停止');
   };
 
+  const lastFailure = diag?.failures[diag.failures.length - 1];
+
   return (
-    <CompatCard title="麦克风测试（getUserMedia）" desc="标准 Web API；授权后看音量条有没有起伏。">
+    <CompatCard
+      title="麦克风测试（getUserMedia）"
+      desc="标准 Web API；授权后看音量条有没有起伏。失败时会把每一档约束的结果和下一步怎么做都列出来。"
+    >
       <CompatRow>
         <button className="btn btn-primary" onClick={start} disabled={state === 'wait'}>
           请求麦克风
@@ -102,7 +118,45 @@ export function MicCard() {
       <CompatStatus state={state} text={text} />
       {meterOn && (
         <div className="compat-meter" aria-hidden>
-          <i ref={(el) => { meterRef.current = el; }} />
+          <i
+            ref={(el) => {
+              meterRef.current = el;
+            }}
+          />
+        </div>
+      )}
+
+      {diag && (
+        <div className="compat-diag">
+          <p className="muted small">
+            音频输入：
+            {diag.inputs.length
+              ? `${diag.inputs.length} 个${
+                  diag.inputs.some((d) => d.label)
+                    ? `（${diag.inputs.map((d) => d.label || '未命名').join('、')}）`
+                    : '（未授权时系统不给设备名）'
+                }`
+              : '0 个'}
+            {' · '}权限：{permissionLabel(diag.permission)}
+          </p>
+          {diag.failures.length > 0 && (
+            <ul className="compat-attempts">
+              {diag.failures.map((f) => (
+                <li key={f.label}>
+                  <span className="compat-attempt-label">{f.label}</span>
+                  <span className="compat-attempt-err">
+                    {f.name} · {f.message}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {lastFailure && (
+            <p className="compat-fix muted small">
+              <strong>怎么办：</strong>
+              {micErrorHint(lastFailure.name)}
+            </p>
+          )}
         </div>
       )}
     </CompatCard>

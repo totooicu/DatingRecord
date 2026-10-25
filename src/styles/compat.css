@@ -267,3 +267,55 @@
   color: var(--danger);
   background: rgba(192, 57, 43, 0.1);
 }
+
+/* 麦克风诊断：每档约束的结果 + 下一步怎么做 */
+.compat-diag {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.compat-diag p {
+  margin: 0 0 6px;
+  line-height: 1.65;
+}
+
+.compat-attempts {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compat-attempts li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: rgba(192, 57, 43, 0.05);
+  font-size: 12px;
+}
+
+.compat-attempt-label {
+  color: var(--text);
+}
+
+.compat-attempt-err {
+  color: var(--danger);
+  word-break: break-word;
+}
+
+.compat-fix {
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.03);
+  line-height: 1.7;
+}
+
+.compat-fix strong {
+  color: var(--text);
+}

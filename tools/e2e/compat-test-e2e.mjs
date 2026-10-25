@@ -6,6 +6,8 @@
 // K4 原生桥：普通浏览器里没有注入，ping 应在 3s 后超时并判 ✗，汇总同步
 // K5 功能面板不再有「高精度定位」（用户要求下线），只剩音乐 / 定位
 // K6 离开子页再回来，汇总里刚才的结果还在（模块级状态）
+// K8 麦克风失败路径：每档约束的结果 + 设备/权限 + 「怎么办」都列出来（无音频设备的 Chromium）
+// K9 麦克风成功路径：带假音频设备启动 Chromium，应授权成功、音量条出现、汇总标 ✓
 //
 // 依赖：`npm run build` 后用静态服务器起 dist，再装 playwright。
 // 用法：node tools/e2e/compat-test-e2e.mjs [url]
@@ -285,6 +287,60 @@ check('汇总里原生桥 ✓', /✓/.test(chipOf('原生桥')), chipOf('原生�
 check('汇总里文件私有 ✓', /✓/.test(chipOf('文件私有')), chipOf('文件私有'));
 check('汇总里蓝牙中心 ✓', /✓/.test(chipOf('蓝牙中心')), chipOf('蓝牙中心'));
 await q.screenshot({ path: '/tmp/compat-shots/compat-mock.png' });
+
+console.log('\nK8 麦克风失败路径（这台 Chromium 没有音频输入设备）');
+const micCard = q.locator('.compat-card', { hasText: '麦克风测试' });
+await micCard.getByRole('button', { name: '请求麦克风' }).click();
+await q.waitForTimeout(3000);
+const micStatus = (await micCard.locator('.compat-status').innerText()).replace(/\n/g, ' | ');
+check('状态写明错误名与原文', /NotFoundError · Requested device not found/.test(micStatus), micStatus);
+const attempts = await micCard.locator('.compat-attempts li').allInnerTexts().catch(() => []);
+check('每一档约束的结果都列出来了', attempts.length >= 2, JSON.stringify(attempts));
+check('设备与权限行可见', /音频输入：0 个 · 权限：/.test(await micCard.locator('.compat-diag p').first().innerText()));
+check('给出了「怎么办」', /怎么办：/.test(await micCard.locator('.compat-fix').innerText().catch(() => '')));
+check('失败时音量条不该出现', (await micCard.locator('.compat-meter').count()) === 0);
+check('汇总里麦克风标 ✗', /✗/.test(await q.locator('.compat-chip', { hasText: '麦克风' }).innerText()));
+await micCard.scrollIntoViewIfNeeded();
+await q.screenshot({ path: '/tmp/compat-shots/compat-mic-fail.png' });
+await ctx2.close();
+
+console.log('\nK9 麦克风成功路径（假音频设备）');
+const micBrowser = await chromium.launch({
+  executablePath: process.env.CHROMIUM || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
+  args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+});
+const mctx = await micBrowser.newContext({ viewport: { width: 390, height: 844 } });
+const m = await mctx.newPage();
+m.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
+await m.goto(APP, { waitUntil: 'load' });
+await m.waitForFunction(
+  () => !document.getElementById('boot') || document.getElementById('boot').style.display === 'none',
+  null,
+  { timeout: 90000 },
+);
+const micSample = m.getByText('载入示例数据看看效果');
+await micSample.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+if (await micSample.count()) {
+  await micSample.click();
+  await m.waitForTimeout(2500);
+}
+await m.locator('.tabbar-item', { hasText: '设置' }).click();
+await m.waitForTimeout(500);
+await m.locator('.settings-nav-title', { hasText: '功能体验' }).click();
+await m.waitForTimeout(400);
+await m.locator('.settings-hub-item', { has: m.locator('.settings-hub-title', { hasText: '软件适配测试' }) }).click();
+await m.waitForTimeout(600);
+const micCard2 = m.locator('.compat-card', { hasText: '麦克风测试' });
+await micCard2.getByRole('button', { name: '请求麦克风' }).click();
+await m.waitForTimeout(2500);
+const okStatus = (await micCard2.locator('.compat-status').innerText()).replace(/\n/g, ' | ');
+check('授权成功并写明用了哪一档约束', /已授权（默认音频输入）/.test(okStatus), okStatus);
+check('轨道参数有采样率/声道', /kHz/.test(okStatus) && /声道/.test(okStatus), okStatus);
+check('音量条出现', (await micCard2.locator('.compat-meter').count()) === 1);
+check('汇总里麦克风 ✓', /✓/.test(await m.locator('.compat-chip', { hasText: '麦克风' }).innerText()));
+await micCard2.scrollIntoViewIfNeeded();
+await m.screenshot({ path: '/tmp/compat-shots/compat-mic-ok.png' });
+await micBrowser.close();
 
 console.log(`\n========== 汇总 ==========\n${failures.length ? `失败 ${failures.length} 项：${failures.join('、')}` : '全部通过 ✓'}`);
 await browser.close();
