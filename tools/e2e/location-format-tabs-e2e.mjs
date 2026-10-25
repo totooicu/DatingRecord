@@ -196,15 +196,18 @@ const locationBlobs = () =>
 
 const markerInfo = () =>
   p.evaluate(() =>
-    Array.from(document.querySelectorAll('.leaflet-marker-icon')).map((el) => {
-      const dot = el.firstElementChild;
-      const box = dot.getBoundingClientRect();
-      return {
-        color: getComputedStyle(dot).backgroundColor,
-        w: Math.round(box.width),
-        h: Math.round(box.height),
-      };
-    }),
+    Array.from(document.querySelectorAll('.leaflet-marker-icon'))
+      .map((el) => el.firstElementChild)
+      // 折线上的方向箭头也是 marker，但类名是 loc-arrow：只统计点位圆点
+      .filter((d) => d && d.classList.contains('loc-pin'))
+      .map((dot) => {
+        const box = dot.getBoundingClientRect();
+        return {
+          color: getComputedStyle(dot).backgroundColor,
+          w: Math.round(box.width),
+          h: Math.round(box.height),
+        };
+      }),
   );
 
 const YELLOW = 'rgb(255, 193, 7)';
@@ -270,7 +273,7 @@ await tab('文件').click();
 await p.waitForTimeout(300);
 await p.getByRole('button', { name: '选已有定位文件' }).click();
 await p.waitForTimeout(800);
-check('选择器只列定位文件', (await p.locator('.file-item').count()) === 2);
+check('选择器只列定位文件（示例数据 1 个 + 自建 2 个）', (await p.locator('.file-item').count()) === 3, `${await p.locator('.file-item').count()} 个`);
 check(
   '选择器里的类型都是「定位」',
   (await p.locator('.file-item .file-type').allTextContents()).every((s) => s.trim() === '定位'),

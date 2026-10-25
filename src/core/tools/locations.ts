@@ -127,7 +127,7 @@ function pointsOf(raw: unknown): LocationPoint[] | undefined {
   return raw.map(pointOf);
 }
 
-function brief(f: StoredFile, doc: { points: LocationPoint[]; offset: LocationOffset; updatedAt: string }) {
+function brief(f: StoredFile, doc: { points: LocationPoint[]; offset: LocationOffset; offsets?: { fromIndex: number }[]; updatedAt: string }) {
   return {
     id: f.id,
     storedId: f.storedId,
@@ -135,6 +135,7 @@ function brief(f: StoredFile, doc: { points: LocationPoint[]; offset: LocationOf
     name: f.name.replace(/\.drloc$/i, ''),
     points: doc.points.length,
     offset: doc.offset,
+    offsets: (doc.offsets ?? []).map((s) => ({ ...s })),
     updatedAt: doc.updatedAt,
   };
 }
@@ -169,7 +170,7 @@ export const LOCATION_TOOLS: ToolDef[] = [
     name: 'location.get',
     group: 'location',
     title: '定位文件详情',
-    desc: '读取点列表与偏移；points 返回的是原始坐标，lat/lng 已按 offset 修正（可直接落图）；anchor 是第 1 个原始点，target 是它修正后的坐标（三种修正方式可互相换算）',
+    desc: '读取点列表与偏移；points 返回的是原始坐标，lat/lng 已按 offset 与分段修正（offsets，见 format.ts）换算（可直接落图）；anchor 是第 1 个原始点，target 是它修正后的坐标（三种填法可互相换算）',
     mutating: false,
     params: [
       { name: 'id', type: 'string', desc: '定位文件 id（f 开头）', required: true },
@@ -184,7 +185,8 @@ export const LOCATION_TOOLS: ToolDef[] = [
       const { f, doc } = await load(a.id);
       const limit = a.limit === undefined ? 1000 : Math.max(0, Number(a.limit) || 0);
       const tail = limit > 0 ? doc.points.slice(-limit) : doc.points;
-      const shifted = applyOffset(tail, doc.offset);
+      // 分段修正同样生效：offsets 里的段按锚点区间平移，没覆盖到的点用整份 offset
+      const shifted = applyOffset(tail, doc.offset, doc.offsets);
       const lat = refLatOf(doc.points);
       const first = doc.points[0];
       const anchor = first ? { lat: first.lat, lng: first.lng } : null;

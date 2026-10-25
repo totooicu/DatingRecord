@@ -1,7 +1,7 @@
 // 定位文件预览：把 .drloc 解析成点位清单。
 //
 // 只读；打点 / 改偏移在「设置 → 功能面板 → 定位」里做。
-// 展示的是「原始坐标 + 文件偏移」后的落图坐标，和地图上看到的一致。
+// 展示的是「原始坐标 + 文件偏移 + 分段修正」后的落图坐标，和地图上看到的一致。
 
 import { useEffect, useState } from 'react';
 import type { StoredFile } from '../../core/repo/files';
@@ -34,8 +34,8 @@ export function LocationPreview({ file }: { file: StoredFile }) {
   if (error) return <p className="muted">{error}</p>;
   if (!doc) return <p className="muted small">读取定位数据中…</p>;
 
-  const points = applyOffset(doc.points, doc.offset);
-  const shifted = doc.offset.lat !== 0 || doc.offset.lng !== 0;
+  const points = applyOffset(doc.points, doc.offset, doc.offsets);
+  const segCount = doc.offsets.length;
 
   return (
     <div className="playlist-preview">
@@ -44,7 +44,10 @@ export function LocationPreview({ file }: { file: StoredFile }) {
           <div className="playlist-preview-name">{doc.name}</div>
           <div className="muted small">
             {points.length} 个点
-            {shifted ? ` · 偏移 Δ${doc.offset.lat.toFixed(6)}, Δ${doc.offset.lng.toFixed(6)}` : ''}
+            {doc.offset.lat !== 0 || doc.offset.lng !== 0
+              ? ` · 偏移 Δ${doc.offset.lat.toFixed(6)}, Δ${doc.offset.lng.toFixed(6)}`
+              : ''}
+            {segCount > 0 ? ` · 分段修正 ${segCount} 段` : ''}
           </div>
         </div>
       </div>

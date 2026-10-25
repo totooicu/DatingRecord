@@ -280,7 +280,7 @@ try {
     }
     await sleep(q, 1500);
   };
-  const svcCountHome = async () => q.locator('.home-head .hs-svc').count();
+  const svcCountHome = async () => q.locator('.hs-svc').count();
   const svcCountHead = async () => q.locator('.page-head-right .hs-svc').count();
 
   await gotoLoc2();
@@ -314,7 +314,7 @@ try {
   await sleep(q, 2500);
   // 离开面板后服务仍在跑：点 head 上的服务图标跳回定位面板（比 gotoLoc2 更稳——
   // 此时已在设置子页，目录项不可见，直接走 head 图标跳转）
-  await q.locator('.home-head .hs-svc').first().click();
+  await q.locator('.hs-svc').first().click();
   await sleep(q, 1200);
   const rowsE2 = await q.locator('.music-row').count();
   check('E2：离开期间自动打点继续（列表有数据）', rowsE2 >= 1, `rows=${rowsE2}`);
@@ -322,7 +322,7 @@ try {
   // E4：点 head 图标回跳
   await q.locator('.tabbar-item', { hasText: '人物' }).click();
   await sleep(q, 500);
-  await q.locator('.home-head .hs-svc').first().click();
+  await q.locator('.hs-svc').first().click();
   await sleep(q, 1200);
   check('E4：点 head 服务图标跳回定位面板', (await q.locator('.leaflet-container').count()) >= 1);
   check('E4：跳回后仍是同一个文件', (await q.getByText('定位记录.drloc').count()) >= 1);
