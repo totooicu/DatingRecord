@@ -197,7 +197,11 @@ async function loadCurrent(autoPlay = true): Promise<void> {
     patch({ playing: false, error: `「${cur.name}」的文件不在本机（可能还没同步过来）` });
     return;
   }
-  if (url && objectId) forgetUrl(objectId);
+  // 注意：同一个附件再加载一次时，objectUrlFor 会返回同一个缓存 URL。
+  // 这时如果照样 forgetUrl 掉「上一个」，撤掉的就是马上要用的这个 URL，
+  // 于是 src 指向已失效的 blob，报 NotSupportedError（听起来像格式不支持）。
+  // 只有换了另一首歌才需要回收旧的。
+  if (url && objectId && url !== u) forgetUrl(objectId);
   url = u;
   objectId = cur.id;
   const a = getAudio();
