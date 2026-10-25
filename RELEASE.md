@@ -139,7 +139,7 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 
 | 日期 | 网页 | 壳 | proto | 说明 |
 |---|---|---|---|---|
-| 2026-10-25 | v1.1.0 | v1.1.0 | 1 | 连续打点策略：定时 / 同点 2^n 退避（1→64s 封顶），页面与壳同一份规则；壳配置新增 `strategy` / `intervalBaseMs` / `intervalMaxMs` |
+| 2026-10-25 | v1.1.0 | v1.1.0 | 1 | 连续打点策略：定时 / 同点 2^n 退避（1→64s 封顶），页面与壳同一份规则；壳配置新增 `strategy` / `intervalBaseMs` / `intervalMaxMs`。**这是 `releases/v1/` 的最后一次写入，此后定稿只读** |
 | 2026-10-25 | v1.0.1 | v1.0.1 | 1 | 壳改为加载冻结快照 `releases/v1/`；新增 release action；麦克风标注为实验能力 |
 | 2026-10-25 | v1.0.0 | v1.0.0 | 1 | 第一个正式版（壳指向根路径，属浮动版，已被 v1.0.1 取代） |
 
