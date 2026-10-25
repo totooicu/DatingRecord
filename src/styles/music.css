@@ -384,6 +384,55 @@
   width: 70px;
   margin: 0 4px;
 }
+
+/* ---------- 回放（地图页） ---------- */
+.loc-play-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* 回放卡里的按钮不学 .music-add-btn 平分整行：一行要塞按钮 + 输入框 */
+.loc-play-row .music-add-btn {
+  flex: 0 1 auto;
+  padding: 8px 14px;
+}
+.loc-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.loc-seg button {
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.loc-seg button + button {
+  border-left: 1px solid var(--border);
+}
+.loc-seg button.on {
+  background: var(--primary);
+  color: #fff;
+}
+.loc-play-reset {
+  margin-left: auto;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.loc-play-hint {
+  margin: 0;
+  line-height: 1.5;
+}
 .loc-select {
   width: auto;
   min-width: 96px;

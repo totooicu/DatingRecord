@@ -9,7 +9,7 @@
 // 数据与自动打点定时器在 core/runtime/locationAuto.ts 单例里：
 // 离开本页照样打点（服务语义），本页只是订阅式视图 + 地图渲染。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { FilePickInput } from '../common';
@@ -44,6 +44,11 @@ import type { SampleStrategy } from '../../core/runtime/locationNative';
 
 type TabKey = 'map' | 'record' | 'file' | 'help';
 
+/** 回放单位：按时间（秒）/ 按点（个） */
+type PlayMode = 'time' | 'dot';
+/** 回放方向：顺序（第 1 点 → 最后）/ 逆序（最后 → 第 1 点） */
+type PlayOrder = 'fwd' | 'rev';
+
 /** 位置修正的三种填法：度数偏移 / 距离偏移 / 目标坐标 */
 type OffsetMode = 'deg' | 'm' | 'target';
 
@@ -60,6 +65,16 @@ const COLOR_LINE = '#FFC107';
 const COLOR_POINT = '#FFC107';
 const COLOR_CURRENT = '#2196F3';
 const COLOR_SELECTED = '#E53935';
+/** 回放：走过的轨迹高亮 + 播放头。和选中红、当前蓝都拉开距离 */
+const COLOR_PLAY = '#7C4DFF';
+
+/** 回放进度标签用的时钟：HH:mm:ss（跨天也只是一串数字，够看） */
+function clockOf(ms: number): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '--:--:--';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -71,6 +86,17 @@ function dotIcon(color: string): L.DivIcon {
     html: `<div style="width:${DOT_SIZE}px;height:${DOT_SIZE}px;border-radius:50%;background:${color};box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></div>`,
     iconSize: [DOT_SIZE, DOT_SIZE],
     iconAnchor: [DOT_SIZE / 2, DOT_SIZE / 2],
+  });
+}
+
+/** 回放播放头：比记录点大一圈、带白边，压在轨迹上也能一眼找到 */
+function playIcon(): L.DivIcon {
+  const size = DOT_SIZE * 2;
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${COLOR_PLAY};box-sizing:border-box;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.35)"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -103,6 +129,24 @@ export function LocationPanel() {
   /** 记录页一次渲染多少条：点可能上万，全量 DOM 会卡 */
   const [listLimit, setListLimit] = useState(300);
 
+  /*
+   * 回放。播放头用「游标」表示：按时间时是毫秒时间戳，按点时是点序号（浮点，
+   * 便于按速率连续推进）；渲染用的是取整后的点序号 playIdx。
+   * 手动步进和自动播放共用同一个游标，所以按一下暂停再按前进，会从原处接着走。
+   */
+  const [playMode, setPlayMode] = useState<PlayMode>('time');
+  const [playOrder, setPlayOrder] = useState<PlayOrder>('fwd');
+  /** 速度：按时间 = 秒/秒（1 = 原速），按点 = 点/秒 */
+  const [rateTime, setRateTime] = useState(60);
+  const [rateDot, setRateDot] = useState(2);
+  /** 步长：按时间 = 秒/步，按点 = 点/步 */
+  const [stepTime, setStepTime] = useState(10);
+  const [stepDot, setStepDot] = useState(1);
+  const [playing, setPlaying] = useState(false);
+  const [playIdx, setPlayIdx] = useState(0);
+  /** 是否已经开始回放过：只有开始后才画高亮和播放头，避免一进地图就多一个紫点 */
+  const [playActive, setPlayActive] = useState(false);
+
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -114,6 +158,201 @@ export function LocationPanel() {
   selectedRef.current = selectedIdx;
   /** 已经对哪个文件做过 fitBounds：自动打点持续加点时不再反复缩放 */
   const fittedFile = useRef<string | null>(null);
+
+  /* 回放的渲染层与计时器：rAF 里只写游标，点序号变化才触发 React 重渲染 */
+  const playLayerRef = useRef<L.LayerGroup | null>(null);
+  const playLineRef = useRef<L.Polyline | null>(null);
+  const playMarkerRef = useRef<L.Marker | null>(null);
+  const rafRef = useRef(0);
+  const cursorRef = useRef(0);
+  const playIdxRef = useRef(0);
+  const playingRef = useRef(false);
+  const lastFrameRef = useRef(0);
+  const lastPaintRef = useRef(0);
+
+  /** 每条记录的时间轴（毫秒）。老 CSV 里解析不出来的时间沿用上一个点，保证单调 */
+  const timeline = useMemo(() => {
+    const out: number[] = [];
+    let last = 0;
+    for (const r of rows) {
+      const t = Date.parse(r.ts);
+      if (Number.isFinite(t)) last = t;
+      out.push(last);
+    }
+    return out;
+  }, [rows]);
+  const timelineRef = useRef<number[]>([]);
+  timelineRef.current = timeline;
+  const nPts = rows.length;
+  const tFirst = timeline.length > 0 ? timeline[0] : 0;
+  const tLast = timeline.length > 0 ? timeline[timeline.length - 1] : 0;
+
+  /** 时间 → 最后一个 ts ≤ 它的点序号（二分；时间游标落在两点之间时停在前一个点上） */
+  const idxAtTime = useCallback((ms: number) => {
+    const ts = timelineRef.current;
+    let lo = 0;
+    let hi = ts.length - 1;
+    let ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (ts[mid] <= ms) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return ans;
+  }, []);
+
+  /** 当前模式下的取值范围（游标单位），顺序/逆序决定从哪头开始 */
+  const playRange = (mode: PlayMode = playMode): [number, number] =>
+    mode === 'time' ? [tFirst, tLast] : [0, Math.max(0, nPts - 1)];
+
+  const idxOfCursor = (cursor: number, mode: PlayMode = playMode) =>
+    mode === 'time' ? idxAtTime(cursor) : Math.max(0, Math.min(nPts - 1, Math.round(cursor)));
+
+  const startCursor = (mode: PlayMode = playMode, order: PlayOrder = playOrder) => {
+    const [lo, hi] = playRange(mode);
+    return order === 'fwd' ? lo : hi;
+  };
+
+  const stopPlayback = useCallback(() => {
+    playingRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+    setPlaying(false);
+  }, []);
+
+  /** rAF 里读的配置：state 在闭包里会过期，统一走 ref */
+  const playCfg = useRef({ mode: playMode, order: playOrder, rateTime, rateDot, lo: 0, hi: 0 });
+  playCfg.current = { mode: playMode, order: playOrder, rateTime, rateDot, lo: playRange()[0], hi: playRange()[1] };
+
+  const tick = useCallback(
+    (now: number) => {
+      if (!playingRef.current) return;
+      const c = playCfg.current;
+      // 卡顿/切后台回来时限制单帧步长，别一下跳过一大段
+      const dt = Math.min(0.25, Math.max(0, (now - lastFrameRef.current) / 1000));
+      lastFrameRef.current = now;
+      const dir = c.order === 'fwd' ? 1 : -1;
+      if (c.mode === 'time') cursorRef.current += dir * Math.max(0, c.rateTime) * 1000 * dt;
+      else cursorRef.current += dir * Math.max(0, c.rateDot) * dt;
+
+      let done = false;
+      if (dir > 0 && cursorRef.current >= c.hi) {
+        cursorRef.current = c.hi;
+        done = true;
+      } else if (dir < 0 && cursorRef.current <= c.lo) {
+        cursorRef.current = c.lo;
+        done = true;
+      }
+
+      const idx = c.mode === 'time' ? idxAtTime(cursorRef.current) : Math.max(0, Math.min(c.hi, Math.round(cursorRef.current)));
+      // 密集轨迹下索引可能每帧都变：重渲染节流到 ~14fps，地图上的移动仍然连贯
+      if (idx !== playIdxRef.current && (done || now - lastPaintRef.current > 70)) {
+        lastPaintRef.current = now;
+        playIdxRef.current = idx;
+        setPlayIdx(idx);
+      }
+      if (done) {
+        stopPlayback();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    },
+    [idxAtTime, stopPlayback],
+  );
+
+  const togglePlay = () => {
+    if (nPts < 2) return;
+    if (playingRef.current) {
+      stopPlayback();
+      return;
+    }
+    const [lo, hi] = playRange();
+    if (!playActive) cursorRef.current = startCursor();
+    // 已经停在这一方向的尽头：再按播放 = 从头来
+    if (playOrder === 'fwd' && cursorRef.current >= hi) cursorRef.current = lo;
+    if (playOrder === 'rev' && cursorRef.current <= lo) cursorRef.current = hi;
+    const idx = idxOfCursor(cursorRef.current);
+    playIdxRef.current = idx;
+    setPlayIdx(idx);
+    setPlayActive(true);
+    playingRef.current = true;
+    setPlaying(true);
+    lastFrameRef.current = performance.now();
+    lastPaintRef.current = 0;
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  /** 手动步进：forward=1 沿播放顺序方向，-1 反向 */
+  const stepPlay = (forward: 1 | -1) => {
+    if (nPts < 2) return;
+    stopPlayback();
+    const [lo, hi] = playRange();
+    if (!playActive) cursorRef.current = startCursor();
+    const dir = (playOrder === 'fwd' ? 1 : -1) * forward;
+    const amount = playMode === 'time' ? Math.max(0, stepTime) * 1000 : Math.max(1, Math.round(stepDot));
+    cursorRef.current = Math.min(hi, Math.max(lo, cursorRef.current + dir * amount));
+    const idx = idxOfCursor(cursorRef.current);
+    playIdxRef.current = idx;
+    setPlayIdx(idx);
+    setPlayActive(true);
+  };
+
+  const resetPlay = () => {
+    stopPlayback();
+    setPlayActive(false);
+    playIdxRef.current = 0;
+    setPlayIdx(0);
+    cursorRef.current = 0;
+  };
+
+  /** 换单位时保留「看到哪了」：把游标换算到新单位，而不是回到起点 */
+  const switchPlayMode = (mode: PlayMode) => {
+    if (mode === playMode) return;
+    stopPlayback();
+    if (playActive && nPts > 0) {
+      const i = idxOfCursor(cursorRef.current);
+      cursorRef.current = mode === 'time' ? (timeline[i] ?? tFirst) : i;
+    }
+    setPlayMode(mode);
+  };
+
+  const switchPlayOrder = (order: PlayOrder) => {
+    if (order === playOrder) return;
+    setPlayOrder(order);
+    const [lo, hi] = playRange();
+    if (!playActive || nPts < 2) {
+      cursorRef.current = startCursor(playMode, order);
+      return;
+    }
+    // 已经在新方向的尽头，就拉回起点，免得按播放毫无反应
+    if (order === 'fwd' && cursorRef.current >= hi) cursorRef.current = lo;
+    if (order === 'rev' && cursorRef.current <= lo) cursorRef.current = hi;
+    const idx = idxOfCursor(cursorRef.current);
+    playIdxRef.current = idx;
+    setPlayIdx(idx);
+  };
+
+  // 换文件 / 离开地图页：停止回放，别在后台空转
+  useEffect(() => {
+    stopPlayback();
+    setPlayActive(false);
+    playIdxRef.current = 0;
+    setPlayIdx(0);
+    cursorRef.current = 0;
+  }, [fileId, stopPlayback]);
+  useEffect(() => {
+    if (tab !== 'map') stopPlayback();
+  }, [tab, stopPlayback]);
+  useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
 
   /** 参考纬度：按点的平均纬度把米换算成度；没有点就没法换算经度 */
   const refLat = useMemo(() => refLatOf(rows), [fileId, la.rev]);
@@ -187,11 +426,16 @@ export function LocationPanel() {
       { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图' },
     ).addTo(map);
     trackRef.current = L.layerGroup().addTo(map);
+    // 回放层压在轨迹之上：高亮线和紫色播放头
+    playLayerRef.current = L.layerGroup().addTo(map);
     setTimeout(() => map.invalidateSize(), 100);
     return () => {
       map.remove();
       mapRef.current = null;
       trackRef.current = null;
+      playLayerRef.current = null;
+      playLineRef.current = null;
+      playMarkerRef.current = null;
       pointMarkers.current = [];
       currentMarker.current = null;
     };
@@ -217,7 +461,8 @@ export function LocationPanel() {
     if (pts.length > 1) {
       L.polyline(
         pts.map((r) => [r.lat, r.lng] as [number, number]),
-        { color: COLOR_LINE, weight: LINE_WEIGHT, opacity: 0.75 },
+        // 回放时把整条轨迹压暗，让已走过的紫色段显出来
+        { color: COLOR_LINE, weight: LINE_WEIGHT, opacity: playActive ? 0.3 : 0.75 },
       ).addTo(layer);
     }
 
@@ -241,7 +486,7 @@ export function LocationPanel() {
       map.fitBounds(L.latLngBounds(pts.map((r) => [r.lat, r.lng] as [number, number])).pad(0.2));
     }
     // rows / offset 是这条 effect 的数据源；用 rev + 偏移值当依赖，避免每秒重画
-  }, [la.rev, offset.lat, offset.lng, fileId]);
+  }, [la.rev, offset.lat, offset.lng, fileId, playActive]);
 
   // 选中只换图标，不重建整层
   useEffect(() => {
@@ -277,6 +522,42 @@ export function LocationPanel() {
         .bindPopup(popup);
     }
   }, [current]);
+
+  // 回放：高亮已走过的轨迹 + 播放头。播放中只在跑出视野时平移，避免每帧抖动
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = playLayerRef.current;
+    if (!map || !layer) return;
+    if (!playActive || rows.length === 0) {
+      layer.clearLayers();
+      playLineRef.current = null;
+      playMarkerRef.current = null;
+      return;
+    }
+    const pts = applyOffset(rows, offset);
+    const i = Math.max(0, Math.min(playIdx, pts.length - 1));
+    const latlng = L.latLng(pts[i].lat, pts[i].lng);
+    if (i >= 1) {
+      const slice = pts.slice(0, i + 1).map((p) => [p.lat, p.lng] as [number, number]);
+      if (playLineRef.current) playLineRef.current.setLatLngs(slice);
+      else
+        // 比轨迹宽一圈、半透明：黄点会盖在上面，看到的是「走过的一段染了色」
+        playLineRef.current = L.polyline(slice, { color: COLOR_PLAY, weight: LINE_WEIGHT * 2.5, opacity: 0.7 }).addTo(layer);
+    } else if (playLineRef.current) {
+      playLineRef.current.setLatLngs([]);
+    }
+    if (playMarkerRef.current) playMarkerRef.current.setLatLng(latlng);
+    else playMarkerRef.current = L.marker(latlng, { icon: playIcon(), zIndexOffset: 3000 }).addTo(layer);
+    if (playing && !map.getBounds().pad(-0.15).contains(latlng)) map.panTo(latlng, { animate: false });
+  }, [playActive, playIdx, playing, la.rev, offset.lat, offset.lng, fileId]);
+
+  /** 当前回放状态的展示值：卡在末尾时也别越界 */
+  const playIdxClamped = Math.max(0, Math.min(playIdx, nPts - 1));
+  const playClock = timeline[playIdxClamped] ?? 0;
+  const playRate = playMode === 'time' ? rateTime : rateDot;
+  const playStep = playMode === 'time' ? stepTime : stepDot;
+  const setPlayRate = (v: number) => (playMode === 'time' ? setRateTime(v) : setRateDot(v));
+  const setPlayStep = (v: number) => (playMode === 'time' ? setStepTime(v) : setStepDot(v));
 
   const selectPoint = (idx: number) => {
     setSelectedIdx(idx);
@@ -476,9 +757,113 @@ export function LocationPanel() {
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_CURRENT }} />当前位置</span>
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_POINT }} />文件记录</span>
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_SELECTED }} />选中</span>
+          {playActive && (
+            <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_PLAY }} />回放</span>
+          )}
           <span className="muted small">{rows.length} 个点</span>
         </div>
         <div ref={containerRef} className="map-leaflet loc-map" />
+
+        {/* 回放：轨迹按时间或按点重新走一遍，自动播放 + 步进共用同一个播放头 */}
+        {nPts > 1 && (
+          <div className="loc-card loc-play">
+            <div className="loc-card-head">
+              <strong>回放</strong>
+              <span className="muted small">
+                {playActive
+                  ? `${clockOf(playClock)} · 第 ${playIdxClamped + 1}/${nPts} 点`
+                  : `共 ${nPts} 点 · ${clockOf(tFirst)} → ${clockOf(tLast)}`}
+              </span>
+            </div>
+
+            <div className="loc-play-row">
+              <span className="muted small">单位</span>
+              <div className="loc-seg" role="group" aria-label="回放单位">
+                <button
+                  className={playMode === 'time' ? 'on' : undefined}
+                  onClick={() => switchPlayMode('time')}
+                  aria-pressed={playMode === 'time'}
+                >
+                  时间
+                </button>
+                <button
+                  className={playMode === 'dot' ? 'on' : undefined}
+                  onClick={() => switchPlayMode('dot')}
+                  aria-pressed={playMode === 'dot'}
+                >
+                  点
+                </button>
+              </div>
+              <span className="muted small">顺序</span>
+              <div className="loc-seg" role="group" aria-label="播放顺序">
+                <button
+                  className={playOrder === 'fwd' ? 'on' : undefined}
+                  onClick={() => switchPlayOrder('fwd')}
+                  aria-pressed={playOrder === 'fwd'}
+                >
+                  顺序
+                </button>
+                <button
+                  className={playOrder === 'rev' ? 'on' : undefined}
+                  onClick={() => switchPlayOrder('rev')}
+                  aria-pressed={playOrder === 'rev'}
+                >
+                  逆序
+                </button>
+              </div>
+              <button className="loc-play-reset" onClick={resetPlay} title="回到起点并清除回放高亮">
+                复位
+              </button>
+            </div>
+
+            <div className="loc-play-row">
+              <button className={playing ? 'music-add-btn' : 'music-add-btn primary'} onClick={togglePlay}>
+                {playing ? '⏹ 停止' : '▶ 播放'}
+              </button>
+              <label className="muted small">
+                速度
+                <input
+                  className="loc-num"
+                  type="number"
+                  min={0}
+                  step={playMode === 'time' ? 1 : 0.5}
+                  value={playRate}
+                  onChange={(e) => setPlayRate(Number(e.target.value) || 0)}
+                  aria-label={playMode === 'time' ? '每秒推进多少秒记录' : '每秒走多少个点'}
+                />
+                {playMode === 'time' ? '秒/秒' : '点/秒'}
+              </label>
+            </div>
+
+            <div className="loc-play-row">
+              <button className="music-add-btn" onClick={() => stepPlay(-1)}>
+                ‹ 后退
+              </button>
+              <button className="music-add-btn" onClick={() => stepPlay(1)}>
+                前进 ›
+              </button>
+              <label className="muted small">
+                步长
+                <input
+                  className="loc-num"
+                  type="number"
+                  min={playMode === 'time' ? 0 : 1}
+                  step={1}
+                  value={playStep}
+                  onChange={(e) => setPlayStep(Number(e.target.value) || 0)}
+                  aria-label={playMode === 'time' ? '每步前进多少秒记录' : '每步前进多少个点'}
+                />
+                {playMode === 'time' ? '秒/步' : '点/步'}
+              </label>
+            </div>
+
+            <p className="muted small loc-play-hint">
+              按时间：1 秒真实时间推进 N 秒记录（中间没有点的空档会停在原地等）；
+              按点：每秒走 N 个点。前进/后退沿所选顺序方向走 N 个单位。
+            </p>
+          </div>
+        )}
+
         <div className="music-add">
           <button className="music-add-btn" onClick={locateMe}>定位到我的位置</button>
           <button className="music-add-btn" onClick={() => setTab('record')}>去记录</button>
