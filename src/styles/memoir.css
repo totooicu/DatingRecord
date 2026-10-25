@@ -596,3 +596,8 @@
 .memoir-playlist-err {
   color: var(--danger);
 }
+
+/* 阅读页里召唤出来的播放器：弹窗自己已有内边距，这里别再叠一层 */
+.memoir-player .music-panel {
+  padding: 0;
+}
