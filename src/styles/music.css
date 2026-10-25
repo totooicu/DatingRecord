@@ -502,3 +502,8 @@
 .file-item-picked .file-name {
   pointer-events: none;
 }
+
+.music-error {
+  color: var(--danger);
+  margin-top: 2px;
+}
