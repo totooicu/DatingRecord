@@ -3,6 +3,10 @@
 // 定时器和数据都在单例里——离开定位面板照样打点（这才是「服务」），
 // head 上常驻图标，服务页显示运行中。面板只是订阅式视图。
 //
+// 在安卓壳里则换成壳的前台服务记：页面定时器退到后台会被冻住，壳里的
+// LocationTrackingService 不会。页面把配置推下去、把原生记的点合并回文件，
+// 细节见 core/runtime/locationNative.ts。
+//
 // 数据文件是文件库里的 .drloc（见 core/location/format.ts）：
 //   · points 存原始坐标，offset 记这个文件的经纬度修正量；
 //   · 显示 / 落图时统一 applyOffset()，改偏移就能整体平移；
@@ -29,6 +33,18 @@ import {
   setServiceNote,
   setServiceRunning,
 } from './store';
+import {
+  fetchNativeHistory,
+  nativeLocationAvailable,
+  nativeLocationStatus,
+  onNativePoint,
+  pushAutoConfig,
+  readAutoConfig,
+  readCursor,
+  writeAutoConfig,
+  writeCursor,
+  type AutoLocationConfig,
+} from './locationNative';
 
 export const SERVICE_ID = 'location-auto';
 
@@ -56,6 +72,8 @@ export interface LocationAutoState {
   /** 去重阈值（米）：位移小于它只刷新时间戳，不新增点 */
   threshold: number;
   running: boolean;
+  /** 跑在壳的原生服务上（页面定时器已让位），面板据此提示「退到后台也继续」 */
+  native: boolean;
   /** 手动打点定位中 */
   busy: boolean;
   /** 写回文件的状态 */
@@ -74,6 +92,7 @@ let state: LocationAutoState = {
   current: null,
   threshold: 5,
   running: false,
+  native: false,
   busy: false,
   saving: 'idle',
   fileReady: false,
@@ -280,11 +299,27 @@ export function setAutoServiceAutostart(on: boolean): void {
   if (on && state.fileId && state.fileReady && !state.running) startAuto();
 }
 
+let visibilityWatched = false;
+
 /** 开机注册：服务页一开始就列得出「自动打点」（未运行），并恢复上次文件 */
 export function initLocationAutoService(): void {
+  const cfg = readAutoConfig();
+  // 阈值归页面存档：刷新后接着上次的值，和推给壳的是同一个数
+  if (cfg.thresholdM !== state.threshold) patch({ threshold: cfg.thresholdM });
   registerAutoService(state.running);
   void restoreLastFile();
+  // 壳里：上次退出时是开着的，壳的前台服务已经按 dr.autoLocation 拉起来了，
+  // 页面这边直接接管（不然服务页显示未运行，原生记的点也没人合并）
+  if (cfg.enabled && nativeLocationAvailable()) void adoptNative();
+  if (!visibilityWatched) {
+    visibilityWatched = true;
+    document.addEventListener('visibilitychange', () => {
+      // 挂起期间事件收不到，回到前台补一次历史；游标保证不重放
+      if (document.visibilityState === 'visible' && state.native) void mergeNativeHistory();
+    });
+  }
 }
+
 
 async function restoreLastFile(): Promise<void> {
   const id = getActiveLocationId();
@@ -302,6 +337,8 @@ async function restoreLastFile(): Promise<void> {
     // 内容读完了才允许自动打点——否则先写空会把旧点覆盖掉。
     // 开了自启动就在这里拉起服务（比统一恢复那一步更稳，能拿到完整行数）。
     if (isServiceAutostart(SERVICE_ID) && !state.running) startAuto();
+    // 原生在跑而这里是刚读出文件：把挂起期间记的点补进来
+    if (state.native) void mergeNativeHistory();
   } catch {
     // 文件损坏：宁可回到未选择状态，也不拿空队列覆盖它
     if (state.fileId === f.id) {
@@ -331,10 +368,40 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
     saving: 'idle',
     fileReady: true,
   });
+  // 切文件时原生可能已经记了一些点：游标挡掉重复，新的补进来
+  if (state.native) void mergeNativeHistory();
 }
 
 export function setThreshold(m: number): void {
-  patch({ threshold: Number.isFinite(m) && m >= 0 ? m : 0 });
+  const next = Number.isFinite(m) && m >= 0 ? m : 0;
+  patch({ threshold: next });
+  // 阈值也归页面这边存档：壳在页面加载完会读 dr.autoLocation，
+  // 页面这边的输入框每次按键都会走到这里，所以桥调用压一下抖动。
+  writeAutoConfig(configOf(state.running));
+  scheduleConfigPush();
+}
+
+// ---- 与壳的配置同步（location.* 桥） ----
+
+/** 「位置在动」的门槛：壳用它切 1s / 30s / 60s 的频率，页面不单独暴露 */
+const MOVE_THRESHOLD_M = 10;
+
+function configOf(enabled: boolean): AutoLocationConfig {
+  return { enabled, thresholdM: state.threshold, moveThresholdM: MOVE_THRESHOLD_M };
+}
+
+let configPushTimer: number | null = null;
+
+/** 只用于阈值这种连续输入：存档已同步写，桥调用合并成一次 */
+function scheduleConfigPush(): void {
+  if (!nativeLocationAvailable()) return;
+  if (configPushTimer) window.clearTimeout(configPushTimer);
+  configPushTimer = window.setTimeout(() => {
+    configPushTimer = null;
+    void pushAutoConfig(configOf(state.running)).catch(() => {
+      setServiceNote(SERVICE_ID, '壳没有响应定位配置，下次开始打点时会重试');
+    });
+  }, 400);
 }
 
 function normalizeOffset(offset: LocationOffset): LocationOffset {
@@ -436,6 +503,132 @@ function appendPoint(
   return { points: [...rows, r], added: true };
 }
 
+// ---- 壳的原生连续定位（location.* 桥） ----
+//
+// 壳里跑的时候，页面定时器退到后台会被冻住，所以连续记录交给壳的前台服务；
+// 页面收事件、补历史，再走上面同一个 appendPoint 落进当前文件。
+// 坐标要换：原生给的是 WGS-84，页面记的是 GCJ-02（高德底图）。
+
+let nativeUnsub: (() => void) | null = null;
+
+function toNativePoint(raw: unknown): { ms: number; point: LocationPoint } | null {
+  const o = (raw ?? {}) as {
+    ts?: unknown;
+    lat?: unknown;
+    lng?: unknown;
+    accuracy?: unknown;
+    note?: unknown;
+  };
+  const ms = typeof o.ts === 'number' ? o.ts : typeof o.ts === 'string' ? Date.parse(o.ts) : Number.NaN;
+  if (!Number.isFinite(ms) || typeof o.lat !== 'number' || typeof o.lng !== 'number') return null;
+  const gcj = wgs84ToGcj02(o.lat, o.lng);
+  return {
+    ms,
+    point: {
+      ts: new Date(ms).toISOString(),
+      lat: gcj.lat,
+      lng: gcj.lng,
+      accuracy: typeof o.accuracy === 'number' && o.accuracy > 0 ? o.accuracy : 0,
+      note: typeof o.note === 'string' ? o.note.trim() : '',
+    },
+  };
+}
+
+/** 事件与历史可能同时到：串成一条链，按到达顺序一条条过 appendPoint */
+let mergeChain: Promise<void> = Promise.resolve();
+
+function mergeNativePoints(rawList: unknown[]): Promise<void> {
+  mergeChain = mergeChain.then(() => doMergeNative(rawList)).catch(() => {
+    /* 单次失败不打断后续：游标没动，下次历史还会把点带回来 */
+  });
+  return mergeChain;
+}
+
+async function doMergeNative(rawList: unknown[]): Promise<void> {
+  const base = state.doc;
+  if (!base || !state.fileId) return;
+  const cursor = readCursor();
+  let rows = state.rows;
+  let added = false;
+  let newest = cursor;
+  for (const raw of rawList) {
+    const p = toNativePoint(raw);
+    // 游标按时间戳：getHistory 每次返回全量，重放的点在这里被挡掉
+    if (!p || p.ms <= cursor) continue;
+    const r = appendPoint(rows, p.point, state.threshold);
+    rows = r.points;
+    added = added || r.added;
+    if (p.ms > newest) newest = p.ms;
+  }
+  if (newest === cursor) return;
+  const doc: LocationDoc = { ...base, points: rows };
+  patch({ rows, doc, rev: added ? state.rev + 1 : state.rev });
+  const now = Date.now();
+  if (added || now - lastFlush >= FLUSH_MS) {
+    lastFlush = now;
+    await persist(doc);
+  }
+  // 游标落盘放在最后：写失败时下次还能从历史里补回来
+  writeCursor(newest);
+}
+
+async function mergeNativeHistory(): Promise<void> {
+  try {
+    const points = await fetchNativeHistory();
+    if (points.length > 0) await mergeNativePoints(points);
+  } catch {
+    /* 旧壳没有 location.* 或暂时拿不到：事件到了照样合 */
+  }
+}
+
+function attachNative(): void {
+  if (nativeUnsub) return;
+  nativeUnsub = onNativePoint((data) => {
+    void mergeNativePoints([data]);
+  });
+  patch({ running: true, native: true });
+  registerAutoService(true);
+  setServiceNote(SERVICE_ID, '由壳的原生服务记录，退到后台也继续');
+  void mergeNativeHistory();
+}
+
+function detachNative(): void {
+  nativeUnsub?.();
+  nativeUnsub = null;
+  if (state.native) patch({ native: false });
+}
+
+/** 壳里开始打点：先点亮界面，再把配置推下去；推不动就退回页面定时器 */
+function startNativeTrack(): void {
+  attachNative();
+  void pushAutoConfig(configOf(true), 8000).catch(async () => {
+    // 超时可能是壳慢，不代表没有这个能力：先问一句状态，真在跑就不退回
+    const st = await nativeLocationStatus(2000).catch(() => null);
+    if (st && st.tracking === true) return;
+    detachNative();
+    setServiceNote(SERVICE_ID, '壳没有响应定位桥，已退回页面定时器记录');
+    startPageTimer();
+  });
+}
+
+/** 重启后接管：存档说开着，壳的前台服务一般已经起来了，问一下状态再挂上 */
+async function adoptNative(): Promise<void> {
+  try {
+    const st = await nativeLocationStatus();
+    if (st.tracking === true) {
+      attachNative();
+      return;
+    }
+    // 存档开着但服务没跑（被系统停掉 / 权限被收回）：按存档再拉一次
+    await pushAutoConfig(configOf(true));
+    const again = await nativeLocationStatus().catch(() => null);
+    if (again && again.tracking === true) attachNative();
+    else setServiceNote(SERVICE_ID, '原生定位服务没起来，检查是否允许「始终使用位置」');
+  } catch {
+    // 旧壳没有 location.*：按普通浏览器处理，用户点开始再走页面定时器
+  }
+}
+
 // ---- 自动打点（后台服务本体） ----
 
 let timer: number | null = null;
@@ -470,23 +663,49 @@ function tick(): void {
     });
 }
 
-export function startAuto(): boolean {
-  if (!state.fileId || !state.fileReady) return false;
-  if (timer) return true;
+function startPageTimer(): void {
+  if (timer) return;
   timer = window.setInterval(tick, 1000);
   tick();
-  patch({ running: true });
+  patch({ running: true, native: false });
   registerAutoService(true);
+}
+
+export function startAuto(): boolean {
+  if (!state.fileId || !state.fileReady) return false;
+  if (state.running) return true;
+  if (nativeLocationAvailable()) {
+    // 壳里：交给原生前台服务，WebView 退到后台 / 熄屏都不会断
+    startNativeTrack();
+    return true;
+  }
+  writeAutoConfig(configOf(true));
+  startPageTimer();
   return true;
 }
 
 export function stopAuto(): void {
+  if (configPushTimer) {
+    window.clearTimeout(configPushTimer);
+    configPushTimer = null;
+  }
   if (timer) {
     clearInterval(timer);
     timer = null;
   }
   // 停止 / 切文件前把「原地刷新」的最后一条时间戳也落盘
   if (state.doc) void persist(state.doc);
+  const wasNative = nativeUnsub !== null;
+  detachNative();
+  // 存档与壳同步：enabled=false 壳会立刻停前台服务
+  if (wasNative || nativeLocationAvailable()) {
+    void pushAutoConfig(configOf(false)).catch(() => {
+      // 旧壳没有 location.*：本来就没在跑原生服务，不必报错
+      if (wasNative) setServiceNote(SERVICE_ID, '停止指令没送达壳，原生服务可能还在记录');
+    });
+  } else {
+    writeAutoConfig(configOf(false));
+  }
   patch({ running: false });
   setServiceRunning(SERVICE_ID, false);
   setServiceNote(SERVICE_ID, undefined);

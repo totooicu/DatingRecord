@@ -496,6 +496,34 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K9）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）。
 
+### 1.15 连续定位：壳里交给原生前台服务
+
+**问题**：页面「自动打点」是 1s 的 `setInterval`，WebView 退到后台后 JavaScript 定时器会被系统冻住，记录就断了。壳（`geckoview_example`）新增了一个前台服务 `LocationTrackingService`：退到后台、熄屏照记，频率状态机（走 1s / 手机动 30s / 不动 60s）和 `appendPoint()` 去重都是页面那套的原生复刻。
+
+**分工**：壳里连续记录归原生，页面只做三件事——推配置、收点、补历史。普通浏览器没有桥，原样走页面定时器，两套互斥。
+
+| 环节 | 谁做 | 怎么走 |
+|---|---|---|
+| 配置 | 页面 | `localStorage['dr.autoLocation']` 存 `{enabled, thresholdM, moveThresholdM}`；壳在 `onPageFinished` 主动读一次，所以页面就算没调桥，原生也有最新配置 |
+| 开关 | 页面 | `location.setConfig`（`enabled` 变化即启停原生服务）；停止时也推一次 `enabled:false` |
+| 配置改动 | 页面 | 阈值输入框逐键触发，存档同步写、桥调用压 400ms 抖动，只发最后一次 |
+| 记录 | 壳 | 原生服务写自己的 JSONL，并推 `location.point` 事件 |
+| 落盘 | 页面 | 事件点与 `location.getHistory` 的点都走同一个 `appendPoint()` 写进当前 `.drloc` |
+| 补历史 | 页面 | 启动接管、文件读完后、`visibilitychange` 回到前台，各拉一次 `location.getHistory` |
+| 重启接管 | 页面 | `dr.autoLocation.enabled=true` + 桥在 → 问 `location.status`：在跑就挂上，没跑按存档再推一次 `setConfig` |
+
+**游标**：`location.getHistory` 每次返回全量（壳不分文件），所以用 `localStorage['dr.autoLocation.cursor']` 记「已合并到的最大原生时间戳」，只合并更新的点。用时间戳而不是壳的 `rev`，是因为 `location.clearHistory` 会把 `rev` 归零。游标在持久化成功之后才前进。
+
+**自启动开关在壳里退居次要**：原生服务本来就按 `enabled` 起停，刷新 / 重开应用时页面按 `enabled` 接管——不能因为没勾「自启动」就把正在跑的服务显示成没开（否则原生记的点没人合并）。`dr.svc.autostart` 仍管普通浏览器里的页面定时器。
+
+**坐标**：原生给的是 `LocationManager` 的 WGS-84，页面记的是 GCJ-02（高德底图 / `fallbackBrowser` 都转成 GCJ），所以合并前统一 `wgs84ToGcj02()`。不换算的话同一份 `.drloc` 里会混进两套坐标系，图上偏几百米。
+
+**降级**：`nativeLocationAvailable()` 看的是壳注入时写在 `<html>` 上的 `data-gv-bridge-injected`。旧壳没有 `location.*` 时 `setConfig` 会立刻报错（未知 action），页面自动退回定时器并把说明写到服务行上，不会两边同时记。
+
+**界面**：壳里运行时面板阈值行下方一行小字「记录由安卓壳的原生服务接管…」，服务页那行的备注是「由壳的原生服务记录，退到后台也继续」。
+
+**回归**：`node tools/e2e/location-native-e2e.mjs [url]`（N1–N5）。用 `addInitScript` 装假壳（注入标记 + `location.*` + `location.point`，原生点与运行态放 `sessionStorage` 以撑过刷新）：N1 开始打点推 `enabled=true/thresholdM=5` 且页面 GPS 一次没取；N2 事件点落进文件并按 GCJ-02 显示；N3 远处新增、原地重复只刷新时间；N4 刷新后接管（问 `status`、拉 `getHistory` 补挂起期间的点、再刷新不重放）；N5 改阈值与停止都同步给壳。
+
 ---
 
 # 第二部分 · 功能规格

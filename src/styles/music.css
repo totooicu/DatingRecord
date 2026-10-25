@@ -363,6 +363,11 @@
 .loc-row .music-name-input {
   flex: 1 1 160px;
 }
+/* 壳里自动打点由原生服务记：一行小字说明，别和阈值那行挤在一起 */
+.loc-native-hint {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
 .loc-num {
   width: 70px;
   margin: 0 4px;

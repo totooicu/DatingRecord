@@ -85,7 +85,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export function LocationPanel() {
   const la = useLocationAuto();
-  const { fileId, fileName, rows, offset, current, threshold, running: auto, busy } = la;
+  const { fileId, fileName, rows, offset, current, threshold, running: auto, native, busy } = la;
 
   const [tab, setTab] = useState<TabKey>('map');
   const [note, setNote] = useState('');
@@ -555,6 +555,11 @@ export function LocationPanel() {
                 </button>
               )}
             </div>
+            {auto && native && (
+              <p className="muted small loc-native-hint">
+                记录由安卓壳的原生服务接管：退到后台、熄屏都继续，回到这一页会把断开的点补回来。
+              </p>
+            )}
 
             <ul className="music-list loc-list">
               {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
