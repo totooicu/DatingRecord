@@ -231,7 +231,7 @@ export function LabCompatSection() {
       <LabHead title="软件适配测试" subKey="labCompat" />
 
       <p className="muted small compat-lead">
-        换一台机器、换一个壳（geckoview_example / 浏览器 / 装成 PWA）之后先跑一遍：标准 API 那几张卡不用壳也能测，
+        换一台机器、换一个壳（安卓壳的系统 WebView / 浏览器 / 装成 PWA）之后先跑一遍：标准 API 那几张卡不用壳也能测，
         蓝牙 · 文件 · 录屏要靠壳注入的原生桥。测过的项会记在顶部汇总里，离开这一页再回来还在。
       </p>
 

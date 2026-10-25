@@ -459,9 +459,9 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **回归**：`node tools/e2e/color-picker-e2e.mjs [url]`（C1–C6：彩虹在左历史在右、HEX 应用、RGB 应用、彩虹拖动、历史刷新保留、图标自定义色保存生效并进入历史）。
 
-### 1.14 软件适配测试：GeckoView 壳自检（设置 → 功能体验 → 软件适配测试）
+### 1.14 软件适配测试：安卓壳自检（设置 → 功能体验 → 软件适配测试）
 
-来源是安卓壳项目 `geckoview_example` 的 `assets/test.html`：一个纯 HTML 页，用 `window.postMessage` 调原生桥。这一页把同样的检查项搬进应用，换成本项目的卡片样式，另加一张「本软件依赖」——适配一个新壳时，先看 WebAssembly / IndexedDB 在不在，比逐项点原生能力更快定位问题。
+来源是安卓壳项目 `geckoview_example` 的 `assets/test.html`：一个纯 HTML 页，用 `window.postMessage` 调原生桥。那个壳现在已经从 GeckoView 切到系统 WebView：网页侧要的权限回调从 `GeckoSession.PermissionDelegate.onMediaPermissionRequest` 换成 `WebChromeClient.onPermissionRequest`，桥协议没变（`gv-bridge-*`），所以这一页不用跟着改。这一页把同样的检查项搬进应用，换成本项目的卡片样式，另加一张「本软件依赖」——适配一个新壳时，先看 WebAssembly / IndexedDB 在不在，比逐项点原生能力更快定位问题。
 
 | 卡 | 走哪条路 | 检查什么 |
 |---|---|---|
@@ -488,7 +488,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **判定口径**：普通浏览器里桥显示「未注入 / 超时」是正常的，标准 API 那几张卡照样能测；应用依赖只把 WebAssembly / IndexedDB / Blob 三条算进汇总（缺一样就开不了库、存不住、导不出），Service Worker / PointerEvent 缺了不影响能不能用。
 
-**麦克风为什么单独一套逻辑**：`NotReadableError · Could not start audio source` 在 Android 上几乎都不是页面代码的问题——AudioRecord 根本没起来，原因可能是壳没有真实的 `RECORD_AUDIO` 权限、麦克风被别的应用占着、系统麦克风 / 隐私开关关掉，或者只是默认约束跟这台设备对不上。所以 `ui/compat/mic.ts` 按「默认 → 原始音频（关回声消除 / 降噪 / 自动增益）→ 指定某个 audioinput 的 deviceId」依次试，权限类错误（`NotAllowedError` / `SecurityError`）立即收手不再弹窗；每档之间留 250ms 让上一档松手；每次请求前先停掉自己上一次握着的流（同一页面重复申请在部分机型上也直接报 `NotReadableError`）。失败时页面列出：`enumerateDevices()` 里 audioinput 的数量与名字、Permissions API 的 microphone 状态、每档的错误名与原文，以及对最后一条错误的「怎么办」。
+**麦克风为什么单独一套逻辑**：`NotReadableError · Could not start audio source` 在 Android 上几乎都不是页面代码的问题——AudioRecord 根本没起来。排查顺序按可能性从高到低：麦克风被别的应用占着 → 系统麦克风 / 隐私开关关掉 → 壳的录音权限（`RECORD_AUDIO` + `WebChromeClient.onPermissionRequest`；旧 GeckoView 壳是 `PermissionDelegate.onMediaPermissionRequest`。当前壳已用录音 / 录屏验证过，所以这一条基本可以先排除）→ 默认约束跟这台设备对不上。所以 `ui/compat/mic.ts` 按「默认 → 原始音频（关回声消除 / 降噪 / 自动增益）→ 指定某个 audioinput 的 deviceId」依次试，权限类错误（`NotAllowedError` / `SecurityError`）立即收手不再弹窗；每档之间留 250ms 让上一档松手；每次请求前先停掉自己上一次握着的流（同一页面重复申请在部分机型上也直接报 `NotReadableError`）。失败时页面列出：`enumerateDevices()` 里 audioinput 的数量与名字、Permissions API 的 microphone 状态、每档的错误名与原文，以及对最后一条错误的「怎么办」。
 
 **壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未注入——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
 

@@ -76,7 +76,7 @@ async function queryPermission(): Promise<string> {
     const st = await navigator.permissions?.query?.({ name: 'microphone' as PermissionName });
     return st?.state ?? 'unknown';
   } catch {
-    // GeckoView 等环境没有 microphone 这一项，查询会抛
+    // 部分 WebView / GeckoView 没有 microphone 这一项，查询会抛
     return 'unsupported';
   }
 }
@@ -115,11 +115,11 @@ export async function probeMic(): Promise<MicProbeResult> {
 export function micErrorHint(name: string): string {
   switch (name) {
     case 'NotAllowedError':
-      return '权限被拒：壳没弹授权框，或点了拒绝。GeckoView 壳要在 AndroidManifest 声明 RECORD_AUDIO、运行时申请，并在 PermissionDelegate.onMediaPermissionRequest 里放行。';
+      return '权限被拒：壳没弹授权框，或点了拒绝。安卓壳要在 AndroidManifest 声明 RECORD_AUDIO、运行时申请，并在系统 WebView 的 WebChromeClient.onPermissionRequest 里放行（若仍是 GeckoView 壳，对应的是 PermissionDelegate.onMediaPermissionRequest）。';
     case 'NotFoundError':
       return '这台设备上没有可用的音频输入（模拟器、或被系统禁用的麦克风都会这样）。换真机再试。';
     case 'NotReadableError':
-      return '「Could not start audio source」是系统层没把麦克风交出来：① 关掉其它正在录音的应用（语音助手、会议、录音机）；② 检查系统麦克风 / 隐私开关没被关掉；③ 壳没有真实的 RECORD_AUDIO 权限时 AudioRecord 初始化就会这样，去系统设置里给壳的录音权限；④ 只在一台机器上出现时，多半是硬件或被占用，不是页面问题。';
+      return '「Could not start audio source」是系统层没把麦克风交出来，按这个顺序查：① 关掉其它正在录音的应用（语音助手、会议、录音机）再点一次；② 系统麦克风 / 隐私开关是不是被关了；③ 壳若已用录音或录屏验证过权限（RECORD_AUDIO + WebChromeClient.onPermissionRequest 放行），就不用再怀疑壳，问题在设备侧；④ 模拟器、没有麦克风的设备上必然如此。';
     case 'OverconstrainedError':
       return '约束太严：指定的输入设备已被拔掉 / 换了。直接再点一次「请求麦克风」，会从默认设备重试。';
     case 'SecurityError':

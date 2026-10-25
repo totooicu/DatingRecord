@@ -1,4 +1,4 @@
-// GeckoView 壳（geckoview_example）原生桥的网页侧客户端。
+// 安卓壳（geckoview_example 这类，当前跑在系统 WebView 上）原生桥的网页侧客户端。
 //
 // 协议和壳里 assets/test.html 完全一致，改一边就得同步另一边：
 //   请求 → window.postMessage({ type: 'gv-bridge-request', id, action, params }, '*')
@@ -147,7 +147,7 @@ export function engineInfo(): EngineInfo {
   return {
     ua,
     secure: typeof window !== 'undefined' ? window.isSecureContext === true : false,
-    // Firefox / GeckoView 的 UA 里有 Gecko/xxxx；Chromium 系没有，别用 AppleWebKit 反推
+    // Firefox / GeckoView 的 UA 里有 Gecko/xxxx；Chromium 系（含系统 WebView）没有，别用 AppleWebKit 反推
     gecko: /Gecko\/|Firefox\//.test(ua),
     android: /Android/i.test(ua),
     standalone,

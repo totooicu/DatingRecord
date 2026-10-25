@@ -1,6 +1,6 @@
 // 适配测试：蓝牙两张卡——中心设备（扫描 / 连接 / GATT 读写订阅）与外设（广播 / 提供值）。
 //
-// 这两项只能走原生桥（Web Bluetooth 在 GeckoView 里没有，壳自己实现了 ble.*）。
+// 这两项只能走原生桥（Web Bluetooth 在 WebView / GeckoView 里都没有，壳自己实现了 ble.*）。
 // 所以这里的失败分两种，状态里要能看出来：桥不通会直接超时，桥通但系统没给权限
 // 会返回具体的错误文字。
 import { useEffect, useState } from 'react';
