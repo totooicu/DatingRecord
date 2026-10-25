@@ -563,3 +563,14 @@
 .memoir-picker-foot-gap {
   flex: 1 1 auto;
 }
+
+.memoir-now {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memoir-playlist-err {
+  color: var(--danger);
+}

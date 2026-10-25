@@ -294,6 +294,7 @@ export function MusicPanel() {
             {m.tracks.length} 首{curIdx >= 0 ? ` · ${curIdx + 1}/${m.tracks.length}` : ''}
             {m.playlistName ? ` · ${m.playlistName}` : ''}
           </div>
+          {m.error && <div className="music-error small">{m.error}</div>}
         </div>
       </div>
 
