@@ -105,9 +105,13 @@ export function nativeLocationStatus(timeoutMs = 4000): Promise<BridgeResult> {
   return invoke('location.status', {}, timeoutMs);
 }
 
-/** 原生记的全部点（每台机器一份，不分文件）；拿不到就当没有 */
+/**
+ * 原生记的点（每台机器一份，不分文件）；拿不到就当没有。
+ * 带上已合并到的游标当 since：新壳只回比它新的点，跑一整天也不用每次回传全量
+ * （旧壳不认这个参数会忽略，照旧返回全部，网页这边有游标挡着重放）。
+ */
 export async function fetchNativeHistory(timeoutMs = 8000): Promise<unknown[]> {
-  const r = await invoke('location.getHistory', {}, timeoutMs);
+  const r = await invoke('location.getHistory', { since: readCursor() }, timeoutMs);
   return Array.isArray(r.points) ? r.points : [];
 }
 

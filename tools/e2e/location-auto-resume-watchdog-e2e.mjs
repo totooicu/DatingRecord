@@ -109,8 +109,12 @@ const MOCK = `
         return reply(m.id, true, { tracking: false });
       case 'location.status':
         return reply(m.id, true, { tracking: NATIVE.tracking, points: NATIVE.points.length });
-      case 'location.getHistory':
-        return reply(m.id, true, { points: NATIVE.points, rev: NATIVE.points.length });
+      case 'location.getHistory': {
+        // 新壳契约：只回 ts > since 的点
+        const since = Number(m.params?.since || 0);
+        const pts = since > 0 ? NATIVE.points.filter((p) => p.ts > since) : NATIVE.points;
+        return reply(m.id, true, { points: pts, rev: NATIVE.points.length });
+      }
       default:
         return reply(m.id, false, null, 'mock 不认这个 action：' + m.action);
     }

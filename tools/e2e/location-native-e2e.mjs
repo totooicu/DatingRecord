@@ -103,8 +103,12 @@ const MOCK = `
         return reply(m.id, true, { tracking: false });
       case 'location.status':
         return reply(m.id, true, { tracking: NATIVE.tracking, points: NATIVE.points.length });
-      case 'location.getHistory':
-        return reply(m.id, true, { points: NATIVE.points, rev: NATIVE.points.length });
+      case 'location.getHistory': {
+        // 新壳契约：只回 ts > since 的点（网页把已合并到的游标传过来）
+        const since = Number(m.params?.since || 0);
+        const pts = since > 0 ? NATIVE.points.filter((p) => p.ts > since) : NATIVE.points;
+        return reply(m.id, true, { points: pts, rev: NATIVE.points.length });
+      }
       default:
         return reply(m.id, false, null, 'mock 不认这个 action：' + m.action);
     }
@@ -229,6 +233,8 @@ check('刷新后仍是同一份文件', (await p.locator('.loc-card-head', { has
 const resumedCalls = await calls();
 check('接管时重新推了 location.setConfig（恢复原生接管）', resumedCalls.some((c) => c.action === 'location.setConfig' && c.params?.enabled === true), JSON.stringify(resumedCalls.map((c) => c.action)));
 check('接管时拉了 location.getHistory', resumedCalls.some((c) => c.action === 'location.getHistory'), JSON.stringify(resumedCalls.map((c) => c.action)));
+const histCall = resumedCalls.find((c) => c.action === 'location.getHistory');
+check('拉历史带了 since 游标（壳只回比它新的点）', (histCall?.params?.since ?? 0) > 0, JSON.stringify(histCall?.params));
 check('挂起期间的点补进来了（3 + 1）', (await rowCount()) === 4, `rows=${await rowCount()}`);
 check('刷新后页面还是不用自己的 GPS', (await geoCalls()) === 0, `geoCalls=${await geoCalls()}`);
 
