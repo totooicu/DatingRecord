@@ -1,5 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#d9536b"/>
-  <path d="M256 392c-8 0-15-4-19-11l-46-80c-4-7-4-15 0-22l46-80c4-7 11-11 19-11s15 4 19 11l46 80c4 7 4 15 0 22l-46 80c-4 7-11 11-19 11z" fill="none" stroke="#fff" stroke-width="26" stroke-linejoin="round"/>
-  <circle cx="256" cy="288" r="34" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" width="512" height="512">
+  <!-- 与安卓壳图标同源：青绿对角渐变圆 + 白色「三节点辐射」图形（三点三线，底部圆帽交汇） -->
+  <defs>
+    <linearGradient id="dr-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22b89d"/>
+      <stop offset="1" stop-color="#09938d"/>
+    </linearGradient>
+  </defs>
+  <circle cx="72" cy="72" r="54" fill="url(#dr-bg)"/>
+  <g stroke="#ffffff" stroke-width="6" stroke-linecap="round">
+    <line x1="71" y1="53" x2="71" y2="88"/>
+    <line x1="48" y1="71" x2="71" y2="88"/>
+    <line x1="94" y1="71" x2="71" y2="88"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="71" cy="53" r="7.6"/>
+    <circle cx="48" cy="71" r="7.6"/>
+    <circle cx="94" cy="71" r="7.6"/>
+  </g>
 </svg>
