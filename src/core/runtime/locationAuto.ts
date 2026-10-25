@@ -323,11 +323,13 @@ export function initLocationAutoService(): void {
   // 阈值 / 策略归页面存档：刷新后接着上次的值，和推给壳的是同一个数
   if (cfg.thresholdM !== state.threshold) patch({ threshold: cfg.thresholdM });
   if (cfg.strategy !== state.strategy) patch({ strategy: cfg.strategy });
-  registerAutoService(state.running);
-  void restoreLastFile();
-  // 壳里：上次退出时是开着的，壳的前台服务已经按 dr.autoLocation 拉起来了，
-  // 页面这边直接接管（不然服务页显示未运行，原生记的点也没人合并）
-  if (cfg.enabled && nativeLocationAvailable()) void adoptNative();
+  // 上次在跑（cfg.enabled）或用户开了自启动，开机就该把服务拉起来。
+  // 统一走 startAuto 这条路（原生有「推配置 + 宽限期内退回页面定时器」的兜底），
+  // 不再单独用 adoptNative——它失败时不会退回页面定时器，会留下「既没原生也没
+  // 页面定时器」的死状态，表现就是「刷新后连续打点没反应」。
+  const resumeOnBoot = cfg.enabled || isServiceAutostart(SERVICE_ID);
+  registerAutoService(resumeOnBoot);
+  void restoreLastFile(resumeOnBoot);
   if (!visibilityWatched) {
     visibilityWatched = true;
     document.addEventListener('visibilitychange', () => {
@@ -338,12 +340,16 @@ export function initLocationAutoService(): void {
 }
 
 
-async function restoreLastFile(): Promise<void> {
+async function restoreLastFile(resume: boolean): Promise<void> {
   const id = getActiveLocationId();
-  if (!id) return;
+  if (!id) {
+    if (resume) setServiceNote(SERVICE_ID, '未选择打点文件，无法自启动连续打点');
+    return;
+  }
   const f = getLocationFile(id);
   if (!f) {
     setActiveLocationId(null);
+    if (resume) setServiceNote(SERVICE_ID, '未选择打点文件，无法自启动连续打点');
     return;
   }
   patch({ fileId: f.id, fileName: f.name });
@@ -352,8 +358,9 @@ async function restoreLastFile(): Promise<void> {
     if (state.fileId !== f.id) return;
     patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, offsets: doc.offsets, saving: 'idle', fileReady: true });
     // 内容读完了才允许自动打点——否则先写空会把旧点覆盖掉。
-    // 开了自启动就在这里拉起服务（比统一恢复那一步更稳，能拿到完整行数）。
-    if (isServiceAutostart(SERVICE_ID) && !state.running) startAuto();
+    // 上次在跑（或开了自启动）就在这里拉起服务：比统一恢复那一步更稳，能拿到完整行数，
+    // 而且统一走 startAuto，原生 / 页面定时器两条路都有兜底，不会出现「刷新后死寂」。
+    if (resume && !state.running) startAuto();
     // 原生在跑而这里是刚读出文件：把挂起期间记的点补进来
     if (state.native) void mergeNativeHistory();
   } catch {
@@ -412,7 +419,17 @@ export function setSampleStrategy(s: SampleStrategy): void {
   patch({ strategy: s, streak: 0 });
   writeAutoConfig(configOf(state.running));
   scheduleConfigPush();
-  if (state.running && !state.native) armNextTick();
+  if (state.running && !state.native) {
+    armNextTick();
+  } else if (state.running && state.native) {
+    // 原生模式下切策略：顺手确认壳还在不在记，不在就立刻退回页面定时器，
+    // 否则 native:true 压着页面定时器、壳又不推点，切到哪种策略都「没反应」。
+    void nativeLocationStatus(2000)
+      .then((st) => {
+        if (!(st && st.tracking === true)) startNativeTrack();
+      })
+      .catch(() => startNativeTrack());
+  }
 }
 
 /**
@@ -674,58 +691,94 @@ function attachNative(): void {
   patch({ running: true, native: true });
   registerAutoService(true);
   setServiceNote(SERVICE_ID, '由壳的原生服务记录，退到后台也继续');
+  startNativeWatchdog();
   void mergeNativeHistory();
 }
 
 function detachNative(): void {
   nativeUnsub?.();
   nativeUnsub = null;
+  stopNativeWatchdog();
   if (state.native) patch({ native: false });
 }
 
-/** 壳里开始打点：先点亮界面，再把配置推下去；推不动就退回页面定时器 */
+/** 壳里开始打点：乐观接管（点亮原生界面 + 订阅事件），把配置推下去；
+ *  壳到底在不在记，交给原生看门狗在宽限期内确认——不在才退回页面定时器。
+ *  不在 startNativeTrack 里立刻退回，是因为壳读 dr.autoLocation 自起服务需要时间，
+ *  刚刷新时桥 / 服务可能还没就绪，过早退回会让「壳和页面双记」。 */
 function startNativeTrack(): void {
   attachNative();
+  startNativeWatchdog();
   void pushAutoConfig(configOf(true), 8000)
-    .then(async (r) => {
-      // 壳回了 ok 不代表服务真的起来了：缺定位权限时壳可能静默跳过
-      //（ok:true 但 tracking:false，界面却说「由壳记录」）。查一眼状态兜底，
-      // 真在跑才留着原生路径，否则退回页面定时器并说明原因。
+    .then((r) => {
+      // 壳明确回了、但服务没真起来（缺权限等）：这是确定性的「壳现在记不了」，
+      // 立即退回页面定时器（此时壳也不会按 dr.autoLocation 自起，不会双记）。
       if (r.tracking === true) return;
-      const st = await nativeLocationStatus(2000).catch(() => null);
-      if (st && st.tracking === true) return;
       detachNative();
       setServiceNote(SERVICE_ID, '壳的定位服务没起来（可能没授权定位），已退回页面定时器记录');
       startPageTimer();
     })
-    .catch(async () => {
-      // 超时 / 壳明确拒绝（ok:false，如权限被拒、壳界面不可用）：
-      // 先问一句状态，真在跑就不退回（授权弹窗结果迟到等情况）
-      const st = await nativeLocationStatus(2000).catch(() => null);
-      if (st && st.tracking === true) return;
-      detachNative();
-      setServiceNote(SERVICE_ID, '壳没有响应定位桥，已退回页面定时器记录');
-      startPageTimer();
+    .catch(() => {
+      // 配置没推到壳（桥还没就绪 / 超时）：不急着重退，交给看门狗在宽限期内再确认，
+      // 避免刚刷新时壳正按 dr.autoLocation 自起服务，过早退回会「双记」。
+      setServiceNote(SERVICE_ID, '壳暂时没响应定位配置，正在重试');
     });
 }
 
-/** 重启后接管：存档说开着，壳的前台服务一般已经起来了，问一下状态再挂上 */
-async function adoptNative(): Promise<void> {
-  try {
-    const st = await nativeLocationStatus();
-    if (st.tracking === true) {
-      attachNative();
+// ---- 原生看门狗 ----
+//
+// 原生模式最怕「壳静默停了」：权限被收回、被系统杀后台、桥断了，页面却还停在
+// native:true，armNextTick 早退不排程、壳又不推点，于是「连续打点没反应」。
+// 看门狗周期性问 status，连续 N 次确认壳没在记录才退回页面定时器（前台照记，
+// 退后台才断）。宽限期给壳按 dr.autoLocation 自起服务留出时间，避免过早退回导致双记。
+
+let nativeWatchdog: number | null = null;
+let nativeFailStreak = 0;
+const NATIVE_WATCHDOG_MS = 6000;
+const NATIVE_FAIL_LIMIT = 3; // 连续 3 次（约 18s）没在记录才退，壳冷起通常几秒就好
+
+function startNativeWatchdog(): void {
+  if (nativeWatchdog !== null) return;
+  nativeWatchdog = window.setInterval(() => {
+    // 不在原生模式（退回页面定时器或已停止）就自停，别空转
+    if (!state.running || !state.native) {
+      stopNativeWatchdog();
       return;
     }
-    // 存档开着但服务没跑（被系统停掉 / 权限被收回）：按存档再拉一次
-    await pushAutoConfig(configOf(true));
-    const again = await nativeLocationStatus().catch(() => null);
-    if (again && again.tracking === true) attachNative();
-    else setServiceNote(SERVICE_ID, '原生定位服务没起来，检查是否允许「始终使用位置」');
-  } catch {
-    // 旧壳没有 location.*：按普通浏览器处理，用户点开始再走页面定时器
-  }
+    void nativeLocationStatus(2000)
+      .then((st) => {
+        if (st && st.tracking === true) {
+          nativeFailStreak = 0;
+          return;
+        }
+        nativeFailStreak += 1;
+        if (nativeFailStreak >= NATIVE_FAIL_LIMIT) {
+          nativeFailStreak = 0;
+          detachNative();
+          setServiceNote(SERVICE_ID, '壳的定位服务没在记录，已退回页面定时器（退到后台会暂停）');
+          startPageTimer();
+        }
+      })
+      .catch(() => {
+        nativeFailStreak += 1;
+        if (nativeFailStreak >= NATIVE_FAIL_LIMIT) {
+          nativeFailStreak = 0;
+          detachNative();
+          setServiceNote(SERVICE_ID, '壳没有响应定位状态，已退回页面定时器（退到后台会暂停）');
+          startPageTimer();
+        }
+      });
+  }, NATIVE_WATCHDOG_MS);
 }
+
+function stopNativeWatchdog(): void {
+  if (nativeWatchdog !== null) {
+    window.clearInterval(nativeWatchdog);
+    nativeWatchdog = null;
+  }
+  nativeFailStreak = 0;
+}
+
 
 // ---- 自动打点（后台服务本体） ----
 

@@ -220,7 +220,7 @@ await p.waitForTimeout(2500);
 await openLocationRecords();
 check('刷新后仍是同一份文件', (await p.locator('.loc-card-head', { hasText: '壳连续定位' }).first().innerText()).includes('壳连续定位'));
 const resumedCalls = await calls();
-check('接管时问了 location.status', resumedCalls.some((c) => c.action === 'location.status'), JSON.stringify(resumedCalls.map((c) => c.action)));
+check('接管时重新推了 location.setConfig（恢复原生接管）', resumedCalls.some((c) => c.action === 'location.setConfig' && c.params?.enabled === true), JSON.stringify(resumedCalls.map((c) => c.action)));
 check('接管时拉了 location.getHistory', resumedCalls.some((c) => c.action === 'location.getHistory'), JSON.stringify(resumedCalls.map((c) => c.action)));
 check('挂起期间的点补进来了', (await rowCount()) === 3, `rows=${await rowCount()}`);
 check('刷新后页面还是不用自己的 GPS', (await geoCalls()) === 0, `geoCalls=${await geoCalls()}`);
