@@ -1,5 +1,4 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { BackgroundIcons } from './background/BackgroundIcons';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -196,7 +195,6 @@ export function PageHead({
       )}
       <h2 className="page-head-title">{title}</h2>
       <div className="page-head-right">
-        <BackgroundIcons />
         {right}
       </div>
     </div>
