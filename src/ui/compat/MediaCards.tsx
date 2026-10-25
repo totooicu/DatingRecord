@@ -6,7 +6,14 @@ import { useEffect, useRef, useState } from 'react';
 
 import { CompatCard, CompatRow, CompatStatus, type StatusState } from './ui';
 import { setTestResult } from './report';
-import { micErrorHint, permissionLabel, probeMic, trackSummary, type MicProbeResult } from './mic';
+import {
+  micDeniedHint,
+  micErrorHint,
+  permissionLabel,
+  probeMic,
+  trackSummary,
+  type MicProbeResult,
+} from './mic';
 
 /* ---------------- 麦克风 ---------------- */
 
@@ -14,6 +21,8 @@ export function MicCard() {
   const [state, setState] = useState<StatusState>('idle');
   const [text, setText] = useState('未测试');
   const [meterOn, setMeterOn] = useState(false);
+  const [meterHint, setMeterHint] = useState('');
+  const [denied, setDenied] = useState(false);
   const [diag, setDiag] = useState<MicProbeResult | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -31,6 +40,7 @@ export function MicCard() {
     rafRef.current = null;
     if (meterRef.current) meterRef.current.style.width = '0%';
     setMeterOn(false);
+    setMeterHint('');
   };
 
   // 离开这一页就把麦克风关掉：适配测试不该在后台一直占着录音
@@ -48,9 +58,20 @@ export function MicCard() {
     setState('wait');
     setText('请求中… 会按「默认 → 原始音频 → 指定设备」依次试，可能要过几轮系统弹窗');
     setDiag(null);
+    setDenied(false);
 
     const r = await probeMic();
     setDiag(r);
+
+    // 权限被系统拒绝：不试约束，直接给恢复路径。安卓壳拒绝一次同源就记住了，
+    // 不说清楚「去哪里恢复」，用户只会反复重点「请求麦克风」然后反复失败。
+    if (r.denied) {
+      setState('err');
+      setText('录音权限已被系统拒绝，不会再弹授权框');
+      setTestResult('mic', 'err', '权限被拒');
+      setDenied(true);
+      return;
+    }
 
     if (!r.stream) {
       const last = r.failures[r.failures.length - 1];
@@ -76,11 +97,36 @@ export function MicCard() {
       if (!Ctor) throw new Error('不支持 AudioContext');
       const ctx = new Ctor();
       ctxRef.current = ctx;
+      // 安卓壳的系统 WebView 默认「媒体播放需要用户手势」：探测链上有 await，
+      // 手势上下文已经断了，AudioContext 会停在 suspended——频谱全是 0，
+      // 页面显示「已授权」但音量条一动不动，看着就像录音没拿到。
+      // 先主动 resume；注意真机上没有手势时 resume() 的 promise 会一直挂着，
+      // 不能死等——赛跑 400ms，还不醒就挂一个一次性 pointerdown，
+      // 用户点一下页面任意处再拉起来。
+      if (ctx.state !== 'running') {
+        await Promise.race([
+          ctx.resume().catch(() => undefined),
+          new Promise((r) => setTimeout(r, 400)),
+        ]);
+      }
+      if (ctx.state !== 'running') {
+        setMeterHint('音量条还没激活：这台壳要求先有一次点按。点页面任意位置即可启动音量监测。');
+        const wake = () => {
+          void ctxRef.current?.resume().catch(() => undefined);
+          if (ctxRef.current?.state === 'running') {
+            setMeterHint('');
+            document.removeEventListener('pointerdown', wake);
+          }
+        };
+        document.addEventListener('pointerdown', wake);
+      }
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       ctx.createMediaStreamSource(r.stream).connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
+        // stop() 之后 ctx 已 close，getByteFrequencyData 会抛；直接收工
+        if (!ctxRef.current || ctxRef.current.state === 'closed') return;
         analyser.getByteFrequencyData(data);
         let sum = 0;
         for (let i = 0; i < data.length; i += 1) sum += data[i];
@@ -116,6 +162,7 @@ export function MicCard() {
         </button>
       </CompatRow>
       <CompatStatus state={state} text={text} />
+      {meterOn && meterHint && <p className="muted small compat-hint">{meterHint}</p>}
       {meterOn && (
         <div className="compat-meter" aria-hidden>
           <i
@@ -124,6 +171,13 @@ export function MicCard() {
             }}
           />
         </div>
+      )}
+
+      {denied && (
+        <p className="compat-fix muted small">
+          <strong>怎么恢复：</strong>
+          {micDeniedHint()}
+        </p>
       )}
 
       {diag && (

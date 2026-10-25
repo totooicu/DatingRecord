@@ -8,6 +8,8 @@
 // K6 离开子页再回来，汇总里刚才的结果还在（模块级状态）
 // K8 麦克风失败路径：每档约束的结果 + 设备/权限 + 「怎么办」都列出来（无音频设备的 Chromium）
 // K9 麦克风成功路径：带假音频设备启动 Chromium，应授权成功、音量条出现、汇总标 ✓
+// K10 权限被拒路径：Permissions API 报 denied 时不试约束、给系统设置恢复指引、不白弹授权
+// K11 音量条可运行：成功后 AudioContext 必须是 running（安卓壳默认要手势，suspended 会让条恒 0）
 //
 // 依赖：`npm run build` 后用静态服务器起 dist，再装 playwright。
 // 用法：node tools/e2e/compat-test-e2e.mjs [url]
@@ -341,6 +343,176 @@ check('汇总里麦克风 ✓', /✓/.test(await m.locator('.compat-chip', { has
 await micCard2.scrollIntoViewIfNeeded();
 await m.screenshot({ path: '/tmp/compat-shots/compat-mic-ok.png' });
 await micBrowser.close();
+
+console.log('\nK10 权限被拒路径（Permissions API 报 denied）');
+const dctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const d = await dctx.newPage();
+d.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
+await d.addInitScript(() => {
+  const md = navigator.mediaDevices;
+  if (md && md.getUserMedia) {
+    const orig = md.getUserMedia.bind(md);
+    window.__gumCalls = 0;
+    md.getUserMedia = (...a) => {
+      window.__gumCalls += 1;
+      return orig(...a);
+    };
+  }
+  try {
+    Object.defineProperty(navigator.permissions, 'query', {
+      configurable: true,
+      value: async () => ({ state: 'denied' }),
+    });
+  } catch {
+    /* 个别环境禁写，K10 会因 mock 失败而暴露 */
+  }
+});
+await d.goto(APP, { waitUntil: 'load' });
+await d.waitForFunction(
+  () => !document.getElementById('boot') || document.getElementById('boot').style.display === 'none',
+  null,
+  { timeout: 90000 },
+);
+const dSample = d.getByText('载入示例数据看看效果');
+await dSample.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+if (await dSample.count()) {
+  await dSample.click();
+  await d.waitForTimeout(2500);
+}
+await d.locator('.tabbar-item', { hasText: '设置' }).click();
+await d.waitForTimeout(500);
+await d.locator('.settings-nav-title', { hasText: '功能体验' }).click();
+await d.waitForTimeout(400);
+await d.locator('.settings-hub-item', { has: d.locator('.settings-hub-title', { hasText: '软件适配测试' }) }).click();
+await d.waitForTimeout(600);
+const micCard3 = d.locator('.compat-card', { hasText: '麦克风测试' });
+await micCard3.getByRole('button', { name: '请求麦克风' }).click();
+await d.waitForTimeout(1500);
+const deniedStatus = (await micCard3.locator('.compat-status').innerText()).replace(/\n/g, ' | ');
+check('denied 时状态写明权限被拒', /权限已被系统拒绝/.test(deniedStatus), deniedStatus);
+const deniedFix = await micCard3.locator('.compat-fix').innerText().catch(() => '');
+check('给出「怎么恢复」指引（设置 → 应用 → 权限）', /怎么恢复：/.test(deniedFix) && /设置 → 应用/.test(deniedFix), deniedFix.slice(0, 80));
+const gumCalls = await d.evaluate(() => window.__gumCalls ?? -1);
+check('denied 时不再调用 getUserMedia（不白弹授权）', gumCalls === 0, `calls=${gumCalls}`);
+check('denied 时设备/权限行仍展示（权限：已拒绝）', /权限：已拒绝/.test(await micCard3.locator('.compat-diag p').first().innerText()));
+check('汇总里麦克风标 ✗', /✗/.test(await d.locator('.compat-chip', { hasText: '麦克风' }).innerText()));
+await dctx.close();
+
+console.log('\nK11 音量条可运行（AudioContext 必须 running）');
+const mb2 = await chromium.launch({
+  executablePath: process.env.CHROMIUM || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
+  args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+});
+const mctx2 = await mb2.newContext({ viewport: { width: 390, height: 844 } });
+const m2 = await mctx2.newPage();
+m2.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
+await mctx2.addInitScript(() => {
+  const orig = AudioContext.prototype.resume;
+  window.__resumeCalls = 0;
+  window.__ctxStates = [];
+  AudioContext.prototype.resume = function patched(...a) {
+    window.__resumeCalls += 1;
+    return orig.apply(this, a);
+  };
+  const Orig = window.AudioContext;
+  window.AudioContext = class extends Orig {
+    constructor(...a) {
+      super(...a);
+      window.__ctxStates.push(this.state);
+    }
+  };
+});
+await m2.goto(APP, { waitUntil: 'load' });
+await m2.waitForFunction(
+  () => !document.getElementById('boot') || document.getElementById('boot').style.display === 'none',
+  null,
+  { timeout: 90000 },
+);
+const m2Sample = m2.getByText('载入示例数据看看效果');
+await m2Sample.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+if (await m2Sample.count()) {
+  await m2Sample.click();
+  await m2.waitForTimeout(2500);
+}
+await m2.locator('.tabbar-item', { hasText: '设置' }).click();
+await m2.waitForTimeout(500);
+await m2.locator('.settings-nav-title', { hasText: '功能体验' }).click();
+await m2.waitForTimeout(400);
+await m2.locator('.settings-hub-item', { has: m2.locator('.settings-hub-title', { hasText: '软件适配测试' }) }).click();
+await m2.waitForTimeout(600);
+const micCard4 = m2.locator('.compat-card', { hasText: '麦克风测试' });
+await micCard4.getByRole('button', { name: '请求麦克风' }).click();
+await m2.waitForTimeout(2500);
+const ctxStates = await m2.evaluate(() => window.__ctxStates ?? []);
+check('授权后创建的 AudioContext 是 running', ctxStates.length === 1 && ctxStates[0] === 'running', JSON.stringify(ctxStates));
+const resumeCalls = await m2.evaluate(() => window.__resumeCalls ?? -1);
+check('suspended 时会调 resume 拉起来（running 时 0 次也正常）', resumeCalls >= 0, `calls=${resumeCalls}`);
+check('音量条出现', (await micCard4.locator('.compat-meter').count()) === 1);
+await mb2.close();
+
+// K11b 模拟安卓壳：AudioContext 初始 suspended。这是真机上音量条恒 0 的根因，
+// 验证 resume + 激活提示 + 点按唤醒三件套。
+console.log('\nK11b 音量条激活（模拟安卓壳 suspended）');
+const mb3 = await chromium.launch({
+  executablePath: process.env.CHROMIUM || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
+  args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+});
+const mctx3 = await mb3.newContext({ viewport: { width: 390, height: 844 } });
+const m3 = await mctx3.newPage();
+m3.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
+await mctx3.addInitScript(() => {
+  const Orig = window.AudioContext;
+  window.__suspended = { resumeCalls: 0, forced: 'suspended', hintSeen: false };
+  window.AudioContext = class extends Orig {
+    constructor(...a) {
+      super(...a);
+      const box = window.__suspended;
+      // 影子原型上的 state getter：让这个实例永远先报 suspended
+      Object.defineProperty(this, 'state', {
+        configurable: true,
+        get: () => box.forced,
+      });
+      this.resume = () => {
+        box.resumeCalls += 1;
+        // 忠实模拟真机：无用户手势时 resume() 的 promise 一直挂着、state 不变；
+        // 页面挂的 pointerdown 唤醒句柄触发第二次 resume 时才真正放行
+        if (box.resumeCalls >= 2) {
+          box.forced = 'running';
+          return Promise.resolve();
+        }
+        return new Promise(() => {});
+      };
+    }
+  };
+});
+await m3.goto(APP, { waitUntil: 'load' });
+await m3.waitForFunction(
+  () => !document.getElementById('boot') || document.getElementById('boot').style.display === 'none',
+  null,
+  { timeout: 90000 },
+);
+const m3Sample = m3.getByText('载入示例数据看看效果');
+await m3Sample.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+if (await m3Sample.count()) {
+  await m3Sample.click();
+  await m3.waitForTimeout(2500);
+}
+await m3.locator('.tabbar-item', { hasText: '设置' }).click();
+await m3.waitForTimeout(500);
+await m3.locator('.settings-nav-title', { hasText: '功能体验' }).click();
+await m3.waitForTimeout(400);
+await m3.locator('.settings-hub-item', { has: m3.locator('.settings-hub-title', { hasText: '软件适配测试' }) }).click();
+await m3.waitForTimeout(600);
+const micCard5 = m3.locator('.compat-card', { hasText: '麦克风测试' });
+await micCard5.getByRole('button', { name: '请求麦克风' }).click();
+await m3.waitForTimeout(2500);
+const s1 = await m3.evaluate(() => window.__suspended);
+check('suspended 时页面调了 resume', s1.resumeCalls >= 1, JSON.stringify(s1));
+check('显示激活提示（点页面任意处）', /音量条还没激活/.test(await micCard5.locator('.compat-hint').innerText().catch(() => '')));
+await m3.mouse.click(195, 400);
+await m3.waitForTimeout(500);
+check('点按后提示消失', (await micCard5.locator('.compat-hint').count()) === 0);
+await mb3.close();
 
 console.log(`\n========== 汇总 ==========\n${failures.length ? `失败 ${failures.length} 项：${failures.join('、')}` : '全部通过 ✓'}`);
 await browser.close();
