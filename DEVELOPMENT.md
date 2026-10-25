@@ -490,11 +490,17 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **麦克风为什么单独一套逻辑**：`NotReadableError · Could not start audio source` 在 Android 上几乎都不是页面代码的问题——AudioRecord 根本没起来。排查顺序按可能性从高到低：麦克风被别的应用占着 → 系统麦克风 / 隐私开关关掉 → 壳的录音权限（`RECORD_AUDIO` + `WebChromeClient.onPermissionRequest`；旧 GeckoView 壳是 `PermissionDelegate.onMediaPermissionRequest`。当前壳已用录音 / 录屏验证过，所以这一条基本可以先排除）→ 默认约束跟这台设备对不上。所以 `ui/compat/mic.ts` 按「默认 → 原始音频（关回声消除 / 降噪 / 自动增益）→ 指定某个 audioinput 的 deviceId」依次试，权限类错误（`NotAllowedError` / `SecurityError`）立即收手不再弹窗；每档之间留 250ms 让上一档松手；每次请求前先停掉自己上一次握着的流（同一页面重复申请在部分机型上也直接报 `NotReadableError`）。失败时页面列出：`enumerateDevices()` 里 audioinput 的数量与名字、Permissions API 的 microphone 状态、每档的错误名与原文，以及对最后一条错误的「怎么办」。
 
+在此基础上还有三条安卓壳上的实战修正（2026-10-25）：
+
+1. **权限被拒单独一路**：`navigator.permissions.query` 报 `denied` 时连 `getUserMedia` 都不调——安卓壳 / WebView 对拒绝过的来源会一直记住、不再弹框，反复重点只是反复失败。页面直接给「怎么恢复」（设置 → 应用 → 权限 → 麦克风 / 浏览器站点设置），汇总记 ✗。
+2. **授权后才重新枚举设备**：WebView 在 `RECORD_AUDIO` 授予前返回的 audioinput 是空 label、甚至空 deviceId，「指定设备」档拿授权前的清单去 `exact` 只会换来 `OverconstrainedError`。第一档失败后重新枚举一次，真名才拿得到。
+3. **占用释放等待 + 音量条激活**：`NotReadableError` 常是麦克风被别的应用占着，补一次 1.5s 后的默认档重试；音量条这边，安卓 WebView 默认「媒体播放需要用户手势」，探测链上的 `await` 会断掉手势上下文，`AudioContext` 停在 `suspended`、频谱恒 0（页面显示「已授权」但条不动，最像「录音坏了」）。所以创建后主动 `resume()`，仍不醒就挂一次性 `pointerdown`，用户点一下页面即激活。
+
 **壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未注入——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
 
 **同时下线**：功能面板里的「高精度定位」（高德官方 demo 诊断页）已删除，`panelPrecise` 路由、图标与组件一并移除——定位诊断由这一页的「定位」卡承担，它不依赖高德 key。
 
-**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K9）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）。
+**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K11）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）；K10 mock Permissions API 报 denied，验证不调 getUserMedia、给「怎么恢复」指引、汇总 ✗；K11 断言授权后 AudioContext 是 running（防 suspended 让音量条恒 0 的回归）。
 
 ### 1.15 连续定位：壳里交给原生前台服务
 
