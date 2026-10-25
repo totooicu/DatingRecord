@@ -14,6 +14,7 @@ import {
   rowToTemplate,
   rowToAiModel,
   rowToMessage,
+  rowToMemoir,
   type Row,
 } from './mappers';
 
@@ -89,6 +90,9 @@ export async function buildLibrary(
     messages: queryAll<Row>(
       'SELECT * FROM event_messages WHERE deleted_at IS NULL ORDER BY event_id ASC, order_key ASC',
     ).map(rowToMessage),
+    memoirs: queryAll<Row>(
+      'SELECT * FROM memoirs WHERE deleted_at IS NULL ORDER BY created_at ASC',
+    ).map(rowToMemoir),
   };
 }
 

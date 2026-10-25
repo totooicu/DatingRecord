@@ -9,3 +9,4 @@ export { rowToCollection, collectionToRow, rowToMember } from './collection';
 export { rowToAttachment } from './attachment';
 export { rowToTemplate, templateToRow } from './template';
 export { rowToAiModel, aiModelToRow } from './ai';
+export { rowToMemoir, memoirToRow } from './memoir';

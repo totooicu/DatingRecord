@@ -22,6 +22,7 @@ import { SmartList } from './SmartList';
 import { RuleModal } from './RuleModal';
 import { AddEventModal } from './AddEventModal';
 import { MoveModal } from './MoveModal';
+import { MemoirList } from '../memoir';
 
 export function CollectionDetail({ id }: { id: string }) {
   const v = useVersion();
@@ -47,12 +48,15 @@ export function CollectionDetail({ id }: { id: string }) {
   const [ruleDismissed, setRuleDismissed] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  /** 事件 = 流水；回忆 = 从这些事件里挑出来排好的册子 */
+  const [tab, setTab] = useState<'events' | 'memories'>('events');
 
   // 所有 hook 必须集中在「collection 不存在」的早退之前，否则组件复用时会乱序
   const smart = !!collection && isSmart(collection);
 
   useEffect(() => {
     setRuleDismissed(false);
+    setTab('events');
   }, [id]);
 
   useEffect(() => {
@@ -90,6 +94,30 @@ export function CollectionDetail({ id }: { id: string }) {
 
       {msg && <div className="alert">{msg}</div>}
 
+      <div className="aichat-tabs collect-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'events'}
+          className={tab === 'events' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => setTab('events')}
+        >
+          事件
+          <span className="aichat-tab-n">{smart ? smartEvents.length : members.length}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'memories'}
+          className={tab === 'memories' ? 'aichat-tab aichat-tab-on' : 'aichat-tab'}
+          onClick={() => setTab('memories')}
+        >
+          回忆
+        </button>
+      </div>
+
+      {tab === 'memories' ? (
+        <MemoirList collectionId={id} collectionName={collection.name} />
+      ) : (
+        <>
       <CollectionStats
         collectionId={id}
         members={smart ? [] : members}
@@ -112,6 +140,8 @@ export function CollectionDetail({ id }: { id: string }) {
           onEditEvent={setEditingEventId}
           onAdd={() => setAddOpen(true)}
         />
+      )}
+        </>
       )}
 
       {ruleOpen && (

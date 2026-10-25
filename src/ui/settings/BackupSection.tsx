@@ -25,7 +25,7 @@ export function BackupSection() {
       setResult(
         `导入完成（${r.mode === 'merge' ? '合并' : '替换'}）：` +
           `属性 ${r.counts.defs}、人物 ${r.counts.persons}、事件 ${r.counts.events}、` +
-          `事件集 ${r.counts.collections}、成员 ${r.counts.members}；跳过 ${r.skipped}（本地更新）` +
+          `事件集 ${r.counts.collections}、成员 ${r.counts.members}、回忆录 ${r.counts.memoirs ?? 0}；跳过 ${r.skipped}（本地更新）` +
           (r.backupName ? `。已自动备份：${r.backupName}` : ''),
       );
     } catch (e) {

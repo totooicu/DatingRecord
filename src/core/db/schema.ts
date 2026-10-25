@@ -196,6 +196,26 @@ CREATE TABLE IF NOT EXISTS ai_models (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_alias ON ai_models(alias);
 
+-- 回忆录（schema v12 新增）：
+--   事件集里的一次回顾。pages_json 只存「指向哪个事件 + 选图 / 摘句 / 导语」，
+--   标题、时间、地点、正文都从 events 实时取，避免复制正文后与事件脱节。
+--   scope_json 是冻结的事件 id 快照（见 core/types/memoir.ts）。
+CREATE TABLE IF NOT EXISTS memoirs (
+  id TEXT PRIMARY KEY,
+  collection_id TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  subtitle TEXT NOT NULL DEFAULT '',
+  cover_file_id TEXT,
+  playlist_id TEXT,
+  scope_json TEXT NOT NULL DEFAULT '{}',
+  pages_json TEXT NOT NULL DEFAULT '[]',
+  source TEXT NOT NULL DEFAULT 'manual',
+  ai_model TEXT,
+  device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+  created_at TEXT, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memoirs_collection ON memoirs(collection_id);
+
 CREATE TABLE IF NOT EXISTS oplog (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   hlc TEXT NOT NULL,

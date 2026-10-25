@@ -24,6 +24,7 @@ import {
   templateToRow,
   aiModelToRow,
   messageToRow,
+  memoirToRow,
 } from './mappers';
 
 export interface ImportResult {
@@ -84,7 +85,7 @@ export async function importLibrary(
     throw new Error(`文件版本 ${version} 高于当前支持的 ${SCHEMA_VERSION}，请升级软件`);
   }
 
-  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0, messages: 0 };
+  const counts: Record<string, number> = { defs: 0, persons: 0, events: 0, collections: 0, members: 0, attachments: 0, templates: 0, aiModels: 0, messages: 0, memoirs: 0 };
   const importedAttachments: Attachment[] = [];
   let skipped = 0;
   let backupName: string | undefined;
@@ -119,6 +120,7 @@ export async function importLibrary(
         // 之前的清空列表漏了 attachments，替换导入会留下上一份库的附件
         'attachments',
         'ai_models',
+        'memoirs',
       ]) {
         run(`DELETE FROM ${t}`);
       }
@@ -186,6 +188,11 @@ export async function importLibrary(
         },
       );
       ok ? counts.members++ : skipped++;
+    }
+    for (const m of lib.memoirs ?? []) {
+      const ok = upsertByHlc('memoirs', 'id', m.id, m.hlc ?? null, memoirToRow(m));
+      ok ? counts.memoirs++ : skipped++;
+      hlcReceive(m.hlc ?? '');
     }
     for (const t of lib.templates ?? []) {
       const ok = upsertByHlc(

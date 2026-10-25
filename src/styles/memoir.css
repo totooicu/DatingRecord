@@ -1,0 +1,451 @@
+/* ---------- 回忆录（事件集里的「回忆」页签） ---------- */
+
+.collect-tabs {
+  margin: 4px 0 12px;
+}
+
+/* 列表 */
+
+.memoir-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.memoir-toolbar-end {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.memoir-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.memoir-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.memoir-cover {
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  display: block;
+  background: var(--side);
+}
+
+.memoir-cover-empty {
+  background: linear-gradient(135deg, #f3ece6, #e8e1d8);
+}
+
+.memoir-card-main {
+  padding: 10px 12px 6px;
+  flex: 1;
+}
+
+.memoir-card-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.memoir-card-sub {
+  margin: 0 0 4px;
+}
+
+.memoir-card-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  flex-wrap: wrap;
+}
+
+/* 新建 */
+
+.memoir-field {
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memoir-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+
+.memoir-range label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memoir-date {
+  width: 150px;
+}
+
+.memoir-pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 8px;
+}
+
+.memoir-pick-head > span {
+  display: flex;
+  gap: 6px;
+}
+
+.memoir-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.memoir-pick {
+  border-bottom: 1px solid var(--border);
+}
+
+.memoir-pick:last-child {
+  border-bottom: 0;
+}
+
+.memoir-pick label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.memoir-pick label input {
+  width: auto;
+  margin: 0;
+}
+
+.memoir-pick.on {
+  background: #fdf3f4;
+}
+
+.memoir-pick-time {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.memoir-pick-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memoir-create-bar {
+  margin-top: 14px;
+}
+
+/* 编辑 */
+
+.memoir-scan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.memoir-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.memoir-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memoir-media-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.memoir-cover-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1;
+}
+
+.memoir-thumb {
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.memoir-select {
+  max-width: 320px;
+}
+
+.memoir-ai {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.memoir-ai-ok {
+  color: var(--ok);
+}
+
+.memoir-ai-err {
+  color: var(--danger);
+}
+
+.memoir-pages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memoir-page-edit {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.memoir-page-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.memoir-page-no {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--side);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.memoir-page-head-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.memoir-page-head-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memoir-page-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.memoir-page-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+
+.memoir-page-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memoir-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* 阅读 */
+
+.memoir-read {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.memoir-read-bar {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.memoir-cover-head {
+  margin: 12px 0 18px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.memoir-cover-img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  display: block;
+}
+
+.memoir-cover-text {
+  padding: 16px 18px;
+}
+
+.memoir-read-title {
+  margin: 0 0 6px;
+  font-size: 24px;
+  letter-spacing: 0.02em;
+}
+
+.memoir-read-sub {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.memoir-playlist {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--side);
+  margin-bottom: 16px;
+}
+
+.memoir-body {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.memoir-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.memoir-entry:last-child {
+  border-bottom: 0;
+}
+
+.memoir-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.memoir-entry-no {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--side);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.memoir-entry-img {
+  width: 100%;
+  max-height: 380px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  display: block;
+}
+
+.memoir-entry-title {
+  margin: 0;
+  font-size: 19px;
+}
+
+.memoir-entry-note {
+  margin: 0;
+  color: var(--text);
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+  font-size: 15px;
+}
+
+.memoir-entry-text {
+  margin: 0;
+  color: #55504a;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.memoir-source {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.memoir-entry-missing {
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .memoir-fields,
+  .memoir-page-body {
+    grid-template-columns: 1fr;
+  }
+
+  .memoir-read-title {
+    font-size: 21px;
+  }
+}

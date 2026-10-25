@@ -44,6 +44,7 @@ export type IdPrefix =
   /** AI 对话会话；'ai' 已被模型占用，会话另起一个前缀 */
   | 'ais'
   | 'msg'
+  | 'mem'
   | 'snap'
   /** AI 待审核改动的「之后」整库字节 */
   | 'pend';

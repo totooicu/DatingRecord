@@ -5,6 +5,7 @@ import type { AiModel } from '../ai/types';
 import type { Person } from './person';
 import type { DREvent, ChatMessage } from './event';
 import type { Collection, Member } from './collection';
+import type { Memoir } from './memoir';
 
 export interface Attachment {
   id: string;
@@ -59,6 +60,8 @@ export interface LibraryFile {
   aiModels?: AiModel[];
   /** 聊天消息（v9 新增）；老备份没有这个字段，导入时按空处理 */
   messages?: ChatMessage[];
+  /** 回忆录（v12 新增）；老备份没有这个字段，导入时按空处理 */
+  memoirs?: Memoir[];
 }
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;

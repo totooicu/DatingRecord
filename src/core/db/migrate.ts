@@ -154,6 +154,25 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 11;
   }
+  if (v < 12) {
+    // 回忆录（v12）：新表，幂等。页面只存事件引用与编辑决策，不复制事件正文。
+    d.run(`CREATE TABLE IF NOT EXISTS memoirs (
+      id TEXT PRIMARY KEY,
+      collection_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      subtitle TEXT NOT NULL DEFAULT '',
+      cover_file_id TEXT,
+      playlist_id TEXT,
+      scope_json TEXT NOT NULL DEFAULT '{}',
+      pages_json TEXT NOT NULL DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'manual',
+      ai_model TEXT,
+      device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+      created_at TEXT, updated_at TEXT
+    )`);
+    d.run(`CREATE INDEX IF NOT EXISTS idx_memoirs_collection ON memoirs(collection_id)`);
+    v = 12;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

@@ -15,6 +15,7 @@ export async function clearAllData(): Promise<void> {
       'collection_members',
       'collection_closure',
       'collections',
+      'memoirs',
       'event_participants',
       'events',
       'person_attr_history',
