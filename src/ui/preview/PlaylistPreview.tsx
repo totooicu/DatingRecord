@@ -10,6 +10,7 @@ import {
   type PlaylistDoc,
 } from '../../core/music/format';
 import { readPlaylist } from '../../core/music/playlistFile';
+import { PlayIcon } from '../panel/MusicIcons';
 import { showToast } from '../toast';
 
 function fmtSize(n: number): string {
@@ -69,7 +70,14 @@ export function PlaylistPreview({ file }: { file: StoredFile }) {
           </div>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => void play()} disabled={busy || tracks.length === 0}>
-          {busy ? '载入中…' : '▶ 播放'}
+          {busy ? (
+            '载入中…'
+          ) : (
+            <>
+              <span className="playlist-play-icon"><PlayIcon /></span>
+              播放
+            </>
+          )}
         </button>
       </div>
 

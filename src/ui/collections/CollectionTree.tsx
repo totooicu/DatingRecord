@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createCollection, getTree, type TreeNode } from '../../core/repo/collections';
 import { useVersion, bump } from '../../store';
 import { CollectionIconView } from './CollectionIcon';
@@ -8,12 +8,9 @@ import { PageHead } from '../common';
 export function CollectionTree({
   selectedId,
   onSelect,
-  children,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
-  /** 挂在标题栏右侧的额外操作（如「导入分享」） */
-  children?: ReactNode;
 }) {
   const v = useVersion();
   const tree = useMemo(() => getTree(), [v]);
@@ -70,13 +67,12 @@ export function CollectionTree({
 
   return (
     <div className="pane-body">
-      {/* 主页标题条与其它页面同一形式：吸顶 44px、标题居中、右侧状态区/导入/新建 */}
+      {/* 主页标题条与其它页面同一形式：吸顶 44px、标题居中、右侧状态区/新建 */}
       <PageHead
         title="事件集"
         right={
           <>
             <HeadStatus />
-            {children}
             <button className="icon-btn" onClick={() => setCreating(true)} title="新建事件集">
               ＋
             </button>
