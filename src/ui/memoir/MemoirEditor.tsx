@@ -20,6 +20,7 @@ import { bump, useVersion } from '../../store';
 import { useBlobUrl } from '../preview/useBlobUrl';
 import type { Memoir, MemoirPage } from '../../core/types';
 import { AiMemoirButton } from './AiMemoir';
+import { AiPlaylistButton } from './AiPlaylist';
 
 function Thumb({ id, alt }: { id: string | null; alt?: string }) {
   const url = useBlobUrl(id);
@@ -199,6 +200,7 @@ export function MemoirEditor({
       </div>
 
       <AiMemoirButton memoir={draft} onApply={(next) => setDraft(next)} />
+      <AiPlaylistButton memoir={draft} onApply={(next) => setDraft(next)} />
 
       <ol className="memoir-pages">
         {pages.map(({ page, event }, i) => (
