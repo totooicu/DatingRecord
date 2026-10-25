@@ -158,26 +158,39 @@
 }
 
 /* ---------- 版本条（人物主页 head 之上） ---------- */
-/* 一行小字：网页 vX · 壳 vY（MM-dd HH:mm @ 短哈希）。不在壳里时只有网页版本。
-   放在吸顶 head 上方，滚动时自然让位给 head，不参与吸顶。 */
+/* 一行小字：「壳:2026-10-25 18:10 | 网:2026-10-25 18:32」。不在壳里时只有网页时间。
+   放在吸顶 head 上方，滚动时自然让位给 head，不参与吸顶。
+   双击刷新，所以关掉双击缩放与文字选中——否则手机上第二下会被当成缩放/选词。 */
 .version-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 4px 12px 2px;
   font-size: 11px;
   line-height: 1.5;
   color: var(--muted);
-  background: var(--panel);
+  /* 列表页底色是 --side、详情页是 --bg，这里不铺自己的底色，免得在标题上方多一道色带 */
+  background: transparent;
+  touch-action: manipulation;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .version-strip-sep {
   opacity: 0.55;
 }
 
-/* 壳太旧 / 桥协议不符：版本照显，但给个警示色，title 里有一句人话 */
+/* 壳太旧 / 桥协议不符：时间照显，但给个警示色，title 里有一句人话 */
 .version-strip-warn {
   color: #b4552d;
   font-weight: 600;
+}
+
+/* 装成独立应用时版本条真的顶到屏幕边缘，要自己让开状态栏（同 head 的处理：
+   部分浏览器会误报 safe-area，上限 48px 兜住） */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .version-strip {
+    padding-top: calc(4px + min(env(safe-area-inset-top, 0px), 48px));
+  }
 }

@@ -2,10 +2,9 @@ import { useMemo, useState } from 'react';
 import { applyTemplate, createPerson, listPersons, listTemplates } from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
-import { BUILD_TIME, fmtBuildTime } from '../../core/buildInfo';
 import { Avatar } from './Avatar';
 import { HeadStatus } from '../runtime/HeadStatus';
-import { PageHead } from '../common';
+import { PageHead, VersionStrip } from '../common';
 
 export function PersonList({
   selectedId,
@@ -56,15 +55,10 @@ export function PersonList({
 
   return (
     <div className="pane-body">
-      {/* 构建时间放在「人物」标题上方：主页面一眼就能看到线上是不是最新版。
-          双击这一行 = 重新加载。SW 的导航请求是网络优先，所以刷完拿到的就是线上最新版。 */}
-      <div
-        className="pane-build-time muted small"
-        title={`${BUILD_TIME} · 双击刷新`}
-        onDoubleClick={() => location.reload()}
-      >
-        最新版本 · {fmtBuildTime()}
-      </div>
+      {/* 版本条放在「人物」标题上方：网页构建时间 + 壳构建时间并排，
+          一眼就能看出线上是不是最新版、手机上装的壳是哪个时候的。
+          双击这一行 = 重新加载（SW 的导航请求是网络优先，刷完就是线上最新版）。 */}
+      <VersionStrip />
       {/* 主页标题条与其它页面同一形式：吸顶 44px、标题居中、右侧状态区与新建。
           原来这里是 .home-head（左对齐标题），与时间线/日历/详情的居中标题不一致 */}
       <PageHead
