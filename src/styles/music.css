@@ -413,6 +413,105 @@
   opacity: 0.55;
   cursor: default;
 }
+/* 修正范围：整份文件 / 从选中点起（和 loc-mode 同一pill 形制，不同类名） */
+.loc-scopes {
+  display: flex;
+  gap: 8px;
+}
+.loc-scope {
+  flex: 1 1 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.loc-scope.on {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--panel));
+  color: var(--primary);
+  font-weight: 600;
+}
+.loc-scope:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* 折线上的方向箭头：三角尖默认朝北，按方位角旋转；不拦鼠标 */
+.loc-arrow {
+  width: 0;
+  height: 0;
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  border-bottom: 9px solid var(--primary, #e8a317);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.45));
+}
+/* 分段修正列表 */
+.loc-seg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.loc-seg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.loc-seg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.loc-seg-row.on {
+  border-color: var(--primary);
+}
+.loc-seg-range {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+.loc-seg-delta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.loc-seg-btn {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.loc-seg-btn:hover {
+  background: var(--bg);
+}
+/* 记录列表里的「修正起点」小标 */
+.loc-anchor-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 999px;
+  color: var(--primary);
+  font-size: 10px;
+  line-height: 14px;
+  vertical-align: 1px;
+}
 .loc-offset {
   display: flex;
   flex-direction: column;

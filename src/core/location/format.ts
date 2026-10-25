@@ -7,6 +7,12 @@
 // 偏移值（offset）是「这个文件坐标系相对地图的修正量」，单位是度：
 //   显示坐标 = 原始坐标 + offset。
 // 原始点保持不变，改偏移就能整体平移，方便修正导入数据或底图偏差。
+//
+// 除了整份文件的 offset，还可以做「分段修正」：offsets 里每段记一个锚点
+// （fromIndex，0 基下标），从该点起、到下一个锚点前（不含）的所有点都按
+// 这段偏移修正；没被任何段覆盖的点仍用整份 offset。例：100 个点，在
+// 第 5 / 20 / 60 个点各填一段偏移，实际修正 5-19、20-59、60-100，
+// 第 1-4 个点不受影响。旧文件没有 offsets，行为与从前完全一致。
 
 export const LOCATION_EXT = 'drloc';
 export const LOCATION_FILE_EXT = '.drloc';
@@ -31,11 +37,24 @@ export interface LocationOffset {
   lng: number;
 }
 
+/** 一段分段修正：从第 fromIndex 个点（0 基）起生效，到下一个锚点前 */
+export interface OffsetSegment {
+  /** 生效起点（0 基下标，闭区间） */
+  fromIndex: number;
+  /** 纬度偏移（度）：正值向北 */
+  lat: number;
+  /** 经度偏移（度）：正值向东 */
+  lng: number;
+}
+
 export interface LocationDoc {
   format: string;
   version: number;
   name: string;
+  /** 整份文件的默认偏移：没被分段修正覆盖的点用它；旧数据也只有这一个 */
   offset: LocationOffset;
+  /** 分段修正：按 fromIndex 升序；命中最后一个 fromIndex<=i 的段 */
+  offsets: OffsetSegment[];
   points: LocationPoint[];
   createdAt: string;
   updatedAt: string;
@@ -89,6 +108,7 @@ export function emptyLocationDoc(name: string, offset?: Partial<LocationOffset>)
     version: LOCATION_VERSION,
     name: cleanLocationName(name),
     offset: cleanOffset(offset),
+    offsets: [],
     points: [],
     createdAt: now,
     updatedAt: now,
@@ -103,6 +123,23 @@ function cleanOffset(raw: unknown): LocationOffset {
     lat: Number.isFinite(lat) ? round6(lat) : 0,
     lng: Number.isFinite(lng) ? round6(lng) : 0,
   };
+}
+
+/** 清洗分段修正：过滤坏项、按 fromIndex 升序、同锚点后者胜 */
+export function cleanOffsetSegments(raw: unknown): OffsetSegment[] {
+  if (!Array.isArray(raw)) return [];
+  const byIndex = new Map<number, OffsetSegment>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const s = item as Record<string, unknown>;
+    const fromIndex = Number(s.fromIndex);
+    const lat = Number(s.lat);
+    const lng = Number(s.lng);
+    if (!Number.isInteger(fromIndex) || fromIndex < 0) continue;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    byIndex.set(fromIndex, { fromIndex, lat: round6(lat), lng: round6(lng) });
+  }
+  return [...byIndex.values()].sort((a, b) => a.fromIndex - b.fromIndex);
 }
 
 function round6(n: number): number {
@@ -147,6 +184,8 @@ export function parseLocationDoc(text: string, fallbackName = '定位记录'): L
     version: LOCATION_VERSION,
     name: cleanLocationName(String(raw.name || fallbackName)),
     offset: cleanOffset(raw.offset),
+    // 旧文件没有 offsets：解析成空数组，行为和从前一致
+    offsets: cleanOffsetSegments(raw.offsets),
     points,
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : now,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : now,
@@ -204,10 +243,75 @@ function byTime(a: LocationPoint, b: LocationPoint): number {
   return ta - tb;
 }
 
-/** 显示 / 落图用的坐标：原始点整体加上文件里的偏移 */
-export function applyOffset(points: LocationPoint[], offset: LocationOffset): LocationPoint[] {
-  if (!offset.lat && !offset.lng) return points;
-  return points.map((p) => ({ ...p, lat: p.lat + offset.lat, lng: p.lng + offset.lng }));
+/** 点 i 实际生效的偏移：命中最后一个 fromIndex<=i 的段，未命中用整份 offset */
+export function effectiveOffsetAt(
+  segments: OffsetSegment[] | undefined,
+  offset: LocationOffset,
+  index: number,
+): LocationOffset {
+  const segs = segments;
+  if (segs && segs.length > 0) {
+    // 段按 fromIndex 升序：从后往前找第一个起点不超过 i 的
+    for (let k = segs.length - 1; k >= 0; k -= 1) {
+      if (segs[k].fromIndex <= index) return { lat: segs[k].lat, lng: segs[k].lng };
+    }
+  }
+  return offset;
+}
+
+/** 显示 / 落图用的坐标：原始点按分段规则加偏移（整份 offset + 分段修正） */
+export function applyOffset(
+  points: LocationPoint[],
+  offset: LocationOffset,
+  segments?: OffsetSegment[],
+): LocationPoint[] {
+  const segs = segments && segments.length > 0 ? segments : null;
+  if (!offset.lat && !offset.lng && !segs) return points;
+  return points.map((p, i) => {
+    const hit = effectiveOffsetAt(segs ?? undefined, offset, i);
+    if (!hit.lat && !hit.lng) return p;
+    return { ...p, lat: p.lat + hit.lat, lng: p.lng + hit.lng };
+  });
+}
+
+/** 在 fromIndex 处放一段修正（替换已有同点段），返回按锚点升序的新数组 */
+export function upsertOffsetSegment(
+  segments: OffsetSegment[] | undefined,
+  fromIndex: number,
+  offset: LocationOffset,
+): OffsetSegment[] {
+  if (!Number.isInteger(fromIndex) || fromIndex < 0) return segments ?? [];
+  const next = cleanOffsetSegments([
+    ...(segments ?? []).filter((s) => s.fromIndex !== fromIndex),
+    { fromIndex, lat: offset.lat, lng: offset.lng },
+  ]);
+  return next;
+}
+
+/** 删掉 fromIndex 处的修正段 */
+export function removeOffsetSegment(
+  segments: OffsetSegment[] | undefined,
+  fromIndex: number,
+): OffsetSegment[] {
+  return (segments ?? []).filter((s) => s.fromIndex !== fromIndex);
+}
+
+/**
+ * 一段修正影响的点区间（1 基，含两端，供 UI 显示「第 N–M 个点」）。
+ * 到下一个锚点前为止；没有下一个锚点就一直到末尾。
+ */
+export function segmentRange(
+  segments: OffsetSegment[],
+  fromIndex: number,
+  total: number,
+): { from: number; to: number } | null {
+  if (!segments.some((s) => s.fromIndex === fromIndex)) return null;
+  const next = segments
+    .filter((s) => s.fromIndex > fromIndex)
+    .sort((a, b) => a.fromIndex - b.fromIndex)[0];
+  const to = next ? next.fromIndex - 1 : total - 1;
+  if (to < fromIndex) return null; // 锚点已经超出点数（点被删过）
+  return { from: fromIndex + 1, to: to + 1 };
 }
 
 // ---- 米 ↔ 度 ----
@@ -258,6 +362,7 @@ export function serializeLocationDoc(doc: LocationDoc): string {
     version: LOCATION_VERSION,
     name: cleanLocationName(doc.name),
     offset: cleanOffset(doc.offset),
+    offsets: cleanOffsetSegments(doc.offsets),
     points: doc.points.map((p) => ({
       ts: p.ts,
       lat: round6(p.lat),
