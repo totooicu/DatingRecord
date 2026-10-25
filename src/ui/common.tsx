@@ -1,5 +1,6 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { pushBackLayer } from './back';
+import { pairLabel, pairing } from '../core/compat/pairing';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -245,6 +246,33 @@ export function PageHead({
       )}
       <h2 className="page-head-title">{title}</h2>
       {right && <div className="page-head-right">{right}</div>}
+    </div>
+  );
+}
+
+/**
+ * 版本条：人物主页 head 之上的那一行小字。
+ * 网页版本来自构建注入；壳版本（含打包时间与 git 短哈希）来自 getEnv——
+ * 壳发出去就收不回来、同号还会重打包，这行字要能一眼说清「跑的是哪份代码」。
+ * 不在壳里时只显示网页版本。
+ */
+export function VersionStrip() {
+  const p = pairing();
+  // 壳给的是 "yyyy-MM-dd HH:mm"（Asia/Shanghai），只留月日时分，一行放得下
+  const shortTime = p.builtAt.length >= 16 ? p.builtAt.slice(5) : p.builtAt;
+  const shellExtra = [shortTime, p.commit && `@ ${p.commit}`].filter(Boolean).join(' ');
+  return (
+    <div className="version-strip" title={p.shell ? `网页 v${p.web} · 壳 v${p.shell}${shellExtra ? `（${shellExtra}）` : ''} — ${pairLabel(p.state)}` : `网页 v${p.web}`}>
+      <span>网页 v{p.web}</span>
+      {p.shell && (
+        <>
+          <span className="version-strip-sep">·</span>
+          <span className={p.state === 'ok' ? undefined : 'version-strip-warn'}>
+            壳 v{p.shell}
+            {shellExtra && `（${shellExtra}）`}
+          </span>
+        </>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@
 import type { RefObject } from 'react';
 import { PersonDetail, PersonList } from './persons';
 import { CollectionDetail, CollectionTree } from './collections';
-import { PageHead } from './common';
+import { PageHead, VersionStrip } from './common';
 import { getPerson } from '../core/repo/persons';
 import { getCollection } from '../core/repo/collections';
 import { hides } from '../privacy';
@@ -51,6 +51,9 @@ export function PersonsPane({
       <div className="pane pane-detail">
         {showId && person && !personHidden ? (
           <>
+            {/* 版本条在 head 之上：网页版本 + 壳版本（打包时间 @ git 提交），
+                壳发出去收不回来，排查时要能一眼说清跑的是哪份代码 */}
+            <VersionStrip />
             {/* 顶部条与事件集详情、其它主页保持一致：吸顶、标题居中、返回键常驻 */}
             <PageHead title={title} onBack={detailMode ? onBack : undefined} />
             {/* key：换人物时整块详情重置，否则归档确认态、弹窗等会带到下一个人身上 */}

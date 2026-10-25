@@ -156,3 +156,28 @@
 .btn-new-inline {
   display: none;
 }
+
+/* ---------- 版本条（人物主页 head 之上） ---------- */
+/* 一行小字：网页 vX · 壳 vY（MM-dd HH:mm @ 短哈希）。不在壳里时只有网页版本。
+   放在吸顶 head 上方，滚动时自然让位给 head，不参与吸顶。 */
+.version-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--panel);
+  user-select: none;
+}
+
+.version-strip-sep {
+  opacity: 0.55;
+}
+
+/* 壳太旧 / 桥协议不符：版本照显，但给个警示色，title 里有一句人话 */
+.version-strip-warn {
+  color: #b4552d;
+  font-weight: 600;
+}
