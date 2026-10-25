@@ -1,5 +1,5 @@
 // 构建时间与产品版本：都由 vite.config.ts 在每次 build 时注入。
-// 版本号是壳与网页配对的依据（见 src/core/compat/pairing.ts），别手改字面量。
+// 版本号别手改字面量。（曾经还要与壳版本配对，那套 pairing 判断已于 2026-10-26 删除。）
 declare const __BUILD_TIME__: string;
 declare const __APP_VERSION__: string;
 export const BUILD_TIME: string = __BUILD_TIME__;

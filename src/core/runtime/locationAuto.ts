@@ -54,7 +54,7 @@ import {
   fetchNativeHistory,
   INTERVAL_BASE_MS,
   INTERVAL_MAX_MS,
-  nativeLocationAvailable,
+  nativeLocationSupported,
   nativeLocationStatus,
   onNativePoint,
   pushAutoConfig,
@@ -501,14 +501,17 @@ function configOf(enabled: boolean): AutoLocationConfig {
 
 let configPushTimer: number | null = null;
 
-/** 只用于阈值这种连续输入：存档已同步写，桥调用合并成一次 */
+/** 只用于阈值这种连续输入：存档已同步写，桥调用合并成一次。
+ *  探不到壳有 location.* 就不推——普通浏览器里别白等超时，也别弹无谓的说明。 */
 function scheduleConfigPush(): void {
-  if (!nativeLocationAvailable()) return;
   if (configPushTimer) window.clearTimeout(configPushTimer);
   configPushTimer = window.setTimeout(() => {
     configPushTimer = null;
-    void pushAutoConfig(configOf(state.running)).catch(() => {
-      setServiceNote(SERVICE_ID, '壳没有响应定位配置，下次开始打点时会重试');
+    void nativeLocationSupported().then((ok) => {
+      if (!ok) return;
+      return pushAutoConfig(configOf(state.running)).catch(() => {
+        setServiceNote(SERVICE_ID, '壳没有响应定位配置，下次开始打点时会重试');
+      });
     });
   }, 400);
 }
@@ -820,7 +823,15 @@ function yieldToPageTimer(note: string): void {
  *  壳到底在不在记，交给原生看门狗在宽限期内确认——不在才退回页面定时器。
  *  不在 startNativeTrack 里立刻退回，是因为壳读 dr.autoLocation 自起服务需要时间，
  *  刚刷新时桥 / 服务可能还没就绪，过早退回会让「壳和页面双记」。 */
-function startNativeTrack(): void {
+async function startNativeTrack(): Promise<void> {
+  // 先探一次壳有没有 location.*（结果按页面加载缓存，探过就不再等）：没有就让
+  // 页面定时器直接上，别把「壳没有这个能力」当成「壳还没就绪」白等看门狗那 18 秒。
+  if (!(await nativeLocationSupported())) {
+    // 存档照写：刷新后靠 dr.autoLocation.enabled 恢复的就是这一份
+    writeAutoConfig(configOf(true));
+    startPageTimer();
+    return;
+  }
   attachNative();
   startNativeWatchdog();
   void pushAutoConfig(configOf(true), 8000)
@@ -971,13 +982,9 @@ function startPageTimer(): void {
  */
 function runAutoService(): void {
   if (!state.fileId || !state.fileReady || state.running) return;
-  if (nativeLocationAvailable()) {
-    // 壳里：交给原生前台服务，WebView 退到后台 / 熄屏都不会断
-    startNativeTrack();
-    return;
-  }
-  writeAutoConfig(configOf(true));
-  startPageTimer();
+  // 不问「在不在壳里」，只问「壳有没有 location.*」：交给 startNativeTrack 去探，
+  // 探到了就交给原生前台服务（退到后台 / 熄屏不断），探不到就页面定时器自己上。
+  void startNativeTrack();
 }
 
 export function startAuto(): boolean {
@@ -1000,11 +1007,11 @@ export function stopAuto(): void {
   if (state.doc) void persist(state.doc);
   const wasNative = nativeUnsub !== null;
   detachNative();
-  // 存档与壳同步：enabled=false 壳会立刻停前台服务
-  if (wasNative || nativeLocationAvailable()) {
+  // 存档与壳同步：enabled=false 壳会立刻停前台服务。
+  // 只有真接过原生（wasNative）才需要通知壳；否则写自己的存档就够了。
+  if (wasNative) {
     void pushAutoConfig(configOf(false)).catch(() => {
-      // 旧壳没有 location.*：本来就没在跑原生服务，不必报错
-      if (wasNative) setServiceNote(SERVICE_ID, '停止指令没送达壳，原生服务可能还在记录');
+      setServiceNote(SERVICE_ID, '停止指令没送达壳，原生服务可能还在记录');
     });
   } else {
     writeAutoConfig(configOf(false));

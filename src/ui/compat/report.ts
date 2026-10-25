@@ -55,7 +55,7 @@ function rebuild(): void {
   subscribers.forEach((fn) => fn());
 }
 
-/** 一张卡测完 / 失败后报到。note 用于汇总里的一句话原因（如「超时」「未注入」） */
+/** 一张卡测完 / 失败后报到。note 用于汇总里的一句话原因（如「超时」「没人接话」） */
 export function setTestResult(id: TestId, state: TestState, note?: string): void {
   const prev = results.get(id);
   if (prev && prev.state === state && prev.note === note) return;

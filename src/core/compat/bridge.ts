@@ -5,10 +5,11 @@
 //   响应 ← { type: 'gv-bridge-response', id, ok, result | error }
 //   事件 ← { type: 'gv-bridge-event', event, data }   （扫描到设备、收到通知、录屏结束等）
 //
-// 壳把注入情况写在 <html> 的 data-gv-bridge-* 属性上，所以「桥在不在」不用等请求
-// 超时也能先看一眼；普通浏览器里这些属性不存在，页面据此显示「未注入」。
-//
 // 这里只做协议收发，不含任何业务；页面在 ui/settings/LabCompatSection.tsx。
+//
+// **不判断「是不是在壳里」**：网页在壳里和在浏览器里行为一致，唯一的区别是
+// 「有没有人接这条 postMessage」——而那只能靠发一次 action 试出来（ping / 具体
+// action），不是靠读环境猜。旧的 pairing / 注入标记判断已于 2026-10-26 删除。
 
 /** 一次原生调用的结果：壳返回什么就是什么，不做结构假设 */
 export type BridgeResult = Record<string, unknown>;
@@ -88,24 +89,14 @@ export function onBridgeEvent(event: string, cb: (data: unknown) => void): () =>
   };
 }
 
-/** 壳在 <html> 上留下的注入痕迹；普通浏览器里全是空值 */
-export interface BridgeDiagnostics {
-  injected: boolean;
-  stage: string;
-  native: string;
-}
-
-export function bridgeDiagnostics(): BridgeDiagnostics {
-  const de = typeof document !== 'undefined' ? document.documentElement : null;
-  const attr = (name: string) => de?.getAttribute(name) ?? '';
-  return {
-    injected: attr('data-gv-bridge-injected') === 'true',
-    stage: attr('data-gv-bridge-stage') || '(none)',
-    native: attr('data-gv-bridge-native') || '(no heartbeat)',
-  };
-}
-
-/** 壳的 ping：通了才算桥真的可用（注入属性只说明脚本跑过） */
+/**
+ * 壳的 ping：通了才算桥真的可用。
+ *
+ * 以前还读 <html> 上的 data-gv-bridge-* 注入痕迹来「判断是不是在壳里」，
+ * 2026-10-26 连同 pairing 一起删了：注入标记只说明壳的适配脚本跑过，
+ * 答不了「这个壳有没有某个能力」，拿它做分支判断会一直误判。
+ * 现在只剩这一条规矩：**想知道某个能力在不在，就发一次 action 看有没有人回**。
+ */
 export function pingBridge(): Promise<BridgeResult> {
   return invoke('ping', {}, 3000);
 }

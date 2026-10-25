@@ -14,10 +14,13 @@
 |---|---|---|---|
 | 网页版本 | `package.json` 的 `version`；构建时注入页面（`__APP_VERSION__`）与 `version.json` 的 `release` | 网页侧发版 | 页面自报的版本和包里不是一回事，配对结论失真 |
 | 壳版本 | 壳 `app/build.gradle` 的 `versionName`；写进 UA（`DatingRecord/x.y.z`）与 `getEnv().version` | 壳侧发版 | 同上 |
-| 桥协议 | 网页 `src/core/compat/pairing.ts` 的 `BRIDGE_PROTO`；壳 `JsBridge.getEnv()` 的 `proto` | 改桥契约时同步升 | 页面在原生能力上静默失败 |
+| 桥协议 | 壳 `JsBridge.getEnv()` 的 `proto`（网页侧的 `BRIDGE_PROTO` 判断已于 2026-10-26 删除） | 改桥契约时同步升 | 页面在原生能力上静默失败 |
 
-版本号只说明「哪一次构建」，**能不能配由 `proto` 决定**。三者在「设置 → 功能体验 →
-软件适配测试 → 版本配对」里并排显示，配不上会直接说该升网页还是该换壳。
+版本号只说明「哪一次构建」，**能不能配由 `proto` 决定**。
+> 2026-10-26 起网页不再做配对判断：`core/compat/pairing.ts`、`data-gv-bridge-*`
+> 注入标记、「版本配对」卡、版本条里的「壳:…」那半一并删除。网页在壳里和在浏览器里
+> 行为一致，能力在不在**发一次 action 试**，不靠读环境猜。壳侧仍照旧报
+> `version` / `proto` / `builtAt` / `commit`（便于人工核对），网页不再据此下判断。
 
 ---
 
@@ -103,7 +106,7 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 | 根路径已更新 | `curl -s https://totooicu.github.io/DatingRecord/version.json` | `release` 是新版本 |
 | 页面新代码在线上 | 打开页面，看「最新版本」时间 = 这次 Actions 的构建时间 | 一致（差几分钟正常） |
 | 快照没被动过 | `curl -s .../releases/v1/version.json` 与上次记录一致 | 一致；变了就是违规（铁律七） |
-| 配对正确 | 手机上壳内 → 适配测试 → 版本配对 | 网页/壳版本一致、proto 一致、配对正常 |
+| 桥通不通 | 手机上壳内 → 适配测试 → 原生桥状态 | 「桥已连接 ✓」（ping 有人回） |
 | 壳加载的是根路径 | 同上「壳版本」与 UA | UA 里是 `DatingRecord/<新版本>` |
 
 前两项在电脑上做，后三项装到手机上看。

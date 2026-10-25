@@ -465,10 +465,17 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 来源是安卓壳项目 `geckoview_example` 的 `assets/test.html`：一个纯 HTML 页，用 `window.postMessage` 调原生桥。那个壳现在已经从 GeckoView 切到系统 WebView：网页侧要的权限回调从 `GeckoSession.PermissionDelegate.onMediaPermissionRequest` 换成 `WebChromeClient.onPermissionRequest`，桥协议没变（`gv-bridge-*`），所以这一页不用跟着改。这一页把同样的检查项搬进应用，换成本项目的卡片样式，另加一张「本软件依赖」——适配一个新壳时，先看 WebAssembly / IndexedDB 在不在，比逐项点原生能力更快定位问题。
 
+> **2026-10-26：删掉了「判断是不是在壳里」的整套东西**——`core/compat/pairing.ts`
+> （版本 / proto 配对、配对状态）、`<html data-gv-bridge-*>` 注入标记读取、
+> 「版本配对」卡、版本条里的「壳:…」那半。理由：网页在壳里和在浏览器里行为应当一致，
+> 不该拿「在不在壳里」去做任何分支判断；而注入标记又答不了「这个壳有没有某个能力」。
+> 现在的规矩只有一条：**想知道某个能力在不在，就发一次 action 看有没有人回**。
+> 桥的收发（`invoke` / `onBridgeEvent` / `ping`）、返回键事件、文件 / 录屏 / 蓝牙都不受影响。
+
 | 卡 | 走哪条路 | 检查什么 |
 |---|---|---|
 | 引擎信息 | 标准 | UA、SecureContext、Gecko 判定、Android、显示模式 |
-| 原生桥状态 | postMessage | 读 `<html data-gv-bridge-*>` 注入标记，再 ping 一次（3s 超时） |
+| 原生桥状态 | postMessage | 只 ping 一次（3s 超时）；不再读 `<html data-gv-bridge-*>` 注入标记（2026-10-26 删除） |
 | 应用依赖 | 标准 | WebAssembly / IndexedDB / Blob 下载 / Service Worker / PointerEvent / 存储配额 / 屏幕 |
 | 麦克风 | 标准 API | `getUserMedia`，三档约束依次试（默认 → 原始音频 → 指定 deviceId）+ 音量条；失败时列出每档结果与「怎么办」 |
 | 定位 | 标准 API | `geolocation.getCurrentPosition`（不开高精度，10s 超时） |
@@ -486,9 +493,9 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 - 文本走 UTF-8 → base64（`toBase64` / `fromBase64`）；`btoa` 只吃 Latin-1，中文必须自己编码
 - 桥根本不存在时 15s 的默认超时太浪费，ping 单独用 3s
 
-**状态与汇总**：每张卡测完向 `ui/compat/report.ts` 报到（模块级 Map），顶部汇总只给「通过 / 失败 / 未测」计数与逐项 ✓✗，不打分——「麦克风被拒」和「壳没注入桥」不是一类问题，混成一个分数会误导。状态活在模块里，离开页面再回来还在（蓝牙授权、录屏授权都要过系统弹窗，重来一遍很烦）。
+**状态与汇总**：每张卡测完向 `ui/compat/report.ts` 报到（模块级 Map），顶部汇总只给「通过 / 失败 / 未测」计数与逐项 ✓✗，不打分——「麦克风被拒」和「桥没人接话」不是一类问题，混成一个分数会误导。状态活在模块里，离开页面再回来还在（蓝牙授权、录屏授权都要过系统弹窗，重来一遍很烦）。
 
-**判定口径**：普通浏览器里桥显示「未注入 / 超时」是正常的，标准 API 那几张卡照样能测；应用依赖只把 WebAssembly / IndexedDB / Blob 三条算进汇总（缺一样就开不了库、存不住、导不出），Service Worker / PointerEvent 缺了不影响能不能用。
+**判定口径**：普通浏览器里桥显示「未连接 / 超时」是正常的，标准 API 那几张卡照样能测；应用依赖只把 WebAssembly / IndexedDB / Blob 三条算进汇总（缺一样就开不了库、存不住、导不出），Service Worker / PointerEvent 缺了不影响能不能用。
 
 **麦克风为什么单独一套逻辑**：`NotReadableError · Could not start audio source` 在 Android 上几乎都不是页面代码的问题——AudioRecord 根本没起来。排查顺序按可能性从高到低：麦克风被别的应用占着 → 系统麦克风 / 隐私开关关掉 → 壳的录音权限（`RECORD_AUDIO` + `WebChromeClient.onPermissionRequest`；旧 GeckoView 壳是 `PermissionDelegate.onMediaPermissionRequest`。当前壳已用录音 / 录屏验证过，所以这一条基本可以先排除）→ 默认约束跟这台设备对不上。所以 `ui/compat/mic.ts` 按「默认 → 原始音频（关回声消除 / 降噪 / 自动增益）→ 指定某个 audioinput 的 deviceId」依次试，权限类错误（`NotAllowedError` / `SecurityError`）立即收手不再弹窗；每档之间留 250ms 让上一档松手；每次请求前先停掉自己上一次握着的流（同一页面重复申请在部分机型上也直接报 `NotReadableError`）。失败时页面列出：`enumerateDevices()` 里 audioinput 的数量与名字、Permissions API 的 microphone 状态、每档的错误名与原文，以及对最后一条错误的「怎么办」。
 
@@ -498,11 +505,11 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 2. **授权后才重新枚举设备**：WebView 在 `RECORD_AUDIO` 授予前返回的 audioinput 是空 label、甚至空 deviceId，「指定设备」档拿授权前的清单去 `exact` 只会换来 `OverconstrainedError`。第一档失败后重新枚举一次，真名才拿得到。
 3. **占用释放等待 + 音量条激活**：`NotReadableError` 常是麦克风被别的应用占着，补一次 1.5s 后的默认档重试；音量条这边，安卓 WebView 默认「媒体播放需要用户手势」，探测链上的 `await` 会断掉手势上下文，`AudioContext` 停在 `suspended`、频谱恒 0（页面显示「已授权」但条不动，最像「录音坏了」）。所以创建后主动 `resume()`，仍不醒就挂一次性 `pointerdown`，用户点一下页面即激活。
 
-**壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未注入——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
+**壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未连接（ping 没人回）——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
 
 **同时下线**：功能面板里的「高精度定位」（高德官方 demo 诊断页）已删除，`panelPrecise` 路由、图标与组件一并移除——定位诊断由这一页的「定位」卡承担，它不依赖高德 key。
 
-**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K11）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）；K10 mock Permissions API 报 denied，验证不调 getUserMedia、给「怎么恢复」指引、汇总 ✗；K11 断言授权后 AudioContext 是 running（防 suspended 让音量条恒 0 的回归）。
+**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K11）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥没人接话判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路；K8 是无音频设备时的麦克风失败路径（每档结果 + 设备/权限 + 怎么办 + 汇总 ✗）；K9 用 `--use-fake-device-for-media-stream` 起另一个浏览器验证成功路径（授权成功、音量条出现、汇总 ✓）；K10 mock Permissions API 报 denied，验证不调 getUserMedia、给「怎么恢复」指引、汇总 ✗；K11 断言授权后 AudioContext 是 running（防 suspended 让音量条恒 0 的回归）。
 
 ### 1.15 连续定位：壳里交给原生前台服务
 
@@ -532,7 +539,11 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **坐标**：原生给的是 `LocationManager` 的 WGS-84，页面记的是 GCJ-02（高德底图 / `fallbackBrowser` 都转成 GCJ），所以合并前统一 `wgs84ToGcj02()`。不换算的话同一份 `.drloc` 里会混进两套坐标系，图上偏几百米。
 
-**降级**：`nativeLocationAvailable()` 看的是壳注入时写在 `<html>` 上的 `data-gv-bridge-injected`。旧壳没有 `location.*` 时 `setConfig` 会立刻报错（未知 action），页面自动退回定时器并把说明写到服务行上，不会两边同时记。
+**降级**：不问「在不在壳里」，只问「壳有没有 `location.*`」——`nativeLocationSupported()`
+发一次 `location.status`，有人回就交给原生前台服务，没人回 / 回 `ok:false` 就页面定时器自己上。
+结果按一次页面加载缓存，探过就不再等。旧做法是看 `<html data-gv-bridge-injected>` 注入标记，
+2026-10-26 连同 `pairing.ts`（版本配对卡、版本条的壳那半）一起删了：注入标记只说明壳的适配
+脚本跑过，壳把定位整条删掉之后它照样是「已注入」，页面会永远误判成「壳里有原生服务」。
 
 **界面**：壳里运行时面板阈值行下方一行小字「记录由安卓壳的原生服务接管…」，服务页那行的备注是「由壳的原生服务记录，退到后台也继续」。
 

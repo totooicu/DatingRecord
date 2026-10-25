@@ -9,15 +9,7 @@
 // 壳的注入；两边都断，先查系统权限或页面是不是被降级成非安全上下文。
 import { useCallback, useEffect, useState } from 'react';
 
-import {
-  bridgeDiagnostics,
-  engineInfo,
-  pingBridge,
-  type BridgeDiagnostics,
-  type EngineInfo,
-} from '../../core/compat/bridge';
-import { pairing, pairLabel, BRIDGE_PROTO, SHELL_MIN } from '../../core/compat/pairing';
-import { APP_VERSION } from '../../core/buildInfo';
+import { engineInfo, pingBridge, type EngineInfo } from '../../core/compat/bridge';
 import { LabHead } from './LabEdgeSection';
 import { setTestResult } from '../compat/report';
 import { CompatCard, CompatRow, CompatStatus, CompatSummary, type StatusState } from '../compat/ui';
@@ -72,73 +64,29 @@ function EngineCard() {
   );
 }
 
-/* ---------------- 版本配对 ---------------- */
-
-/**
- * 网页和壳各自会更新，配不上时才最容易被误判成「功能坏了」。
- * 这一卡把三个数直接摆出来：网页版本、壳版本、桥协议。
- */
-function PairingCard() {
-  const [pair, setPair] = useState(pairing);
-
-  const refresh = () => setPair(pairing());
-
-  useEffect(() => {
-    setPair(pairing());
-  }, []);
-
-  return (
-    <CompatCard
-      title="版本配对"
-      desc={`网页随时更新、壳发出去就收不回来，所以两边各报版本号。本版网页要求壳 ≥ ${SHELL_MIN}、桥协议 ${BRIDGE_PROTO}。`}
-      right={
-        <button className="btn" onClick={refresh}>
-          刷新
-        </button>
-      }
-    >
-      <dl className="compat-kv">
-        <dt>网页版本</dt>
-        <dd>{pair.web || APP_VERSION}</dd>
-        <dt>壳版本</dt>
-        <dd>{pair.shell || '(不在壳里)'}</dd>
-        <dt>桥协议</dt>
-        <dd>{pair.proto ? `proto ${pair.proto}（网页要 ${BRIDGE_PROTO}）` : `壳未上报（网页要 ${BRIDGE_PROTO}）`}</dd>
-        <dt>配对结果</dt>
-        <dd className={pair.state === 'ok' || pair.state === 'browser' ? 'compat-ok-text' : 'compat-err-text'}>
-          {pairLabel(pair.state)}
-        </dd>
-      </dl>
-    </CompatCard>
-  );
-}
-
 /* ---------------- 原生桥 ---------------- */
 
 function BridgeCard() {
   const [state, setState] = useState<StatusState>('idle');
-  const [diag, setDiag] = useState<BridgeDiagnostics>(bridgeDiagnostics);
   const [text, setText] = useState('未检查');
 
   const check = useCallback(async () => {
-    const d = bridgeDiagnostics();
-    setDiag(d);
     setState('wait');
-    setText('正在 ping 壳…');
-    const head = `注入：${d.injected ? '✓' : '✗'} | 阶段：${d.stage} | native：${d.native} | `;
+    setText('正在 ping 桥…');
     try {
       const r = await pingBridge();
       setState('ok');
-      setText(`${head}桥已连接 ✓ ${JSON.stringify(r)}`);
+      setText(`桥已连接 ✓ ${JSON.stringify(r)}`);
       setTestResult('bridge', 'ok', '已连接');
     } catch (e) {
       setState('err');
-      setText(`${head}桥未连接：${(e as Error).message}`);
-      setTestResult('bridge', 'err', d.injected ? 'ping 超时' : '未注入');
+      setText(`桥未连接：${(e as Error).message}`);
+      setTestResult('bridge', 'err', 'ping 超时 / 无应答');
     }
   }, []);
 
-  // 和原作一样进来就自动查一次；3 秒的 ping 超时足够判断「壳没接话」
+  // 和原作一样进来就自动查一次；3 秒的 ping 超时足够判断「对面没接话」
+  // （不问「是不是在壳里」——只问这条 postMessage 桥通不通）
   useEffect(() => {
     const t = setTimeout(() => void check(), 600);
     return () => clearTimeout(t);
@@ -147,7 +95,7 @@ function BridgeCard() {
   return (
     <CompatCard
       title="原生桥状态"
-      desc="蓝牙 / 文件 / 录屏都走这条 postMessage 桥。在普通浏览器里打开这一页，显示「未注入」是正常的。"
+      desc="蓝牙 / 文件 / 录屏都走这条 postMessage 桥。在普通浏览器里没人接话，显示「未连接」是正常的。"
       right={
         <button className="btn" onClick={() => void check()}>
           检查桥
@@ -155,10 +103,6 @@ function BridgeCard() {
       }
     >
       <CompatStatus state={state} text={text} />
-      <p className="muted small compat-hint">
-        壳把注入情况写在 &lt;html data-gv-bridge-injected / data-gv-bridge-stage / data-gv-bridge-native&gt; 上；
-        当前读到：{diag.injected ? '已注入' : '未注入'}。
-      </p>
     </CompatCard>
   );
 }
@@ -281,7 +225,6 @@ export function LabCompatSection() {
       <CompatSummary />
 
       <EngineCard />
-      <PairingCard />
       <BridgeCard />
       <DepsCard />
       <MicCard />

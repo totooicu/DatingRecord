@@ -17,7 +17,7 @@
 //
 // 这里只做协议与本地存档，不含业务判断。
 
-import { bridgeDiagnostics, invoke, onBridgeEvent, type BridgeResult } from '../compat/bridge';
+import { invoke, onBridgeEvent, type BridgeResult } from '../compat/bridge';
 
 /** 壳读的就是这个键（LocationConfig 的注释里写死了），改名要两边一起改 */
 export const AUTO_CONFIG_KEY = 'dr.autoLocation';
@@ -55,9 +55,29 @@ function normalizeStrategy(v: unknown): SampleStrategy {
   return v === 'fixed' ? 'fixed' : 'backoff';
 }
 
-/** 桥在不在：壳的适配脚本会把标记写在 <html> 上，普通浏览器里没有 */
-export function nativeLocationAvailable(): boolean {
-  return bridgeDiagnostics().injected;
+/**
+ * 壳有没有 location.* 这套能力——**不发问环境，只发问能力**：问一次
+ * `location.status`，有人回就是有。
+ *
+ * 以前看的是壳注入时写在 <html> 上的标记（等于「是不是在壳里」），2026-10-26 删了：
+ * 注入标记只说明适配脚本跑过，壳把定位整条删掉之后它照样是「已注入」，
+ * 页面就永远误判成「壳里有原生服务」。现在三种环境一套答案：
+ *   普通浏览器 → 没人回 → 页面定时器；老壳 → 回了 → 原生接管；
+ *   删掉定位的新壳 → 回 ok:false → 页面定时器。
+ *
+ * 结果按「一次页面加载」缓存：探过就不再问，避免每次开打点都等一次网络往返。
+ */
+let nativeProbe: boolean | null = null;
+
+export async function nativeLocationSupported(timeoutMs = 1500): Promise<boolean> {
+  if (nativeProbe !== null) return nativeProbe;
+  try {
+    await nativeLocationStatus(timeoutMs);
+    nativeProbe = true;
+  } catch {
+    nativeProbe = false;
+  }
+  return nativeProbe;
 }
 
 export function readAutoConfig(): AutoLocationConfig {
@@ -92,12 +112,14 @@ export function writeAutoConfig(cfg: AutoLocationConfig): void {
 }
 
 /**
- * 存档 + 推给壳。桥不在（普通浏览器）只存档，返回 resolved。
- * 调用方对失败的处理：开始打点时失败要退回页面定时器，其它场景忽略即可。
+ * 存档 + 推给壳。调用方对失败的处理：开始打点时失败要退回页面定时器，
+ * 其它场景忽略即可。
+ *
+ * 调用前应当先过一遍 nativeLocationSupported()：那边探不到就直接别发，
+ * 免得在没人接话的环境里白等一个超时。
  */
 export function pushAutoConfig(cfg: AutoLocationConfig, timeoutMs = 6000): Promise<BridgeResult> {
   writeAutoConfig(cfg);
-  if (!nativeLocationAvailable()) return Promise.resolve({});
   return invoke('location.setConfig', { ...cfg }, timeoutMs);
 }
 

@@ -112,12 +112,13 @@ for (const name of ['WebAssembly', 'IndexedDB', 'Blob 下载']) {
   check(`${name} ✓`, !!row?.ok, JSON.stringify(row));
 }
 
-console.log('\nK4 原生桥（浏览器里应判未注入）');
+console.log('\nK4 原生桥（浏览器里没人接话，应判未连接）');
 // 600ms 后自动 ping，3s 超时 → 等足 5s 再看
 await p.waitForTimeout(5000);
 const bridgeStatus = (await p.locator('.compat-card', { hasText: '原生桥状态' }).locator('.compat-status').innerText()).trim();
 check('桥状态写着未连接', /桥未连接|超时/.test(bridgeStatus), bridgeStatus.slice(0, 120));
-check('注入了当「未注入」', /注入：✗/.test(bridgeStatus), bridgeStatus.slice(0, 60));
+// 2026-10-26 起不再读 data-gv-bridge-* 注入标记：这一卡只报 ping 的结果
+check('不再显示注入标记（只以 ping 结果为准）', !/注入：/.test(bridgeStatus), bridgeStatus.slice(0, 60));
 const bridgeChip = await p.locator('.compat-chip', { hasText: '原生桥' }).innerText();
 check('汇总里原生桥标 ✗', /✗/.test(bridgeChip), bridgeChip);
 const summaryLine = (await p.locator('.compat-summary-line strong').innerText()).trim();
@@ -254,10 +255,10 @@ await q.waitForTimeout(300);
 await q.locator('.settings-hub-item', { has: q.locator('.settings-hub-title', { hasText: '软件适配测试' }) }).click();
 await q.waitForTimeout(1500);
 
-console.log('\nK7 假壳跑通协议（注入标记 + 请求/响应/事件）');
+console.log('\nK7 假壳跑通协议（请求/响应/事件）');
 const mockBridge = (await q.locator('.compat-card', { hasText: '原生桥状态' }).locator('.compat-status').innerText()).trim();
 check('桥已连接并回传 ping 结果', /桥已连接 ✓/.test(mockBridge), mockBridge.slice(0, 120));
-check('注入标记读到了', /注入：✓/.test(mockBridge), mockBridge.slice(0, 60));
+check('不靠注入标记，靠 ping 真的有人回', !/注入：/.test(mockBridge), mockBridge.slice(0, 60));
 
 const fileCard = q.locator('.compat-card', { hasText: '文件写入 · 私有目录' });
 await fileCard.getByRole('button', { name: '写入' }).click();

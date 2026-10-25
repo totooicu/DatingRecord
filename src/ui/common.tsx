@@ -1,7 +1,6 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { pushBackLayer } from './back';
-import { pairLabel, pairing } from '../core/compat/pairing';
-import { BUILD_TIME, fmtTime } from '../core/buildInfo';
+import { APP_VERSION, BUILD_TIME, fmtTime } from '../core/buildInfo';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -252,32 +251,21 @@ export function PageHead({
 }
 
 /**
- * 版本条：人物主页 head 之上的那一行小字，形如「壳:2026-10-25 18:10 | 网:2026-10-25 18:32」。
- * 网页时间是构建注入的；壳时间是壳在 getEnv 里上报的 builtAt——
- * 两边并排才看得出「手机上跑的那个壳」跟网页差多久，同号重打包也能对上 commit。
- * 不在壳里时只显示网页时间；老壳（≤1.1.0）不报时间，退回显示壳版本号。
+ * 版本条：人物主页 head 之上的那一行小字，形如「网:2026-10-25 18:32」。
+ * 时间是构建注入的 BUILD_TIME（Asia/Shanghai）。
+ *
+ * 曾经并排显示「壳:… | 网:…」（壳的 builtAt / commit + 配对状态），2026-10-26
+ * 连同「判断是不是在壳里」的那套逻辑一起删了：网页在壳里和在浏览器里行为一致，
+ * 就不该再拿「在不在壳里」去做任何决定，版本条也只报网页自己这一半。
  */
 export function VersionStrip() {
-  const p = pairing();
-  // 壳的 builtAt 固定是 Asia/Shanghai；网页这边也跟着折到上海，两个时间才可比
   const webTime = fmtTime(BUILD_TIME, 'Asia/Shanghai');
-  // 老壳没有 builtAt：显示版本号，至少说明跑的是哪个壳
-  const shellTime = fmtTime(p.builtAt) || (p.shell ? `v${p.shell}` : '');
-  const shellDetail = p.shell
-    ? `壳 v${p.shell}${p.builtAt ? `（${p.builtAt}）` : '（未上报时间）'}${p.commit ? ` @ ${p.commit}` : ''} — ${pairLabel(p.state)}`
-    : '';
   return (
     <div
       className="version-strip"
-      title={`网 ${webTime}（v${p.web}）${shellDetail ? ` · ${shellDetail}` : ''} · 双击刷新`}
+      title={`网 ${webTime}（v${APP_VERSION}） · 双击刷新`}
       onDoubleClick={() => location.reload()}
     >
-      {shellTime && (
-        <>
-          <span className={p.state === 'ok' ? undefined : 'version-strip-warn'}>壳:{shellTime}</span>
-          <span className="version-strip-sep">|</span>
-        </>
-      )}
       <span>网:{webTime}</span>
     </div>
   );
