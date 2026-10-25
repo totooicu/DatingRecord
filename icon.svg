@@ -1,5 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#d9536b"/>
-  <path d="M256 392c-8 0-15-4-19-11l-46-80c-4-7-4-15 0-22l46-80c4-7 11-11 19-11s15 4 19 11l46 80c4 7 4 15 0 22l-46 80c-4 7-11 11-19 11z" fill="none" stroke="#fff" stroke-width="26" stroke-linejoin="round"/>
-  <circle cx="256" cy="288" r="34" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" width="512" height="512">
+  <!-- 与安卓壳图标 @drawable/logo（drawable-xxhdpi/logo.png，144×144）同源：
+       青绿对角渐变圆 + 白色「三节点辐射」图形（三点三线，底部圆帽交汇于一点）。
+       参数由 logo.png 逐像素实测标定（/tmp/final/measure*.py），并在 Chromium 渲染下
+       与 logo.png 比对微调（144 尺寸逐像素 diff：99% 像素差 ≤15，残差集中在
+       1px 抗锯齿缘带，均差 2.6/255）。改动图形参数后请重新跑测量与比对脚本。 -->
+  <defs>
+    <linearGradient id="dr-bg" gradientUnits="userSpaceOnUse" x1="33" y1="33" x2="109" y2="109">
+      <stop offset="0" stop-color="#29C1A1"/>
+      <stop offset="1" stop-color="#038B89"/>
+    </linearGradient>
+  </defs>
+  <circle cx="71.05" cy="71.05" r="54.55" fill="url(#dr-bg)"/>
+  <g stroke="#ffffff" stroke-width="6" stroke-linecap="round">
+    <line x1="71.25" y1="53.75" x2="71.25" y2="93.7"/>
+    <line x1="48.5" y1="71.25" x2="71.25" y2="93.7"/>
+    <line x1="94.1" y1="71.25" x2="71.25" y2="93.7"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="71.25" cy="53.75" r="7.85"/>
+    <circle cx="48.5" cy="71.25" r="7.8"/>
+    <circle cx="94.1" cy="71.25" r="7.8"/>
+  </g>
 </svg>
