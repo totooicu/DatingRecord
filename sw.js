@@ -11,7 +11,7 @@
 //
 // 用户数据在 IndexedDB，SW 完全不碰。
 
-const CACHE = 'dating-record-2026-10-25T04-27-10-033Z';
+const CACHE = 'dating-record-2026-10-25T04-35-01-653Z';
 const VERSION_URL = './version.json';
 
 // 数据库引擎专用桶：名字固定，不随构建版本变化。
