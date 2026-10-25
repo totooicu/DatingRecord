@@ -1,6 +1,6 @@
 # 发布手册
 
-> 对应版本：网页 v1.0.1 ↔ 壳 v1.0.1（桥协议 proto 1）
+> 对应版本：网页 v1.1.0 ↔ 壳 v1.1.0（桥协议 proto 1）
 > 壳侧随附手册：`geckoview_example/docs/RELEASE_GUIDE.md`
 
 这份手册管一件事：**让「线上的页面」和「手机上的壳」对得上号，并且能复现**。
@@ -144,6 +144,7 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 
 | 日期 | 网页 | 壳 | proto | 说明 |
 |---|---|---|---|---|
+| 2026-10-25 | v1.1.0 | v1.1.0 | 1 | 连续打点策略：定时 / 同点 2^n 退避（1→64s 封顶），页面与壳同一份规则；壳配置新增 `strategy` / `intervalBaseMs` / `intervalMaxMs` |
 | 2026-10-25 | v1.0.1 | v1.0.1 | 1 | 壳改为加载冻结快照 `releases/v1/`；新增 release action；麦克风标注为实验能力 |
 | 2026-10-25 | v1.0.0 | v1.0.0 | 1 | 第一个正式版（壳指向根路径，属浮动版，已被 v1.0.1 取代） |
 

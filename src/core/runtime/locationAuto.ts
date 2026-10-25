@@ -35,6 +35,8 @@ import {
 } from './store';
 import {
   fetchNativeHistory,
+  INTERVAL_BASE_MS,
+  INTERVAL_MAX_MS,
   nativeLocationAvailable,
   nativeLocationStatus,
   onNativePoint,
@@ -44,6 +46,7 @@ import {
   writeAutoConfig,
   writeCursor,
   type AutoLocationConfig,
+  type SampleStrategy,
 } from './locationNative';
 
 export const SERVICE_ID = 'location-auto';
@@ -71,6 +74,10 @@ export interface LocationAutoState {
   current: CurrentFix | null;
   /** 去重阈值（米）：位移小于它只刷新时间戳，不新增点 */
   threshold: number;
+  /** 连续打点策略：定时 / 同点指数退避（壳按同一份规则记） */
+  strategy: SampleStrategy;
+  /** 连续落在同一个点的次数：新点归零，每次合并 +1；退避的指数 n 就是它 */
+  streak: number;
   running: boolean;
   /** 跑在壳的原生服务上（页面定时器已让位），面板据此提示「退到后台也继续」 */
   native: boolean;
@@ -91,6 +98,8 @@ let state: LocationAutoState = {
   offset: { lat: 0, lng: 0 },
   current: null,
   threshold: 5,
+  strategy: 'backoff',
+  streak: 0,
   running: false,
   native: false,
   busy: false,
@@ -304,8 +313,9 @@ let visibilityWatched = false;
 /** 开机注册：服务页一开始就列得出「自动打点」（未运行），并恢复上次文件 */
 export function initLocationAutoService(): void {
   const cfg = readAutoConfig();
-  // 阈值归页面存档：刷新后接着上次的值，和推给壳的是同一个数
+  // 阈值 / 策略归页面存档：刷新后接着上次的值，和推给壳的是同一个数
   if (cfg.thresholdM !== state.threshold) patch({ threshold: cfg.thresholdM });
+  if (cfg.strategy !== state.strategy) patch({ strategy: cfg.strategy });
   registerAutoService(state.running);
   void restoreLastFile();
   // 壳里：上次退出时是开着的，壳的前台服务已经按 dr.autoLocation 拉起来了，
@@ -381,13 +391,41 @@ export function setThreshold(m: number): void {
   scheduleConfigPush();
 }
 
+/** 切换连续打点策略；正在跑时立刻按新规则安排下一次采样 */
+export function setSampleStrategy(s: SampleStrategy): void {
+  if (s === state.strategy) return;
+  patch({ strategy: s, streak: 0 });
+  writeAutoConfig(configOf(state.running));
+  scheduleConfigPush();
+  if (state.running && !state.native) armNextTick();
+}
+
+/**
+ * 连续打点的采样间隔：a) 定时 → 恒为 base；b) 同点退避 → base·2^n，封顶 max。
+ * n = 连续落在同一个点的次数（streak），新点归零。
+ * 例（base=1s，max=64s）：1,1,1,2,4,8,16,32,64,64,64…
+ */
+export function nextSampleMs(streak: number, strategy: SampleStrategy): number {
+  if (strategy === 'fixed') return INTERVAL_BASE_MS;
+  // 指数钳一下，避免 2^n 溢出；超过 max 之后本来也是常数
+  const n = Math.min(Math.max(0, Math.floor(streak)), 20);
+  return Math.min(INTERVAL_BASE_MS * 2 ** n, INTERVAL_MAX_MS);
+}
+
 // ---- 与壳的配置同步（location.* 桥） ----
 
-/** 「位置在动」的门槛：壳用它切 1s / 30s / 60s 的频率，页面不单独暴露 */
+/** 「位置在动」的门槛：只给 ≤1.0.1 的旧壳切 1s / 30s / 60s 用，新壳看 strategy */
 const MOVE_THRESHOLD_M = 10;
 
 function configOf(enabled: boolean): AutoLocationConfig {
-  return { enabled, thresholdM: state.threshold, moveThresholdM: MOVE_THRESHOLD_M };
+  return {
+    enabled,
+    thresholdM: state.threshold,
+    moveThresholdM: MOVE_THRESHOLD_M,
+    strategy: state.strategy,
+    intervalBaseMs: INTERVAL_BASE_MS,
+    intervalMaxMs: INTERVAL_MAX_MS,
+  };
 }
 
 let configPushTimer: number | null = null;
@@ -636,39 +674,59 @@ let timer: number | null = null;
 let lastFlush = 0;
 const FLUSH_MS = 15000;
 
-function tick(): void {
-  readFix()
-    .then(async (fix) => {
-      if (!state.fileId || !state.doc) return;
-      const r: LocationPoint = {
-        ts: fix.ts,
-        lat: fix.lat,
-        lng: fix.lng,
-        accuracy: fix.accuracy,
-        note: '',
-      };
-      const { points, added } = appendPoint(state.rows, r, state.threshold);
-      const doc: LocationDoc = { ...state.doc, points };
-      patch({ rows: points, doc, rev: added ? state.rev + 1 : state.rev });
-      setServiceNote(SERVICE_ID, undefined);
-      const now = Date.now();
-      if (added || now - lastFlush >= FLUSH_MS) {
-        lastFlush = now;
-        await persist(doc);
-      }
-    })
-    .catch(() => {
-      // 定位失败不打断服务：在服务状态上留个说明，下一秒再试
-      setServiceNote(SERVICE_ID, '上一次定位失败，重试中');
+/** 按当前 streak / 策略安排下一次采样；停用或已交给壳时什么也不做 */
+function armNextTick(): void {
+  if (timer !== null) {
+    window.clearTimeout(timer);
+    timer = null;
+  }
+  if (!state.running || state.native) return;
+  timer = window.setTimeout(() => {
+    timer = null;
+    void tick();
+  }, nextSampleMs(state.streak, state.strategy));
+}
+
+async function tick(): Promise<void> {
+  try {
+    const fix = await readFix();
+    if (!state.fileId || !state.doc) return;
+    const r: LocationPoint = {
+      ts: fix.ts,
+      lat: fix.lat,
+      lng: fix.lng,
+      accuracy: fix.accuracy,
+      note: '',
+    };
+    const { points, added } = appendPoint(state.rows, r, state.threshold);
+    const doc: LocationDoc = { ...state.doc, points };
+    // 新点把「同点连击」清零，下一次仍是基准间隔；合并则 n+1，下次翻倍
+    patch({
+      rows: points,
+      doc,
+      rev: added ? state.rev + 1 : state.rev,
+      streak: added ? 0 : state.streak + 1,
     });
+    setServiceNote(SERVICE_ID, undefined);
+    const now = Date.now();
+    if (added || now - lastFlush >= FLUSH_MS) {
+      lastFlush = now;
+      await persist(doc);
+    }
+  } catch {
+    // 定位失败不打断服务：在服务状态上留个说明，按当前退避档重试
+    setServiceNote(SERVICE_ID, '上一次定位失败，重试中');
+  } finally {
+    armNextTick();
+  }
 }
 
 function startPageTimer(): void {
-  if (timer) return;
-  timer = window.setInterval(tick, 1000);
-  tick();
-  patch({ running: true, native: false });
+  if (timer !== null) return;
+  patch({ running: true, native: false, streak: 0 });
   registerAutoService(true);
+  // 先立刻取一次（第一个点不该等），之后由 tick 按策略接力
+  void tick();
 }
 
 export function startAuto(): boolean {
@@ -689,8 +747,8 @@ export function stopAuto(): void {
     window.clearTimeout(configPushTimer);
     configPushTimer = null;
   }
-  if (timer) {
-    clearInterval(timer);
+  if (timer !== null) {
+    window.clearTimeout(timer);
     timer = null;
   }
   // 停止 / 切文件前把「原地刷新」的最后一条时间戳也落盘
@@ -706,7 +764,7 @@ export function stopAuto(): void {
   } else {
     writeAutoConfig(configOf(false));
   }
-  patch({ running: false });
+  patch({ running: false, streak: 0 });
   setServiceRunning(SERVICE_ID, false);
   setServiceNote(SERVICE_ID, undefined);
 }

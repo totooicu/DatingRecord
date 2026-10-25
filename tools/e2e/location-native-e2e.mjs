@@ -185,6 +185,11 @@ const startCalls = await calls();
 const setCfg = startCalls.filter((c) => c.action === 'location.setConfig').pop();
 check('推了 location.setConfig', !!setCfg, JSON.stringify(startCalls.map((c) => c.action)));
 check('配置里 enabled=true / thresholdM=5', setCfg?.params?.enabled === true && setCfg?.params?.thresholdM === 5, JSON.stringify(setCfg?.params));
+check(
+  '配置里带连续打点策略（backoff / 1s / 64s）',
+  setCfg?.params?.strategy === 'backoff' && setCfg?.params?.intervalBaseMs === 1000 && setCfg?.params?.intervalMaxMs === 64000,
+  JSON.stringify(setCfg?.params),
+);
 check('页面自己的 GPS 一次都没取（不再用定时器）', (await geoCalls()) === 0, `geoCalls=${await geoCalls()}`);
 check('面板出现「原生服务接管」提示', (await p.locator('.loc-native-hint').count()) === 1);
 check('head 出现服务图标', (await p.locator('.page-head-right .hs-svc').count()) >= 1);
@@ -242,6 +247,14 @@ check('停止推 enabled=false', stopCfg?.params?.enabled === false, JSON.string
 check('提示消失', (await p.locator('.loc-native-hint').count()) === 0);
 const stopSaved = await config();
 check('存档里 enabled=false', stopSaved?.enabled === false, JSON.stringify(stopSaved));
+
+console.log('\nN6 切连续打点策略也会同步给壳');
+await p.locator('select.loc-select').selectOption('fixed');
+await p.waitForTimeout(1000);
+const fixedCfg = (await calls()).filter((c) => c.action === 'location.setConfig').pop();
+check('策略推给壳（fixed）', fixedCfg?.params?.strategy === 'fixed', JSON.stringify(fixedCfg?.params));
+const fixedSaved = await config();
+check('策略也进了 dr.autoLocation 存档', fixedSaved?.strategy === 'fixed', JSON.stringify(fixedSaved));
 
 await ctx.close();
 await browser.close();

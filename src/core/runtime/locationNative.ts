@@ -9,7 +9,8 @@
 //
 // 和壳的约定（见壳仓库 docs/ADAPTATION_GUIDE.md、LocationConfig.java）：
 //   · 配置存在页面这边（localStorage['dr.autoLocation']），壳在 onPageFinished
-//     会主动读一次，所以即使页面没调桥，原生也有最新的 enabled / thresholdM；
+//     会主动读一次，所以即使页面没调桥，原生也有最新的 enabled / thresholdM /
+//     strategy / intervalBaseMs / intervalMaxMs；
 //   · enabled=true 壳就拉起服务，false 就停；页面重启后按同一份配置接管；
 //   · 原生点坐标是 LocationManager 的 WGS-84，页面里记的是 GCJ-02（高德），
 //     所以合并前必须换算，换算放在 locationAuto.ts 里做。
@@ -23,15 +24,36 @@ export const AUTO_CONFIG_KEY = 'dr.autoLocation';
 /** 原生点合并游标：已合并到的最大原生时间戳（ms），防止 getHistory 重放 */
 export const AUTO_CURSOR_KEY = 'dr.autoLocation.cursor';
 
+/** 连续打点策略：fixed = 每次固定 base；backoff = 同点连续 n 次后等 2^n 个 base（封顶 max） */
+export type SampleStrategy = 'fixed' | 'backoff';
+
+/** 采样的基准间隔与封顶：封顶 64s 对应 n=6，见 locationAuto.ts 的 nextSampleMs() */
+export const INTERVAL_BASE_MS = 1000;
+export const INTERVAL_MAX_MS = 64000;
+
 export interface AutoLocationConfig {
   enabled: boolean;
   /** 去重阈值（米），0 = 每个点都记 */
   thresholdM: number;
-  /** 位移超过它算「位置在动」，壳用它切快频 */
+  /** 旧壳（≤1.0.1）用的「位置在动」门槛；新壳已改用 strategy，保留只为不破坏旧组合 */
   moveThresholdM: number;
+  strategy: SampleStrategy;
+  intervalBaseMs: number;
+  intervalMaxMs: number;
 }
 
-const DEFAULT_CONFIG: AutoLocationConfig = { enabled: false, thresholdM: 5, moveThresholdM: 10 };
+const DEFAULT_CONFIG: AutoLocationConfig = {
+  enabled: false,
+  thresholdM: 5,
+  moveThresholdM: 10,
+  strategy: 'backoff',
+  intervalBaseMs: INTERVAL_BASE_MS,
+  intervalMaxMs: INTERVAL_MAX_MS,
+};
+
+function normalizeStrategy(v: unknown): SampleStrategy {
+  return v === 'fixed' ? 'fixed' : 'backoff';
+}
 
 /** 桥在不在：壳的适配脚本会把标记写在 <html> 上，普通浏览器里没有 */
 export function nativeLocationAvailable(): boolean {
@@ -45,10 +67,15 @@ export function readAutoConfig(): AutoLocationConfig {
     const o = JSON.parse(raw) as Partial<AutoLocationConfig>;
     const num = (v: unknown, def: number) => (typeof v === 'number' && Number.isFinite(v) ? v : def);
     const threshold = num(o.thresholdM, DEFAULT_CONFIG.thresholdM);
+    const base = num(o.intervalBaseMs, DEFAULT_CONFIG.intervalBaseMs);
+    const max = num(o.intervalMaxMs, DEFAULT_CONFIG.intervalMaxMs);
     return {
       enabled: o.enabled === true,
       thresholdM: threshold >= 0 ? threshold : 0,
       moveThresholdM: num(o.moveThresholdM, DEFAULT_CONFIG.moveThresholdM),
+      strategy: normalizeStrategy(o.strategy),
+      intervalBaseMs: base > 0 ? base : DEFAULT_CONFIG.intervalBaseMs,
+      intervalMaxMs: max >= base && max > 0 ? max : DEFAULT_CONFIG.intervalMaxMs,
     };
   } catch {
     return { ...DEFAULT_CONFIG };

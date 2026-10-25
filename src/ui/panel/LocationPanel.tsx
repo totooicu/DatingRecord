@@ -28,16 +28,19 @@ import {
 import {
   getAmapKey,
   locateMe as locateOnce,
+  nextSampleMs,
   openLocationFile,
   punch,
   removePoint,
   setAmapKey,
   setLocationOffset,
+  setSampleStrategy,
   setThreshold,
   startAuto,
   stopAuto,
   useLocationAuto,
 } from '../../core/runtime/locationAuto';
+import type { SampleStrategy } from '../../core/runtime/locationNative';
 
 type TabKey = 'map' | 'record' | 'file' | 'help';
 
@@ -85,7 +88,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export function LocationPanel() {
   const la = useLocationAuto();
-  const { fileId, fileName, rows, offset, current, threshold, running: auto, native, busy } = la;
+  const { fileId, fileName, rows, offset, current, threshold, strategy, streak, running: auto, native, busy } = la;
 
   const [tab, setTab] = useState<TabKey>('map');
   const [note, setNote] = useState('');
@@ -554,6 +557,28 @@ export function LocationPanel() {
                   ▶ 自动打点
                 </button>
               )}
+            </div>
+            <div className="loc-row">
+              <label className="muted small">
+                连续打点
+                <select
+                  className="loc-num loc-select"
+                  value={strategy}
+                  onChange={(e) => setSampleStrategy(e.target.value as SampleStrategy)}
+                >
+                  <option value="backoff">同点退避</option>
+                  <option value="fixed">定时</option>
+                </select>
+              </label>
+              <span className="muted small">
+                {strategy === 'fixed'
+                  ? '每 1 秒取一次'
+                  : native
+                    ? '由壳按同一策略调度：同点越久等得越久，最多 64 秒'
+                    : auto
+                      ? `同点连续 ${streak} 次 · 下次约 ${Math.round(nextSampleMs(streak, strategy) / 1000)} 秒`
+                      : '同点连续 n 次后等 2ⁿ 秒（1→2→4→…→64 秒封顶），移位即回到 1 秒'}
+              </span>
             </div>
             {auto && native && (
               <p className="muted small loc-native-hint">
