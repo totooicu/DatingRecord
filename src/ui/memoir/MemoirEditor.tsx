@@ -21,6 +21,7 @@ import { useBlobUrl } from '../preview/useBlobUrl';
 import type { Memoir, MemoirPage } from '../../core/types';
 import { AiMemoirButton } from './AiMemoir';
 import { AiPlaylistButton } from './AiPlaylist';
+import { PlaylistPicker } from './PlaylistPicker';
 
 function Thumb({ id, alt }: { id: string | null; alt?: string }) {
   const url = useBlobUrl(id);
@@ -183,18 +184,21 @@ export function MemoirEditor({
         </div>
         <div className="memoir-cover-pick">
           <span className="muted small">背景歌单</span>
-          <select
-            className="memoir-select"
-            value={draft.playlistId ?? ''}
-            onChange={(e) => commit({ playlistId: e.target.value || null })}
-          >
-            <option value="">不播放</option>
-            {playlists.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name.replace(/\.drpl$/i, '')}
-              </option>
-            ))}
-          </select>
+          <div className="memoir-playlist-row">
+            <select
+              className="memoir-select"
+              value={draft.playlistId ?? ''}
+              onChange={(e) => commit({ playlistId: e.target.value || null })}
+            >
+              <option value="">不播放</option>
+              {playlists.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name.replace(/\.drpl$/i, '')}
+                </option>
+              ))}
+            </select>
+            <PlaylistPicker memoir={draft} onApply={(next) => setDraft(next)} />
+          </div>
           {draft.playlistId && !playlist && <span className="muted small">歌单文件已不在文件库里</span>}
         </div>
       </div>

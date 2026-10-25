@@ -7,11 +7,10 @@
 
 import { chat, getDefaultModel } from '../ai';
 import { getEvent } from '../repo/events';
-import { listFiles, type StoredFile } from '../repo/files';
+import type { StoredFile } from '../repo/files';
+import { libraryAudio } from '../music/library';
 import { markdownToText } from '../markdown';
 import type { Memoir } from '../types';
-
-const AUDIO_EXT = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba']);
 
 /** 一次最多给模型列多少首：太多既塞不下，也会让模型挑花眼 */
 const MAX_LISTED = 200;
@@ -31,22 +30,6 @@ export interface PlaylistAiResult {
   audioCount: number;
   /** 实际列给模型的曲目数（超过上限时小于 audioCount） */
   listedCount: number;
-}
-
-function extOf(name: string): string {
-  const m = /\.([A-Za-z0-9]+)$/.exec(name || '');
-  return m ? m[1].toLowerCase() : '';
-}
-
-function isAudio(f: StoredFile): boolean {
-  return (f.mime || '').toLowerCase().startsWith('audio/') || AUDIO_EXT.has(extOf(f.name));
-}
-
-/** 文件库里所有音频，按名字排一下，编号稳定好对 */
-export function libraryAudio(): StoredFile[] {
-  return listFiles()
-    .filter(isAudio)
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
 const SYSTEM = `你在帮一段真实的相处记录挑一张背景歌单。

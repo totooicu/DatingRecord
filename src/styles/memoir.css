@@ -498,3 +498,68 @@
     font-size: 21px;
   }
 }
+
+/* ---------- 手动挑歌 ---------- */
+.memoir-playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.memoir-playlist-row .memoir-select {
+  flex: 1 1 160px;
+  width: auto;
+}
+
+.memoir-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memoir-song-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-y: auto;
+  max-height: 52vh;
+}
+
+.memoir-song-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.memoir-song-row:last-child {
+  border-bottom: 0;
+}
+
+.memoir-song-row:hover {
+  background: var(--side);
+}
+
+/* 全局 input 是 width:100%，勾选框得单独收回原尺寸 */
+.memoir-song-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.memoir-song-name {
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.modal-foot .memoir-ai-row {
+  width: 100%;
+}
+
+.memoir-picker-foot-gap {
+  flex: 1 1 auto;
+}
