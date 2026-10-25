@@ -35,6 +35,7 @@ import {
   punch,
   removeLocationOffsetSegment,
   removePoint,
+  retainFixWatch,
   setAmapKey,
   setLocationOffset,
   setLocationOffsetSegment,
@@ -374,6 +375,9 @@ export function LocationPanel() {
     playIdxRef.current = idx;
     setPlayIdx(idx);
   };
+
+  // 面板开着就保持 GPS 监听：打点直接读最近一次定位，不必每次现取（真机现取要好几秒）
+  useEffect(() => retainFixWatch(), []);
 
   // 换文件 / 离开地图页：停止回放，别在后台空转
   useEffect(() => {

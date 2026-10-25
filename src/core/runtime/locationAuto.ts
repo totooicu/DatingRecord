@@ -185,7 +185,14 @@ function loadAmap(): Promise<any> {
   return amapLoading;
 }
 
-function fallbackBrowser(): Promise<{ lat: number; lng: number; accuracy: number }> {
+/** 一次定位结果（坐标已换成 GCJ-02） */
+interface FixPos {
+  lat: number;
+  lng: number;
+  accuracy: number;
+}
+
+function fallbackBrowser(): Promise<FixPos> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error('不支持定位'));
@@ -202,11 +209,11 @@ function fallbackBrowser(): Promise<{ lat: number; lng: number; accuracy: number
   });
 }
 
-function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> {
+function getPosition(): Promise<FixPos> {
   return loadAmap()
     .then(
       (AMap) =>
-        new Promise<{ lat: number; lng: number; accuracy: number }>((resolve, reject) => {
+        new Promise<FixPos>((resolve, reject) => {
           AMap.plugin('AMap.Geolocation', () => {
             const g = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000 });
             g.getCurrentPosition((status: string, result: any) => {
@@ -222,12 +229,116 @@ function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> 
     .catch(() => fallbackBrowser());
 }
 
-/** 取一次位置并更新蓝点 */
+/**
+ * 取一次位置并更新蓝点。
+ *
+ * 现取一次（getCurrentPosition）在真机上很慢：冷启动 GPS 常常要 5～8 秒，1 秒级的
+ * 采样会被定位耗时拖成「每 8 秒一个点」。所以页面里常驻一个 watchPosition（系统
+ * 持续监听），打点只读它最近推来的定位；没有新鲜值时（刚打开、刚回到前台）才等
+ * 一次监听回调，再不行才退回现取一次。
+ */
 async function readFix(): Promise<CurrentFix> {
-  const pos = await getPosition();
+  const pos = await fixOnce();
   const fix: CurrentFix = { ts: new Date().toISOString(), lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy };
   patch({ current: fix });
   return fix;
+}
+
+/** 监听缓存的「新鲜」上限：比采样间隔宽一点 */
+const FIX_FRESH_MS = 3000;
+/** 过期但仍可直接用的上限：设备静止时监听可能不再回调，别为了一次等待把采样拖长 */
+const FIX_STALE_MAX_MS = 30000;
+/** 一次监听回调都还没有时，最多等这么久再退回现取 */
+const FIX_WAIT_MS = 4000;
+
+let watchId: number | null = null;
+/** 监听推来的最近一次定位（已换成 GCJ-02） */
+let watchFix: { pos: FixPos; at: number } | null = null;
+/** 等第一个监听结果的人：首次打开 / 刚回到前台时用 */
+let watchWaiters: ((p: FixPos | null) => void)[] = [];
+/** 谁需要监听：面板打开、自动打点在跑。归零就关掉，别让 GPS 一直耗电 */
+let watchHolders = 0;
+
+function resolveWatchWaiters(pos: FixPos | null): void {
+  const list = watchWaiters;
+  watchWaiters = [];
+  for (const fn of list) fn(pos);
+}
+
+function startWatch(): void {
+  // 壳里有原生前台服务在记点，页面不必再自己开一路 GPS
+  if (watchId !== null || !navigator.geolocation || nativeLocationAvailable()) return;
+  try {
+    watchId = navigator.geolocation.watchPosition(
+      (p) => {
+        const pos = {
+          lat: p.coords.latitude,
+          lng: p.coords.longitude,
+          accuracy: p.coords.accuracy,
+        };
+        // 监听给的是 WGS-84，和现取那条路一样换成 GCJ-02
+        const gcj = wgs84ToGcj02(pos.lat, pos.lng);
+        watchFix = { pos: { lat: gcj.lat, lng: gcj.lng, accuracy: pos.accuracy }, at: Date.now() };
+        resolveWatchWaiters(watchFix.pos);
+      },
+      () => resolveWatchWaiters(null),
+      // maximumAge 让系统直接给最近一次结果，不必每次重新搜星
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 },
+    );
+  } catch {
+    watchId = null;
+  }
+}
+
+function stopWatch(): void {
+  if (watchId === null) return;
+  try {
+    navigator.geolocation.clearWatch(watchId);
+  } catch {
+    /* ignore */
+  }
+  watchId = null;
+  watchFix = null;
+  resolveWatchWaiters(null);
+}
+
+/**
+ * 持有监听：面板打开 / 自动打点在跑都算。返回释放函数（引用计数），
+ * 最后一个释放且不在打点时关掉监听。
+ */
+export function retainFixWatch(): () => void {
+  watchHolders += 1;
+  startWatch();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    watchHolders = Math.max(0, watchHolders - 1);
+    if (watchHolders === 0 && !state.running) stopWatch();
+  };
+}
+
+/** 读一次用于打点的定位：监听缓存 → 等一次监听 → 现取 */
+async function fixOnce(): Promise<FixPos> {
+  if (watchFix && Date.now() - watchFix.at <= FIX_FRESH_MS) return watchFix.pos;
+  startWatch();
+  // 有过监听结果、只是不够新（设备没动）就直接用：比等一次现取快得多
+  if (watchFix && Date.now() - watchFix.at <= FIX_STALE_MAX_MS) return watchFix.pos;
+  if (watchId !== null) {
+    const fresh = await new Promise<FixPos | null>((resolve) => {
+      const t = window.setTimeout(() => {
+        watchWaiters = watchWaiters.filter((f) => f !== done);
+        resolve(null);
+      }, FIX_WAIT_MS);
+      const done = (p: FixPos | null) => {
+        window.clearTimeout(t);
+        resolve(p);
+      };
+      watchWaiters.push(done);
+    });
+    if (fresh) return fresh;
+  }
+  return getPosition();
 }
 
 const PI = Math.PI;
@@ -785,6 +896,8 @@ function startPageTimer(): void {
   if (timer !== null) return;
   patch({ running: true, native: false, streak: 0 });
   registerAutoService(true);
+  // 页面定时器一直要有新鲜定位：把监听开着，采样只读缓存
+  startWatch();
   // 先立刻取一次（第一个点不该等），之后由 tick 按策略接力
   void tick();
 }
@@ -826,5 +939,7 @@ export function stopAuto(): void {
   }
   patch({ running: false, streak: 0 });
   setServiceRunning(SERVICE_ID, false);
+  // 面板还开着就留着监听（手动打点也要用），否则一起关掉
+  if (watchHolders === 0) stopWatch();
   setServiceNote(SERVICE_ID, undefined);
 }
