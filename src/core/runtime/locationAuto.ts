@@ -39,6 +39,7 @@ import {
 } from './store';
 import {
   fetchNativeHistory,
+  getNativeFix,
   INTERVAL_BASE_MS,
   INTERVAL_MAX_MS,
   nativeLocationAvailable,
@@ -188,7 +189,7 @@ function loadAmap(): Promise<any> {
 function fallbackBrowser(): Promise<{ lat: number; lng: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('不支持定位'));
+      reject(new Error('当前环境不支持定位（无 navigator.geolocation）'));
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -196,13 +197,42 @@ function fallbackBrowser(): Promise<{ lat: number; lng: number; accuracy: number
         const gcj = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
         resolve({ lat: gcj.lat, lng: gcj.lng, accuracy: pos.coords.accuracy });
       },
-      (err) => reject(err),
+      (err) => reject(geoError(err)),
       { enableHighAccuracy: true, timeout: 10000 },
     );
   });
 }
 
+/** 把浏览器 geolocation 的失败码翻译成人话，方便定位「壳/页面」到底卡在哪 */
+function geoError(err: unknown): Error {
+  const e = err as { code?: number } | null;
+  if (e && typeof e.code === 'number') {
+    if (e.code === 1) return new Error('定位权限被拒绝');
+    if (e.code === 2) return new Error('定位暂时不可用（信号弱或位置提供方异常）');
+    if (e.code === 3) return new Error('定位超时（10s 内没拿到坐标）');
+  }
+  return err instanceof Error ? err : new Error('定位失败');
+}
+
+/**
+ * 取一次定位：壳里优先走原生一次性定位（location.getFix，WGS-84→GCJ-02），
+ * 和连续打点同一个 GPS 源，绕开 WebView 拦截 navigator.geolocation 那条不稳的路
+ * （常表现为「壳弹了『正在获取定位』却回不来坐标」）。壳没实现 getFix 会快速失败，
+ * 这里退回 AMap / 浏览器原生定位。
+ */
 function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> {
+  if (nativeLocationAvailable()) {
+    return getNativeFix()
+      .then((f) => {
+        const gcj = wgs84ToGcj02(f.lat, f.lng);
+        return { lat: gcj.lat, lng: gcj.lng, accuracy: f.accuracy };
+      })
+      .catch(() => getPositionBrowser());
+  }
+  return getPositionBrowser();
+}
+
+function getPositionBrowser(): Promise<{ lat: number; lng: number; accuracy: number }> {
   return loadAmap()
     .then(
       (AMap) =>
@@ -566,9 +596,9 @@ export async function punch(note: string): Promise<PunchResult | null> {
     patch({ rows: points, doc, rev: added ? state.rev + 1 : state.rev, busy: false });
     await persist(doc);
     return { point: points[points.length - 1], index: points.length - 1 };
-  } catch {
+  } catch (e) {
     patch({ busy: false });
-    throw new Error('定位失败');
+    throw e instanceof Error ? e : new Error('定位失败');
   }
 }
 
