@@ -23,7 +23,7 @@ echo '==> 克隆 gh-pages 分支'
 git clone -q --branch gh-pages --single-branch "$ORIGIN" "$WORK/ghp"
 
 cd "$WORK/ghp"
-# 清空旧产物（保留 .git 与 releases/ —— releases/ 是版本快照，日常部署不许动）
+# 清空旧产物（保留 .git 与 releases/ —— releases/ 已定稿，只读，日常部署不许动）
 find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'releases' -exec rm -rf {} +
 
 cp -R "$REPO_ROOT/dist/." .

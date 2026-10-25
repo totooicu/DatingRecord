@@ -21,19 +21,19 @@
 
 ---
 
-## 二、线上地址：最新 vs 快照
+## 二、线上地址
 
 | 地址 | 内容 | 谁在用 | 会自己变吗 |
 |---|---|---|---|
 | `/DatingRecord/` | 跟着 `main` 走的最新构建 | 浏览器；**壳（v1.1.0 起 `DEFAULT_URL`）** | 会，每次推 main 就变 |
-| `/DatingRecord/releases/v1/` | v1 冻结快照 | 回滚 / 对照（壳不再指向它） | 不会，只有打 `v1.x` tag 才重写 |
+| `/DatingRecord/releases/*/` | 历史版本快照（**定稿**） | 回滚对照 / 留档 | 永不：定稿后只读，任何流程都不许写 |
 
+- **`releases/*/` 是定稿，只读**（铁律七）：已发布的快照不再重写、不再删改，
+  打 tag、手动 dispatch、日常部署都不许碰里面的文件。
 - v1.1.0 起壳改回根路径：网页修 bug 不必再发壳，代价是壳里的页面会随网页发版变化。
-  排查问题时先看「版本配对」卡里的网页版本；快照保留下来用于回滚和对照。
-- 快照按大版本分目录：`v1.0.1`、`v1.1.0` 都写进 `releases/v1/`；`v2` 另开 `releases/v2/`。
-- 快照由 `.github/workflows/release-v1-pages.yml` 生成：**只在 tag（`v1.*`）或手动触发时跑**。
-- 日常部署（`deploy-pages.yml`）清目录时必须保留 `releases/`——不保留，一次普通部署就把
-  已发布版本删了。
+  排查问题时先看「版本配对」卡里的网页版本。
+- 日常部署（`deploy-pages.yml` / `scripts/deploy-pages.sh`）清目录时保留 `releases/`——
+  保留的含义就是**一个字节都不动**。
 
 ---
 
@@ -79,7 +79,7 @@ git merge origin/main                                              # 冲突在�
 git switch main && git merge --ff-only feat/release-<版本>
 git push origin main                                               # 触发 deploy-pages.yml（根路径）
 git tag -a v<版本> -m "网页 v<版本>（配壳 v<版本>，proto N）" && git push origin v<版本>
-# 推 tag 会自动触发 release-v1-pages.yml：写快照 + 自检线上 version.json
+# tag 只是版本标记：不许再往 releases/*/ 写任何东西（铁律七）
 git branch -d feat/release-<版本> && git push origin --delete feat/release-<版本>
 ```
 
@@ -87,7 +87,7 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 
 ```bash
 ./gradlew :app:assembleRelease --no-daemon   # 唯一门禁
-# versionName 与网页同号，versionCode +1，DEFAULT_URL 指 releases/v1/
+# versionName 与网页同号，versionCode +1，DEFAULT_URL 指站点根路径
 # 合并 → 打 tag v<版本> → 分发 APK（附 SHA-256）
 ```
 
@@ -101,23 +101,20 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 | 检查 | 命令/位置 | 期望 |
 |---|---|---|
 | 根路径已更新 | `curl -s https://totooicu.github.io/DatingRecord/version.json` | `release` 是新版本 |
-| 快照已更新 | 同上，路径换成 `/releases/v1/version.json` | `release` 是新版本，`proto` 正确 |
-| 快照真的能跑 | 浏览器打开 `/releases/v1/` | 页面正常、无 404 白屏 |
 | 页面新代码在线上 | 打开页面，看「最新版本」时间 = 这次 Actions 的构建时间 | 一致（差几分钟正常） |
+| 快照没被动过 | `curl -s .../releases/v1/version.json` 与上次记录一致 | 一致；变了就是违规（铁律七） |
 | 配对正确 | 手机上壳内 → 适配测试 → 版本配对 | 网页/壳版本一致、proto 一致、配对正常 |
-| 壳加载的是快照 | 同上「壳版本」与 UA | UA 里是 `DatingRecord/<新版本>` |
+| 壳加载的是根路径 | 同上「壳版本」与 UA | UA 里是 `DatingRecord/<新版本>` |
 
-前四项能在电脑上做，最后两项必须装到手机上看。
+前两项在电脑上做，后三项装到手机上看。
 
 ---
 
 ## 七、回滚
 
-- **线上页面出错**：`git revert <提交> && git push origin main` → 根路径自动回到上一版；
-  若错误已经进了快照，把 tag 指向回退后的提交重新触发
-  （`git tag -f v<版本> <提交> && git push -f origin v<版本>`），快照随之回到可用状态。
-- **只想让壳回旧页**：壳加载的是固定目录，最快的办法是重新发一次快照（tag 重打）——
-  壳不用重装，下次打开就换回来了。
+- **线上页面出错**：`git revert <提交> && git push origin main` → 根路径自动回到上一版。
+  **不靠改快照回滚**：`releases/*/` 已定稿，重打 tag、重写目录都算违规。
+- **只想让壳回旧页**：壳加载的是根路径，网页侧 revert 即生效，壳不用重装。
 - **壳本身有问题**：把上一个版本的 APK 重新分发（安装包只增不覆盖，旧包永远在）。
   **不许改签名**——换钥匙等于换 App，升级装不上、卸载还会清掉本地数据。
 - **回滚也是发布**：回滚后同样要跑第六节自检，并在发布记录里补一行「回滚」说明。
@@ -129,8 +126,7 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | 根路径还是旧版本 | Actions 没跑完 / Pages 还没重建 | 等 `pages build and deployment` 变绿，再强制刷新 |
-| 快照 404 | tag 没触发 release 流程，或 workflow 失败 | 看 Actions 里 `Release v1 snapshot` 的日志；必要时手动 dispatch |
-| 快照被日常部署删了 | `deploy-pages.yml` 的清理没保留 `releases/` | 恢复该行，重跑一次发布 |
+| `releases/` 被误改 | 不该发生（铁律七） | 从 gh-pages 的提交历史把该目录恢复成上一状态，并在发布记录写明 |
 | 页面白屏、控制台 404 | 子目录部署时用了绝对路径 | 保持 `base: './'`、SW 与 `version.json` 全用相对路径 |
 | 打开还是旧页面 | Service Worker 缓存 | 换新版本号触发全量更新；别手改 SW 缓存名绕过 |
 | 适配测试显示「壳太旧」 | 壳版本低于 `SHELL_MIN` | 发新壳或用回配套的旧网页 |

@@ -50,8 +50,8 @@ jobs:
           # 就会报 "Failed to fetch dynamically imported module"。旧文件留着，
           # 老页面还能正常用完这一次会话；新页面只用新 hash，互不干扰。
           #
-          # 保留 releases/：那是 release-*.yml 写进去的版本快照（如 releases/v1/），
-          # 壳固定加载它。日常部署把它清掉，等于把已发布的版本删了。
+          # 保留 releases/：已发布的版本快照是**定稿**（CLAUDE.md 铁律七），
+          # 日常部署一个字节都不许动，更不能清掉。
           find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'assets' ! -name 'releases' -exec rm -rf {} +
           mkdir -p assets
           cp -R ../dist/. .
