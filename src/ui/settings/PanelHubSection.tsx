@@ -28,12 +28,6 @@ export function PanelHubSection({ onPick }: { onPick: (k: SettingsKey) => void }
       desc: '新建 / 导入 .drloc 定位文件，地图打点、自动记录；经度纬度偏移也保存在文件里。',
       hint: locationCount ? `${locationCount} 个定位文件` : 'GPS 打点 · 高德地图轨迹',
     },
-    {
-      key: 'panelPrecise',
-      title: '高精度定位',
-      desc: '高德官方 Geolocation demo 直跑，输出坐标、精度、定位类别，用于诊断对比。',
-      hint: '诊断 · 坐标/精度/纠偏状态',
-    },
   ];
 
   return (

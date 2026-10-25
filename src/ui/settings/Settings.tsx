@@ -16,11 +16,11 @@ import { LabAiSection } from './LabAiSection';
 import { LabEdgeSection } from './LabEdgeSection';
 import { LabExtractSection } from './LabExtractSection';
 import { LabDraftSection } from './LabDraftSection';
+import { LabCompatSection } from './LabCompatSection';
 import { AiSection } from './AiSection';
 import { PanelHubSection } from './PanelHubSection';
 import { MusicPanel } from '../panel/MusicPanel';
 import { LocationPanel } from '../panel/LocationPanel';
-import { PreciseLocationPanel } from '../panel/PreciseLocationPanel';
 import { FilesPanel } from '../files';
 import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
@@ -39,9 +39,10 @@ import { fmtBuildTime } from '../../core/buildInfo';
  * 目录常驻。所以这里不需要 JS 判断宽度——sub 为 null 只表示「手机上还在目录页」，
  * 宽屏永远按 DEFAULT_SETTINGS_KEY 渲染右栏。
  *
- * 入口已经按「做一件事」合并过（见 sections.ts），带子页的入口有三个：
- * 备份与分享（备份 / 同步 / 分享）、功能体验（边缘分割 / 未完成的记录）、
- * AI（AI 对话 / 聊天提取 / 模型）；目录上各占一行，点进去才是二级目录。
+ * 入口已经按「做一件事」合并过（见 sections.ts），带子页的入口有四个：
+ * 备份与分享（备份 / 同步 / 分享 / 跨设备）、功能体验（边缘分割 / 软件适配测试 /
+ * 未完成的记录）、功能面板（音乐 / 定位）、AI（AI 对话 / 聊天提取 / 模型）；
+ * 目录上各占一行，点进去才是二级目录。
  */
 export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: SettingsKey | null) => void }) {
   // sub 由 App 控制：head 上的状态图标、服务/任务页都能直接跳到某个设置子页
@@ -116,6 +117,8 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
 
         {active === 'labChat' && <LabExtractSection />}
 
+        {active === 'labCompat' && <LabCompatSection />}
+
         {/* 模型配置从「AI 对话 → 模型」标签抽成独立子页：配密钥是低频动作，
             不该占着聊天页的一排标签位置 */}
         {active === 'aiModel' && <AiSection />}
@@ -125,8 +128,6 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
         {active === 'panelMusic' && <MusicPanel />}
 
         {active === 'panelLocation' && <LocationPanel />}
-
-        {active === 'panelPrecise' && <PreciseLocationPanel />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>

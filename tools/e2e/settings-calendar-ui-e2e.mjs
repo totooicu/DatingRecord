@@ -2,7 +2,8 @@
 //
 // S1 设置目录：功能体验、功能面板两个入口都有图标（曾经 panel 一族漏配，
 //    目录和子页只剩一个空粉色方块）
-// S2 功能面板子页：音乐 / 定位 / 高精度定位三条都有图标，和功能体验一致
+// S2 功能面板子页：音乐 / 定位两条都有图标；功能体验三条（边缘分割 / 软件适配测试 /
+//    未完成的记录）也都有图标
 // C1 日历事件条：底色按事件集配色散列，不再是写死的粉色
 //    （样本数据 3 个集合，至少应出现 2 种不同底色；同一集合的事件同色）
 //
@@ -91,13 +92,13 @@ console.log('\nS2 二级入口图标');
 await p.locator('.settings-nav-title', { hasText: /^功能面板$/ }).click();
 await p.waitForTimeout(500);
 const panelIcons = await hubIcons();
-check('功能面板 3 条都有图标', panelIcons.length === 3 && panelIcons.every(Boolean), JSON.stringify(panelIcons));
+check('功能面板 2 条都有图标（高精度定位已下线）', panelIcons.length === 2 && panelIcons.every(Boolean), JSON.stringify(panelIcons));
 await p.locator('.back-btn').first().click();
 await p.waitForTimeout(400);
 await p.locator('.settings-nav-title', { hasText: '功能体验' }).click();
 await p.waitForTimeout(500);
 const labIcons = await hubIcons();
-check('功能体验 2 条都有图标', labIcons.length === 2 && labIcons.every(Boolean), JSON.stringify(labIcons));
+check('功能体验 3 条都有图标', labIcons.length === 3 && labIcons.every(Boolean), JSON.stringify(labIcons));
 
 console.log('\nC1 日历事件条配色');
 await p.locator('.tabbar-item', { hasText: '日历' }).click();

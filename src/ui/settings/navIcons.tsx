@@ -219,6 +219,16 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <rect x="13.4" y="12.4" width="3.8" height="3.8" rx="0.9" />
         </>,
       );
+    // 软件适配测试：手机框 + 一个勾（这台机器上跑得通吗）
+    case 'labCompat':
+      return wrap(
+        <>
+          <rect x="6.6" y="2.8" width="10.8" height="18.4" rx="2.2" />
+          <path d="M10.4 5.4h3.2" />
+          <path d="M9.4 11.6l1.8 1.8 3.6-3.6" />
+          <path d="M10.6 18.4h2.8" />
+        </>,
+      );
     // 聊天提取：截图 + 向下箭头
     case 'labChat':
       return wrap(
@@ -262,15 +272,6 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
         <>
           <path d="M12 20.2s6.2-5.6 6.2-10a6.2 6.2 0 1 0-12.4 0c0 4.4 6.2 10 6.2 10z" />
           <circle cx="12" cy="10" r="2.2" />
-        </>,
-      );
-    // 高精度定位：准星
-    case 'panelPrecise':
-      return wrap(
-        <>
-          <circle cx="12" cy="12" r="6.4" />
-          <path d="M12 2.8v3.2M12 18v3.2M2.8 12h3.2M18 12h3.2" />
-          <circle cx="12" cy="12" r="1.4" />
         </>,
       );
     // 库概览：仪表盘

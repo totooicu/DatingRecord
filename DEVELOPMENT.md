@@ -459,6 +459,41 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **回归**：`node tools/e2e/color-picker-e2e.mjs [url]`（C1–C6：彩虹在左历史在右、HEX 应用、RGB 应用、彩虹拖动、历史刷新保留、图标自定义色保存生效并进入历史）。
 
+### 1.14 软件适配测试：GeckoView 壳自检（设置 → 功能体验 → 软件适配测试）
+
+来源是安卓壳项目 `geckoview_example` 的 `assets/test.html`：一个纯 HTML 页，用 `window.postMessage` 调原生桥。这一页把同样的检查项搬进应用，换成本项目的卡片样式，另加一张「本软件依赖」——适配一个新壳时，先看 WebAssembly / IndexedDB 在不在，比逐项点原生能力更快定位问题。
+
+| 卡 | 走哪条路 | 检查什么 |
+|---|---|---|
+| 引擎信息 | 标准 | UA、SecureContext、Gecko 判定、Android、显示模式 |
+| 原生桥状态 | postMessage | 读 `<html data-gv-bridge-*>` 注入标记，再 ping 一次（3s 超时） |
+| 应用依赖 | 标准 | WebAssembly / IndexedDB / Blob 下载 / Service Worker / PointerEvent / 存储配额 / 屏幕 |
+| 麦克风 | 标准 API | `getUserMedia` + 音量条（AnalyserNode） |
+| 定位 | 标准 API | `geolocation.getCurrentPosition`（不开高精度，10s 超时） |
+| 蓝牙 · 中心设备 | 桥 | `ble.status / startScan / stopScan / connect / read / write / subscribe / disconnect`，设备与 GATT 来自事件 |
+| 蓝牙 · 外设 | 桥 | `ble.peripheral.start / stop / setValue`，连接、写入、订阅走事件 |
+| 文件 · 私有 | 桥 | `file.writePrivate / appendPrivate / readPrivate / listPrivate / deletePrivate` |
+| 文件 · 公共 | 桥 | `file.writePublic / readPublic / deletePublic`（读取与删除只认最后写入的 uri） |
+| 录屏 | 桥 | `screen.start / stop / status / thumbnail` |
+
+**协议**（与壳里那份 `test.html` 一字不差，改一边必须同步另一边）：
+
+- 请求 `window.postMessage({ type: 'gv-bridge-request', id, action, params }, '*')`
+- 响应 `{ type: 'gv-bridge-response', id, ok, result | error }`
+- 事件 `{ type: 'gv-bridge-event', event, data }`（`ble.deviceFound` / `ble.services` / `ble.characteristicChanged` / `screen.recordingStopped` …）
+- 文本走 UTF-8 → base64（`toBase64` / `fromBase64`）；`btoa` 只吃 Latin-1，中文必须自己编码
+- 桥根本不存在时 15s 的默认超时太浪费，ping 单独用 3s
+
+**状态与汇总**：每张卡测完向 `ui/compat/report.ts` 报到（模块级 Map），顶部汇总只给「通过 / 失败 / 未测」计数与逐项 ✓✗，不打分——「麦克风被拒」和「壳没注入桥」不是一类问题，混成一个分数会误导。状态活在模块里，离开页面再回来还在（蓝牙授权、录屏授权都要过系统弹窗，重来一遍很烦）。
+
+**判定口径**：普通浏览器里桥显示「未注入 / 超时」是正常的，标准 API 那几张卡照样能测；应用依赖只把 WebAssembly / IndexedDB / Blob 三条算进汇总（缺一样就开不了库、存不住、导不出），Service Worker / PointerEvent 缺了不影响能不能用。
+
+**壳侧前提**：注入由壳负责，网页侧看不到壳的代理配置。壳若只对自己的 `test.html` 注入，把本应用加载进去时「原生桥状态」会显示未注入——这时要在壳里把注入脚本改成对所有 URL / 所有 frame 生效，网页侧不用改（协议已经对齐）。
+
+**同时下线**：功能面板里的「高精度定位」（高德官方 demo 诊断页）已删除，`panelPrecise` 路由、图标与组件一并移除——定位诊断由这一页的「定位」卡承担，它不依赖高德 key。
+
+**回归**：`node tools/e2e/compat-test-e2e.mjs [url]`（K1–K7）。K1–K6 在真浏览器里跑：入口与 10 张卡、引擎信息、应用依赖、桥未注入判 ✗、离开再回来仍记得、功能面板不含高精度定位；K7 用 `addInitScript` 装一个假壳，验证「注入标记 → 请求 → 响应 → 事件（扫描出设备、连接后出 GATT）」整条链路。
+
 ---
 
 # 第二部分 · 功能规格
