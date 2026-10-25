@@ -12,7 +12,7 @@
 import { queryOne, noteUndoStep, suspendUndo, resumeUndo } from '../db';
 import { upsertDef, createPerson, setAttribute } from '../repo/persons';
 import { createEvent, getEvent, setEventPrivate, updateEvent } from '../repo/events';
-import { createCollection, addMember, setCollectionIcon } from '../repo/collections';
+import { createCollection, addMember, normalizeCollectionTree, setCollectionIcon } from '../repo/collections';
 import { createMemoir, updateMemoir } from '../repo/memoirs';
 import { appendMessage } from '../repo/chat';
 import { createLocation } from '../location/locationFile';
@@ -103,6 +103,9 @@ export async function loadSampleData(): Promise<SampleCounts> {
       collectionIds.set(def.key, c.id);
       if (def.icon) setCollectionIcon(c.id, def.icon);
     }
+    // 老库可能没有根集合（例如「清空全部数据」之后的老版本），那样这些集合
+    // 会全部挂在 parent_id=null 上、树里看不见。这里统一收编回根。
+    normalizeCollectionTree();
 
     // 4. 事件
     const eventIds = new Map<string, string>();
