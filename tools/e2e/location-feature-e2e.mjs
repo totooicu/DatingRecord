@@ -216,33 +216,49 @@ try {
   await recordNote('');
   check('D1：同点第一次打点 → 1 行', (await rowCount()) === 1, `rows=${await rowCount()}`);
   await recordNote('');
-  check('D1：同点第二次打点（阈值5）→ 仍 1 行（去重）', (await rowCount()) === 1, `rows=${await rowCount()}`);
+  // 写策略（2026-10-26 定稿）：和「倒数第二个点」比距离，点数 <2 时没有锚点可比 → 直接追加。
+  // 所以前两次打点必然落下 2 行（先确立「锚点 + 浮动点」），从第 3 次起才参与去重。
+  check('D1：同点第二次打点（阈值5）→ 2 行（点数<2 无锚点，先确立锚点+浮动点）', (await rowCount()) === 2, `rows=${await rowCount()}`);
 
   // D2：移动 >5m 后新增（用顶部全局 P2 ≈13m 北）
   await ctx1.setGeolocation(P2);
   await recordNote('');
-  check('D2：位移≈13m > 阈值5 → 新增到第 2 行', (await rowCount()) === 2, `rows=${await rowCount()}`);
+  check('D2：位移≈13m > 阈值5 → 新增到第 3 行', (await rowCount()) === 3, `rows=${await rowCount()}`);
 
   // D3：阈值设 0，同点仍新增
   await toTab(p, '记录');
   await p.locator('label:has-text("去重阈值") input[type=number]').fill('0');
   await sleep(p, 300);
   await recordNote('');
-  check('D3：阈值=0 → 每次新增（第 3 行）', (await rowCount()) === 3, `rows=${await rowCount()}`);
+  check('D3：阈值=0 → 每次新增（第 4 行）', (await rowCount()) === 4, `rows=${await rowCount()}`);
 
-  // D4：超大阈值 → 同点不再新增
+  // D4：超大阈值 → 同点不再新增（新点顶掉浮动点，行数不变）
   await toTab(p, '记录');
   await p.locator('label:has-text("去重阈值") input[type=number]').fill('999999');
   await sleep(p, 300);
   await recordNote('');
-  check('D4：阈值=999999 → 同点去重（仍 3 行）', (await rowCount()) === 3, `rows=${await rowCount()}`);
+  check('D4：阈值=999999 → 同点顶掉浮动点（仍 4 行）', (await rowCount()) === 4, `rows=${await rowCount()}`);
 
   // D5：负数阈值归 0，仍每次新增
   await toTab(p, '记录');
   await p.locator('label:has-text("去重阈值") input[type=number]').fill('-5');
   await sleep(p, 300);
   await recordNote('');
-  check('D5：负数阈值归 0 → 新增（第 4 行）', (await rowCount()) === 4, `rows=${await rowCount()}`);
+  check('D5：负数阈值归 0 → 新增（第 5 行）', (await rowCount()) === 5, `rows=${await rowCount()}`);
+
+  // D6：几何保留（写策略的核心用例）——序列 1..6，间距≈1.2m，阈值 2
+  //   旧规则「跟最后一个点比并顶掉」会把最后一个点一路推着往前挪（漂移），只剩 3 行；
+  //   新规则「跟倒数第二个点比」锚点固定，只有离开锚点 ≥ 阈值才落新点 → 6 行全保留。
+  await createNamed(p, 'geo');
+  await toTab(p, '记录');
+  await p.locator('label:has-text("去重阈值") input[type=number]').fill('2');
+  await sleep(p, 300);
+  const STEP = 0.0000108; // ≈1.2m 纬度
+  for (let i = 0; i < 6; i += 1) {
+    await ctx1.setGeolocation({ latitude: P1.latitude + i * STEP, longitude: P1.longitude });
+    await recordNote('');
+  }
+  check('D6：间距≈1.2m / 阈值2 → 6 个点全保留（几何不塌）', (await rowCount()) === 6, `rows=${await rowCount()}`);
 
   await ctx1.close();
 

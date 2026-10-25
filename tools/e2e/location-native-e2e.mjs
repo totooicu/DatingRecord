@@ -4,7 +4,7 @@
 //   N1 壳里点「自动打点」→ 不再用页面自己的 GPS 定时器（getCurrentPosition 0 次），
 //      配置推到壳（location.setConfig：enabled=true / thresholdM=5），界面提示原生接管
 //   N2 原生 location.point 事件 → 点落进当前 .drloc，WGS-84 已换算成 GCJ-02
-//   N3 远处的新点会新增一行；原地重复点只刷新时间（阈值去重）
+//   N3 远处的新点会新增一行；原地重复点顶替最后一个（写策略：跟倒数第二个点比距离）
 //   N4 刷新后按 dr.autoLocation 接管：问 status、拉 getHistory 合并「挂起期间」的点，
 //      再次刷新不重放（游标）
 //   N5 改阈值会推给壳（合并抖动后只发一次）；停止会推 enabled=false
@@ -203,17 +203,24 @@ check('列表多了一行', (await rowCount()) === 1, `rows=${await rowCount()}`
 const firstRow = (await p.locator('.music-list li').first().innerText()).replace(/\n/g, ' ');
 check('坐标按 GCJ-02 显示（上海 31.2304,121.4737 → 31.228458,121.475868）', firstRow.includes('31.228458,121.475868'), firstRow);
 
-console.log('\nN3 远处新增、原地重复只刷新时间');
+// 写策略：跟「倒数第二个点」比距离，不是跟最后一个比。
+//   < 2 个点 → 没锚点，直接追加
+//   |锚点 - 新点| < 阈值 → 新点整个顶掉最后一个（坐标 / 时间 / 精度）
+//   否则 → 追加
+console.log('\nN3 远处新增；原地重复顶替最后一个点');
 await p.evaluate(() => window.__emitPoint({ ts: Date.now() + 1000, lat: 31.24, lng: 121.49, accuracy: 10 }));
 await p.waitForTimeout(800);
 check('远处的新点新增一行', (await rowCount()) === 2, `rows=${await rowCount()}`);
 await p.evaluate(() => window.__emitPoint({ ts: Date.now() + 2000, lat: 31.24, lng: 121.49, accuracy: 12 }));
 await p.waitForTimeout(800);
-check('原地重复点不新增（阈值去重）', (await rowCount()) === 2, `rows=${await rowCount()}`);
+check('第 3 个点：跟倒数第二个点（上海）比仍超阈值 → 新增', (await rowCount()) === 3, `rows=${await rowCount()}`);
+await p.evaluate(() => window.__emitPoint({ ts: Date.now() + 3000, lat: 31.24, lng: 121.49, accuracy: 12 }));
+await p.waitForTimeout(800);
+check('第 4 个点：跟倒数第二个点同址（< 阈值）→ 顶替最后一个，不新增', (await rowCount()) === 3, `rows=${await rowCount()}`);
 
 console.log('\nN4 刷新后接管：拉历史补点、不重放');
 // 模拟页面挂起期间原生又记了一个点（只进壳的历史，页面收不到事件）
-await p.evaluate(() => window.__recordOnly({ ts: Date.now() + 3000, lat: 30.5, lng: 114.3, accuracy: 15 }));
+await p.evaluate(() => window.__recordOnly({ ts: Date.now() + 4000, lat: 30.5, lng: 114.3, accuracy: 15 }));
 await p.reload({ waitUntil: 'load' });
 await waitBoot();
 await p.waitForTimeout(2500);
@@ -222,14 +229,14 @@ check('刷新后仍是同一份文件', (await p.locator('.loc-card-head', { has
 const resumedCalls = await calls();
 check('接管时重新推了 location.setConfig（恢复原生接管）', resumedCalls.some((c) => c.action === 'location.setConfig' && c.params?.enabled === true), JSON.stringify(resumedCalls.map((c) => c.action)));
 check('接管时拉了 location.getHistory', resumedCalls.some((c) => c.action === 'location.getHistory'), JSON.stringify(resumedCalls.map((c) => c.action)));
-check('挂起期间的点补进来了', (await rowCount()) === 3, `rows=${await rowCount()}`);
+check('挂起期间的点补进来了（3 + 1）', (await rowCount()) === 4, `rows=${await rowCount()}`);
 check('刷新后页面还是不用自己的 GPS', (await geoCalls()) === 0, `geoCalls=${await geoCalls()}`);
 
 await p.reload({ waitUntil: 'load' });
 await waitBoot();
 await p.waitForTimeout(2000);
 await openLocationRecords();
-check('再刷新一次不重放历史（游标生效）', (await rowCount()) === 3, `rows=${await rowCount()}`);
+check('再刷新一次不重放历史（游标生效）', (await rowCount()) === 4, `rows=${await rowCount()}`);
 
 console.log('\nN5 改阈值 / 停止都会同步给壳');
 const thresholdInput = p.locator('.loc-row input.loc-num').first();

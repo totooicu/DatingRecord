@@ -71,14 +71,15 @@ export interface LocationAutoState {
   doc: LocationDoc | null;
   /** 原始点（未加偏移），和 doc.points 同源 */
   rows: LocationPoint[];
-  /** 点的结构版本：新增 / 删除 / 换文件时 +1（去重只改最后一条的时间不算，地图不必重画） */
+  /** 点的结构版本：新增 / 顶替 / 删除 / 换文件时 +1
+   *  （顶替会换掉最后一个点的坐标，不只是时间，所以地图要重画） */
   rev: number;
   offset: LocationOffset;
   /** 分段修正：和 doc.offsets 同源，按锚点升序 */
   offsets: OffsetSegment[];
   /** 当前 GPS 位置：地图上的蓝点 */
   current: CurrentFix | null;
-  /** 去重阈值（米）：位移小于它只刷新时间戳，不新增点 */
+  /** 去重阈值（米）：新点与「倒数第二个点」的距离小于它时，顶掉最后一个点，不新增 */
   threshold: number;
   /** 连续打点策略：定时 / 同点指数退避（壳按同一份规则记） */
   strategy: SampleStrategy;
@@ -561,9 +562,10 @@ export async function punch(note: string): Promise<PunchResult | null> {
       accuracy: fix.accuracy,
       note: note.trim(),
     };
-    const { points, added } = appendPoint(state.rows, r, state.threshold);
+    const { points } = appendPoint(state.rows, r, state.threshold);
     const doc: LocationDoc = { ...state.doc, points };
-    patch({ rows: points, doc, rev: added ? state.rev + 1 : state.rev, busy: false });
+    // 顶替也换掉了最后一个点的坐标，所以 rev 一律 +1（地图要重画）
+    patch({ rows: points, doc, rev: state.rev + 1, busy: false });
     await persist(doc);
     return { point: points[points.length - 1], index: points.length - 1 };
   } catch {
@@ -591,15 +593,27 @@ export async function removePoint(index: number): Promise<number | null> {
   return points.length;
 }
 
+/**
+ * 写策略（去重 / 顶替）——用户 2026-10-26 定稿。
+ *
+ * 和「倒数第二个点 a」比距离，**不是**和最后一个点 b 比。
+ * 跟 b 比并顶掉 b 会让最后一个点被一路推着往前挪（漂移），轨迹塌成首尾：
+ * 序列 1 2 3 4 5 6、阈值 d=1.9 会只剩 1 和 6，中间的几何全丢。
+ * 跟 a 比则锚点固定，只有真正离开锚点超过阈值才落新点，几何得以保留。
+ *
+ *   点数 < 2  → 没有锚点可比，直接追加
+ *   |a - c|<d → c 整个顶掉最后一个点 b（坐标 / 时间 / 精度全用 c 的），added=false
+ *   否则      → 追加 c，added=true
+ */
 function appendPoint(
   rows: LocationPoint[],
   r: LocationPoint,
   threshold: number,
 ): { points: LocationPoint[]; added: boolean } {
-  const last = rows[rows.length - 1];
-  if (last && distM(last, r) < threshold) {
+  const anchor = rows.length >= 2 ? rows[rows.length - 2] : null;
+  if (anchor && distM(anchor, r) < threshold) {
     const next = [...rows];
-    next[next.length - 1] = { ...last, ts: r.ts, accuracy: r.accuracy };
+    next[next.length - 1] = { ...r };
     return { points: next, added: false };
   }
   return { points: [...rows, r], added: true };
@@ -664,7 +678,7 @@ async function doMergeNative(rawList: unknown[]): Promise<void> {
   }
   if (newest === cursor) return;
   const doc: LocationDoc = { ...base, points: rows };
-  patch({ rows, doc, rev: added ? state.rev + 1 : state.rev });
+  patch({ rows, doc, rev: state.rev + 1 });
   const now = Date.now();
   if (added || now - lastFlush >= FLUSH_MS) {
     lastFlush = now;
@@ -817,7 +831,7 @@ async function tick(): Promise<void> {
     patch({
       rows: points,
       doc,
-      rev: added ? state.rev + 1 : state.rev,
+      rev: state.rev + 1,
       streak: added ? 0 : state.streak + 1,
     });
     setServiceNote(SERVICE_ID, undefined);
