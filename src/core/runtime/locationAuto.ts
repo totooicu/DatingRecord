@@ -639,14 +639,27 @@ function detachNative(): void {
 /** 壳里开始打点：先点亮界面，再把配置推下去；推不动就退回页面定时器 */
 function startNativeTrack(): void {
   attachNative();
-  void pushAutoConfig(configOf(true), 8000).catch(async () => {
-    // 超时可能是壳慢，不代表没有这个能力：先问一句状态，真在跑就不退回
-    const st = await nativeLocationStatus(2000).catch(() => null);
-    if (st && st.tracking === true) return;
-    detachNative();
-    setServiceNote(SERVICE_ID, '壳没有响应定位桥，已退回页面定时器记录');
-    startPageTimer();
-  });
+  void pushAutoConfig(configOf(true), 8000)
+    .then(async (r) => {
+      // 壳回了 ok 不代表服务真的起来了：缺定位权限时壳可能静默跳过
+      //（ok:true 但 tracking:false，界面却说「由壳记录」）。查一眼状态兜底，
+      // 真在跑才留着原生路径，否则退回页面定时器并说明原因。
+      if (r.tracking === true) return;
+      const st = await nativeLocationStatus(2000).catch(() => null);
+      if (st && st.tracking === true) return;
+      detachNative();
+      setServiceNote(SERVICE_ID, '壳的定位服务没起来（可能没授权定位），已退回页面定时器记录');
+      startPageTimer();
+    })
+    .catch(async () => {
+      // 超时 / 壳明确拒绝（ok:false，如权限被拒、壳界面不可用）：
+      // 先问一句状态，真在跑就不退回（授权弹窗结果迟到等情况）
+      const st = await nativeLocationStatus(2000).catch(() => null);
+      if (st && st.tracking === true) return;
+      detachNative();
+      setServiceNote(SERVICE_ID, '壳没有响应定位桥，已退回页面定时器记录');
+      startPageTimer();
+    });
 }
 
 /** 重启后接管：存档说开着，壳的前台服务一般已经起来了，问一下状态再挂上 */

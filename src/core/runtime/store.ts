@@ -171,9 +171,12 @@ export function registerService(s: ServiceItem, start?: () => void): void {
   const autostart = isServiceAutostart(s.id);
   const existing = services.find((x) => x.id === s.id);
   if (existing) {
-    // 已有则只更新可变字段，保留外部可能改过的 running
+    // 已有则只更新可变字段，保留外部可能改过的 running；
+    // note 是动态状态（打点提示 / 退回原因等），归 setServiceNote /
+    // setServiceRunning 管——注册时传 undefined 不覆盖，否则重复注册
+    // （如 startPageTimer 里的 registerAutoService）会把刚设的提示清掉。
     services = services.map((x) =>
-      x.id === s.id ? { ...x, title: s.title, note: s.note, target: s.target, autostart } : x,
+      x.id === s.id ? { ...x, title: s.title, note: s.note ?? x.note, target: s.target, autostart } : x,
     );
   } else {
     services = [...services, { ...s, autostart }];
