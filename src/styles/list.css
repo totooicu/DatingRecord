@@ -7,11 +7,16 @@
   font-size: 13px;
 }
 
-/* 人物列表标题上方的构建时间：居中、低对比，不跟标题抢注意力 */
+/* 人物列表标题上方的构建时间：居中、低对比，不跟标题抢注意力。
+   双击这一行刷新页面，所以关掉双击缩放与文字选中——否则手机上第二下会被
+   当成缩放/选词，dblclick 反而等不到。 */
 .pane-build-time {
   text-align: center;
   padding: 10px 14px 0;
   font-size: 11px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* 主页标题条：与「时间线」「日历」的 PageHead 同一套观感——

@@ -34,6 +34,7 @@
 | `e2e/settings-calendar-ui-e2e.mjs` | 设置入口与日历配色回归（S1–S2、C1）：功能体验 / 功能面板目录入口都有图标，功能面板两条子页与功能体验三条子页的图标渲染一致（防止 panel 一族漏配成空方块）；日历事件条底色按事件集分色，不再全部是写死的粉色 | 需要 preview 服务：`node tools/e2e/settings-calendar-ui-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/color-picker-e2e.mjs` | 统一取色面板回归（C1–C6）：外观自定义里彩虹在左 / 历史在右、HEX 输入生效、RGB 输入生效、彩虹拖动取色、历史颜色刷新后仍在、事件集图标自定义背景色保存生效并进入历史 | 需要 preview 服务：`node tools/e2e/color-picker-e2e.mjs http://localhost:4173/`。截图默认写到临时目录，可用 `SHOTS=/path` 指定；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/compat-test-e2e.mjs` | 软件适配测试页回归（K1–K7）：功能体验入口与 10 张测试卡、引擎信息自动填、应用依赖自检（WebAssembly / IndexedDB / Blob 必须 ✓）、浏览器里原生桥判未注入、离开再回来汇总仍在、功能面板不含高精度定位；K7 用 `addInitScript` 装假壳跑通「注入标记 → 请求 → 响应 → 事件」（扫描出设备、连接后出 GATT、私有文件写入回显路径）；K8/K9 覆盖麦克风失败路径（每档约束结果 + 设备/权限 + 怎么办）与成功路径（另起一个带 `--use-fake-device-for-media-stream` 的浏览器，授权成功、音量条出现） | 需要 preview 服务：`node tools/e2e/compat-test-e2e.mjs http://localhost:4173/`。截图写到 `/tmp/compat-shots/`；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/build-time-refresh-e2e.mjs` | 人物主页「最新版本 · …」双击刷新回归（R1–R4）：构建时间与 title 里的双击提示都在；单击不刷新（计数 `framenavigated` 为 0）；双击真的重新加载（文档级标记被清、boot 重走一遍）；刷新后仍停在人物主页 | 需要 preview 服务：`node tools/e2e/build-time-refresh-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 
 ## src/core/tools/
 

@@ -55,8 +55,13 @@ export function PersonList({
 
   return (
     <div className="pane-body">
-      {/* 构建时间放在「人物」标题上方：主页面一眼就能看到线上是不是最新版 */}
-      <div className="pane-build-time muted small" title={BUILD_TIME}>
+      {/* 构建时间放在「人物」标题上方：主页面一眼就能看到线上是不是最新版。
+          双击这一行 = 重新加载。SW 的导航请求是网络优先，所以刷完拿到的就是线上最新版。 */}
+      <div
+        className="pane-build-time muted small"
+        title={`${BUILD_TIME} · 双击刷新`}
+        onDoubleClick={() => location.reload()}
+      >
         最新版本 · {fmtBuildTime()}
       </div>
       <div className="pane-head home-head">
