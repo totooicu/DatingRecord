@@ -7,29 +7,11 @@
   font-size: 13px;
 }
 
-/* 人物列表标题上方的构建时间：居中、低对比，不跟标题抢注意力。
-   双击这一行刷新页面，所以关掉双击缩放与文字选中——否则手机上第二下会被
-   当成缩放/选词，dblclick 反而等不到。 */
-.pane-build-time {
-  text-align: center;
-  padding: 10px 14px 0;
-  font-size: 11px;
-  touch-action: manipulation;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
 /* 主页标题条原来在这里有一份 .home-head（复刻 PageHead 的左对齐变体），
    现在人物/事件集主页直接用 PageHead 组件，标题与其它页一致居中。 */
 
-/* 只有装成独立应用时才真的顶到屏幕边缘，需要让开状态栏。
-   普通浏览器标签页里地址栏已经让过位置，部分浏览器仍会误报 safe-area，
-   再补一次就会在「最新版本」上方留出一大块空白。 */
-@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
-  .pane-build-time {
-    padding-top: calc(10px + min(env(safe-area-inset-top, 0px), 48px));
-  }
-}
+/* 标题上方的版本条已统一成 .version-strip（nav.css）：网页与壳的构建时间并排。
+   原来这里的 .pane-build-time 只显示网页时间，已被取代。 */
 
 .list-item {
   display: flex;
