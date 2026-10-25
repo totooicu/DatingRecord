@@ -209,6 +209,27 @@ check('壳停了之后页面退回页面定时器（开始用自己的 GPS）', 
 await p.waitForTimeout(3500);
 check('退回页面定时器后仍在打点（新增点）', (await rowCount()) >= 3, `rows=${await rowCount()}`);
 
+// C 壳「假跑」：status 一直回 tracking=true，但一个点都不推。
+// 这是刷新后打不上点的真正根因——壳的前台服务一启动就把 isRunning 置真，
+// 可定位源压根没给它点（没授权 / 冷启失败），页面于是永远等不到点、
+// 页面定时器又被 native:true 压着不排程，界面还显示「运行中」。
+// 看门狗必须按「距上次收到点多久」判，而不是只听壳的 tracking。
+console.log('\nC 壳假跑：tracking 一直是 true，但一个点都不推');
+await p.getByRole('button', { name: '⏹ 停止自动打点' }).click();
+await p.waitForTimeout(900);
+await p.getByRole('button', { name: '▶ 自动打点' }).click();
+await p.waitForTimeout(1200);
+check('回到原生模式（页面 GPS 不动）', (await p.locator('.loc-native-hint').count()) === 1);
+const geoC0 = await geoCalls();
+const rowsC0 = await rowCount();
+const trackC = await p.evaluate(() => window.__nativeState?.tracking);
+check('壳这边确实报着 tracking=true（假跑的前提）', trackC === true, `tracking=${trackC}`);
+// 25s 静默 + 补历史 + 再确认一次 ≈ 37s，留到 48s
+await p.waitForTimeout(48000);
+check('假跑被识破：页面接管开始用自己的 GPS', (await geoCalls()) > geoC0, `geoCalls ${geoC0} → ${await geoCalls()}`);
+check('假跑识破后「原生接管」提示消失', (await p.locator('.loc-native-hint').count()) === 0);
+check('页面接管后没有把已有点冲掉', (await rowCount()) >= rowsC0, `rows ${rowsC0} → ${await rowCount()}`);
+
 console.log(`\n========== 汇总 ==========`);
 if (failures.length) {
   console.log(`失败 ${failures.length} 项：${failures.join('、')}`);

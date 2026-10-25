@@ -1,7 +1,20 @@
-// 自动打点后台服务单例：每秒取一次 GPS，按去重阈值写回 .drloc 文件。
+// 自动打点后台服务单例：按打点策略取 GPS，按写策略写回 .drloc 文件。
 //
 // 定时器和数据都在单例里——离开定位面板照样打点（这才是「服务」），
 // head 上常驻图标，服务页显示运行中。面板只是订阅式视图。
+//
+// 服务分五层，每层只做一件事（改哪层不会牵动别的层）：
+//
+//   ① 获取定位      acquireFix()      → 坐标；失败就抛，不掺写的事
+//   ② 带策略的写文件 writeFixWithPolicy() → 坐标进来就落，阈值 / 当前文件它自己认
+//   ③ 连续获取定位  sampleOnce()      → 按打点策略取一次坐标，交给 ②
+//   ④ 服务处理函数  runAutoService()  → 从内存读注册信息（③ + 参数），把服务跑起来
+//   ⑤ 服务自启动    initLocationAutoService() → 从浏览器读自启动注册与参数写进内存，
+//                                      再唤醒 ④
+//
+// 手动打点（面板按钮）只调 ① + ②：拿到坐标就写，拿不到就丢弃并弹窗，不写半个点。
+// ② 的阈值和文件都不用调用方管：文件 id 在浏览器（dr.locationFileId），
+// 阈值 / 策略在浏览器（dr.autoLocation），是用户在面板保存时就写进去的。
 //
 // 在安卓壳里则换成壳的前台服务记：页面定时器退到后台会被冻住，壳里的
 // LocationTrackingService 不会。页面把配置推下去、把原生记的点合并回文件，
@@ -115,6 +128,17 @@ let state: LocationAutoState = {
   fileReady: false,
 };
 
+/**
+ * 最后一次真正落到文件里的点的时间（原生点、页面采样都算）。
+ * 判「壳是不是在假跑」只看这个：壳的 status 说 tracking:true 不代表真在记——
+ * 壳的前台服务一启动就把 isRunning 置真，可一个点都还没推过来。
+ */
+let lastPointAt = 0;
+
+/** 原地打点（去重命中）只在内存里刷新时间，最多这么久落一次盘，避免每秒整篇重写 */
+let lastFlush = 0;
+const FLUSH_MS = 15000;
+
 const listeners = new Set<() => void>();
 function emit(): void {
   for (const fn of listeners) fn();
@@ -223,8 +247,12 @@ function getPosition(): Promise<{ lat: number; lng: number; accuracy: number }> 
     .catch(() => fallbackBrowser());
 }
 
-/** 取一次位置并更新蓝点 */
-async function readFix(): Promise<CurrentFix> {
+/**
+ * ① 获取定位：取一次坐标（高德优先、回退浏览器原生），顺手刷新地图蓝点。
+ * 定位失败直接抛——失败了要不要写是调用方的事，这一层不掺：
+ * 手动打点因此丢弃并弹窗，连续打点因此跳过这一轮、按退避档重试。
+ */
+export async function acquireFix(): Promise<CurrentFix> {
   const pos = await getPosition();
   const fix: CurrentFix = { ts: new Date().toISOString(), lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy };
   patch({ current: fix });
@@ -277,18 +305,18 @@ function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number })
 
 // ---- 服务注册 ----
 
-/** 供 store 在「应用加载完毕后统一恢复自启动」时调用的启动函数。
- *  没选文件时拉不起来（打点要落点），留个说明等用户在面板选了文件再说。 */
+/**
+ * 供 store 在「应用加载完毕后统一恢复自启动」时调用的启动函数。
+ * 没选文件时拉不起来（打点要落点），留个说明等用户在面板选了文件再说；
+ * 文件内容还在读就静默等——restoreLastFile 读完会按 bootResume 唤醒 ④。
+ */
 function startAutoService(): void {
   if (!state.fileId) {
     setServiceNote(SERVICE_ID, '未选择打点文件，暂无法自启动');
     return;
   }
-  if (!state.fileReady) {
-    // 文件内容还在读，restoreLastFile 读完会回来拉起，这里先静默等
-    return;
-  }
-  startAuto();
+  if (!state.fileReady) return;
+  runAutoService();
 }
 
 function registerAutoService(running: boolean): void {
@@ -318,19 +346,29 @@ export function setAutoServiceAutostart(on: boolean): void {
 
 let visibilityWatched = false;
 
-/** 开机注册：服务页一开始就列得出「自动打点」（未运行），并恢复上次文件 */
+/** ⑤ 从浏览器读出来的「这次开机要不要把服务拉起来」，写进内存给 ④ 用 */
+let bootResume = false;
+
+/**
+ * ⑤ 服务自启动函数：软件加载完毕后自动调用。
+ *
+ * 它从浏览器读注册的自启动服务与参数（阈值 / 策略 / 上次是否在跑 / 用户有没有开
+ * 自启动）写进内存，最后唤醒 ④ 服务处理函数——文件正文读出来之后才唤醒，
+ * 因为读到一半就写会把旧点冲掉。
+ *
+ * 注册时一律按「未运行」登记：真把服务拉起来了才算 running。之前注册就把
+ * running 记成「待恢复」，服务页会显示「运行中」而实际上一个点都没在记，
+ * 这正是「刷新后打点没反应」最难看出来的地方——界面看着好好的。
+ */
 export function initLocationAutoService(): void {
   const cfg = readAutoConfig();
-  // 阈值 / 策略归页面存档：刷新后接着上次的值，和推给壳的是同一个数
+  bootResume = cfg.enabled || isServiceAutostart(SERVICE_ID);
+  // 阈值 / 策略归浏览器存档：刷新后接着上次的值，和推给壳的是同一个数
   if (cfg.thresholdM !== state.threshold) patch({ threshold: cfg.thresholdM });
   if (cfg.strategy !== state.strategy) patch({ strategy: cfg.strategy });
-  // 上次在跑（cfg.enabled）或用户开了自启动，开机就该把服务拉起来。
-  // 统一走 startAuto 这条路（原生有「推配置 + 宽限期内退回页面定时器」的兜底），
-  // 不再单独用 adoptNative——它失败时不会退回页面定时器，会留下「既没原生也没
-  // 页面定时器」的死状态，表现就是「刷新后连续打点没反应」。
-  const resumeOnBoot = cfg.enabled || isServiceAutostart(SERVICE_ID);
-  registerAutoService(resumeOnBoot);
-  void restoreLastFile(resumeOnBoot);
+  // 按内存里真实的运行态登记（重复 init 也不会把已在跑的服务标成未运行）
+  registerAutoService(state.running);
+  void restoreLastFile();
   if (!visibilityWatched) {
     visibilityWatched = true;
     document.addEventListener('visibilitychange', () => {
@@ -341,16 +379,17 @@ export function initLocationAutoService(): void {
 }
 
 
-async function restoreLastFile(resume: boolean): Promise<void> {
+/** 恢复上次的文件；正文读完、fileReady 为真之后才唤醒 ④ 拉起服务 */
+async function restoreLastFile(): Promise<void> {
   const id = getActiveLocationId();
   if (!id) {
-    if (resume) setServiceNote(SERVICE_ID, '未选择打点文件，无法自启动连续打点');
+    if (bootResume) setServiceNote(SERVICE_ID, '未选择打点文件，无法自启动连续打点');
     return;
   }
   const f = getLocationFile(id);
   if (!f) {
     setActiveLocationId(null);
-    if (resume) setServiceNote(SERVICE_ID, '未选择打点文件，无法自启动连续打点');
+    if (bootResume) setServiceNote(SERVICE_ID, '未选择打点文件，无法自启动连续打点');
     return;
   }
   patch({ fileId: f.id, fileName: f.name });
@@ -359,9 +398,8 @@ async function restoreLastFile(resume: boolean): Promise<void> {
     if (state.fileId !== f.id) return;
     patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, offsets: doc.offsets, saving: 'idle', fileReady: true });
     // 内容读完了才允许自动打点——否则先写空会把旧点覆盖掉。
-    // 上次在跑（或开了自启动）就在这里拉起服务：比统一恢复那一步更稳，能拿到完整行数，
-    // 而且统一走 startAuto，原生 / 页面定时器两条路都有兜底，不会出现「刷新后死寂」。
-    if (resume && !state.running) startAuto();
+    // 走 ④：壳在就让壳记，壳不在就页面定时器，两条路都有兜底，不会「刷新后死寂」。
+    if (bootResume) runAutoService();
     // 原生在跑而这里是刚读出文件：把挂起期间记的点补进来
     if (state.native) void mergeNativeHistory();
   } catch {
@@ -549,25 +587,64 @@ export interface PunchResult {
   index: number;
 }
 
-/** 手动打点：取一次位置，带去重，写回；返回新行与下标（面板用来飞地图 / 选中） */
+/** 写的结果：added=false 表示这一点顶掉了最后一个点，行数没变 */
+interface WriteResult {
+  point: LocationPoint;
+  index: number;
+  added: boolean;
+}
+
+/**
+ * ② 带策略的写定位文件：给一个坐标就写，其余一概自己认——
+ *
+ *   · 写哪个文件：当前激活的（id 存在浏览器 dr.locationFileId，不用调用方传）；
+ *   · 阈值多少：从浏览器 dr.autoLocation 现读（用户在面板保存时就写进去了），
+ *     所以这里和壳那边永远是同一个数，不会两边去重标准不一致；
+ *   · 怎么去重：走 appendPoint 的写策略（跟倒数第二个点比距离，近了就顶掉末点）。
+ *
+ * 调用方（手动打点 / 连续采样）无脑调即可。传进来的坐标只可能是 ① 拿到的真坐标：
+ * 定位失败压根不该调到这里，失败了就丢弃 + 弹窗，不写半个点。
+ *
+ * force=true 表示立刻落盘（手动打点要「已保存」的确定感）；连续采样走节流，
+ * 原地顶替的最多攒 FLUSH_MS 再写，免得每秒整篇重写。
+ */
+async function writeFixWithPolicy(fix: CurrentFix, note: string, force = false): Promise<WriteResult | null> {
+  const doc0 = state.doc;
+  if (!state.fileId || !doc0) return null;
+  // 阈值以浏览器存档为准：面板改了会写进去，壳读的也是这一份
+  const cfg = readAutoConfig();
+  if (cfg.thresholdM !== state.threshold) patch({ threshold: cfg.thresholdM });
+  const r: LocationPoint = {
+    ts: fix.ts,
+    lat: fix.lat,
+    lng: fix.lng,
+    accuracy: fix.accuracy,
+    note: note.trim(),
+  };
+  const { points, added } = appendPoint(state.rows, r, cfg.thresholdM);
+  const doc: LocationDoc = { ...doc0, points };
+  // 顶替也换掉了最后一个点的坐标，所以 rev 一律 +1（地图要重画）
+  patch({ rows: points, doc, rev: state.rev + 1 });
+  lastPointAt = Date.now();
+  const now = Date.now();
+  if (force || added || now - lastFlush >= FLUSH_MS) {
+    lastFlush = now;
+    await persist(doc);
+  }
+  return { point: points[points.length - 1], index: points.length - 1, added };
+}
+
+/** 手动打点：① 获取定位 → ② 带策略的写；返回新行与下标（面板用来飞地图 / 选中）。
+ *  定位失败就抛，由面板弹窗——不写、不重试、不留半个点。 */
 export async function punch(note: string): Promise<PunchResult | null> {
   if (!state.fileId || !state.doc) return null;
   patch({ busy: true });
   try {
-    const fix = await readFix();
-    const r: LocationPoint = {
-      ts: fix.ts,
-      lat: fix.lat,
-      lng: fix.lng,
-      accuracy: fix.accuracy,
-      note: note.trim(),
-    };
-    const { points } = appendPoint(state.rows, r, state.threshold);
-    const doc: LocationDoc = { ...state.doc, points };
-    // 顶替也换掉了最后一个点的坐标，所以 rev 一律 +1（地图要重画）
-    patch({ rows: points, doc, rev: state.rev + 1, busy: false });
-    await persist(doc);
-    return { point: points[points.length - 1], index: points.length - 1 };
+    const fix = await acquireFix();
+    const r = await writeFixWithPolicy(fix, note, true);
+    patch({ busy: false });
+    if (!r) return null;
+    return { point: r.point, index: r.index };
   } catch {
     patch({ busy: false });
     throw new Error('定位失败');
@@ -577,7 +654,7 @@ export async function punch(note: string): Promise<PunchResult | null> {
 /** 「我的位置」：只刷新蓝点，不写文件；失败返回 null */
 export async function locateMe(): Promise<CurrentFix | null> {
   try {
-    return await readFix();
+    return await acquireFix();
   } catch {
     return null;
   }
@@ -679,6 +756,8 @@ async function doMergeNative(rawList: unknown[]): Promise<void> {
   if (newest === cursor) return;
   const doc: LocationDoc = { ...base, points: rows };
   patch({ rows, doc, rev: state.rev + 1 });
+  // 壳确实在记（有更新的点到了），看门狗据此不判它假跑
+  lastPointAt = Date.now();
   const now = Date.now();
   if (added || now - lastFlush >= FLUSH_MS) {
     lastFlush = now;
@@ -702,6 +781,9 @@ function attachNative(): void {
   nativeUnsub = onNativePoint((data) => {
     void mergeNativePoints([data]);
   });
+  // 从这一刻起给壳 NATIVE_SILENT_MS 的冷启时间：首次定位本来就要几秒，
+  // 别一上来就判它假跑（GPS 冷启慢是常态）
+  lastPointAt = Date.now();
   patch({ running: true, native: true });
   registerAutoService(true);
   setServiceNote(SERVICE_ID, '由壳的原生服务记录，退到后台也继续');
@@ -716,6 +798,24 @@ function detachNative(): void {
   if (state.native) patch({ native: false });
 }
 
+/**
+ * 让页面定时器接管，但**不断开**壳的事件订阅：壳要是回魂了，它推的点照样合并进
+ * 来（游标 + 写策略挡重复），不至于白丢一段轨迹。只有停止服务才真断开。
+ */
+function yieldToPageTimer(note: string): void {
+  stopNativeWatchdog();
+  nativeFailStreak = 0;
+  silentStreak = 0;
+  // 万一还留着上一次页面定时器的排程，先清掉，保证下面的 startPageTimer 能真跑起来
+  if (timer !== null) {
+    window.clearTimeout(timer);
+    timer = null;
+  }
+  patch({ native: false });
+  setServiceNote(SERVICE_ID, note);
+  startPageTimer();
+}
+
 /** 壳里开始打点：乐观接管（点亮原生界面 + 订阅事件），把配置推下去；
  *  壳到底在不在记，交给原生看门狗在宽限期内确认——不在才退回页面定时器。
  *  不在 startNativeTrack 里立刻退回，是因为壳读 dr.autoLocation 自起服务需要时间，
@@ -728,9 +828,7 @@ function startNativeTrack(): void {
       // 壳明确回了、但服务没真起来（缺权限等）：这是确定性的「壳现在记不了」，
       // 立即退回页面定时器（此时壳也不会按 dr.autoLocation 自起，不会双记）。
       if (r.tracking === true) return;
-      detachNative();
-      setServiceNote(SERVICE_ID, '壳的定位服务没起来（可能没授权定位），已退回页面定时器记录');
-      startPageTimer();
+      yieldToPageTimer('壳的定位服务没起来（可能没授权定位），已退回页面定时器记录');
     })
     .catch(() => {
       // 配置没推到壳（桥还没就绪 / 超时）：不急着重退，交给看门狗在宽限期内再确认，
@@ -741,15 +839,29 @@ function startNativeTrack(): void {
 
 // ---- 原生看门狗 ----
 //
-// 原生模式最怕「壳静默停了」：权限被收回、被系统杀后台、桥断了，页面却还停在
-// native:true，armNextTick 早退不排程、壳又不推点，于是「连续打点没反应」。
-// 看门狗周期性问 status，连续 N 次确认壳没在记录才退回页面定时器（前台照记，
-// 退后台才断）。宽限期给壳按 dr.autoLocation 自起服务留出时间，避免过早退回导致双记。
+// 原生模式最怕「壳静默停了 / 根本没在记」：权限被收回、被系统杀后台、桥断了，
+// 页面却还停在 native:true——armNextTick 早退不排程、壳又不推点，于是「连续打点
+// 没反应」，界面还显示运行中。这就是刷新后打不上点的根因。
+//
+// 判据有两条，任何一条成立就退回页面定时器：
+//
+//   A 壳自己说没在记（status.tracking !== true）——连续 N 次确认，宽限期给壳
+//     按 dr.autoLocation 自起服务留时间，避免过早退回导致双记。
+//   B 壳说在记，但 NATIVE_SILENT_MS 了一个点都没到——「假跑」。壳的前台服务一
+//     启动就把 isRunning 置真，可定位源可能压根没给它点（没授权 / 冷启失败），
+//     于是 status 永远 tracking:true，页面却永远等不到点。这时候先补一次历史
+//     （挂起期间可能真记了，只是事件没送到），补不到才确认假跑、退回页面定时器。
+//
+// 退回只是让页面定时器接管，不断开事件订阅：壳回魂了点照样合并，不会白丢一段。
 
 let nativeWatchdog: number | null = null;
 let nativeFailStreak = 0;
+let silentStreak = 0;
 const NATIVE_WATCHDOG_MS = 6000;
 const NATIVE_FAIL_LIMIT = 3; // 连续 3 次（约 18s）没在记录才退，壳冷起通常几秒就好
+/** 壳说在记、却这么久一个点都没到 → 怀疑假跑（GPS 冷启慢是常态，别设太短） */
+const NATIVE_SILENT_MS = 25000;
+const NATIVE_SILENT_LIMIT = 2; // 补过历史仍无新点，再确认一次（约 12s）就退
 
 function startNativeWatchdog(): void {
   if (nativeWatchdog !== null) return;
@@ -760,26 +872,36 @@ function startNativeWatchdog(): void {
       return;
     }
     void nativeLocationStatus(2000)
-      .then((st) => {
-        if (st && st.tracking === true) {
+      .then(async (st) => {
+        const tracking = st?.tracking === true;
+        const silent = Date.now() - lastPointAt > NATIVE_SILENT_MS;
+        if (tracking && !silent) {
           nativeFailStreak = 0;
+          silentStreak = 0;
+          return;
+        }
+        if (tracking) {
+          // 假跑嫌疑：先补一次历史，补到了就说明壳确实在记（挂起期间只进了历史）
+          await mergeNativeHistory();
+          if (Date.now() - lastPointAt <= NATIVE_SILENT_MS) {
+            silentStreak = 0;
+            return;
+          }
+          silentStreak += 1;
+          if (silentStreak >= NATIVE_SILENT_LIMIT) {
+            yieldToPageTimer('壳一直没推点，已退回页面定时器记录（退到后台会暂停）');
+          }
           return;
         }
         nativeFailStreak += 1;
         if (nativeFailStreak >= NATIVE_FAIL_LIMIT) {
-          nativeFailStreak = 0;
-          detachNative();
-          setServiceNote(SERVICE_ID, '壳的定位服务没在记录，已退回页面定时器（退到后台会暂停）');
-          startPageTimer();
+          yieldToPageTimer('壳的定位服务没在记录，已退回页面定时器（退到后台会暂停）');
         }
       })
       .catch(() => {
         nativeFailStreak += 1;
         if (nativeFailStreak >= NATIVE_FAIL_LIMIT) {
-          nativeFailStreak = 0;
-          detachNative();
-          setServiceNote(SERVICE_ID, '壳没有响应定位状态，已退回页面定时器（退到后台会暂停）');
-          startPageTimer();
+          yieldToPageTimer('壳没有响应定位状态，已退回页面定时器（退到后台会暂停）');
         }
       });
   }, NATIVE_WATCHDOG_MS);
@@ -791,15 +913,13 @@ function stopNativeWatchdog(): void {
     nativeWatchdog = null;
   }
   nativeFailStreak = 0;
+  silentStreak = 0;
 }
 
 
 // ---- 自动打点（后台服务本体） ----
 
 let timer: number | null = null;
-/** 原地打点（去重命中）只在内存里刷新时间，最多这么久落一次盘，避免每秒整篇重写 */
-let lastFlush = 0;
-const FLUSH_MS = 15000;
 
 /** 按当前 streak / 策略安排下一次采样；停用或已交给壳时什么也不做 */
 function armNextTick(): void {
@@ -810,38 +930,23 @@ function armNextTick(): void {
   if (!state.running || state.native) return;
   timer = window.setTimeout(() => {
     timer = null;
-    void tick();
+    void sampleOnce();
   }, nextSampleMs(state.streak, state.strategy));
 }
 
-async function tick(): Promise<void> {
+/**
+ * ③ 连续获取定位：按打点策略取一次坐标，交给 ② 写。
+ * 定位失败这一轮就跳过（留个说明），按当前退避档重试——服务不因此停摆。
+ * 拿到点没有新增（被顶替）就把「同点连击」+1，下次间隔翻倍；新增则清零。
+ */
+async function sampleOnce(): Promise<void> {
   try {
-    const fix = await readFix();
-    if (!state.fileId || !state.doc) return;
-    const r: LocationPoint = {
-      ts: fix.ts,
-      lat: fix.lat,
-      lng: fix.lng,
-      accuracy: fix.accuracy,
-      note: '',
-    };
-    const { points, added } = appendPoint(state.rows, r, state.threshold);
-    const doc: LocationDoc = { ...state.doc, points };
-    // 新点把「同点连击」清零，下一次仍是基准间隔；合并则 n+1，下次翻倍
-    patch({
-      rows: points,
-      doc,
-      rev: state.rev + 1,
-      streak: added ? 0 : state.streak + 1,
-    });
+    const fix = await acquireFix();
+    const r = await writeFixWithPolicy(fix, '');
     setServiceNote(SERVICE_ID, undefined);
-    const now = Date.now();
-    if (added || now - lastFlush >= FLUSH_MS) {
-      lastFlush = now;
-      await persist(doc);
-    }
+    if (r) patch({ streak: r.added ? 0 : state.streak + 1 });
   } catch {
-    // 定位失败不打断服务：在服务状态上留个说明，按当前退避档重试
+    // 定位失败或文件没就绪：不打断服务，留个说明，下一轮照常
     setServiceNote(SERVICE_ID, '上一次定位失败，重试中');
   } finally {
     armNextTick();
@@ -852,20 +957,33 @@ function startPageTimer(): void {
   if (timer !== null) return;
   patch({ running: true, native: false, streak: 0 });
   registerAutoService(true);
-  // 先立刻取一次（第一个点不该等），之后由 tick 按策略接力
-  void tick();
+  // 先立刻取一次（第一个点不该等），之后由 sampleOnce 按策略接力
+  void sampleOnce();
+}
+
+/**
+ * ④ 服务处理函数：从内存（单例）里读注册信息——处理函数是 ③ 连续获取定位，
+ * 参数是当前文件与打点策略——然后把它跑起来。
+ *
+ * 壳在就交给壳的前台服务（退到后台 / 熄屏不断），不在就用页面定时器。
+ * 没选文件或内容还没读出来就什么都不做：这时候写会把旧点冲掉。
+ * 已经在跑也不重复起（定时器 / 原生订阅都只能有一份）。
+ */
+function runAutoService(): void {
+  if (!state.fileId || !state.fileReady || state.running) return;
+  if (nativeLocationAvailable()) {
+    // 壳里：交给原生前台服务，WebView 退到后台 / 熄屏都不会断
+    startNativeTrack();
+    return;
+  }
+  writeAutoConfig(configOf(true));
+  startPageTimer();
 }
 
 export function startAuto(): boolean {
   if (!state.fileId || !state.fileReady) return false;
   if (state.running) return true;
-  if (nativeLocationAvailable()) {
-    // 壳里：交给原生前台服务，WebView 退到后台 / 熄屏都不会断
-    startNativeTrack();
-    return true;
-  }
-  writeAutoConfig(configOf(true));
-  startPageTimer();
+  runAutoService();
   return true;
 }
 
