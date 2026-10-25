@@ -1,17 +1,17 @@
 {
-  "version": "2026-10-25T10:00:42.584Z",
+  "version": "2026-10-25T10:36:03.829Z",
   "release": "1.1.1",
   "proto": 1,
   "shellMin": "1.0.0",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "48f1082e3275f208",
-      "link": "/assets/diff-DWuk4n2j.js"
+      "version": "6cc752cbf2008d46",
+      "link": "/assets/diff-VJ47z_dP.js"
     },
     {
-      "version": "71e72a739dc2bcf1",
-      "link": "/assets/index-Bdy8ZXaM.js"
+      "version": "ee77dd1f271d5e45",
+      "link": "/assets/index-BM7ZW6Fk.js"
     },
     {
       "version": "4f9491770d9c7441",
@@ -22,15 +22,15 @@
       "link": "/edge-split.html"
     },
     {
-      "version": "7ab96cebb316d633",
+      "version": "9612e108baaebc29",
       "link": "/icon-192.png"
     },
     {
-      "version": "a14979768b365a01",
+      "version": "a04018e7804e0460",
       "link": "/icon-512.png"
     },
     {
-      "version": "7374554b30c03f2c",
+      "version": "cf27b621b7c0cb75",
       "link": "/icon-maskable-512.png"
     },
     {
@@ -38,11 +38,15 @@
       "link": "/icon-maskable.svg"
     },
     {
+      "version": "c7d5b7c327640d6b",
+      "link": "/icon.png"
+    },
+    {
       "version": "a3430b91c702db99",
       "link": "/icon.svg"
     },
     {
-      "version": "cfe0f5a8548e5971",
+      "version": "22ab6e5a3b8fd0d0",
       "link": "/index.html"
     },
     {
