@@ -8,8 +8,9 @@
 // 细节见 core/runtime/locationNative.ts。
 //
 // 数据文件是文件库里的 .drloc（见 core/location/format.ts）：
-//   · points 存原始坐标，offset 记这个文件的经纬度修正量；
-//   · 显示 / 落图时统一 applyOffset()，改偏移就能整体平移；
+//   · points 存原始坐标，offset 记整份文件的经纬度修正量；
+//   · offsets 记分段修正：从某个点起到下一个锚点前按段内偏移平移；
+//   · 显示 / 落图时统一 applyOffset()，改偏移就能平移，原始点不动；
 //   · 写回串行化（saveChain），偏移调整和自动打点不会互相覆盖。
 
 import { useEffect, useState } from 'react';
@@ -22,9 +23,12 @@ import {
 } from '../location/locationFile';
 import {
   applyOffset,
+  removeOffsetSegment,
+  upsertOffsetSegment,
   type LocationDoc,
   type LocationOffset,
   type LocationPoint,
+  type OffsetSegment,
 } from '../location/format';
 import {
   isServiceAutostart,
@@ -70,6 +74,8 @@ export interface LocationAutoState {
   /** 点的结构版本：新增 / 删除 / 换文件时 +1（去重只改最后一条的时间不算，地图不必重画） */
   rev: number;
   offset: LocationOffset;
+  /** 分段修正：和 doc.offsets 同源，按锚点升序 */
+  offsets: OffsetSegment[];
   /** 当前 GPS 位置：地图上的蓝点 */
   current: CurrentFix | null;
   /** 去重阈值（米）：位移小于它只刷新时间戳，不新增点 */
@@ -96,6 +102,7 @@ let state: LocationAutoState = {
   rows: [],
   rev: 0,
   offset: { lat: 0, lng: 0 },
+  offsets: [],
   current: null,
   threshold: 5,
   strategy: 'backoff',
@@ -139,9 +146,9 @@ export function useLocationAuto(): LocationAutoState {
   return val;
 }
 
-/** 地图 / 列表用：原始点加上文件偏移 */
+/** 地图 / 列表用：原始点按「整份偏移 + 分段修正」后的坐标 */
 export function correctedRows(s: LocationAutoState = state): LocationPoint[] {
-  return applyOffset(s.rows, s.offset);
+  return applyOffset(s.rows, s.offset, s.offsets);
 }
 
 // ---- 定位（高德优先，回退浏览器原生；WGS-84 → GCJ-02） ----
@@ -343,7 +350,7 @@ async function restoreLastFile(): Promise<void> {
   try {
     const doc = await readLocation(f);
     if (state.fileId !== f.id) return;
-    patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, saving: 'idle', fileReady: true });
+    patch({ doc, rows: doc.points, rev: state.rev + 1, offset: doc.offset, offsets: doc.offsets, saving: 'idle', fileReady: true });
     // 内容读完了才允许自动打点——否则先写空会把旧点覆盖掉。
     // 开了自启动就在这里拉起服务（比统一恢复那一步更稳，能拿到完整行数）。
     if (isServiceAutostart(SERVICE_ID) && !state.running) startAuto();
@@ -353,7 +360,7 @@ async function restoreLastFile(): Promise<void> {
     // 文件损坏：宁可回到未选择状态，也不拿空队列覆盖它
     if (state.fileId === f.id) {
       setActiveLocationId(null);
-      patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle', fileReady: false });
+      patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, offsets: [], saving: 'idle', fileReady: false });
     }
   }
 }
@@ -365,7 +372,7 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
   setActiveLocationId(id);
   if (!id || !doc) {
     stopAuto();
-    patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, saving: 'idle', fileReady: false });
+    patch({ fileId: null, fileName: '', doc: null, rows: [], rev: state.rev + 1, offset: { lat: 0, lng: 0 }, offsets: [], saving: 'idle', fileReady: false });
     return;
   }
   patch({
@@ -375,6 +382,7 @@ export function openLocationFile(id: string | null, name: string, doc: LocationD
     rows: doc.points,
     rev: state.rev + 1,
     offset: doc.offset,
+    offsets: doc.offsets,
     saving: 'idle',
     fileReady: true,
   });
@@ -389,6 +397,13 @@ export function setThreshold(m: number): void {
   // 页面这边的输入框每次按键都会走到这里，所以桥调用压一下抖动。
   writeAutoConfig(configOf(state.running));
   scheduleConfigPush();
+  // 运行中改阈值要「即时生效」：把已排程的下一次采样提前（退避计数清零，
+  // 按基准间隔立刻采一次），之后的退避节奏按实际位移重新累计。
+  // 和 setSampleStrategy 一个路子；壳跑时由壳自己调度，这里不插手。
+  if (state.running && !state.native) {
+    patch({ streak: 0 });
+    armNextTick();
+  }
 }
 
 /** 切换连续打点策略；正在跑时立刻按新规则安排下一次采样 */
@@ -450,16 +465,25 @@ function normalizeOffset(offset: LocationOffset): LocationOffset {
 /** 写入串行链：自动打点与偏移调整按顺序落盘，后写不会被先写盖回去 */
 let saveChain: Promise<void> = Promise.resolve();
 
+/** 落盘期间的变更哨兵：偏移 / 分段 / 点数任一变了，旧一次写回的「已保存」就不算数 */
+function offsetSignature(doc: LocationDoc): string {
+  return `${doc.offset.lat},${doc.offset.lng}|${doc.offsets
+    .map((s) => `${s.fromIndex}:${s.lat},${s.lng}`)
+    .join(';')}|${doc.points.length}`;
+}
+
 function persist(doc: LocationDoc): Promise<void> {
   const id = state.fileId;
   if (!id) return saveChain;
   const snapshot: LocationDoc = { ...doc, points: [...doc.points] };
-  const rev = state.offset.lat + state.offset.lng + snapshot.points.length;
+  const sig = offsetSignature(snapshot);
   patch({ saving: 'saving' });
   saveChain = saveChain.then(async () => {
     try {
       await writeLocation(id, snapshot);
-      if (state.fileId === id && state.offset.lat + state.offset.lng + state.rows.length === rev) {
+      const cur = state.doc;
+      const unchanged = cur != null && offsetSignature({ ...cur, offsets: state.offsets }) === sig;
+      if (state.fileId === id && unchanged) {
         patch({ saving: 'saved' });
       }
     } catch {
@@ -469,12 +493,35 @@ function persist(doc: LocationDoc): Promise<void> {
   return saveChain;
 }
 
-/** 修改文件偏移：原始点不动，只改 offset 并写回 */
+/** 修改整份文件偏移：原始点不动，只改 offset 并写回 */
 export async function setLocationOffset(offset: LocationOffset): Promise<void> {
   const doc = state.doc;
   if (!doc) return;
   const next: LocationDoc = { ...doc, offset: normalizeOffset(offset) };
   patch({ doc: next, offset: next.offset });
+  await persist(next);
+}
+
+/**
+ * 分段修正：给第 fromIndex 个点（0 基）起填一段偏移，到下一个锚点前生效。
+ * 原始点不动；同锚点再填就是改这一段，删段走 removeLocationOffsetSegment。
+ */
+export async function setLocationOffsetSegment(fromIndex: number, offset: LocationOffset): Promise<void> {
+  const doc = state.doc;
+  if (!doc || !Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= state.rows.length) return;
+  const segments = upsertOffsetSegment(state.offsets, fromIndex, normalizeOffset(offset));
+  const next: LocationDoc = { ...doc, offsets: segments };
+  patch({ doc: next, offsets: segments });
+  await persist(next);
+}
+
+/** 删掉第 fromIndex 个点起的修正段 */
+export async function removeLocationOffsetSegment(fromIndex: number): Promise<void> {
+  const doc = state.doc;
+  if (!doc) return;
+  const segments = removeOffsetSegment(state.offsets, fromIndex);
+  const next: LocationDoc = { ...doc, offsets: segments };
+  patch({ doc: next, offsets: segments });
   await persist(next);
 }
 

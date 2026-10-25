@@ -117,7 +117,8 @@ const openMusic = async (p) => {
 /** 进音乐面板并上传一首测试音频（自启动场景的前置：没歌可放时服务开不了机） */
 const goMusicUpload = async (p) => {
   await openMusic(p);
-  await p.locator('input[type=file]').setInputFiles('/tmp/tone.wav');
+  // 音乐上传框（audio/*）和歌单导入框（.drpl）都是 file input：按 accept 区分
+  await p.locator('input[accept="audio/*"]').setInputFiles('/tmp/tone.wav');
   await p.waitForTimeout(1500);
 };
 
@@ -152,18 +153,18 @@ await scenario('R1 AI 后台任务 + 离开页面', async () => {
 
   // head 上应该出现 AI 任务图标（进行中或已完成）
   const sawRunning = await p
-    .locator('.home-head .hs-task')
+    .locator('.hs-task')
     .first()
     .waitFor({ state: 'visible', timeout: 5000 })
     .then(() => true)
     .catch(() => false);
   check('R1：离开聊天页后 head 出现 AI 任务图标', sawRunning);
-  const runningNow = await p.locator('.home-head .hs-task.running').count();
+  const runningNow = await p.locator('.hs-task.running').count();
   check('R1：离开瞬间 AI 仍是「进行中」态', runningNow >= 1, `running 图标数=${runningNow}`);
 
   // 等它跑完 → 变绿（success）
   const sawSuccess = await p
-    .locator('.home-head .hs-task.success')
+    .locator('.hs-task.success')
     .first()
     .waitFor({ state: 'visible', timeout: 15000 })
     .then(() => true)
@@ -171,7 +172,7 @@ await scenario('R1 AI 后台任务 + 离开页面', async () => {
   check('R1：AI 完成后 head 图标变色（success）', sawSuccess);
 
   // 点图标 → 跳回 AI 对话页，且回复完好（创建了人物「小明」）
-  await p.locator('.home-head .hs-task').first().click();
+  await p.locator('.hs-task').first().click();
   await p.waitForTimeout(1500);
   const onChat = await p.locator('.aichat-tabs').count();
   check('R1：点图标跳回 AI 对话页', onChat >= 1);
@@ -181,7 +182,7 @@ await scenario('R1 AI 后台任务 + 离开页面', async () => {
   // 通知已读：回到主页 head，AI 图标应消失
   await goHome(p);
   await p.waitForTimeout(800);
-  const stillThere = await p.locator('.home-head .hs-task').count();
+  const stillThere = await p.locator('.hs-task').count();
   check('R1：点开来源页后未读通知消失', stillThere === 0, `head 上 hs-task 数=${stillThere}`);
   await p.context().close();
 });
@@ -222,11 +223,11 @@ await scenario('R2 进行中任务点击只跳不清', async () => {
     // 此刻任务还在跑：回主页，head 图标必须还在（点进行中不清通知）
     await goHome(p);
     await p.waitForTimeout(300);
-    const runningStill = await p.locator('.home-head .hs-task.running').count();
+    const runningStill = await p.locator('.hs-task.running').count();
     check('R2：进行中任务点过之后图标不消失', runningStill >= 1, `running=${runningStill}`);
     // 兜底：点过之后任务不受影响，继续跑完并变色
     const done = await p
-      .waitForSelector('.home-head .hs-task.success', { timeout: 20000 })
+      .waitForSelector('.hs-task.success', { timeout: 20000 })
       .then(() => true)
       .catch(() => false);
     check('R2：点过之后任务继续跑完并变色', done);
@@ -240,7 +241,7 @@ await scenario('R3 服务/任务入口页可达', async () => {
   await boot(p);
   await goHome(p);
 
-  await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
+  await p.locator('.hs-text', { hasText: '服务' }).click();
   await p.waitForTimeout(700);
   const svcTitle = await p.getByText('背景音乐').count();
   const autoBox = await p.locator('.svc-auto input[type=checkbox]').count();
@@ -249,7 +250,7 @@ await scenario('R3 服务/任务入口页可达', async () => {
   // 返回，再开任务页
   await p.locator('.page-head .back-btn').click();
   await p.waitForTimeout(500);
-  await p.locator('.home-head .hs-text', { hasText: '任务' }).click();
+  await p.locator('.hs-text', { hasText: '任务' }).click();
   await p.waitForTimeout(700);
   const taskTitle = await p.getByText('任务').count();
   check('R3：任务页打开', taskTitle >= 1);
@@ -267,7 +268,7 @@ await scenario('R4/R5 音乐自启动 + 服务图标', async () => {
   await goHome(p);
 
   // 打开服务页，开启自启动
-  await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
+  await p.locator('.hs-text', { hasText: '服务' }).click();
   await p.waitForTimeout(700);
   await p.locator('.svc-auto input[type=checkbox]').first().check();
   await p.waitForTimeout(500);
@@ -281,7 +282,7 @@ await scenario('R4/R5 音乐自启动 + 服务图标', async () => {
   );
   await p.waitForTimeout(1500);
   const svcIcon = await p
-    .locator('.home-head .hs-svc.running')
+    .locator('.hs-svc.running')
     .first()
     .waitFor({ state: 'visible', timeout: 8000 })
     .then(() => true)
@@ -291,7 +292,7 @@ await scenario('R4/R5 音乐自启动 + 服务图标', async () => {
   check('R4：自启动开关已持久化到统一存档', !!lsFlag && lsFlag.includes('music'), `localStorage=${lsFlag}`);
 
   // 点服务图标 → 跳到音乐页
-  await p.locator('.home-head .hs-svc').first().click();
+  await p.locator('.hs-svc').first().click();
   await p.waitForTimeout(1000);
   const onMusic = await p.locator('.music-panel').count();
   check('R5：点服务图标跳到音乐页', onMusic >= 1);
@@ -324,15 +325,15 @@ await scenario('R6 失败任务红色图标 + 点开清通知', async () => {
   // 回主页：红色未读图标在，点它跳回聊天并清通知
   await goHome(p);
   await p.waitForTimeout(600);
-  const redOnHome = await p.locator('.home-head .hs-task.error').count();
+  const redOnHome = await p.locator('.hs-task.error').count();
   check('R6：主页 head 出现红色未读图标', redOnHome >= 1, `count=${redOnHome}`);
-  await p.locator('.home-head .hs-task.error').first().click();
+  await p.locator('.hs-task.error').first().click();
   await p.waitForTimeout(900);
   const onChat = await p.locator('.aichat-tabs').count();
   check('R6：点红色图标跳回 AI 对话', onChat >= 1);
   await goHome(p);
   await p.waitForTimeout(600);
-  const stillThere = await p.locator('.home-head .hs-task').count();
+  const stillThere = await p.locator('.hs-task').count();
   check('R6：点开来源页后红色通知消失', stillThere === 0, `hs-task 数=${stillThere}`);
   await p.context().close();
 });
@@ -345,13 +346,13 @@ await scenario('R7 默认不自启动', async () => {
   await p.waitForTimeout(600);
 
   // 全新环境（localStorage 无标记）：head 不应出现音乐服务图标
-  const svcIcon = await p.locator('.home-head .hs-svc').count();
+  const svcIcon = await p.locator('.hs-svc').count();
   check('R7：默认不开自启动时 head 无服务图标', svcIcon === 0, `count=${svcIcon}`);
   const lsFlag = await p.evaluate(() => localStorage.getItem('dr.svc.autostart'));
   check('R7：默认无自启动标记', lsFlag === null, `localStorage=${lsFlag}`);
 
   // 服务页里自启动开关应为未勾选
-  await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
+  await p.locator('.hs-text', { hasText: '服务' }).click();
   await p.waitForTimeout(700);
   const box = p.locator('.svc-auto input[type=checkbox]').first();
   const checked = await box.isChecked().catch(() => false);
@@ -384,7 +385,7 @@ await scenario('R8 任务页跳转与清除', async () => {
 
   // 打开任务页：应列出这条任务，标题是「AI 已完成回复」
   await goHome(p);
-  await p.locator('.home-head .hs-text', { hasText: '任务' }).click();
+  await p.locator('.hs-text', { hasText: '任务' }).click();
   await p.waitForTimeout(700);
   const rows = await p.locator('.task-row').count();
   check('R8：任务页列出 1 条任务', rows === 1, `rows=${rows}`);
@@ -399,7 +400,7 @@ await scenario('R8 任务页跳转与清除', async () => {
 
   // 再进任务页，手动清除
   await goHome(p);
-  await p.locator('.home-head .hs-text', { hasText: '任务' }).click();
+  await p.locator('.hs-text', { hasText: '任务' }).click();
   await p.waitForTimeout(700);
   await p.locator('.task-clear').first().click();
   await p.waitForTimeout(500);
@@ -417,7 +418,7 @@ await scenario('R9 面板播放 → 服务图标跟着走', async () => {
   await goHome(p);
 
   // 上传后没播：自启动没开，head 不该有服务图标
-  const before = await p.locator('.home-head .hs-svc').count();
+  const before = await p.locator('.hs-svc').count();
   check('R9：上传后未播放时 head 无服务图标', before === 0, `count=${before}`);
 
   // 回音乐页点播放 → head 出现运行中图标（服务状态跟着播放走，不停在「已停止」）
@@ -428,9 +429,9 @@ await scenario('R9 面板播放 → 服务图标跟着走', async () => {
   check('R9：点击后面板显示在播放', String(playing).includes('tone.wav'), `title=${playing}`);
   await goHome(p);
   await p.waitForTimeout(500);
-  const whilePlay = await p.locator('.home-head .hs-svc.running').count();
+  const whilePlay = await p.locator('.hs-svc.running').count();
   check('R9：播放中 head 出现音乐服务图标', whilePlay >= 1, `count=${whilePlay}`);
-  const tip = await p.locator('.home-head .hs-svc').first().getAttribute('title').catch(() => '');
+  const tip = await p.locator('.hs-svc').first().getAttribute('title').catch(() => '');
   check('R9：图标标题是当前曲目', String(tip).includes('tone.wav'), `title=${tip}`);
 
   // 回音乐页暂停 → 图标消失
@@ -439,7 +440,7 @@ await scenario('R9 面板播放 → 服务图标跟着走', async () => {
   await p.waitForTimeout(600);
   await goHome(p);
   await p.waitForTimeout(500);
-  const afterPause = await p.locator('.home-head .hs-svc').count();
+  const afterPause = await p.locator('.hs-svc').count();
   check('R9：暂停后 head 服务图标消失', afterPause === 0, `count=${afterPause}`);
   await p.context().close();
 });

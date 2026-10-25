@@ -54,7 +54,7 @@ if (hasSeed) {
 }
 
 // ---- L1：开机即注册（未运行） ----
-await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
+await p.locator('.hs-text', { hasText: '服务' }).click();
 await p.waitForTimeout(700);
 const listed = await p.getByText('自动打点').count();
 check('L1：开机即注册「自动打点」服务（未运行）', listed >= 1);
@@ -84,7 +84,7 @@ check('L2：开始打点后 head 出现服务图标', svcIcons >= 1, `count=${sv
 // ---- L3：离开面板，服务照跑 ----
 await p.locator('.tabbar-item', { hasText: '人物' }).click();
 await p.waitForTimeout(600);
-const homeIcon = await p.locator('.home-head .hs-svc').count();
+const homeIcon = await p.locator('.hs-svc').count();
 check('L3：离开面板后 head 服务图标仍在', homeIcon >= 1, `count=${homeIcon}`);
 await p.waitForTimeout(2500);
 await p.locator('.tabbar-item', { hasText: '设置' }).click();
@@ -96,7 +96,7 @@ check('L3：离开期间打点继续（列表有点）', rowsGrew >= 1, `li=${ro
 // ---- L4：服务页运行中 + 打开回面板 ----
 await p.locator('.tabbar-item', { hasText: '人物' }).click();
 await p.waitForTimeout(500);
-await p.locator('.home-head .hs-text', { hasText: '服务' }).click();
+await p.locator('.hs-text', { hasText: '服务' }).click();
 await p.waitForTimeout(700);
 const runningSub = await p
   .locator('.svc-row', { hasText: '自动打点' })
