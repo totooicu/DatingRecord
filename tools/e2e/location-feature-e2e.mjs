@@ -225,21 +225,21 @@ try {
 
   // D3：阈值设 0，同点仍新增
   await toTab(p, '记录');
-  await p.locator('input[type=number]').fill('0');
+  await p.locator('label:has-text("去重阈值") input[type=number]').fill('0');
   await sleep(p, 300);
   await recordNote('');
   check('D3：阈值=0 → 每次新增（第 3 行）', (await rowCount()) === 3, `rows=${await rowCount()}`);
 
   // D4：超大阈值 → 同点不再新增
   await toTab(p, '记录');
-  await p.locator('input[type=number]').fill('999999');
+  await p.locator('label:has-text("去重阈值") input[type=number]').fill('999999');
   await sleep(p, 300);
   await recordNote('');
   check('D4：阈值=999999 → 同点去重（仍 3 行）', (await rowCount()) === 3, `rows=${await rowCount()}`);
 
   // D5：负数阈值归 0，仍每次新增
   await toTab(p, '记录');
-  await p.locator('input[type=number]').fill('-5');
+  await p.locator('label:has-text("去重阈值") input[type=number]').fill('-5');
   await sleep(p, 300);
   await recordNote('');
   check('D5：负数阈值归 0 → 新增（第 4 行）', (await rowCount()) === 4, `rows=${await rowCount()}`);
@@ -329,11 +329,11 @@ try {
 
   // D6：运行中改阈值即时生效（阈值0 → 行数增长；再设超大 → 停）
   await toTab(q, '记录');
-  await q.locator('input[type=number]').fill('0');
+  await q.locator('label:has-text("去重阈值") input[type=number]').fill('0');
   await sleep(q, 3500);
   const growN = await q.locator('.music-row').count();
   check('D6：运行中阈值设为0 → 行数随 tick 增长', growN >= 3, `rows=${growN}`);
-  await q.locator('input[type=number]').fill('999999');
+  await q.locator('label:has-text("去重阈值") input[type=number]').fill('999999');
   await sleep(q, 3500);
   const growM = await q.locator('.music-row').count();
   check('D6：运行中阈值设为超大 → 行数停止增长', growM === growN, `before=${growN} after=${growM}`);

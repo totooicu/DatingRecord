@@ -111,6 +111,37 @@ export async function fetchNativeHistory(timeoutMs = 8000): Promise<unknown[]> {
   return Array.isArray(r.points) ? r.points : [];
 }
 
+/** 一次原生定位返回的坐标（WGS-84，页面会换算成 GCJ-02） */
+export interface NativeFix {
+  lat: number;
+  lng: number;
+  accuracy: number;
+}
+
+/**
+ * 壳的一次性定位：手动「我的位置 / 打点」在壳里优先走这条，和连续打点同一个
+ * GPS 源（壳的原生位置提供方），不再依赖 WebView 拦截的 navigator.geolocation
+ * （那条在壳里经常「申请了定位却回不来坐标」）。壳没实现就抛错，由调用方退回
+ * AMap / 浏览器原生定位。
+ *
+ * 壳侧约定（写入 getFix 分支）：成功回 { lat, lng, accuracy }（WGS-84，米），
+ * 失败回 ok:false（如定位权限没给、信号不可用）；不要静默不回，否则会卡到超时。
+ */
+export function getNativeFix(timeoutMs = 9000): Promise<NativeFix> {
+  return invoke('location.getFix', {}, timeoutMs).then((r) => {
+    const lat = Number(r.lat);
+    const lng = Number(r.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new Error('壳未返回有效坐标');
+    }
+    return {
+      lat,
+      lng,
+      accuracy: Number.isFinite(Number(r.accuracy)) ? Number(r.accuracy) : 0,
+    };
+  });
+}
+
 /** 原生每记一个点推一次；返回取消订阅 */
 export function onNativePoint(cb: (point: unknown) => void): () => void {
   return onBridgeEvent('location.point', cb);
