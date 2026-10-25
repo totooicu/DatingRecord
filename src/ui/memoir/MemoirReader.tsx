@@ -11,6 +11,8 @@ import { markdownToText } from '../../core/markdown';
 import { formatTime } from '../../core/time';
 import { useVersion } from '../../store';
 import { openEvent } from '../openEvent';
+import { Modal } from '../common';
+import { MusicPanel } from '../panel/MusicPanel';
 import { useBlobUrl } from '../preview/useBlobUrl';
 import { hides } from '../../privacy';
 import type { DREvent } from '../../core/types';
@@ -47,6 +49,7 @@ export function MemoirReader({
   );
   const started = useRef(false);
   const [err, setErr] = useState<string | null>(null);
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   const playlistId = memoir?.playlistId ?? null;
   const playlistFile = playlistId ? getPlaylistFile(playlistId) : null;
@@ -56,16 +59,26 @@ export function MemoirReader({
   // 进阅读页自动起歌单；浏览器拦截自动播放时 runtime 会把 pendingPlay 标出来
   useEffect(() => {
     if (!playlistId) return;
-    started.current = true;
     setErr(null);
-    void openPlaylist(playlistId, { play: true }).catch((e) => {
-      started.current = false;
-      setErr(e instanceof Error ? e.message : String(e));
-    });
+    const s = getMusicState();
+    if (s.playlistId === playlistId) {
+      // 播放器已经挂着这首歌单（从功能面板过来的 / 刚退出阅读页）：别重新 open，
+      // 那会把进度拉回第一首。停着就接着放，正在放就不打扰。
+      started.current = true;
+      if (!s.playing && s.current && !s.error) toggle();
+    } else {
+      started.current = true;
+      void openPlaylist(playlistId, { play: true }).catch((e) => {
+        started.current = false;
+        setErr(e instanceof Error ? e.message : String(e));
+      });
+    }
     return () => {
+      // 阅读页自己起的背景音乐，离开时停掉；用户全程手动控制的播放器也一样停，
+      // 因为这首歌单本来就是这本册子的配乐。
       if (!started.current) return;
-      const s = getMusicState();
-      if (s.playlistId === playlistId && s.playing) toggle();
+      const cur = getMusicState();
+      if (cur.playlistId === playlistId && cur.playing) toggle();
     };
   }, [playlistId]);
 
@@ -106,6 +119,9 @@ export function MemoirReader({
           ← 返回
         </button>
         <span className="memoir-toolbar-end">
+          <button className="btn btn-sm" onClick={() => setPlayerOpen(true)} title="打开播放器">
+            ♪ 音乐
+          </button>
           <button className="btn btn-sm" onClick={onEdit}>
             编辑
           </button>
@@ -186,6 +202,15 @@ export function MemoirReader({
       </div>
 
       {pages.length === 0 && <p className="muted">这本回忆录还没有页。</p>}
+
+      {playerOpen && (
+        <Modal title="背景音乐" onClose={() => setPlayerOpen(false)} wide>
+          {/* 功能面板里同一个播放器：歌单、队列、进度都共用，关掉弹窗歌照放 */}
+          <div className="memoir-player">
+            <MusicPanel />
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }
