@@ -30,6 +30,8 @@ import { ServicesPage } from './runtime/ServicesPage';
 import { TasksPage } from './runtime/TasksPage';
 import type { TabKey } from './icons';
 import type { SettingsKey } from './settings/sections';
+import { parentOf } from './settings/sections';
+import { ackBackHandled, askShellFinish, closeTopLayer, onShellBackPressed } from './back';
 
 /**
  * 页面栈视图状态。
@@ -186,6 +188,50 @@ export default function App() {
     setPersonId(nextId);
     setView({ k: 'list', s: 'persons' });
   }, []);
+
+  /**
+   * 安卓壳的系统返回键（ui.backPressed）：浮层 → 详情 → 服务/任务 → 设置子页 →
+   * 按天看的时间线，退无可退才让壳退出应用。
+   * 顺序和页面上的返回按钮一致，用户不用记两套。
+   */
+  const handleShellBack = useCallback(() => {
+    if (closeTopLayer()) {
+      // 弹窗自己关了：回执告诉壳「这一下已经用掉」，别让它 3 秒后兜底再退
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'detail') {
+      backToList();
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'services' || view.k === 'tasks') {
+      setView(returnView.current);
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'settings' && settingsSub !== null) {
+      setSettingsSub(parentOf(settingsSub) ?? null);
+      ackBackHandled();
+      return;
+    }
+    if (view.k === 'timeline' && filter.dayLabel) {
+      // 「只看某天」是从日历点进来的，退回日历而不是退回时间线全量
+      setKeyword('');
+      setFilter(defaultFilter);
+      setView({ k: 'calendar' });
+      ackBackHandled();
+      return;
+    }
+    askShellFinish();
+  }, [view, settingsSub, filter, backToList]);
+
+  // 壳的事件监听是 window 级的，只订阅一次；处理器用 ref 走最新闭包
+  const shellBackRef = useRef(handleShellBack);
+  useEffect(() => {
+    shellBackRef.current = handleShellBack;
+  });
+  useEffect(() => onShellBackPressed(() => shellBackRef.current()), []);
 
   // 回到列表页时还原滚动位置
   useEffect(() => {

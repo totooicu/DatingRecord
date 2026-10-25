@@ -1,4 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
+import { pushBackLayer } from './back';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -38,6 +39,14 @@ export function Modal({
     setModalOpen(1);
     return () => setModalOpen(-1);
   }, []);
+
+  // 壳的系统返回键先关最上层弹窗。用 ref 存最新的 onClose，登记只做一次——
+  // 否则下层弹窗重渲染会把自己顶到栈顶，把上层的返回顺序打乱。
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  useEffect(() => pushBackLayer(() => closeRef.current()), []);
 
   const cls = ['modal', wide ? 'modal-wide' : '', media ? 'modal-media' : ''].filter(Boolean).join(' ');
 

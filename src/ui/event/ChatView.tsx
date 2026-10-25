@@ -11,6 +11,7 @@
 // 移动是「与相邻一条交换 order_key」：一次撤销就是一步。
 // 点头像弹出：人物资料（悬浮卡）/ 换个人 / 新建人物。
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { pushBackLayer } from '../back';
 
 import {
   appendMessage,
@@ -93,9 +94,12 @@ export function ChatView({ event }: { event: DREvent }) {
       if (e.key === 'Escape') setFull(false);
     };
     window.addEventListener('keydown', onKey);
+    // 安卓壳的系统返回键同样退出全屏（和 Esc 一个手感）
+    const offBack = pushBackLayer(() => setFull(false));
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
+      offBack();
     };
   }, [full]);
 

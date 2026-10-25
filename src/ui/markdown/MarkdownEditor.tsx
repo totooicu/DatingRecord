@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { pushBackLayer } from '../back';
 import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { uploadFileQuiet } from '../../core/files';
 import { getSmallLimit } from '../filePrefs';
@@ -72,9 +73,12 @@ export function MarkdownEditor({
       if (e.key === 'Escape') setFull(false);
     };
     window.addEventListener('keydown', onKey);
+    // 安卓壳的系统返回键同样退出全屏（和 Esc 一个手感）
+    const offBack = pushBackLayer(() => setFull(false));
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
+      offBack();
     };
   }, [full]);
 

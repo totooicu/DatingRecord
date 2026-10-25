@@ -74,6 +74,9 @@ export function invoke(action: string, params: Record<string, unknown> = {}, tim
 
 /** 订阅原生事件（如 ble.deviceFound）。返回取消订阅的函数 */
 export function onBridgeEvent(event: string, cb: (data: unknown) => void): () => void {
+  // 只订阅不调用也得先装消息监听：返回键这类事件用不着发请求，
+  // 页面刚起来还没 invoke 过的时候，事件不能因为没挂监听被丢掉。
+  ensureListener();
   let set = listeners.get(event);
   if (!set) {
     set = new Set();

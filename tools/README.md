@@ -36,6 +36,7 @@
 | `e2e/color-picker-e2e.mjs` | 统一取色面板回归（C1–C6）：外观自定义里彩虹在左 / 历史在右、HEX 输入生效、RGB 输入生效、彩虹拖动取色、历史颜色刷新后仍在、事件集图标自定义背景色保存生效并进入历史 | 需要 preview 服务：`node tools/e2e/color-picker-e2e.mjs http://localhost:4173/`。截图默认写到临时目录，可用 `SHOTS=/path` 指定；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/compat-test-e2e.mjs` | 软件适配测试页回归（K1–K7）：功能体验入口与 10 张测试卡、引擎信息自动填、应用依赖自检（WebAssembly / IndexedDB / Blob 必须 ✓）、浏览器里原生桥判未注入、离开再回来汇总仍在、功能面板不含高精度定位；K7 用 `addInitScript` 装假壳跑通「注入标记 → 请求 → 响应 → 事件」（扫描出设备、连接后出 GATT、私有文件写入回显路径）；K8/K9 覆盖麦克风失败路径（每档约束结果 + 设备/权限 + 怎么办）与成功路径（另起一个带 `--use-fake-device-for-media-stream` 的浏览器，授权成功、音量条出现） | 需要 preview 服务：`node tools/e2e/compat-test-e2e.mjs http://localhost:4173/`。截图写到 `/tmp/compat-shots/`；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/build-time-refresh-e2e.mjs` | 人物主页「最新版本 · …」双击刷新回归（R1–R4）：构建时间与 title 里的双击提示都在；单击不刷新（计数 `framenavigated` 为 0）；双击真的重新加载（文档级标记被清、boot 重走一遍）；刷新后仍停在人物主页 | 需要 preview 服务：`node tools/e2e/build-time-refresh-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/shell-back-e2e.mjs` | 壳里系统返回键（`ui.backPressed`）回归（B1–B6）：详情→列表、弹窗只关弹窗、设置子页→父级→目录→`ui.finish`、日历某天→回日历、新建事件全屏编辑先退全屏再关弹窗、列表根上只 `ui.finish`；假壳照抄 3 秒兜底并计数，全程必须为 0（页面每次都按时回执 `ui.goBack` / `ui.finish`） | 需要 preview 服务：`node tools/e2e/shell-back-e2e.mjs http://localhost:4173/`。壳用 `addInitScript` 装假实现（注入标记 + ui.* 应答 + `__pressBack()`）；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 
 ## src/core/tools/
 

@@ -524,6 +524,27 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **回归**：`node tools/e2e/location-native-e2e.mjs [url]`（N1–N5）。用 `addInitScript` 装假壳（注入标记 + `location.*` + `location.point`，原生点与运行态放 `sessionStorage` 以撑过刷新）：N1 开始打点推 `enabled=true/thresholdM=5` 且页面 GPS 一次没取；N2 事件点落进文件并按 GCJ-02 显示；N3 远处新增、原地重复只刷新时间；N4 刷新后接管（问 `status`、拉 `getHistory` 补挂起期间的点、再刷新不重放）；N5 改阈值与停止都同步给壳。
 
+### 1.16 返回键：壳转发事件，页面决定退到哪
+
+**问题**：这是个单页应用，页面切换全在 React 状态里，从不写 `history`——`WebView.canGoBack()` 永远是 false。壳如果自己 `finish()`，用户会从任意子页直接退出应用。
+
+**壳的做法**（`WebViewActivity.onBackKey`）：页面加载完后不再自己退，而是发 `ui.backPressed`（`data.atRoot = !canGoBack`，只说明 WebView 历史栈），并起一个 3 秒定时器；页面用 `ui.goBack`（已退一层）或 `ui.finish`（退出应用）回执，回执即取消兜底。3 秒没动静，壳按 `canGoBack ? goBack : finish` 兜底。
+
+**页面的顺序**（`src/ui/back.ts` + `App.handleShellBack`），和屏幕上的返回按钮保持一致：
+
+1. 浮层：后进先出。`Modal` 与聊天 / 正文编辑的全屏态各自 `pushBackLayer()`，最后打开的先关；
+2. 人物 / 事件集详情 → 列表（`backToList()`，保留「从成果详情跳来」的来路）；
+3. 服务 / 任务页 → 来之前那一页（`returnView`）；
+4. 设置子页 → 父级（`parentOf`），父级为空则回目录；
+5. 日历点进来的「只看某天」时间线 → 日历；
+6. 以上都没有 → `ui.finish`。
+
+每一次页面自己退了一层都回 `ui.goBack`。因为 SPA 不写 history，这个回执不会让 WebView 再多退一格，作用只是告诉壳「这一下已经用掉，别兜底」；列表 / 时间线 / 日历的根上不冒充 `goBack`，直接 `finish`。
+
+**事件订阅要能独立工作**：返回键用不着发任何请求，页面刚起来可能一次 `invoke` 都没有，所以 `onBridgeEvent()` 自己会装 `message` 监听，不依赖别处先调过桥。
+
+**回归**：`node tools/e2e/shell-back-e2e.mjs [url]`（B1–B6）。假壳除了应答 `ui.goBack / ui.finish`，还照抄了 3 秒兜底并计数：B1 详情回列表且等过 3 秒兜底仍为 0；B2 图标弹窗只关弹窗、详情不动；B3 设置子页 → 父级 → 目录 → `ui.finish`；B4 日历某天 → 时间线 → 回日历；B5 新建事件弹窗里的全屏编辑先退全屏再关弹窗；B6 列表根上返回只发 `ui.finish`。
+
 ---
 
 # 第二部分 · 功能规格
