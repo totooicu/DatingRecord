@@ -40,6 +40,7 @@ import {
 } from '../../core/music/playlistFile';
 import { uniquePlaylistName } from '../../core/music/format';
 import { FilesPanel } from '../files';
+import { LoopIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from './MusicIcons';
 import { CollisionModal } from '../files/CollisionModal';
 import { showToast as toast } from '../toast';
 import { ConfirmButton, Field, FilePickInput, Modal } from '../common';
@@ -306,14 +307,24 @@ export function MusicPanel() {
       </div>
 
       <div className="music-controls">
-        <button className="music-btn" onClick={cycleLoop} title={LOOP_LABEL[m.loop]}>
-          {m.loop === 'list' ? '🔁' : m.loop === 'one' ? '🔂' : '↪'}
+        <button className="music-btn" onClick={cycleLoop} title={LOOP_LABEL[m.loop]} aria-label={LOOP_LABEL[m.loop]}>
+          <LoopIcon mode={m.loop} />
         </button>
-        <button className="music-btn" onClick={prev} disabled={m.tracks.length === 0}>⏮</button>
-        <button className="music-btn music-btn-play" onClick={toggle} disabled={m.tracks.length === 0}>
-          {m.playing ? '⏸' : '▶'}
+        <button className="music-btn" onClick={prev} disabled={m.tracks.length === 0} title="上一首" aria-label="上一首">
+          <PrevIcon />
         </button>
-        <button className="music-btn" onClick={() => next(false)} disabled={m.tracks.length === 0}>⏭</button>
+        <button
+          className="music-btn music-btn-play"
+          onClick={toggle}
+          disabled={m.tracks.length === 0}
+          title={m.playing ? '暂停' : '播放'}
+          aria-label={m.playing ? '暂停' : '播放'}
+        >
+          {m.playing ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <button className="music-btn" onClick={() => next(false)} disabled={m.tracks.length === 0} title="下一首" aria-label="下一首">
+          <NextIcon />
+        </button>
         <button className="music-btn music-speed" onClick={() => {
           const i = SPEEDS.indexOf(m.speed);
           setSpeed(SPEEDS[(i + 1) % SPEEDS.length]);
