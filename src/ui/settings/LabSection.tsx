@@ -32,6 +32,12 @@ export function LabSection({ onPick }: { onPick: (k: SettingsKey) => void }) {
       desc: '还没提交的表单先在本地留一份草稿，刷新或误关页面之后回来接着填。',
       hint: '未完成 · 草稿自动留底',
     },
+    {
+      key: 'labTrack',
+      title: '轨迹提取',
+      desc: '上传两步路 App 的截图，按红色阈值筛出轨迹线，连通域去噪、网格化取点导出 CSV。图片只在浏览器里处理。',
+      hint: '两步路截图 → 像素坐标 · 图片不出浏览器',
+    },
   ];
   return (
     <div className="settings-intro">

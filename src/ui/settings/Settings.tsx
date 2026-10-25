@@ -17,6 +17,7 @@ import { LabEdgeSection } from './LabEdgeSection';
 import { LabExtractSection } from './LabExtractSection';
 import { LabDraftSection } from './LabDraftSection';
 import { LabCompatSection } from './LabCompatSection';
+import { LabTrackSection } from './LabTrackSection';
 import { AiSection } from './AiSection';
 import { PanelHubSection } from './PanelHubSection';
 import { MusicPanel } from '../panel/MusicPanel';
@@ -118,6 +119,8 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
         {active === 'labChat' && <LabExtractSection />}
 
         {active === 'labCompat' && <LabCompatSection />}
+
+        {active === 'labTrack' && <LabTrackSection />}
 
         {/* 模型配置从「AI 对话 → 模型」标签抽成独立子页：配密钥是低频动作，
             不该占着聊天页的一排标签位置 */}

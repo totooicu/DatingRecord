@@ -34,6 +34,7 @@ export type SettingsKey =
   | 'labChat'
   | 'labDraft'
   | 'labCompat'
+  | 'labTrack'
   | 'ai'
   | 'aiModel'
   | 'panel'
@@ -75,6 +76,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'labEdge', title: '边缘分割', hint: '从一张图里切出多个元素', group: 'trial' },
   // 换机器 / 换壳之后先跑一遍：标准 API + 原生桥 + 本软件依赖，见 DEVELOPMENT 1.14
   { key: 'labCompat', title: '软件适配测试', hint: '壳 / 内核 / 原生桥自检', group: 'trial' },
+  // 两步路截图 → 像素坐标：HSV 阈值筛红、连通域去噪、网格化取点、导出 CSV，图片不出浏览器
+  { key: 'labTrack', title: '轨迹提取', hint: '两步路截图 → 像素坐标', group: 'trial' },
   // 未完成：还没提交的表单先留一份草稿，防刷新 / 误关导致白写
   { key: 'labDraft', title: '未完成的记录', hint: '未完成 · 草稿自动留底', group: 'trial' },
   // 功能面板（panel）：独立小组件空间，挂歌单、数据分析板等。
@@ -103,7 +106,7 @@ export const GROUP_TITLES: Record<SettingsGroup, string> = {
  */
 export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   ai: ['labAi', 'labChat', 'aiModel'],
-  lab: ['labEdge', 'labDraft', 'labCompat'],
+  lab: ['labEdge', 'labDraft', 'labCompat', 'labTrack'],
   backup: ['backupData', 'sync', 'share', 'remote'],
   panel: ['panelMusic', 'panelLocation'],
 };

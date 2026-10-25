@@ -399,6 +399,101 @@
   line-height: 1.7;
 }
 
+/* ---------- 功能体验 → 轨迹提取 ---------- */
+/* 沿用应用的变量配色：面板用 --panel/--border，主按钮用 btn-primary（--primary），
+   轨迹线由 canvas 取 --primary 描，不再用工具自带的绿/蓝硬编码色。 */
+.lab-track-lead {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.lab-track-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.lab-track-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.lab-track-bar input[type='range'] {
+  width: 100px;
+}
+
+.lab-track-val {
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.lab-track-coord {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.lab-track-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.lab-track-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+
+.lab-track-panel h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.lab-track-count {
+  color: var(--text);
+}
+
+.lab-track-canvas {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+  background: var(--panel);
+}
+
+.lab-track-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+@media (max-width: 700px) {
+  .lab-track-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 目录里「有子页」的入口右侧加个箭头 */
 .settings-nav-more {
   margin-left: auto;

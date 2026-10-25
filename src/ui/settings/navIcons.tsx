@@ -247,6 +247,15 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <path d="M8.4 12.6h7.2M8.4 16h4.6" />
         </>,
       );
+    // 轨迹提取：两点之间的折线（两步路截图里的红色轨迹）
+    case 'labTrack':
+      return wrap(
+        <>
+          <path d="M4.4 18.4c4-11 8 1 12-7 2.8-5.4 3.2-2.6 3.2-2.6" />
+          <circle cx="4.4" cy="18.4" r="1.9" />
+          <circle cx="19.6" cy="8.8" r="1.9" />
+        </>,
+      );
     // 功能面板：2×2 的小组件格子
     case 'panel':
       return wrap(
