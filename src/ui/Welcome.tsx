@@ -22,8 +22,7 @@ export function Welcome({
             <button
               className="btn btn-primary"
               onClick={() => {
-                loadSampleData();
-                bump();
+                void loadSampleData().then(() => bump());
               }}
             >
               载入示例数据看看效果
