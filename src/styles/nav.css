@@ -31,13 +31,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* 标题按整条宽度居中：绝对定位，左右两侧的返回键 / 操作按钮不参与计算，
-     否则有返回键时会整体向右偏半个按钮宽 */
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  max-width: calc(100% - 120px);
+  /* 标题居左：跟在返回键后面排（flex 项），右侧操作区 margin-left:auto 推到右边。
+     不再绝对定位居中——页面名居左是本站的 head 规范，返回键/右区不挤标题 */
+  min-width: 0;
 }
 
 .back-btn {
