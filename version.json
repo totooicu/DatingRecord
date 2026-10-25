@@ -1,21 +1,21 @@
 {
-  "version": "2026-10-25T10:37:42.238Z",
+  "version": "2026-10-25T11:39:55.840Z",
   "release": "1.1.1",
   "proto": 1,
   "shellMin": "1.0.0",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "81708fae9d6739d0",
-      "link": "/assets/diff-BvbiDCtD.js"
+      "version": "8de95a6bc407bd37",
+      "link": "/assets/diff-MvjE4K--.js"
     },
     {
-      "version": "1712562628365194",
-      "link": "/assets/index-D_JCYhb7.css"
+      "version": "5e3246590c805a0d",
+      "link": "/assets/index-DFm3z6HI.js"
     },
     {
-      "version": "41779999f9e27332",
-      "link": "/assets/index-D0OE2kcE.js"
+      "version": "c112d9185f93d370",
+      "link": "/assets/index-Y1Ll4Pf2.css"
     },
     {
       "version": "8be885f0a6a49903",
@@ -46,7 +46,7 @@
       "link": "/icon.svg"
     },
     {
-      "version": "becbccdc0b90fd23",
+      "version": "fe76ad6f378e0c9d",
       "link": "/index.html"
     },
     {
