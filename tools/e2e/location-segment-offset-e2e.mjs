@@ -304,7 +304,7 @@ await tab('记录').click();
 await p.waitForTimeout(300);
 check('选中行是最后一行', (await row(N).getAttribute('class'))?.includes('on'));
 // 阈值 0 + 定时策略：每秒必然新增一个点
-await p.locator('.loc-num').first().fill('0');
+await p.locator('.loc-row input.loc-num').first().fill('0');
 await p.locator('.loc-select').selectOption('fixed');
 await p.waitForTimeout(400);
 await p.getByRole('button', { name: '▶ 自动打点' }).click();
