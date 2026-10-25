@@ -5,6 +5,7 @@ import { relativeDays } from '../../core/time';
 import { BUILD_TIME, fmtBuildTime } from '../../core/buildInfo';
 import { Avatar } from './Avatar';
 import { HeadStatus } from '../runtime/HeadStatus';
+import { PageHead } from '../common';
 
 export function PersonList({
   selectedId,
@@ -64,13 +65,19 @@ export function PersonList({
       >
         最新版本 · {fmtBuildTime()}
       </div>
-      <div className="pane-head home-head">
-        <strong>人物</strong>
-        <HeadStatus />
-        <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">
-          ＋
-        </button>
-      </div>
+      {/* 主页标题条与其它页面同一形式：吸顶 44px、标题居中、右侧状态区与新建。
+          原来这里是 .home-head（左对齐标题），与时间线/日历/详情的居中标题不一致 */}
+      <PageHead
+        title="人物"
+        right={
+          <>
+            <HeadStatus />
+            <button className="icon-btn" onClick={() => setCreating(true)} title="新建人物">
+              ＋
+            </button>
+          </>
+        }
+      />
       {creating && (
         <div className="inline-create">
           <input

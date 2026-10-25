@@ -220,18 +220,24 @@ export function PrivacyButton({
 /**
  * 详情页顶部条：手机端显示返回按钮（页面栈），宽屏由 CSS 隐藏返回键。
  * 宽屏下标题可隐藏，因为左侧列表已经表明了当前项。
+ *
+ * className 给「嵌在内容列里的子页头」用（如回忆录阅读/编辑）：同样一套
+ * ‹ 返回 + 居中标题 + 右侧动作的形式，只把外边距交给调用方调整。
  */
 export function PageHead({
   title,
   onBack,
   right,
+  className,
 }: {
   title: string;
   onBack?: () => void;
   right?: ReactNode;
+  className?: string;
 }) {
+  const cls = ['page-head', className].filter(Boolean).join(' ');
   return (
-    <div className="page-head">
+    <div className={cls}>
       {onBack && (
         <button className="back-btn" onClick={onBack} aria-label="返回">
           ‹

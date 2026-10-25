@@ -4,6 +4,22 @@
   margin: 4px 0 12px;
 }
 
+/* 阅读 / 编辑 / 新建三个子页的头部：直接复用 PageHead 的形式（吸顶 44px、
+   ‹ 返回、标题居中、右侧动作），只把外边距交给这里调整——
+   子页头嵌在 .detail 的内容列里，用负边距把左右内边距拉回来：
+   手机上与其它页一样是整宽吸顶条，宽屏详情本身就是居中列，头跟着内容列宽。 */
+.page-head-embed {
+  margin: 0 -14px 12px;
+}
+
+@media (min-width: 1024px) {
+  /* 宽屏那条「详情顶栏一律隐藏」只管两栏布局的顶栏；子页头不在其列，照常显示 */
+  .pane-detail .page-head-embed {
+    display: flex;
+    margin: 0 0 12px;
+  }
+}
+
 /* 列表 */
 
 .memoir-toolbar {
@@ -71,6 +87,12 @@
 }
 
 /* 新建 */
+
+/* 子页头下面那行说明：原来是工具条里的一句话，头换成 PageHead 后挪到这里 */
+.memoir-compose-hint {
+  margin: 0 2px 12px;
+  line-height: 1.6;
+}
 
 .memoir-field {
   margin: 0 0 10px;
@@ -165,6 +187,11 @@
 }
 
 /* 编辑 */
+
+/* 「N 页 · 冻结于 …」：原来在工具条里，头换成 PageHead 后挪到标题行 */
+.memoir-edit-meta {
+  margin: 0 2px 10px;
+}
 
 .memoir-scan {
   display: flex;
@@ -357,11 +384,6 @@
 .memoir-read {
   max-width: 720px;
   margin: 0 auto;
-}
-
-.memoir-read-bar {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
 }
 
 .memoir-cover-head {

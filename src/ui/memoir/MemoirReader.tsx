@@ -13,6 +13,8 @@ import { useVersion } from '../../store';
 import { openEvent } from '../openEvent';
 import { useBlobUrl } from '../preview/useBlobUrl';
 import { hides } from '../../privacy';
+import { PageHead } from '../common';
+import { pushBackLayer } from '../back';
 import type { DREvent } from '../../core/types';
 
 function Figure({ id, className }: { id: string | null; className: string }) {
@@ -47,6 +49,14 @@ export function MemoirReader({
   );
   const started = useRef(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // 安卓壳的系统返回键先退阅读页——和头部 ‹ 一个顺序，再往下一级才是事件集详情。
+  // 用 ref 存最新的 onBack，登记只做一次，免得父组件每次重渲染都把自己顶到栈顶
+  const backRef = useRef(onBack);
+  useEffect(() => {
+    backRef.current = onBack;
+  });
+  useEffect(() => pushBackLayer(() => backRef.current()), []);
 
   const playlistId = memoir?.playlistId ?? null;
   const playlistFile = playlistId ? getPlaylistFile(playlistId) : null;
@@ -100,92 +110,95 @@ export function MemoirReader({
   const problem = err ?? (attached ? music.error : null);
 
   return (
-    <section className="memoir-read">
-      <div className="memoir-toolbar memoir-read-bar">
-        <button className="btn btn-sm" onClick={onBack}>
-          ← 返回
-        </button>
-        <span className="memoir-toolbar-end">
+    <>
+      {/* 子页头与全站其它页同一形式：吸顶 44px、‹ 返回、标题居中、右侧动作 */}
+      <PageHead
+        className="page-head-embed"
+        title={memoir.title || '回忆录'}
+        onBack={onBack}
+        right={
           <button className="btn btn-sm" onClick={onEdit}>
             编辑
           </button>
-        </span>
-      </div>
+        }
+      />
 
-      <header className="memoir-cover-head">
-        <Figure id={coverId} className="memoir-cover-img" />
-        <div className="memoir-cover-text">
-          <h1 className="memoir-read-title">{memoir.title}</h1>
-          {memoir.subtitle && <p className="memoir-read-sub">{memoir.subtitle}</p>}
-          <p className="muted small">
-            {pages.length} 个片段
-            {span ? ` · ${span}` : ''}
-          </p>
-        </div>
-      </header>
+      <section className="memoir-read">
+        <header className="memoir-cover-head">
+          <Figure id={coverId} className="memoir-cover-img" />
+          <div className="memoir-cover-text">
+            <h1 className="memoir-read-title">{memoir.title}</h1>
+            {memoir.subtitle && <p className="memoir-read-sub">{memoir.subtitle}</p>}
+            <p className="muted small">
+              {pages.length} 个片段
+              {span ? ` · ${span}` : ''}
+            </p>
+          </div>
+        </header>
 
-      {playlistId && (
-        <div className="memoir-playlist">
-          <span className="muted small">背景歌单</span>
-          <strong>{playlistFile ? playlistFile.name.replace(/\.drpl$/i, '') : '歌单文件已不在文件库里'}</strong>
-          {playlistFile && !(attached && music.tracks.length === 0) && (
-            <button className="btn btn-sm" onClick={() => void play()}>
-              {playing ? '暂停' : attached && music.pendingPlay ? '点击播放' : '播放'}
-            </button>
-          )}
-          {attached && music.current && (
-            <span className="muted small memoir-now" title={music.current.name}>
-              {music.tracks.length} 首 · {music.current.name}
-            </span>
-          )}
-          {attached && music.playlistMissing > 0 && music.tracks.length > 0 && (
-            <span className="muted small">{music.playlistMissing} 首找不到文件</span>
-          )}
-          {attached && music.tracks.length === 0 && (
-            <span className="muted small">
-              歌单里的音频都找不到文件（{music.playlistMissing} 首），去「编辑」里重新挑几首。
-            </span>
-          )}
-          {problem && <span className="small memoir-playlist-err">{problem}</span>}
-        </div>
-      )}
+        {playlistId && (
+          <div className="memoir-playlist">
+            <span className="muted small">背景歌单</span>
+            <strong>{playlistFile ? playlistFile.name.replace(/\.drpl$/i, '') : '歌单文件已不在文件库里'}</strong>
+            {playlistFile && !(attached && music.tracks.length === 0) && (
+              <button className="btn btn-sm" onClick={() => void play()}>
+                {playing ? '暂停' : attached && music.pendingPlay ? '点击播放' : '播放'}
+              </button>
+            )}
+            {attached && music.current && (
+              <span className="muted small memoir-now" title={music.current.name}>
+                {music.tracks.length} 首 · {music.current.name}
+              </span>
+            )}
+            {attached && music.playlistMissing > 0 && music.tracks.length > 0 && (
+              <span className="muted small">{music.playlistMissing} 首找不到文件</span>
+            )}
+            {attached && music.tracks.length === 0 && (
+              <span className="muted small">
+                歌单里的音频都找不到文件（{music.playlistMissing} 首），去「编辑」里重新挑几首。
+              </span>
+            )}
+            {problem && <span className="small memoir-playlist-err">{problem}</span>}
+          </div>
+        )}
 
-      <div className="memoir-body">
-        {pages.map(({ page, event }, i) => {
-          if (!event) {
+        <div className="memoir-body">
+          {pages.map(({ page, event }, i) => {
+            if (!event) {
+              return (
+                <article key={page.id} className="memoir-entry memoir-entry-missing">
+                  <span className="memoir-entry-no">{i + 1}</span>
+                  <p className="muted">这一页的原事件已删除。</p>
+                </article>
+              );
+            }
+            const img = page.coverFileId ?? eventImageIds(event)[0] ?? null;
+            const text = pageText(event, page.excerpt);
             return (
-              <article key={page.id} className="memoir-entry memoir-entry-missing">
-                <span className="memoir-entry-no">{i + 1}</span>
-                <p className="muted">这一页的原事件已删除。</p>
+              <article key={page.id} className="memoir-entry">
+                <div className="memoir-entry-meta">
+                  <span className="memoir-entry-no">{i + 1}</span>
+                  <span>{formatTime(event.time)}</span>
+                  {event.place.name && <span>· {event.place.name}</span>}
+                </div>
+                <Figure id={img} className="memoir-entry-img" />
+                <h2 className="memoir-entry-title">{event.title || '未命名事件'}</h2>
+                {page.note && <p className="memoir-entry-note">{page.note}</p>}
+                {text && <p className="memoir-entry-text">{text}</p>}
+                <button
+                  className="memoir-source"
+                  title="打开原事件"
+                  onClick={() => openEvent(event.id)}
+                >
+                  来自事件：{event.title || '未命名事件'} →
+                </button>
               </article>
             );
-          }
-          const img = page.coverFileId ?? eventImageIds(event)[0] ?? null;
-          const text = pageText(event, page.excerpt);
-          return (
-            <article key={page.id} className="memoir-entry">
-              <div className="memoir-entry-meta">
-                <span className="memoir-entry-no">{i + 1}</span>
-                <span>{formatTime(event.time)}</span>
-                {event.place.name && <span>· {event.place.name}</span>}
-              </div>
-              <Figure id={img} className="memoir-entry-img" />
-              <h2 className="memoir-entry-title">{event.title || '未命名事件'}</h2>
-              {page.note && <p className="memoir-entry-note">{page.note}</p>}
-              {text && <p className="memoir-entry-text">{text}</p>}
-              <button
-                className="memoir-source"
-                title="打开原事件"
-                onClick={() => openEvent(event.id)}
-              >
-                来自事件：{event.title || '未命名事件'} →
-              </button>
-            </article>
-          );
-        })}
-      </div>
+          })}
+        </div>
 
-      {pages.length === 0 && <p className="muted">这本回忆录还没有页。</p>}
-    </section>
+        {pages.length === 0 && <p className="muted">这本回忆录还没有页。</p>}
+      </section>
+    </>
   );
 }
