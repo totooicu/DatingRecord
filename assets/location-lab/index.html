@@ -50,11 +50,13 @@
      Last-Modified（HEAD 查询串绕缓存）；安卓侧显示 getEnv 的 version/builtAt/commit。
      可选每 10/30/60/300 秒自动刷新，勾选后到点整页重载（用来拿新部署的网页）。
      存档键：dr.locationLab.autoRefresh。
-  3) 休眠分析（取证账本）：打开「取证模式」后壳把采样强制改成逐秒，并把每一拍（tick）、每一次取到
-     的定位（fix）、每一次失败（fail）、屏幕亮灭、服务起停/销毁追加写到手机本地文件
+  3) 休眠分析（取证账本）：打开「取证模式」后壳把采样强制改成逐秒，并把每一拍（tick）、上一发没回而
+     跳过的拍（skip）、每一次取到的定位（fix）、每一次失败/超时/唤醒锁被收走（fail）、屏幕亮灭、
+     服务起停（start/stop，带 why：page=页面推的、system-restart=系统重建）追加写到手机本地文件
      files/bg_journal.jsonl（超 1.5 MB 自动裁掉旧的一半）。这一页拉回账本后按「有记录的秒数 / 应该
-     有的秒数」算覆盖率，把相邻两拍相差 >2.5 秒记为空档，并对空档判：覆盖率满但零 fix = 醒着但拿不到
-     定位；空档落在熄屏期间 = 熄屏后被冻；亮屏时也停 = 被系统冻住；账本里有销毁/重建 = 可能被杀。
+     有的秒数」算覆盖率，把相邻两拍相差 >2.5 秒记为空档，再判：覆盖率满但零 fix = 醒着但拿不到定位；
+     空档两头正好有 stop 行 = 不是睡，是被停了；空档落在熄屏期间 = 熄屏后被冻；拍上标着 wl=false =
+     壳没拿到唤醒锁；账本里有销毁/重建 = 可能被杀。（0.3.2-tune 起才有 skip / stop 的 why / wl 真值）
 -->
 <style>
   :root {
@@ -215,7 +217,7 @@
 </div>
 
 <div class="card">
-  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它到底睡没睡 · 需 0.3.1-tune 以上</span></h2>
+  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它到底睡没睡 · 需 0.3.2-tune 以上</span></h2>
   <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账）</label></div>
   <div class="kv"><b>账本</b><span id="dg-stat">—</span></div>
   <div class="kv"><b>tick 覆盖率</b><span id="dg-cov">—</span></div>
@@ -225,10 +227,12 @@
     <button class="gray" id="dg-clear">清空账本</button>
   </div>
   <ul class="list" id="dg-list"></ul>
-  <p class="hint">壳在取证模式下每秒写一行账（tick=申请了一次，fix=申请成功并带当时的经纬度，fail=失败或超时，
-  screen=灭屏/亮屏/解锁，destroy=服务销毁）。判读口径：<b>tick 序号连续、时间戳也连续</b> → 壳没睡；
-  <b>tick 之间出现大空档</b> → 那段被系统冻结（空档和灭屏对齐看就知道是不是熄屏引起）；
-  <b>tick 连着但没有 fix</b> → 醒着却拿不到定位（多半没给「始终允许」，或省电把 provider 掐了）。</p>
+  <p class="hint">壳在取证模式下每秒写一行账：<b>tick</b>=真发了一次定位请求，<b>skip</b>=这一拍上一发还没回所以没发（也算进程活着），
+  <b>fix</b>=取到点并带当时经纬度，<b>fail</b>=失败/超时/唤醒锁被收走，<b>screen</b>=灭屏亮屏解锁，
+  <b>start / stop</b>=采集起来或被停（带是谁按的：page=页面推的配置、system-restart=系统重建后恢复），<b>destroy / taskRemoved</b>=服务被销毁、任务被划掉。
+  判读口径：<b>每拍都在且 fix 不断</b> → 壳没睡；<b>大空档前面正好有一行 stop</b> → 不是睡，是被停了（十有八九是页面把「自动打点」关了）；
+  <b>空档落在灭屏期间</b> → 熄屏后被冻；<b>亮屏时也停、还报「没持唤醒锁」</b> → 壳自己没把锁拿到手；
+  <b>拍连着但没有 fix</b> → 醒着却拿不到定位（多半没给「始终允许」，或省电把 provider 掐了）。</p>
 </div>
 
 <div class="card">
@@ -248,7 +252,7 @@
   // 本页的发布号与发布时间：每次改这个文件都成对往上加，配合「服务器上的本页」
   // 的 Last-Modified 一起看，就知道壳里跑的是不是最新页。
   // 时间同时存一份 epoch 毫秒——比较 Last-Modified 用 epoch，才不受时区影响。
-  var PAGE_VER = 'lab 10-26.6', PAGE_BUILD = '2026-10-26 22:43', PAGE_BUILD_MS = 1793025780000;
+  var PAGE_VER = 'lab 10-26.7', PAGE_BUILD = '2026-10-26 23:04', PAGE_BUILD_MS = 1793027040000;
   var BASE_MS = 1000, MAX_MS = 64000;
   var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
 
@@ -564,15 +568,23 @@
     if (!state.bridge) { log('不在壳里，开不了取证', 'warn'); renderDiag(false); return; }
     invoke('location.setDiag', { on: on }, 12000).then(function (r) {
       state.svc = r; renderDiag(on);
+      // 取证 = 必须在采集。页面「自动打点」要是关着，下一次 pushConfig 就会把壳停掉，
+      // 账本立刻断流，看着跟睡着一模一样——所以这里一起抬上去。
+      if (on && !state.cfg.enabled) {
+        state.cfg.enabled = true; writeCfg();
+        var sw = $('cfg-enabled'); if (sw) sw.checked = true;
+        log('取证开着，页面「自动打点」已一起打开（否则一推配置就把采集停了）', 'warn');
+      }
       log('取证模式：' + (on ? '开（壳改成每秒申请一次，不再退避）' : '关') +
-        ' → tracking=' + !!r.tracking + (r.needPermission ? ' · 还缺定位权限' : ''), on ? 'ok' : '');
+        ' → tracking=' + !!r.tracking + ' · 唤醒锁=' + (r.wakeLock ? '在手上' : '不在！') +
+        (r.needPermission ? ' · 还缺定位权限' : ''), on ? 'ok' : '');
       if (on) { setTimeout(function () { pullJournal(0); }, 3000); }
     }).catch(function (e) {
       if (isOldShell(e)) {
         $('dg-verdict').innerHTML = pill('warn', '壳太旧') +
-          ' 这版壳没带取证接口（location.setDiag）。装 0.3.1-tune 那个包，装好后「版本」卡的安卓版本要显示 ' +
-          '0.3.1-tune / 3f9153d，再回这页重开取证';
-        log('开不了取证：这版壳不认 location.setDiag，说明跑的还是 0.3.0-tune 或更早的包 → 先重装 0.3.1-tune', 'err');
+          ' 这版壳没带取证接口（location.setDiag）。装 zhaohuixisi-0.3.2-tune-debug.apk，装好后「版本」卡的安卓版本要显示 ' +
+          '0.3.2-tune，再回这页重开取证';
+        log('开不了取证：这版壳不认 location.setDiag，说明跑的还是 0.3.0-tune 或更早的包 → 先重装 0.3.2-tune', 'err');
       } else {
         log('设置取证模式失败：' + e.message, 'err');
       }
@@ -592,8 +604,8 @@
       .then(function (r) { analyzeJournal(r || {}); return r; })
       .catch(function (e) {
         if (isOldShell(e)) {
-          $('dg-verdict').innerHTML = pill('warn', '壳太旧') + ' 这版壳不认 location.journal，读不了账本 → 先装 0.3.1-tune';
-          log('读不了账本：这版壳没有 location.journal（0.3.0-tune 及以前）→ 先装 0.3.1-tune', 'err');
+          $('dg-verdict').innerHTML = pill('warn', '壳太旧') + ' 这版壳不认 location.journal，读不了账本 → 先装 0.3.2-tune';
+          log('读不了账本：这版壳没有 location.journal（0.3.0-tune 及以前）→ 先装 0.3.2-tune', 'err');
         } else {
           $('dg-verdict').textContent = '读账本失败：' + e.message;
           log('读账本失败：' + e.message, 'err');
@@ -603,18 +615,28 @@
 
   function analyzeJournal(res) {
     var lines = Array.isArray(res.lines) ? res.lines : [];
-    var beats = [], fixes = 0, fails = 0, destroy = 0, scr = [];
+    var beats = [], fixes = 0, fails = 0, skips = 0, nowl = 0, destroy = 0, scr = [], lc = [];
     lines.forEach(function (l) {
       if (!l || !l.t) return;
-      if (l.k === 'tick' || l.k === 'fix' || l.k === 'fail') { beats.push(l); if (l.k === 'fix') fixes++; if (l.k === 'fail') fails++; }
-      else if (l.k === 'screen') scr.push(l);
-      else if (l.k === 'destroy' || l.k === 'create' || l.k === 'taskRemoved') destroy++;
+      if (l.k === 'tick' || l.k === 'fix' || l.k === 'fail' || l.k === 'skip') {
+        beats.push(l);
+        if (l.k === 'fix') fixes++;
+        if (l.k === 'fail') fails++;
+        if (l.k === 'skip') skips++;
+        if (l.wl === false) nowl++;
+      } else if (l.k === 'screen') scr.push(l);
+      else if (l.k === 'start' || l.k === 'stop' || l.k === 'destroy' || l.k === 'create' || l.k === 'taskRemoved') {
+        lc.push(l);
+        if (l.k === 'destroy' || l.k === 'create' || l.k === 'taskRemoved') destroy++;
+      }
     });
+    lc.sort(function (a, b) { return a.t - b.t; });
     beats.sort(function (a, b) { return a.t - b.t; });
     $('dg-stat').textContent = '读了 ' + lines.length + ' 行（账本共 ' + (res.total || 0) + ' 行 / ' +
       Math.round((res.bytes || 0) / 1024) + ' KB）· 壳累计 tick ' + (res.ticks || 0) +
-      ' · 取到 ' + fixes + ' 次 · 失败 ' + fails + ' 次' +
-      (destroy ? ' · 生命周期事件 ' + destroy + ' 条' : '') + ' · 在记=' + (res.tracking ? '是' : '否');
+      ' · 取到 ' + fixes + ' 次 · 失败 ' + fails + ' 次' + (skips ? ' · 跳拍 ' + skips + ' 次' : '') +
+      (nowl ? ' · ' + nowl + ' 拍没持唤醒锁' : '') +
+      (lc.length ? ' · 起停/销毁 ' + lc.length + ' 条' : '') + ' · 在记=' + (res.tracking ? '是' : '否');
     var ul = $('dg-list'); if (ul) ul.innerHTML = '';
     if (beats.length < 5) {
       $('dg-cov').textContent = '样本太少';
@@ -634,19 +656,39 @@
     for (var i = 1; i < beats.length; i++) {
       var d = beats[i].t - beats[i - 1].t;
       if (d <= 2500) continue;
-      var a = beats[i - 1].t, b = beats[i].t, dark = false;
+      var a = beats[i - 1].t, b = beats[i].t, dark = false, st = null, rs = null;
       // 空档结束前最后一次屏幕事件是「灭屏」，就说明这整段都在熄屏里
       scr.forEach(function (s) { if (s.t <= b) dark = /SCREEN_OFF$/.test(String(s.what || '')); });
-      gaps.push({ a: a, b: b, ms: d, lost: Math.max(0, Math.round(d / 1000) - 1), dark: dark });
+      // 空档两头有 stop/start 行 → 这段根本不是睡，是停着
+      lc.forEach(function (l) {
+        if (l.t >= a - 5000 && l.t <= b + 5000) {
+          if (l.k === 'stop' && !st) st = l;
+          if (l.k === 'start' && st && l.t > st.t && !rs) rs = l;
+        }
+      });
+      gaps.push({ a: a, b: b, ms: d, lost: Math.max(0, Math.round(d / 1000) - 1), dark: dark, stop: st, restart: rs });
     }
     gaps.sort(function (x, y) { return y.ms - x.ms; });
+    var top = gaps.length ? gaps[0] : null;
+    var stopRow = top ? top.stop : null, restartRow = top ? top.restart : null;
     var verdict, kind;
     if (cov >= 0.95 && fixes > 0) { verdict = '没睡：每一拍都在，并且持续取得到定位'; kind = 'on'; }
     else if (cov >= 0.95 && fixes === 0) {
       verdict = '醒着，但一个点都没取到（失败 ' + fails + ' 次）→ 后台拿不到定位，查「始终允许」和省电策略';
       kind = 'off';
+    } else if (stopRow) {
+      // 停一行把这段解释干净了：不是休眠，是有人按了停
+      verdict = '不是睡，是被停：' + fmtTime(stopRow.t) + ' 采集停了（来源 ' + (stopRow.why || '未记因') +
+        '，那时 enabled=' + (stopRow.enabled === false ? '否' : '是') + '）' +
+        (restartRow ? '，' + fmtTime(restartRow.t) + ' 才又起来（' + (restartRow.why || '') + '）'
+                    : '，之后再没起来——整段空白都是停着的状态');
+      kind = 'off';
     } else if (gaps.length && gaps[0].dark) {
       verdict = '熄屏后被冻：最大空档 ' + Math.round(gaps[0].ms / 1000) + ' 秒正好落在灭屏期间';
+      kind = 'off';
+    } else if (nowl && gaps.length) {
+      verdict = '唤醒锁不在手上，被冻 ' + gaps.length + ' 段，最长 ' + Math.round(gaps[0].ms / 1000) +
+        ' 秒没跳（没锁 = 熄屏后 CPU 一定睡，这是壳的问题）';
       kind = 'off';
     } else if (gaps.length) {
       verdict = '被冻 ' + gaps.length + ' 段，最长 ' + Math.round(gaps[0].ms / 1000) + ' 秒没跳（与灭屏不对齐）';
@@ -658,12 +700,21 @@
     if (destroy) verdict += '（账本里有生命周期事件：服务被销毁或重建过，可能被杀）';
     $('dg-verdict').innerHTML = pill(kind, kind === 'on' ? '正常' : (kind === 'warn' ? '可疑' : '异常')) + ' ' + verdict;
     log('休眠分析：' + verdict, kind === 'on' ? 'ok' : (kind === 'warn' ? 'warn' : 'err'));
+    lc.slice(-6).forEach(function (l) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="t">' + fmtTime(l.t) + '</span><span class="c">' +
+        ({ start: '采集起来（' + (l.why || '?') + '）', stop: '采集被停（' + (l.why || '?') + '）',
+           destroy: '服务销毁', create: '服务新建', taskRemoved: '任务被划掉' }[l.k] || l.k) +
+        (l.wl === false ? ' · 无唤醒锁' : '') + '</span>' + pill('', '生命周期');
+      ul.appendChild(li);
+    });
     gaps.slice(0, 8).forEach(function (g) {
       var li = document.createElement('li');
-      li.innerHTML = '<span class="t">' + fmtTime(g.a) + '</span><span class="c">停 ' +
-        Math.round(g.ms / 1000) + ' 秒（少 ' + g.lost + ' 拍）' +
-        (g.dark ? ' · <span class="warn">落在熄屏期间</span>' : ' · 亮屏时也停') + '</span>' +
-        pill('warn', '冻结');
+      li.innerHTML = '<span class="t">' + fmtTime(g.a) + '</span><span class="c">' +
+        (g.stop ? '停 ' : '断 ') + Math.round(g.ms / 1000) + ' 秒（少 ' + g.lost + ' 拍）' +
+        (g.stop ? ' · <span class="warn">被停：' + (g.stop.why || '?') + '</span>'
+                : (g.dark ? ' · <span class="warn">落在熄屏期间</span>' : ' · 亮屏时也停')) +
+        '</span>' + pill(g.stop ? '' : 'warn', g.stop ? '停机' : '冻结');
       ul.appendChild(li);
     });
   }
@@ -840,9 +891,12 @@
   function pushConfig(why) {
     writeCfg();
     if (!state.bridge) { armPageTimer(); log('没壳：配置只写存档，页面定时器按它采样', 'warn'); return Promise.resolve(); }
-    return invoke('location.setConfig', state.cfg, 8000).then(function (r) {
-      log('已推配置（' + why + '）：enabled=' + state.cfg.enabled + ' threshold=' + state.cfg.thresholdM +
-        ' strategy=' + state.cfg.strategy + ' → tracking=' + !!r.tracking, 'ok');
+    var payload = Object.assign({}, state.cfg);
+    payload.diag = !!(state.svc && state.svc.diag);
+    return invoke('location.setConfig', payload, 8000).then(function (r) {
+      log('已推配置（' + why + '）：enabled=' + payload.enabled + ' threshold=' + state.cfg.thresholdM +
+        ' strategy=' + state.cfg.strategy + ' diag=' + payload.diag + ' → tracking=' + !!r.tracking +
+        (r.keptForDiag ? '（取证开着，壳拒绝停）' : ''), r.keptForDiag ? 'warn' : 'ok');
       return refreshStatus();
     }).catch(function (e) { log('推配置失败：' + e.message, 'err'); });
   }
