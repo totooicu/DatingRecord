@@ -285,7 +285,7 @@
   border-radius: 3px;
 }
 .md-hl-strong {
-  color: #000;
+  color: var(--text);
 }
 .md-hl-em {
   background: color-mix(in srgb, var(--primary) 7%, transparent);

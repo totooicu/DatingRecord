@@ -752,7 +752,7 @@
   text-align: left;
   white-space: pre-wrap;
   word-break: break-all;
-  color: #6f675c;
+  color: var(--muted);
 }
 
 /* 读不了内容的（pdf/zip/音视频）：后缀放大当缩略图 */
@@ -760,7 +760,7 @@
   font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.4px;
-  color: #8a8177;
+  color: var(--muted);
 }
 
 .aichat-att-meta {
