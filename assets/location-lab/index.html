@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>定位磨合台 · 壳后台续记测试页</title>
+<!--
+  定位磨合台（location-lab）
+
+  这是什么：网页端「定位」功能的精简搬运版，放在线上给壳调试用。
+  壳的分支 feat/location-tune 把 DEFAULT_URL 指到这一页，
+  专门磨合「壳退到后台 / 熄屏之后，定位还能不能继续记」。
+
+  和壳的协议（和网页仓库 src/core/compat/bridge.ts 完全一致，改一边要同步另一边）：
+    请求 → window.postMessage({type:'gv-bridge-request', id, action, params}, '*')
+    响应 ← {type:'gv-bridge-response', id, ok, result | error}
+    事件 ← {type:'gv-bridge-event', event, data}
+
+  location.* 动作：
+    ping                  → {pong, engine}
+    location.status       → {tracking, startedAt, points, rev, lastPoint, config,
+                             batteryOptimized, fineLocation, backgroundLocation,
+                             lastFixAt, provider, wakeLock, fixes}
+    location.setConfig    {enabled, thresholdM, moveThresholdM, strategy, intervalBaseMs, intervalMaxMs}
+    location.start / location.stop
+    location.getHistory   {since?} → {points:[{ts,lat,lng,accuracy,rev}], rev}
+    location.clearHistory → {ok}
+    location.requestPermissions      {background?} → {fine, background}
+    location.batteryOptimization     → {ignoring}
+    location.requestBatteryExemption → {launched}
+  事件：location.point {ts,lat,lng,accuracy,rev}、location.state {tracking,points,rev,reason}
+
+  坐标：原生给的是 WGS-84，底图是高德（GCJ-02），合并前必须换算（下面 wgs84ToGcj02）。
+  配置的存档键和网页端一样是 localStorage['dr.autoLocation']——壳在页面加载完会自己读一次，
+  所以这一页写存档 = 壳下次启动也能拿到最新配置。
+  地图用的 leaflet 是从网页仓库 node_modules 里拷过来的（MIT），不依赖任何外网 CDN。
+-->
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --line: #e8eaee; --text: #1f2937; --muted: #6b7280;
+    --primary: #e0708f; --primary-soft: #fdeef2; --ok: #16a34a; --warn: #d97706; --err: #dc2626;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 10px 10px calc(24px + env(safe-area-inset-bottom));
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 16px; margin: 2px 0 6px; }
+  h1 small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .card { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .card h2 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+  .card h2 .tag { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .kv:last-child { border-bottom: 0; }
+  .kv b { font-weight: 600; }
+  .kv span { color: var(--muted); text-align: right; word-break: break-all; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  button {
+    padding: 9px 14px; border: 0; border-radius: 9px; background: var(--primary); color: #fff;
+    font-size: 13px; font-family: inherit;
+  }
+  button:active { opacity: .85; }
+  button.ghost { background: var(--primary-soft); color: var(--primary); }
+  button.gray { background: #eceef1; color: #374151; }
+  button[disabled] { opacity: .45; }
+  input[type="number"], input[type="text"], select {
+    padding: 8px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px;
+    background: #fff; color: inherit; font-family: inherit; min-width: 0;
+  }
+  input[type="number"] { width: 84px; }
+  label.field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .switch input { width: 20px; height: 20px; accent-color: var(--primary); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #eceef1; color: #374151; }
+  .pill.on { background: #dcfce7; color: #15803d; }
+  .pill.off { background: #fee2e2; color: #b91c1c; }
+  .pill.warn { background: #fef3c7; color: #b45309; }
+  #map { height: 46vh; min-height: 240px; border-radius: 10px; background: #e9ecef; }
+  .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .list { max-height: 240px; overflow: auto; margin: 6px 0 0; padding: 0; list-style: none; }
+  .list li { font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--line); display: flex; gap: 8px; }
+  .list li .t { color: var(--muted); flex: 0 0 auto; }
+  .list li .c { flex: 1; word-break: break-all; }
+  .src { flex: 0 0 auto; font-size: 11px; padding: 1px 6px; border-radius: 6px; }
+  .src.page { background: #e0edff; color: #1d4ed8; }
+  .src.native { background: #ffe8cc; color: #b45309; }
+  #log { font: 11px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; margin: 0; color: #374151; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+
+<h1>定位磨合台<small>壳后台续记测试页</small></h1>
+
+<div class="card">
+  <h2>原生桥 <span class="tag">能力靠发问，不靠猜环境</span></h2>
+  <div class="kv"><b>桥状态</b><span id="bridge-state">检测中…</span></div>
+  <div class="kv"><b>壳环境</b><span id="env">—</span></div>
+  <div class="kv"><b>原生服务</b><span id="svc">—</span></div>
+  <div class="kv"><b>采集中</b><span id="svc-tracking">—</span></div>
+  <div class="kv"><b>最近定位</b><span id="svc-lastfix">—</span></div>
+  <div class="kv"><b>权限</b><span id="perm">—</span></div>
+  <div class="row">
+    <button class="gray" id="btn-ping">重新检测</button>
+    <button class="ghost" id="btn-perm">请求定位权限</button>
+    <button class="ghost" id="btn-perm-bg">请求后台定位</button>
+    <button class="ghost" id="btn-battery">忽略电池优化</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>自动打点 <span class="tag">配置推给壳，壳按同一份策略续记</span></h2>
+  <div class="switch"><input type="checkbox" id="cfg-enabled"><label for="cfg-enabled">开启自动打点（enabled）</label></div>
+  <div class="row">
+    <label class="field">阈值 <input type="number" id="cfg-threshold" min="0" step="1">米</label>
+    <label class="field">策略
+      <select id="cfg-strategy">
+        <option value="backoff">同点退避</option>
+        <option value="fixed">定时</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <label class="field">基准 <input type="number" id="cfg-base" min="200" step="100">ms</label>
+    <label class="field">封顶 <input type="number" id="cfg-max" min="1000" step="1000">ms</label>
+  </div>
+  <div class="row">
+    <button id="btn-apply">应用并推给壳</button>
+    <button class="gray" id="btn-punch">手动打一个点</button>
+  </div>
+  <p class="hint" id="cfg-hint">—</p>
+</div>
+
+<div class="card">
+  <h2>轨迹 <span class="tag">蓝=当前 橙=原生 红=最后一点</span></h2>
+  <div id="map"></div>
+  <div class="row">
+    <button class="gray" id="btn-fit">缩放到轨迹</button>
+    <button class="gray" id="btn-recenter">回到最后一点</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>记录 <span class="tag">网页侧只存本页内存，用来对照</span></h2>
+  <div class="kv"><b>本页点数</b><span id="pt-count">0</span></div>
+  <div class="kv"><b>原生点数 / rev</b><span id="pt-native">—</span></div>
+  <div class="kv"><b>已合并游标</b><span id="pt-cursor">—</span></div>
+  <div class="kv"><b>最后一点</b><span id="pt-last">—</span></div>
+  <div class="row">
+    <button class="ghost" id="btn-pull">拉取原生历史</button>
+    <button class="gray" id="btn-clear-native">清空原生历史</button>
+    <button class="gray" id="btn-clear-page">清空本页</button>
+  </div>
+  <ul class="list" id="pt-list"></ul>
+</div>
+
+<div class="card">
+  <h2>后台取证 <span class="tag">页面冻结不等于采集停止</span></h2>
+  <div class="kv"><b>页面心跳</b><span id="hb-page">—</span></div>
+  <div class="kv"><b>原生心跳</b><span id="hb-native">—</span></div>
+  <p class="hint">操作：打开自动打点 → 把壳切到后台或熄屏 → 走一段路 → 回来看两个心跳的差值，再点「拉取原生历史」补齐断档。</p>
+</div>
+
+<div class="card">
+  <h2>日志 <span class="tag">最近 60 条</span></h2>
+  <pre id="log"></pre>
+</div>
+
+<link rel="stylesheet" href="./leaflet.css">
+<script src="./leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---- 常量：和网页端 locationNative.ts / locationAuto.ts 保持一致 ----
+  var CFG_KEY = 'dr.autoLocation';
+  var CUR_KEY = 'dr.autoLocation.cursor';
+  var BASE_MS = 1000, MAX_MS = 64000;
+  var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = {
+    bridge: false, env: null, cfg: readCfg(), points: [], rev: 0,
+    timer: null, streak: 0, pending: false, pageTimer: null, hbCount: 0, hbAt: 0,
+    svc: null, nativeCur: readCursor()
+  };
+
+  // ---- 工具 ----
+  function fmtTime(ms) {
+    if (!ms) return '—';
+    var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function fmtAgo(ms) {
+    if (!ms) return '—';
+    var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    return s < 1 ? '刚刚' : (s < 60 ? s + ' 秒前' : (s < 3600 ? Math.round(s / 60) + ' 分钟前' : Math.round(s / 3600) + ' 小时前'));
+  }
+  function log(msg, cls) {
+    var el = $('log');
+    var line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = fmtTime(Date.now()) + ' ' + msg;
+    el.appendChild(line);
+    while (el.childNodes.length > 60) el.removeChild(el.firstChild);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ---- 存档：键和网页端一模一样，壳在页面加载完会自己读 ----
+  function readCfg() {
+    try {
+      var o = JSON.parse(localStorage.getItem(CFG_KEY) || 'null') || {};
+      var num = function (v, d) { return typeof v === 'number' && isFinite(v) ? v : d; };
+      var base = num(o.intervalBaseMs, BASE_MS);
+      return {
+        enabled: o.enabled === true,
+        thresholdM: num(o.thresholdM, DEFAULTS.thresholdM),
+        moveThresholdM: num(o.moveThresholdM, DEFAULTS.moveThresholdM),
+        strategy: o.strategy === 'fixed' ? 'fixed' : 'backoff',
+        intervalBaseMs: base > 0 ? base : BASE_MS,
+        intervalMaxMs: num(o.intervalMaxMs, MAX_MS)
+      };
+    } catch (e) { return Object.assign({}, DEFAULTS); }
+  }
+  function writeCfg() {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(state.cfg)); } catch (e) {}
+  }
+  function readCursor() {
+    var n = Number(localStorage.getItem(CUR_KEY));
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+  function writeCursor(ts) {
+    state.nativeCur = ts;
+    try { localStorage.setItem(CUR_KEY, String(ts)); } catch (e) {}
+  }
+
+  // ---- 协议（和 src/core/compat/bridge.ts 同一套） ----
+  var pending = {}, listeners = {}, seq = 0;
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object' || typeof m.type !== 'string') return;
+    if (m.type === 'gv-bridge-response') {
+      var p = pending[String(m.id)];
+      if (!p) return;
+      delete pending[String(m.id)];
+      clearTimeout(p.timer);
+      if (m.ok) p.resolve(m.result || {});
+      else p.reject(new Error(typeof m.error === 'string' && m.error ? m.error : '原生返回失败'));
+    } else if (m.type === 'gv-bridge-event' && typeof m.event === 'string') {
+      (listeners[m.event] || []).forEach(function (cb) { try { cb(m.data); } catch (err) {} });
+    }
+  });
+  function invoke(action, params, timeoutMs) {
+    params = params || {}; timeoutMs = timeoutMs || 15000;
+    return new Promise(function (resolve, reject) {
+      var id = 'r' + (++seq);
+      var timer = setTimeout(function () {
+        delete pending[id];
+        reject(new Error('超时：' + Math.round(timeoutMs / 1000) + ' 秒没有收到壳的回应'));
+      }, timeoutMs);
+      pending[id] = { resolve: resolve, reject: reject, timer: timer };
+      window.postMessage({ type: 'gv-bridge-request', id: id, action: action, params: params }, '*');
+    });
+  }
+  function onBridgeEvent(event, cb) {
+    (listeners[event] = listeners[event] || []).push(cb);
+  }
+
+  // ---- 坐标：WGS-84 → GCJ-02（和 locationAuto.ts 同一份算法） ----
+  var PI = Math.PI, A = 6378245.0, EE = 0.00669342162296594323;
+  function outOfChina(lat, lng) { return lng < 72.004 || lng > 137.8347 || lat < 0.8899 || lat > 55.8271; }
+  function tLat(x, y) {
+    var r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    r += ((20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2) / 3;
+    r += ((20 * Math.sin(y * PI) + 40 * Math.sin((y / 3) * PI)) * 2) / 3;
+    r += ((160 * Math.sin((y / 12) * PI) + 320 * Math.sin((y * PI) / 30)) * 2) / 3;
+    return r;
+  }
+  function tLng(x, y) {
+    var r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    r += ((20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2) / 3;
+    r += ((20 * Math.sin(y * PI) + 40 * Math.sin((y / 3) * PI)) * 2) / 3;
+    r += ((150 * Math.sin((y / 12) * PI) + 300 * Math.sin((y * PI) / 30)) * 2) / 3;
+    return r;
+  }
+  function wgs84ToGcj02(lat, lng) {
+    if (outOfChina(lat, lng)) return { lat: lat, lng: lng };
+    var dLat = tLat(lng - 105, lat - 35), dLng = tLng(lng - 105, lat - 35);
+    var radLat = (lat / 180) * PI, magic = Math.sin(radLat);
+    magic = 1 - EE * magic * magic;
+    var sqrtMagic = Math.sqrt(magic);
+    dLat = (dLat * 180) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI);
+    dLng = (dLng * 180) / ((A / sqrtMagic) * Math.cos(radLat) * PI);
+    return { lat: lat + dLat, lng: lng + dLng };
+  }
+  function distM(a, b) {
+    var R = 6371000, dLat = ((b.lat - a.lat) * PI) / 180, dLng = ((b.lng - a.lng) * PI) / 180;
+    var s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((a.lat * PI) / 180) * Math.cos((b.lat * PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  // ---- 打点：和网页端 appendPoint 同一套去重语义 ----
+  //   与最后一个点的距离 < 阈值 → 合并（只刷新 ts 与精度，坐标不动）；否则追加新点。
+  function appendPoint(p) {
+    var last = state.points[state.points.length - 1];
+    if (last && distM(last, p) < state.cfg.thresholdM) {
+      last.ts = p.ts;
+      if (p.accuracy) last.accuracy = p.accuracy;
+      last.touched = p.src;
+      return false;
+    }
+    state.points.push(p);
+    state.rev++;
+    return true;
+  }
+  function pageSampleMs(streak, strategy) {
+    if (strategy === 'fixed') return state.cfg.intervalBaseMs;
+    var n = Math.min(Math.max(0, Math.floor(streak)), 20);
+    return Math.min(state.cfg.intervalBaseMs * Math.pow(2, n), state.cfg.intervalMaxMs);
+  }
+
+  // ---- 页面定时器（只在没有原生服务时用：普通浏览器里也能测这一页） ----
+  function armPageTimer() {
+    clearTimeout(state.pageTimer);
+    if (!state.cfg.enabled || state.bridge) return;
+    state.pageTimer = setTimeout(tickPage, pageSampleMs(state.streak, state.cfg.strategy));
+  }
+  function tickPage() {
+    if (!state.cfg.enabled) return;
+    if (state.pending) { armPageTimer(); return; }
+    if (!navigator.geolocation) { log('本环境没有 geolocation', 'err'); state.cfg.enabled = false; render(); return; }
+    state.pending = true;
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      state.pending = false;
+      var g = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+      var added = appendPoint({ ts: Date.now(), lat: g.lat, lng: g.lng, accuracy: pos.coords.accuracy || 0, src: 'page' });
+      state.streak = added ? 0 : state.streak + 1;
+      render(); armPageTimer();
+    }, function (err) {
+      state.pending = false;
+      log('页面取点失败：' + (err && err.message ? err.message : err), 'warn');
+      armPageTimer();
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+
+  // ---- 壳侧 ----
+  function probe() {
+    $('bridge-state').textContent = '检测中…';
+    return invoke('ping', {}, 3000).then(function (r) {
+      state.bridge = true;
+      $('bridge-state').innerHTML = '<span class="ok">可用</span>（' + (r.engine || '?') + '）';
+      log('桥可用：' + JSON.stringify(r), 'ok');
+      if (window.AndroidBridge && typeof window.AndroidBridge.getEnv === 'function') {
+        try {
+          state.env = JSON.parse(window.AndroidBridge.getEnv() || '{}');
+          $('env').textContent = (state.env.app || '壳') + ' ' + (state.env.version || '') +
+            '（' + (state.env.builtAt || '') + ' @ ' + (state.env.commit || '') + '）';
+        } catch (e) { $('env').textContent = 'getEnv 解析失败'; }
+      } else {
+        $('env').textContent = '在桥里，但没暴露 getEnv';
+      }
+      return refreshStatus();
+    }).catch(function (e) {
+      state.bridge = false;
+      $('bridge-state').innerHTML = '<span class="warn">不可用</span>（' + e.message + '）';
+      $('env').textContent = '普通浏览器';
+      log('桥不可用：' + e.message + '（页面定时器接管采样）', 'warn');
+      return null;
+    }).then(function () { render(); });
+  }
+  function refreshStatus() {
+    if (!state.bridge) return Promise.resolve();
+    return invoke('location.status', {}, 6000).then(function (s) {
+      state.svc = s;
+      var lp = s.lastPoint || {};
+      $('svc').textContent = (s.fineLocation ? '' : '缺前台权限 · ') +
+        '点数 ' + (s.points || 0) + ' · rev ' + (s.rev || 0) +
+        (s.wakeLock ? ' · 唤醒锁开' : ' · 无唤醒锁') +
+        (s.batteryOptimized ? ' · 电池未加白' : ' · 电池已加白');
+      $('svc-tracking').innerHTML = s.tracking
+        ? '<span class="pill on">记录中</span> 起于 ' + fmtTime(s.startedAt)
+        : '<span class="pill off">未记录</span>';
+      $('svc-lastfix').textContent = lp.ts ? fmtTime(lp.ts) + '（' + fmtAgo(lp.ts) + '）' +
+        ' ±' + Math.round(lp.accuracy || 0) + 'm' + (s.provider ? ' · ' + s.provider : '') : '—';
+      $('perm').textContent = '前台 ' + (s.fineLocation ? '有' : '无') + ' · 后台 ' + (s.backgroundLocation ? '有' : '无');
+      $('hb-native').textContent = lp.ts ? fmtTime(lp.ts) + '（' + fmtAgo(lp.ts) + '）' : '—';
+      $('pt-native').textContent = (s.points || 0) + ' / ' + (s.rev || 0);
+      render();
+    }).catch(function (e) { log('状态查询失败：' + e.message, 'warn'); });
+  }
+  function pushConfig(why) {
+    writeCfg();
+    if (!state.bridge) { armPageTimer(); log('没壳：配置只写存档，页面定时器按它采样', 'warn'); return Promise.resolve(); }
+    return invoke('location.setConfig', state.cfg, 8000).then(function (r) {
+      log('已推配置（' + why + '）：enabled=' + state.cfg.enabled + ' threshold=' + state.cfg.thresholdM +
+        ' strategy=' + state.cfg.strategy + ' → tracking=' + !!r.tracking, 'ok');
+      return refreshStatus();
+    }).catch(function (e) { log('推配置失败：' + e.message, 'err'); });
+  }
+  function pullNative() {
+    if (!state.bridge) { log('没壳，拉不了原生历史', 'warn'); return Promise.resolve(); }
+    var since = state.nativeCur;
+    return invoke('location.getHistory', { since: since }, 10000).then(function (r) {
+      var list = Array.isArray(r.points) ? r.points : [];
+      var added = 0, merged = 0, maxTs = since;
+      list.forEach(function (o) {
+        if (!o || !(o.ts > since)) return;
+        var g = wgs84ToGcj02(o.lat, o.lng);
+        if (appendPoint({ ts: o.ts, lat: g.lat, lng: g.lng, accuracy: o.accuracy || 0, src: 'native' })) added++; else merged++;
+        if (o.ts > maxTs) maxTs = o.ts;
+      });
+      writeCursor(maxTs);
+      log('拉原生历史：' + list.length + ' 条 → 新点 ' + added + ' / 合并 ' + merged + '，游标 ' + fmtTime(maxTs), 'ok');
+      render();
+    }).catch(function (e) { log('拉原生历史失败：' + e.message, 'err'); });
+  }
+
+  // ---- 地图 ----
+  var map = null, layers = null;
+  function initMap() {
+    if (typeof L === 'undefined') { $('map').textContent = 'leaflet 没加载起来（检查 ./leaflet.js）'; return; }
+    map = L.map('map', { zoomControl: true }).setView([39.909, 116.397], 11);
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+      { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图' }).addTo(map);
+    layers = L.layerGroup().addTo(map);
+    log('地图就绪（高德底图）');
+  }
+  function drawMap() {
+    if (!map || !layers) return;
+    layers.clearLayers();
+    var pts = state.points;
+    if (!pts.length) return;
+    var line = [];
+    pts.forEach(function (p, i) {
+      var ll = [p.lat, p.lng];
+      line.push(ll);
+      var isLast = i === pts.length - 1;
+      L.circleMarker(ll, {
+        radius: isLast ? 7 : 4, weight: isLast ? 2 : 1,
+        color: isLast ? '#dc2626' : (p.src === 'native' ? '#d97706' : '#1d4ed8'),
+        fillColor: p.src === 'native' ? '#f59e0b' : '#3b82f6', fillOpacity: isLast ? .95 : .7
+      }).bindPopup(fmtTime(p.ts) + '<br>' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) +
+        '<br>±' + Math.round(p.accuracy || 0) + 'm · ' + (p.src === 'native' ? '原生' : '页面'))
+        .addTo(layers);
+    });
+    if (line.length > 1) L.polyline(line, { color: '#e0708f', weight: 3, opacity: .8 }).addTo(layers);
+  }
+  function centerLast() {
+    if (!map || !state.points.length) return;
+    var p = state.points[state.points.length - 1];
+    map.setView([p.lat, p.lng], Math.max(map.getZoom(), 16));
+  }
+  function fitAll() {
+    if (!map || !state.points.length) return;
+    if (state.points.length === 1) { centerLast(); return; }
+    map.fitBounds(state.points.map(function (p) { return [p.lat, p.lng]; }), { padding: [24, 24] });
+  }
+
+  // ---- 渲染 ----
+  function render() {
+    $('cfg-enabled').checked = !!state.cfg.enabled;
+    $('cfg-threshold').value = state.cfg.thresholdM;
+    $('cfg-strategy').value = state.cfg.strategy;
+    $('cfg-base').value = state.cfg.intervalBaseMs;
+    $('cfg-max').value = state.cfg.intervalMaxMs;
+    $('cfg-hint').textContent = state.bridge
+      ? '壳在采样：' + (state.cfg.strategy === 'backoff' ? '同点连续 n 次后等 2^n 个基准，封顶 ' + state.cfg.intervalMaxMs + 'ms' : '每 ' + state.cfg.intervalBaseMs + 'ms 一次') +
+        '；阈值 ' + state.cfg.thresholdM + ' 米内合并成同一个点。'
+      : '没壳：本页定时器采样（' + (state.cfg.strategy === 'backoff' ? '同点退避' : '定时') + '）。';
+    $('pt-count').textContent = String(state.points.length) + '（rev ' + state.rev + '）';
+    $('pt-cursor').textContent = state.nativeCur ? fmtTime(state.nativeCur) + '（' + state.nativeCur + '）' : '0';
+    var last = state.points[state.points.length - 1];
+    $('pt-last').textContent = last ? fmtTime(last.ts) + ' ' + last.lat.toFixed(6) + ', ' + last.lng.toFixed(6) +
+      ' ±' + Math.round(last.accuracy || 0) + 'm · ' + (last.src === 'native' ? '原生' : '页面') : '—';
+    var ul = $('pt-list');
+    ul.innerHTML = '';
+    state.points.slice(-50).reverse().forEach(function (p) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="t">' + fmtTime(p.ts) + '</span><span class="c">' +
+        p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + ' ±' + Math.round(p.accuracy || 0) + 'm</span>' +
+        '<span class="src ' + (p.src === 'native' ? 'native' : 'page') + '">' + (p.src === 'native' ? '原生' : '页面') + '</span>';
+      ul.appendChild(li);
+    });
+    drawMap();
+  }
+
+  // ---- 事件 ----
+  $('btn-ping').addEventListener('click', function () { state.bridge = false; probe(); });
+  $('btn-apply').addEventListener('click', function () {
+    var num = function (el, d) { var v = Number($(el).value); return isFinite(v) ? v : d; };
+    state.cfg.thresholdM = Math.max(0, num('cfg-threshold', 5));
+    state.cfg.strategy = $('cfg-strategy').value === 'fixed' ? 'fixed' : 'backoff';
+    state.cfg.intervalBaseMs = Math.max(200, num('cfg-base', BASE_MS));
+    state.cfg.intervalMaxMs = Math.max(state.cfg.intervalBaseMs, num('cfg-max', MAX_MS));
+    pushConfig('手动应用');
+  });
+  $('cfg-enabled').addEventListener('change', function () {
+    state.cfg.enabled = $('cfg-enabled').checked;
+    pushConfig('开关');
+  });
+  $('btn-punch').addEventListener('click', function () {
+    if (!navigator.geolocation) { log('本环境没有 geolocation', 'err'); return; }
+    log('手动打点：取当前位置…');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var g = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+      var added = appendPoint({ ts: Date.now(), lat: g.lat, lng: g.lng, accuracy: pos.coords.accuracy || 0, src: 'page' });
+      log('手动打点：' + (added ? '新点' : '并入上一点（' + state.cfg.thresholdM + 'm 内）'), added ? 'ok' : 'warn');
+      centerLast(); render();
+    }, function (err) {
+      log('手动打点失败：' + (err && err.message ? err.message : err) + '（壳里要授权限）', 'err');
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  });
+  $('btn-fit').addEventListener('click', fitAll);
+  $('btn-recenter').addEventListener('click', centerLast);
+  $('btn-pull').addEventListener('click', pullNative);
+  $('btn-clear-native').addEventListener('click', function () {
+    if (!state.bridge) return;
+    invoke('location.clearHistory', {}, 8000).then(function () {
+      writeCursor(0); log('已清空原生历史', 'ok'); refreshStatus();
+    }).catch(function (e) { log('清空失败：' + e.message, 'err'); });
+  });
+  $('btn-clear-page').addEventListener('click', function () {
+    state.points = []; state.rev = 0; render(); log('已清空本页点（存档游标不动）');
+  });
+  $('btn-perm').addEventListener('click', function () {
+    invoke('location.requestPermissions', {}, 60000).then(function (r) {
+      log('权限结果：前台 ' + !!r.fine + ' / 后台 ' + !!r.background, r.fine ? 'ok' : 'warn');
+      refreshStatus();
+    }).catch(function (e) { log('请求权限失败：' + e.message, 'err'); });
+  });
+  $('btn-perm-bg').addEventListener('click', function () {
+    invoke('location.requestPermissions', { background: true }, 60000).then(function (r) {
+      log('权限结果：前台 ' + !!r.fine + ' / 后台 ' + !!r.background + (r.note ? '（' + r.note + '）' : ''), 'ok');
+      refreshStatus();
+    }).catch(function (e) { log('请求后台定位失败：' + e.message, 'err'); });
+  });
+  $('btn-battery').addEventListener('click', function () {
+    invoke('location.batteryOptimization', {}, 6000).then(function (r) {
+      if (r.ignoring) { log('已经在电池优化白名单里', 'ok'); return; }
+      return invoke('location.requestBatteryExemption', {}, 10000).then(function () {
+        log('已打开系统弹窗/设置页：允许后台不限电后再回来看看', 'warn');
+        setTimeout(function () { refreshStatus(); }, 3000);
+      });
+    }).catch(function (e) { log('电池优化处理失败：' + e.message, 'err'); });
+  });
+  onBridgeEvent('location.point', function (d) {
+    if (!d || !(d.ts > 0)) return;
+    var g = wgs84ToGcj02(d.lat, d.lng);
+    var added = appendPoint({ ts: d.ts, lat: g.lat, lng: g.lng, accuracy: d.accuracy || 0, src: 'native' });
+    if (d.ts > state.nativeCur) writeCursor(d.ts);
+    log('原生推点：' + fmtTime(d.ts) + ' ' + (added ? '新点' : '并入上一点'), added ? 'ok' : '');
+    render();
+  });
+  onBridgeEvent('location.state', function (d) {
+    log('原生服务状态：' + JSON.stringify(d), '');
+    refreshStatus();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { log('页面退到后台：定时器会被冻住，壳里的服务继续'); return; }
+    log('页面回到前台：补拉原生历史');
+    pullNative();
+    refreshStatus();
+  });
+
+  // 页面心跳：每秒一跳。退到后台被冻住就停跳——和「原生心跳」对比着看。
+  setInterval(function () {
+    if (document.hidden) return;
+    state.hbCount++; state.hbAt = Date.now();
+    $('hb-page').textContent = '第 ' + state.hbCount + ' 跳 · ' + fmtTime(state.hbAt);
+  }, 1000);
+  setInterval(function () { if (!document.hidden) refreshStatus(); }, 10000);
+
+  // ---- 启动 ----
+  initMap();
+  render();
+  log('定位磨合台启动；存档配置：' + JSON.stringify(state.cfg));
+  probe().then(function () {
+    if (state.bridge) {
+      return pushConfig('页面启动接管').then(function () { return pullNative(); });
+    }
+    armPageTimer();
+  });
+})();
+</script>
+</body>
+</html>
