@@ -215,7 +215,7 @@
 </div>
 
 <div class="card">
-  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它到底睡没睡</span></h2>
+  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它到底睡没睡 · 需 0.3.1-tune 以上</span></h2>
   <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账）</label></div>
   <div class="kv"><b>账本</b><span id="dg-stat">—</span></div>
   <div class="kv"><b>tick 覆盖率</b><span id="dg-cov">—</span></div>
@@ -248,7 +248,7 @@
   // 本页的发布号与发布时间：每次改这个文件都成对往上加，配合「服务器上的本页」
   // 的 Last-Modified 一起看，就知道壳里跑的是不是最新页。
   // 时间同时存一份 epoch 毫秒——比较 Last-Modified 用 epoch，才不受时区影响。
-  var PAGE_VER = 'lab 10-26.5', PAGE_BUILD = '2026-10-26 22:31', PAGE_BUILD_MS = 1793025060000;
+  var PAGE_VER = 'lab 10-26.6', PAGE_BUILD = '2026-10-26 22:43', PAGE_BUILD_MS = 1793025780000;
   var BASE_MS = 1000, MAX_MS = 64000;
   var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
 
@@ -568,10 +568,20 @@
         ' → tracking=' + !!r.tracking + (r.needPermission ? ' · 还缺定位权限' : ''), on ? 'ok' : '');
       if (on) { setTimeout(function () { pullJournal(0); }, 3000); }
     }).catch(function (e) {
-      log('设置取证模式失败：' + e.message, 'err');
+      if (isOldShell(e)) {
+        $('dg-verdict').innerHTML = pill('warn', '壳太旧') +
+          ' 这版壳没带取证接口（location.setDiag）。装 0.3.1-tune 那个包，装好后「版本」卡的安卓版本要显示 ' +
+          '0.3.1-tune / 3f9153d，再回这页重开取证';
+        log('开不了取证：这版壳不认 location.setDiag，说明跑的还是 0.3.0-tune 或更早的包 → 先重装 0.3.1-tune', 'err');
+      } else {
+        log('设置取证模式失败：' + e.message, 'err');
+      }
       renderDiag(!!(state.svc && state.svc.diag));
     });
   }
+
+  // 老壳的兜底：0.3.0-tune 及以前没有 setDiag/journal，报的是 unknown location action
+  function isOldShell(e) { return /unknown (location )?action/i.test((e && e.message) || ''); }
 
   function renderDiag(on) { var el = $('dg-on'); if (el) el.checked = !!on; }
 
@@ -581,8 +591,13 @@
     return invoke('location.journal', { since: since || 0, tail: 20000 }, 20000)
       .then(function (r) { analyzeJournal(r || {}); return r; })
       .catch(function (e) {
-        $('dg-verdict').textContent = '读账本失败：' + e.message;
-        log('读账本失败：' + e.message, 'err');
+        if (isOldShell(e)) {
+          $('dg-verdict').innerHTML = pill('warn', '壳太旧') + ' 这版壳不认 location.journal，读不了账本 → 先装 0.3.1-tune';
+          log('读不了账本：这版壳没有 location.journal（0.3.0-tune 及以前）→ 先装 0.3.1-tune', 'err');
+        } else {
+          $('dg-verdict').textContent = '读账本失败：' + e.message;
+          log('读账本失败：' + e.message, 'err');
+        }
       });
   }
 
