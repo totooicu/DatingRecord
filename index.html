@@ -13,6 +13,13 @@
       // 只认 -- 开头的字符串键，存储被禁时静默跳过。
       (function () {
         try {
+          // 夜间模式要在首屏就贴到 :root，否则暗色专属 CSS（如主按钮文字翻深色）
+          // 会比底色晚一拍，闪一下旧白字。
+          var appRaw = localStorage.getItem('dr.appearance.v1');
+          if (appRaw) {
+            var app = JSON.parse(appRaw);
+            if (app && app.mode === 'dark') document.documentElement.dataset.mode = 'dark';
+          }
           var raw = localStorage.getItem('dr.appearance.vars.v1');
           if (!raw) return;
           var vars = JSON.parse(raw);
@@ -236,8 +243,8 @@
         color: #b3aca2;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-i923b4d7.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-pJkgUWYO.css">
+    <script type="module" crossorigin src="./assets/index-CNEwpTcu.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BJ5hlPCz.css">
   </head>
   <body>
     <div id="root"></div>
