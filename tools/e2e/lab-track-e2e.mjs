@@ -1,15 +1,16 @@
-// 轨迹提取 e2e：选图 → 提取 → 自动画路径 → AI 校准 → 图层 → 擦除/补线 → 地图复现 → 存成定位文件。
+// 轨迹提取 e2e：选图 → 自动取点 → 修点 → 画路径 → AI 校准 → 地图复现 → 存成定位文件。
 //
 // 覆盖这一页最容易坏掉的几处：
 //   T1 两页签（图片·画路径 / 地图·复现与保存）+ 选图按钮（不是裸 file 控件），选中后显示文件名/尺寸
-//   T2 提取点只出点云，再「自动画路径」出轨迹，画布上真的画上了东西
+//   T2 导入后自动取点（不用点按钮）、流程条按五步排、再「自动画路径」出轨迹
 //   T3 AI 优化：图片 + 带 index 的点列发给模型，拿回 edits、思考过程与偏差
 //   T4 「原图 / 提取的点 / 自动路径 / AI 优化后的轨迹 / 手动路径」复选框真的控制图层
 //   T5 地图复现：地图初始化、可点起点、复现推进里程、可停止
 //   T6 保存为 .drloc：出现在「功能面板 → 定位 → 文件」里，点开能看到点数
-//   T7 放大 / 手动布线：A→B 沿轨迹导航、原路返回算重复、断网拉直线、撤销清空
+//   T7 放大 / 手动布线：A→B 沿点云导航、原路返回算重复、断网拉直线、撤销清空
 //   T8 距离聚类：两片互不相连的轨迹聚成 2 个连通簇、颜色分开、自动画路径只簇内接
 //   T9 擦除点 / 撤销 / 补直线：直接改点云，改完轨迹层作废、点云可还原
+//   T10 画点：按住拖出一条自由笔迹，点云变多、可撤销复原
 //
 // 依赖：先 `pnpm build`。自带静态服务器（dist）与假视觉模型服务，直接跑：
 //   node tools/e2e/lab-track-e2e.mjs
@@ -258,6 +259,24 @@ const canvasCssWidth = async () => {
   return Math.round(box.width);
 };
 
+/** 在原图像素坐标上按住拖一条线（画点用） */
+const dragImage = async (a, b, steps = 14) => {
+  const c = p.locator('.lab-track-canvas');
+  const box = await c.boundingBox();
+  const nat = await c.evaluate((el) => ({ w: el.width, h: el.height }));
+  const at = (pt) => ({ x: box.x + (pt.x / nat.w) * box.width, y: box.y + (pt.y / nat.h) * box.height });
+  const p0 = at(a);
+  const p1 = at(b);
+  await p.mouse.move(p0.x, p0.y);
+  await p.mouse.down();
+  for (let i = 1; i <= steps; i += 1) {
+    await p.mouse.move(p0.x + ((p1.x - p0.x) * i) / steps, p0.y + ((p1.y - p0.y) * i) / steps);
+    await p.waitForTimeout(20);
+  }
+  await p.mouse.up();
+  await p.waitForTimeout(300);
+};
+
 const manInfo = async () => (await p.locator('.lab-track-maninfo').innerText()).replace(/\s+/g, ' ').trim();
 
 /** 画布内容指纹：逐像素求和，用来判断图层开关有没有真的重绘 */
@@ -359,26 +378,36 @@ await p.locator('.lab-track-pane input[type=file]').first().setInputFiles({
   buffer: Buffer.from(svg),
 });
 await p.waitForSelector('.lab-track-stage', { timeout: 8000 });
-check(
-  'T1 载入后显示文件名与尺寸',
-  (await p.locator('.lab-track-filemeta .lab-track-pickname').innerText()).includes('两步路轨迹.svg'),
-);
-check('T1 状态栏显示尺寸', /已载入 600×600/.test(await status()), await status());
+const fileMeta = await p.locator('.lab-track-filemeta').innerText();
+check('T1 载入后显示文件名与尺寸', fileMeta.includes('两步路轨迹.svg') && fileMeta.includes('600×600'), fileMeta.replace(/\s+/g, ' '));
 
-/* ---------------- T2 提取 ---------------- */
+/* ---------------- T2 自动取点 ---------------- */
 
-const beforeExtract = await canvasSum();
-await p.getByRole('button', { name: '提取点' }).click();
+// 流程是「导入图片 → 自动取点 → 修点 → 画路径 → 地图对齐」：导入后不用再点提取
 await p.waitForFunction(
   () => /提取点完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
   null,
   { timeout: 30000 },
 );
+check('T2 导入图片后自动取点（没再点按钮）', /提取点完成：\d+ 点/.test(await status()), await status());
+const steps = (await p.locator('.lab-track-step').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+check(
+  'T2 流程条按「导入图片 → 自动取点 → 修点 → 画路径 → 地图对齐」排',
+  steps.length === 5 &&
+    /导入图片/.test(steps[0]) &&
+    /自动取点/.test(steps[1]) &&
+    /修点/.test(steps[2]) &&
+    /画路径/.test(steps[3]) &&
+    /地图对齐/.test(steps[4]),
+  JSON.stringify(steps),
+);
+check('T2 取完点流程停在「修点」', /修点/.test(await p.locator('.lab-track-step.on').innerText()));
 const pointStatus = await status();
 check('T2 只提取点：报出点数/骨架链、且没有轨迹', /提取点完成：\d+ 点/.test(pointStatus), pointStatus);
 check('T2 提取点阶段不产生轨迹', /还没有画路径/.test(await p.locator('.lab-track-gaps').innerText()), await p.locator('.lab-track-gaps').innerText());
 const pointPts = Number((/提取点完成：(\d+) 点/.exec(pointStatus) ?? [])[1] ?? 0);
-check('T2 点云真的画到了画布上', (await canvasSum()) !== beforeExtract && pointPts > 0, `points=${pointPts}`);
+const afterPoints = await canvasSum();
+check('T2 点云真的画到了画布上', afterPoints > 0 && pointPts > 0, `points=${pointPts} sum=${afterPoints}`);
 const pointInfo = await p.locator('.lab-track-pointsinfo').innerText();
 check('T2 点云信息行给出点数/链数/丢弃', /\d+ 点 · \d+ 条骨架链/.test(pointInfo), pointInfo.replace(/\s+/g, ' '));
 check('T2 状态栏报出连通簇', /个连通簇/.test(pointStatus), pointStatus);
@@ -399,8 +428,8 @@ const linkM = /画路径完成：(\d+) 个连通簇 \/ (\d+) 段/.exec(await sta
 check('T2 按簇分段（段数 ≤ 簇数）', !!linkM && Number(linkM[2]) <= Number(linkM[1]), await status());
 const segText = await p.locator('.lab-track-gaps').innerText();
 check('T2 识别到轨迹段', /轨迹 \d+ 段/.test(segText), segText.replace(/\s+/g, ' '));
-const afterExtract = await canvasSum();
-check('T2 画路径后画布又变了', afterExtract !== beforeExtract);
+check('T2 画路径后画布又变了', (await canvasSum()) !== afterPoints);
+check('T2 流程走到「画路径」', /画路径/.test(await p.locator('.lab-track-step.on').innerText()));
 
 /* ---------------- T3 AI 校准 ---------------- */
 
@@ -486,7 +515,7 @@ await clickImage(CURVE[2].x, CURVE[2].y);
 check('T7 第一下选起点 A', /起点 A 已选/.test(await status()), await status());
 await clickImage(CURVE[30].x, CURVE[30].y);
 const routeStatus = await status();
-check('T7 A→B 沿已提取的轨迹导航', /沿已提取的轨迹走过去/.test(routeStatus), routeStatus);
+check('T7 A→B 沿提取出来的点走（不是画好的轨迹线）', /沿点云走过去/.test(routeStatus), routeStatus);
 check('T7 统计显示 1 段沿轨迹', /沿轨迹 1 · 直线 0/.test(await manInfo()), await manInfo());
 const manualDrawn = await canvasSum();
 check('T7 手动路径画进画布', manualDrawn !== beforeManual);
@@ -602,13 +631,9 @@ await p.locator('.lab-track-pane input[type=file]').first().setInputFiles({
   mimeType: 'image/svg+xml',
   buffer: Buffer.from(svgTwo),
 });
-await p.waitForFunction(() => /已载入 600×600/.test(document.querySelector('.lab-track-status')?.textContent ?? ''));
-await p.getByRole('button', { name: '提取点' }).click();
-await p.waitForFunction(
-  () => /提取点完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
-  null,
-  { timeout: 30000 },
-);
+await p.waitForFunction(() => /提取点完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''), null, {
+  timeout: 30000,
+});
 const twoStatus = await status();
 check('T8 两片轨迹被聚成 2 个连通簇', /2 个连通簇/.test(twoStatus), twoStatus);
 const chip = await p.locator('.lab-track-clusterinfo').innerText().catch(() => '');
@@ -651,14 +676,14 @@ check(
 );
 
 // 撤销：点云回到擦之前
-await p.getByRole('button', { name: '撤销擦除 / 补线' }).click();
+await p.getByRole('button', { name: '撤销修点' }).click();
 await p.waitForTimeout(250);
 check(
   'T9 撤销擦除后点数复原',
   (await ptsNow()) === pointCount0 && /已撤销/.test(await status()),
   `${await ptsNow()} vs ${pointCount0} · ${await status()}`,
 );
-check('T9 撤销完按钮收起', (await p.getByRole('button', { name: '撤销擦除 / 补线' }).count()) === 0);
+check('T9 撤销完按钮收起', (await p.getByRole('button', { name: '撤销修点' }).count()) === 0);
 
 // 补直线：两下点，把一段线接进点云
 await p.getByRole('button', { name: '补直线' }).click();
@@ -687,6 +712,24 @@ const lineGrid = await p.evaluate(() => {
   return n;
 });
 check('T9 补的线真的画在画布上', lineGrid > 100, `band=${lineGrid}`);
+
+/* ---------------- T10 画点（按住拖一条自由笔迹） ---------------- */
+
+const beforeAdd = await ptsNow();
+await p.getByRole('button', { name: '画点' }).click();
+await p.waitForTimeout(200);
+await dragImage({ x: 200, y: 560 }, { x: 400, y: 560 });
+const addStatus = await status();
+const afterAdd = await ptsNow();
+check('T10 拖动补出新的点', /加了 \d+ 个点/.test(addStatus) && afterAdd > beforeAdd, `${beforeAdd}→${afterAdd} ${addStatus}`);
+check(
+  'T10 加完点旧路径作废',
+  /还没有画路径/.test(await p.locator('.lab-track-gaps').innerText()),
+  await p.locator('.lab-track-gaps').innerText(),
+);
+await p.getByRole('button', { name: '撤销修点' }).click();
+await p.waitForTimeout(250);
+check('T10 撤销画点后点数复原', (await ptsNow()) === beforeAdd, `${await ptsNow()} vs ${beforeAdd}`);
 
 console.log(`\n结果：${failures.length === 0 ? '全部通过' : `${failures.length} 项失败`}`);
 if (failures.length) console.log(failures.map((f) => ` - ${f}`).join('\n'));

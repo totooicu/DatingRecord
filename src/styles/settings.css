@@ -407,6 +407,62 @@
   line-height: 1.6;
 }
 
+/* 流程条：导入图片 → 自动取点 → 修点 → 画路径 → 地图对齐。
+   五个小胶囊，做过的打勾、当前的高亮，点一下直接跳到那一步的入口。 */
+.lab-track-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.lab-track-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 5px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.lab-track-step i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10.5px;
+  font-style: normal;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.lab-track-step.done {
+  color: var(--text);
+}
+
+.lab-track-step.done i {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.lab-track-step.on {
+  color: var(--primary);
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+.lab-track-step:disabled {
+  opacity: 0.45;
+}
+
 /* 版式：一张大画布 + 底部模式栏，参数收进抽屉。和手机上用截图工具的直觉一致——
    看的就是图，动不动就要滚三屏的大卡片在这里帮不上忙。 */
 .lab-track-tabs {
@@ -670,6 +726,8 @@
 
 .lab-track-view .lab-track-canvas.is-editing {
   cursor: crosshair;
+  /* 编辑态下手势归画布：否则按住拖动画点会被浏览器当成滚动/缩放吃掉 */
+  touch-action: none;
 }
 
 /* 缩放工具条 */

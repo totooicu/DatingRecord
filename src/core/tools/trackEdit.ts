@@ -88,3 +88,35 @@ export function addLinePath(
   const area = src.chains.reduce((m, c) => Math.max(m, c.area), 0);
   return rebuild([...src.chains, { path, len: d, skelPx: Math.round(d), area }], src);
 }
+
+/**
+ * 画点（自由笔迹）：把手指/鼠标划过的一串坐标按 `stepPx` 加密成一条链塞进点云。
+ *
+ * 与「补直线」的区别是一个画直线、一个画曲线；与「擦除点」正好互补——误检擦掉，
+ * 漏掉的弯道自己描回去。点一下（只有一个坐标）也是有意义的：单点链能桥接两侧
+ * 断口，因为它两端都是它自己。
+ */
+export function addStrokePoints(
+  src: ExtractPointsResult,
+  stroke: TrackPoint[],
+  stepPx = 2,
+): ExtractPointsResult {
+  if (!stroke.length) return src;
+  const step = Math.max(1, stepPx);
+  const path: TrackPoint[] = [{ x: stroke[0].x, y: stroke[0].y }];
+  for (let i = 1; i < stroke.length; i += 1) {
+    const a = stroke[i - 1];
+    const b = stroke[i];
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    if (d < 0.5) continue;
+    const n = Math.max(1, Math.ceil(d / step));
+    for (let k = 1; k <= n; k += 1) {
+      const t = k / n;
+      path.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  let len = 0;
+  for (let i = 1; i < path.length; i += 1) len += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+  const area = src.chains.reduce((m, c) => Math.max(m, c.area), 0);
+  return rebuild([...src.chains, { path, len, skelPx: Math.max(1, Math.round(len)), area }], src);
+}

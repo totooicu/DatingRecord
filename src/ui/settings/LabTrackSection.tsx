@@ -20,7 +20,7 @@
 // 全程本地：canvas + FileReader，图片不出浏览器；只有点「AI 校准」时截图才会发给
 // 用户自己配置的模型。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { MouseEvent, PointerEvent } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -52,7 +52,7 @@ import {
   type GeoAnchor,
 } from '../../core/tools/trackGeo';
 import {
-  buildRouteGraph,
+  buildPointRouteGraph,
   manualStats,
   nearestNode,
   shortestPath,
@@ -61,7 +61,7 @@ import {
 import { clusterChains, clusterColor, type ClusterResult } from '../../core/tools/trackCluster';
 import { createLocation } from '../../core/location/locationFile';
 import { locateMe } from '../../core/runtime/locationAuto';
-import { addLinePath, erasePoints } from '../../core/tools/trackEdit';
+import { addLinePath, addStrokePoints, erasePoints } from '../../core/tools/trackEdit';
 import { listModels, type AiModel } from '../../core/ai';
 import { bump } from '../../store';
 import { LabHead } from './LabEdgeSection';
@@ -169,8 +169,8 @@ export function LabTrackSection() {
   const [dragging, setDragging] = useState(false);
   const [models, setModels] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState('');
-  // 手动布线：A 是上一次点的位置，点 B 就自动从 A 走到 B
-  const [mode, setMode] = useState<'browse' | 'manual' | 'erase' | 'line'>('browse');
+  // 修点 / 画路径：A 是上一次点的位置，点 B 就自动从 A 走到 B
+  const [mode, setMode] = useState<'browse' | 'manual' | 'erase' | 'line' | 'add'>('browse');
   const manualMode = mode === 'manual';
   const [manualLegs, setManualLegs] = useState<ManualLeg[]>([]);
   const [manualAnchor, setManualAnchor] = useState<{ idx: number | null; pt: TrackPoint } | null>(null);
@@ -179,6 +179,10 @@ export function LabTrackSection() {
   const [lineStart, setLineStart] = useState<TrackPoint | null>(null);
   const [dotHistory, setDotHistory] = useState<ExtractPointsResult[]>([]);
   const [cursor, setCursor] = useState<TrackPoint | null>(null);
+  // 画点：正在画的那一笔（只在渲染时用，真正的数据在 strokeRef）
+  const [draft, setDraft] = useState<TrackPoint[] | null>(null);
+  const strokeRef = useRef<TrackPoint[]>([]);
+  const paintingRef = useRef(false);
   // 两个视图：图片（画路径）/ 地图（复现 + 保存）
   const [tab, setTab] = useState<'img' | 'map'>('img');
   const [drawer, setDrawer] = useState<'' | 'params' | 'layers'>('');
@@ -224,9 +228,14 @@ export function LabTrackSection() {
     return compareTracks(algPath, aiPts);
   }, [algPath, aiPts]);
 
-  /* ---------------- 手动布线：点 A → 点 B，自动沿轨迹导航 ---------------- */
+  /* ---------------- 手动布线：点 A → 点 B，沿点云走 ---------------- */
 
-  const graph = useMemo(() => (result && result.segments.length ? buildRouteGraph(result) : null), [result]);
+  // 节点是「提取出来的点」，不是画好的轨迹线：没画自动路径也能连，被自动路径当
+  // 毛刺丢掉的支线也还能选中。簇内端点桥接（≤ gapPx），跨簇仍然不连。
+  const graph = useMemo(
+    () => (dotRes?.chains.length ? buildPointRouteGraph(dotRes.chains, opts.gapPx) : null),
+    [dotRes, opts.gapPx],
+  );
   const manualPts = useMemo(() => manualLegs.flatMap((l) => l.pts), [manualLegs]);
   const manStats = useMemo(() => {
     const st = manualStats(manualPts);
@@ -292,6 +301,7 @@ export function LabTrackSection() {
     (e: MouseEvent<HTMLCanvasElement>) => {
       const c = overlayRef.current;
       if (!c || !imgSize) return;
+      if (mode === 'add') return; // 画点是按住拖，不走 click
       const rect = c.getBoundingClientRect();
       const x = (e.clientX - rect.left) * (c.width / rect.width);
       const y = (e.clientY - rect.top) * (c.height / rect.height);
@@ -332,11 +342,11 @@ export function LabTrackSection() {
 
       if (!manualAnchor) {
         if (!hit) {
-          showToast('起笔请点在轨迹上（18px 内会自动吸附）', 3200);
+          showToast('起点请点在提取出来的点上（18px 内自动吸附）', 3200);
           return;
         }
         setManualAnchor({ idx: hit.idx, pt: target });
-        setStatus('手动布线：起点 A 已选，再点一个点就自动沿轨迹走过去');
+        setStatus('手动布线：起点 A 已选，再点一个点就自动沿着点云走过去');
         return;
       }
 
@@ -347,11 +357,57 @@ export function LabTrackSection() {
       setManualAnchor({ idx: hit ? hit.idx : null, pt: target });
       const len = pathLengthPx(leg);
       setStatus(
-        `手动布线：${routed ? '沿已提取的轨迹走过去' : '两点不在同一网络，直接拉直线'}（${Math.round(len)}px）`,
+        `手动布线：${routed ? '沿点云走过去' : '两点不在同一网络，直接拉直线'}（${Math.round(len)}px）`,
       );
     },
     [applyDot, brush, dotRes, graph, imgSize, lineStart, manualAnchor, mode, snapDot],
   );
+
+  /* ---------------- 画点：按住拖出一条点列 ---------------- */
+
+  /** 屏幕坐标 → 原图像素坐标（canvas 的 CSS 尺寸会随缩放变） */
+  const toImageXY = useCallback((clientX: number, clientY: number): TrackPoint | null => {
+    const c = overlayRef.current;
+    if (!c) return null;
+    const rect = c.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: (clientX - rect.left) * (c.width / rect.width),
+      y: (clientY - rect.top) * (c.height / rect.height),
+    };
+  }, []);
+
+  const onPointerDown = useCallback(
+    (e: PointerEvent<HTMLCanvasElement>) => {
+      if (mode !== 'add' || !imgSize) return;
+      if (!dotRes?.points.length) {
+        showToast('先「提取点」，再往上补点', 2600);
+        return;
+      }
+      const p = toImageXY(e.clientX, e.clientY);
+      if (!p) return;
+      e.preventDefault();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      paintingRef.current = true;
+      strokeRef.current = [p];
+      setDraft([p]);
+      setStatus('画点：按住拖动画一段点云，松手后生效');
+    },
+    [dotRes, imgSize, mode, toImageXY],
+  );
+
+  const onPointerUp = useCallback(() => {
+    if (!paintingRef.current) return;
+    paintingRef.current = false;
+    const pts = strokeRef.current;
+    strokeRef.current = [];
+    setDraft(null);
+    if (!dotRes?.points.length || !pts.length) return;
+    // 两个采样点之间可能隔着好几像素，按 2px 加密
+    const next = addStrokePoints(dotRes, pts, 2);
+    const added = next.points.length - dotRes.points.length;
+    applyDot(next, added ? `加了 ${added} 个点，点「自动画路径」重连` : '这一笔没落下新点');
+  }, [applyDot, dotRes]);
 
   /* ---------------- 放大 / 平移 ---------------- */
 
@@ -472,6 +528,31 @@ export function LabTrackSection() {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+    // 画点：正在拖的这一笔 + 落点提示
+    if (mode === 'add') {
+      if (draft && draft.length) {
+        for (const p of draft) {
+          ctx.fillStyle = '#7E57C2';
+          ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+        }
+        if (draft.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(draft[0].x, draft[0].y);
+          for (let i = 1; i < draft.length; i += 1) ctx.lineTo(draft[i].x, draft[i].y);
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = 'rgba(126,87,194,0.6)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      } else if (cursor) {
+        ctx.beginPath();
+        ctx.arc(cursor.x, cursor.y, 4, 0, Math.PI * 2);
+        ctx.strokeStyle = '#7E57C2';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
     // 补直线的起点：先点一下的那个点
     if (mode === 'line' && lineStart) {
       ctx.beginPath();
@@ -520,16 +601,17 @@ export function LabTrackSection() {
     manualLegs,
     mode,
     result,
+    draft,
   ]);
 
   useEffect(() => {
     drawOverlay();
   }, [drawOverlay]);
 
-  // 重新提取后图变了，之前的起点下标不再有效；已画好的腿保留
+  // 点云一变（重新取点 / 擦除 / 补线），旧起点对应的节点下标就失效了
   useEffect(() => {
     setManualAnchor(null);
-  }, [result]);
+  }, [dotRes]);
 
   /* ---------------- 第一步：只提取点 ---------------- */
 
@@ -821,14 +903,19 @@ export function LabTrackSection() {
         setLineStart(null);
         setTab('img');
         setZoom('fit');
-        setStatus(`已载入 ${img.width}×${img.height}，点「提取点」开始`);
+        // 流程是「导入图片 → 自动取点 → 修点 → 画路径 → 地图对齐」：
+        // 取点这一步不用用户再点一次，导入完直接跑（几百毫秒），失败会自己报原因。
+        setStatus(`已载入 ${img.width}×${img.height}，正在自动取点…`);
+        setTimeout(() => {
+          if (imageDataRef.current) runPoints();
+        }, 0);
       };
       img.onerror = () => setStatus('图片加载失败');
       img.src = url;
     };
     reader.onerror = () => setStatus('文件读取失败');
     reader.readAsDataURL(file);
-  }, []);
+  }, [runPoints]);
 
   const downloadCSV = useCallback(() => {
     if (!result) return;
@@ -840,7 +927,7 @@ export function LabTrackSection() {
   }, [result]);
 
   const onMove = useCallback(
-    (e: MouseEvent<HTMLCanvasElement>) => {
+    (e: PointerEvent<HTMLCanvasElement>) => {
       const rc = overlayRef.current;
       if (!rc) return;
       const rect = rc.getBoundingClientRect();
@@ -848,8 +935,16 @@ export function LabTrackSection() {
       const sy = rc.height / rect.height;
       const x = Math.round((e.clientX - rect.left) * sx);
       const y = Math.round((e.clientY - rect.top) * sy);
-      if (mode === 'erase' || mode === 'line') setCursor({ x, y });
+      if (mode === 'erase' || mode === 'line' || mode === 'add') setCursor({ x, y });
       setCoord(mPerPx > 0 ? `像素 (${x}, ${y}) ≈ (${(x * mPerPx).toFixed(0)}m, ${(y * mPerPx).toFixed(0)}m)` : `像素 (${x}, ${y})`);
+
+      // 画点：按住时把轨迹攒起来（屏幕上一个点至少 2px，否则一笔会落几千个点）
+      if (!paintingRef.current) return;
+      const p = { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
+      const last = strokeRef.current[strokeRef.current.length - 1];
+      if (last && Math.hypot(p.x - last.x, p.y - last.y) < 1.5) return;
+      strokeRef.current = [...strokeRef.current, p];
+      setDraft(strokeRef.current);
     },
     [mPerPx, mode],
   );
@@ -1069,19 +1164,81 @@ export function LabTrackSection() {
   const modeHint =
     mode === 'manual'
       ? manualAnchor
-        ? '起点 A 已选：点下一个点，自动沿轨迹走过去'
-        : '点轨迹上的起点 A（18px 内自动吸附）'
-      : mode === 'erase'
-        ? '点图上误检的红点/图标，擦掉后重新画路径'
-        : mode === 'line'
-          ? '点两下补一条漏掉的红线（端点会自动吸附到附近轨迹）'
-          : '浏览：滚轮 / 双指缩放，拖动平移';
+        ? '起点 A 已选：点下一个点，自动沿点云走过去'
+        : '点提取出来的起点 A（18px 内自动吸附）'
+      : mode === 'add'
+        ? '按住拖动画一段点：漏掉的弯道自己描回去'
+        : mode === 'erase'
+          ? '点图上误检的红点/图标，擦掉后重新画路径'
+          : mode === 'line'
+            ? '点两下补一条漏掉的红线（端点会自动吸附到附近轨迹）'
+            : '浏览：滚轮 / 双指缩放，拖动平移';
+
+  // 流程指示：导入图片 → 自动取点 → 修点 → 画路径 → 地图对齐
+  const stage: 1 | 2 | 3 | 4 | 5 = !imgSize
+    ? 1
+    : !dotRes
+      ? 2
+      : !(result || manualPts.length || aiPts.length)
+        ? 3
+        : tab === 'map'
+          ? 5
+          : 4;
+  const steps: { n: 1 | 2 | 3 | 4 | 5; label: string }[] = [
+    { n: 1, label: '导入图片' },
+    { n: 2, label: '自动取点' },
+    { n: 3, label: '修点' },
+    { n: 4, label: '画路径' },
+    { n: 5, label: '地图对齐' },
+  ];
 
   return (
     <div className="lab-page lab-track">
       <LabHead title="轨迹提取" subKey="labTrack" />
 
       <div className="lab-track-status">{status}</div>
+
+      <div className="lab-track-steps">
+        {steps.map(({ n, label }) => (
+          <button
+            key={n}
+            type="button"
+            className={`lab-track-step${stage === n ? ' on' : ''}${n < stage ? ' done' : ''}`}
+            aria-current={stage === n ? 'step' : undefined}
+            disabled={
+              (n === 2 && (!imgSize || !!busy)) ||
+              ((n === 3 || n === 4) && !dotRes?.points.length) ||
+              (n === 5 && !(result || manualPts.length))
+            }
+            onClick={() => {
+              if (n === 1) {
+                fileRef.current?.click();
+                return;
+              }
+              if (n === 2) {
+                runPoints();
+                return;
+              }
+              if (n === 3) {
+                setTab('img');
+                if (mode === 'browse') setMode('add');
+                setStatus('修点：画点 / 擦除点 / 补直线，改完点再画路径');
+                return;
+              }
+              if (n === 4) {
+                setTab('img');
+                autoLink();
+                return;
+              }
+              setTab('map');
+              setTimeout(() => mapRef.current?.invalidateSize(), 80);
+            }}
+          >
+            <i>{n}</i>
+            {label}
+          </button>
+        ))}
+      </div>
 
       <div className="lab-track-tabs" role="tablist">
         <button
@@ -1152,8 +1309,11 @@ export function LabTrackSection() {
             <canvas
               ref={overlayRef}
               className={`lab-track-canvas${mode !== 'browse' ? ' is-editing' : ''}`}
-              onMouseMove={onMove}
-              onMouseLeave={() => setCursor(null)}
+              onPointerMove={onMove}
+              onPointerLeave={() => setCursor(null)}
+              onPointerDown={onPointerDown}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
               onClick={onCanvasClick}
               style={
                 zoom === 'fit' || !imgSize
@@ -1207,26 +1367,19 @@ export function LabTrackSection() {
         />
 
         <div className="lab-track-modes">
+          <span className="lab-track-group">修点</span>
           <button
             type="button"
-            className={mode === 'manual' ? 'on' : undefined}
-            aria-pressed={mode === 'manual'}
-            disabled={!imgSize}
+            className={mode === 'add' ? 'on' : undefined}
+            aria-pressed={mode === 'add'}
+            disabled={!imgSize || !dotRes?.points.length}
             onClick={() => {
-              setMode(mode === 'manual' ? 'browse' : 'manual');
-              setManualAnchor(null);
+              setMode(mode === 'add' ? 'browse' : 'add');
               setLineStart(null);
-              if (mode !== 'manual') setLayers((l) => ({ ...l, man: true }));
-              setStatus(
-                mode === 'manual'
-                  ? '已结束手动布线'
-                  : graph
-                    ? '手动布线：点轨迹上的起点 A，再点 B，系统自动从 A 导航到 B'
-                    : '手动布线：还没有画好的路径，点两下只能拉直线（先「自动画路径」才能沿轨迹走）',
-              );
+              setStatus(mode === 'add' ? '已结束画点' : '画点：按住拖动，把漏掉的弯道描回去');
             }}
           >
-            {manualMode ? '结束布线' : '手动布线'}
+            画点
           </button>
           <button
             type="button"
@@ -1255,6 +1408,28 @@ export function LabTrackSection() {
             }}
           >
             补直线
+          </button>
+          <span className="lab-track-group">画路径</span>
+          <button
+            type="button"
+            className={mode === 'manual' ? 'on' : undefined}
+            aria-pressed={mode === 'manual'}
+            disabled={!imgSize}
+            onClick={() => {
+              setMode(mode === 'manual' ? 'browse' : 'manual');
+              setManualAnchor(null);
+              setLineStart(null);
+              if (mode !== 'manual') setLayers((l) => ({ ...l, man: true }));
+              setStatus(
+                mode === 'manual'
+                  ? '已结束手动布线'
+                  : graph
+                    ? '手动布线：点提取出来的起点 A，再点 B，系统沿点云导航过去'
+                    : '手动布线：先「提取点」，之后点 A、点 B 就能沿点云走',
+              );
+            }}
+          >
+            {manualMode ? '结束布线' : '手动布线'}
           </button>
           {manualMode && (
             <>
@@ -1293,7 +1468,7 @@ export function LabTrackSection() {
           )}
           {dotHistory.length > 0 && (
             <button className="btn btn-ghost" onClick={undoDot}>
-              撤销擦除 / 补线
+              撤销修点
             </button>
           )}
           <span className="muted small lab-track-modehint">{modeHint}</span>
@@ -1741,6 +1916,11 @@ export function LabTrackSection() {
       <details className="lab-help">
         <summary>它是怎么取点的 / 路径是怎么画出来的</summary>
         <p className="muted small">
+          <b>流程</b>：导入图片 → 自动取点 → 修点（画点 / 擦除点 / 补直线）→ 画路径（自动 / 手动 / AI）
+          → 地图对齐。取点在导入后自动跑一次，改完参数可以点「自动取点」重来；修点改的是点云本身，
+          所以修完要重新画路径。
+        </p>
+        <p className="muted small">
           <b>① 提取点</b>：红色判定（饱和度、明度过线，色相落在 0~{opts.hueHi}° 或 {opts.hueLo}~180°，
           且 R 通道明显压过 G/B）→ 闭运算补 1~3px 细断口 → 连通域 + 形状校准（骨架长 / 包围盒对角线
           &lt; 0.95 判为圆形图标，实心块直接丢）→ 骨架化后按分叉点切成简单链，摊成点云。
@@ -1752,13 +1932,15 @@ export function LabTrackSection() {
           接回去，所以整条路只画一遍、不会重复。之后沿弧长等距重采样 + 移动平均平滑。
         </p>
         <p className="muted small">
-          <b>③ 手动布线</b>：点起点 A（18px 内吸附到轨迹）再点 B，在图上跑带<b>转角惩罚</b>的最短路——
-          直行不加钱、急转加价，所以路口不会来回切；跨连通簇找不到路时直接拉直线（橙色虚线）。
+          <b>③ 手动布线</b>：点起点 A（18px 内吸附到<b>点云里的点</b>）再点 B，在点云图上跑带<b>转角惩罚</b>
+          的最短路——直行不加钱、急转加价，所以路口不会来回切；跨连通簇找不到路时直接拉直线（橙色虚线）。
+          因为图是拿点建的，还没自动画路径也能手动连，被自动路径当毛刺丢掉的支线也还能走。
           手动路径是<b>有序点列</b>，A→B→A 会把同一条路算两遍，统计里的「重复经过」就是它。
         </p>
         <p className="muted small">
-          <b>擦除点 / 补直线</b>：擦除是按画笔半径删掉点云里的一圈点（图标被误检时用），补直线是把
-          漏提取的一段直接接进点云；两者改的都是点云本身，之后重新聚类、重新画路径，结果才是自洽的。
+          <b>画点 / 擦除点 / 补直线</b>：画点是按住拖出一条点列，把漏掉的弯道描回去；擦除是按画笔半径
+          删掉点云里的一圈点（图标被误检时用）；补直线是把漏提取的一段直线接上。三者改的都是点云本身，
+          之后重新聚类、重新画路径，结果才是自洽的；每一步都留了撤销。
         </p>
         <p className="muted small">
           <b>AI 优化</b>：只做「最小必要修改」——断口处 insert、误检 delete、整段偏了 move，附带 reasoning。

@@ -13,7 +13,7 @@
 // 于是「重复路径」自然成立：路径是**有序点列**而不是像素集合，A→B→A 会在序列里
 // 出现两遍同样的坐标，长度、复现、保存都按两遍算，不会被去重压平。
 
-import type { ExtractResult, TrackPoint } from './trackExtract';
+import type { ExtractResult, SkeletonPath, TrackPoint } from './trackExtract';
 
 export interface RouteGraph {
   /** 全部节点（像素坐标），按段拼接 */
@@ -103,6 +103,86 @@ export function buildRouteGraph(result: ExtractResult): RouteGraph {
   for (const r of ranges) {
     for (let i = r.from; i < r.to; i += 1) link(i, i + 1);
   }
+  return { pts, adj, segOf };
+}
+
+/**
+ * 从「点云」建图：手动布线选的是**点**，不是已经画好的那条轨迹线。
+ *
+ * 这样两个好处：还没点「自动画路径」也能手动连；自动路径把某条支线当毛刺丢掉时，
+ * 那条支线上的点依然可以被选中、被走到。节点是链上的点（每 `stepPx` 取一个，
+ * 太密只会让转角判断全是噪点），链内相邻相连，链端点再桥接到**别的链**上最近的
+ * 点（≤ `linkPx`，与聚类的断口阈值一致）。
+ */
+export function buildPointRouteGraph(chains: SkeletonPath[], linkPx: number, stepPx = 2): RouteGraph {
+  const pts: TrackPoint[] = [];
+  const segOf: number[] = [];
+  const chainOf: number[] = [];
+  const ranges: { from: number; to: number }[] = [];
+  const step = Math.max(1, stepPx);
+
+  chains.forEach((c, ci) => {
+    const from = pts.length;
+    let last: TrackPoint | null = null;
+    for (let i = 0; i < c.path.length; i += 1) {
+      const p = c.path[i];
+      const far = !last || Math.hypot(p.x - last.x, p.y - last.y) >= step;
+      if (!far && i !== c.path.length - 1) continue;
+      pts.push({ x: p.x, y: p.y });
+      segOf.push(ci);
+      chainOf.push(ci);
+      last = p;
+    }
+    if (pts.length > from) ranges.push({ from, to: pts.length - 1 });
+  });
+
+  const adj: { to: number; w: number }[][] = pts.map(() => []);
+  const linked = new Set<number>();
+  const link = (i: number, j: number) => {
+    if (i === j) return;
+    const key = i < j ? i * pts.length + j : j * pts.length + i;
+    if (linked.has(key)) return;
+    linked.add(key);
+    const w = Math.hypot(pts[j].x - pts[i].x, pts[j].y - pts[i].y);
+    adj[i].push({ to: j, w });
+    adj[j].push({ to: i, w });
+  };
+
+  for (const r of ranges) for (let i = r.from; i < r.to; i += 1) link(i, i + 1);
+
+  // 链端点 → 别的链上最近的点：网格分桶，避免几条长链两两平方级比较
+  const cell = Math.max(8, linkPx);
+  const buckets = new Map<string, number[]>();
+  const gkey = (gx: number, gy: number) => `${gx},${gy}`;
+  pts.forEach((p, i) => {
+    const k = gkey(Math.floor(p.x / cell), Math.floor(p.y / cell));
+    const arr = buckets.get(k);
+    if (arr) arr.push(i);
+    else buckets.set(k, [i]);
+  });
+  for (const r of ranges) {
+    for (const end of [r.from, r.to]) {
+      const p = pts[end];
+      const gx = Math.floor(p.x / cell);
+      const gy = Math.floor(p.y / cell);
+      let best = -1;
+      let bd = linkPx;
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (const j of buckets.get(gkey(gx + dx, gy + dy)) ?? []) {
+            if (chainOf[j] === chainOf[end]) continue;
+            const d = Math.hypot(pts[j].x - p.x, pts[j].y - p.y);
+            if (d <= bd) {
+              bd = d;
+              best = j;
+            }
+          }
+        }
+      }
+      if (best >= 0) link(end, best);
+    }
+  }
+
   return { pts, adj, segOf };
 }
 
