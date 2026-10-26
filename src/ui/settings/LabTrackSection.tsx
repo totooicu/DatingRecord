@@ -32,11 +32,18 @@ import {
   type ExtractResult,
   type TrackPoint,
 } from '../../core/tools/trackExtract';
-import { aiExtractTrack, pickVisionModel, prepareShot, type AiTrackResult } from '../../core/tools/trackAi';
+import {
+  applyEdits,
+  pickVisionModel,
+  prepareShot,
+  refineTrack,
+  type AiTrackResult,
+  type EditMark,
+} from '../../core/tools/trackAi';
 import {
   compareTracks,
   flattenSegments,
-  normToPx,
+  pathLengthPx,
   pxToGeo,
   toLocationPoints,
   type GeoAnchor,
@@ -123,6 +130,11 @@ export function LabTrackSection() {
   const [coord, setCoord] = useState('悬停看像素坐标');
   const [autoLog, setAutoLog] = useState<string[]>([]);
   const [aiLog, setAiLog] = useState<string>('');
+  const [aiThink, setAiThink] = useState('');
+  const [aiMarks, setAiMarks] = useState<EditMark[]>([]);
+  const [aiCount, setAiCount] = useState({ add: 0, del: 0, move: 0 });
+  /** 当前结果是不是「参数自动校准」出来的：AI 优化要在这个结果上做 */
+  const [calibrated, setCalibrated] = useState(false);
   const [showAdv, setShowAdv] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [models, setModels] = useState<AiModel[]>(() => listModels());
@@ -200,7 +212,32 @@ export function LabTrackSection() {
       }
     }
     if (layers.ai && aiPts.length > 1) stroke(aiPts, COLOR_AI, 2.5, true);
-  }, [algPath, aiPts, layers, result]);
+
+    // AI 改过的地方标出来：新增绿点、移动蓝圈、删除红叉（画在原位置）
+    if (layers.ai && aiMarks.length) {
+      for (const m of aiMarks) {
+        ctx.beginPath();
+        if (m.kind === 'del') {
+          ctx.strokeStyle = cssVar('--danger', '#e04b4b');
+          ctx.lineWidth = 2;
+          ctx.moveTo(m.x - 4, m.y - 4);
+          ctx.lineTo(m.x + 4, m.y + 4);
+          ctx.moveTo(m.x + 4, m.y - 4);
+          ctx.lineTo(m.x - 4, m.y + 4);
+          ctx.stroke();
+        } else if (m.kind === 'add') {
+          ctx.arc(m.x, m.y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#2E7D32';
+          ctx.fill();
+        } else {
+          ctx.arc(m.x, m.y, 4.5, 0, Math.PI * 2);
+          ctx.strokeStyle = COLOR_AI;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+    }
+  }, [aiMarks, algPath, aiPts, layers, result]);
 
   useEffect(() => {
     drawOverlay();
@@ -216,6 +253,7 @@ export function LabTrackSection() {
       const r = extractTrack(img.data, img.width, img.height, merged);
       if (!silent) {
         setResult(r);
+        setCalibrated(false);
         const cal = r.calibration;
         const parts: string[] = [`${r.segments.length} 段 / ${r.stats.outPoints} 点`, `像素长 ${Math.round(cal.totalPx)}`];
         if (cal.mPerPx > 0) parts.push(`约 ${(cal.totalM / 1000).toFixed(2)} 公里`);
@@ -231,10 +269,10 @@ export function LabTrackSection() {
     [opts],
   );
 
-  /** 自动校准：网格上真跑几遍，按评分挑最好的一组 */
-  const autoCalibrate = useCallback(async () => {
+  /** 自动校准：网格上真跑几遍，按评分挑最好的一组；返回采用的那份结果（AI 优化要用） */
+  const autoCalibrate = useCallback(async (): Promise<ExtractResult | null> => {
     const img = imageDataRef.current;
-    if (!img || busy) return;
+    if (!img || busy) return null;
     setBusy('auto');
     const log: string[] = [];
     let best: { score: number; patch: Partial<ExtractOptions>; r: ExtractResult } | null = null;
@@ -254,6 +292,7 @@ export function LabTrackSection() {
     if (best) {
       patch(best.patch);
       setResult(best.r);
+      setCalibrated(true);
       log.push(
         `已采用：饱和${best.patch.redSat} 明度${best.patch.redVal} 色相≤${best.patch.hueHi}° 红优势${best.patch.rDominance} 面积${best.patch.minArea} 断口${best.patch.gapPx}`,
       );
@@ -263,30 +302,59 @@ export function LabTrackSection() {
     }
     setAutoLog(log);
     setBusy(null);
+    return best ? best.r : null;
   }, [busy, opts, patch]);
 
   /**
-   * AI 校准：视觉模型独立给一份轨迹 + 它看到的比例尺/里程/方位。
-   * 模型报出的校准值会自动填进参数（只填空着的，别覆盖用户手填的），
-   * 然后按新参数立刻重跑一次提取，这样两套结果才是同一把尺子。
+   * AI 优化：先保证有「参数自动校准」的结果，再把这份点列连同一张截图交给视觉模型，
+   * 只要它返回最小必要的增删改（edits）与思考过程；应用后重建 AI 层叠在原结果上对比。
+   * 不重跑提取——edits 的下标就是按当前点列给的，重跑会错位。
    */
-  const aiCalibrate = useCallback(async () => {
+  const aiOptimize = useCallback(async () => {
     if (!shotUrlRef.current || busy) return;
     const model = visionModel;
     if (!model) {
       showToast('先在「设置 → AI → 模型」里配一个能看图的模型', 3600);
       return;
     }
+    let base = result;
+    if (!base?.segments.length || !calibrated) {
+      setStatus('先做参数自动校准，AI 在它的结果上优化…');
+      base = await autoCalibrate();
+    }
+    if (!base?.segments.length) {
+      showToast('没提取到轨迹：先把「红色阈值」「最小面积」调低，或换一张图', 3800);
+      return;
+    }
+    const W = imgSize?.w ?? 0;
+    const H = imgSize?.h ?? 0;
+    const basePts = flattenSegments(base);
     setBusy('ai');
-    setStatus(`AI 校准中：${model.alias} 正在读图…`);
+    setStatus(`AI 优化中：${model.alias} 正对照原图检查 ${basePts.length} 个点…`);
     try {
       const shot = await prepareShot(shotUrlRef.current);
-      const r = await aiExtractTrack(model, shot);
+      const w = W || shot.width;
+      const h = H || shot.height;
+      const r = await refineTrack(model, {
+        dataUrl: shot.dataUrl,
+        width: shot.width,
+        height: shot.height,
+        imageW: w,
+        imageH: h,
+        points: basePts,
+        mPerPx: base.calibration.mPerPx,
+        mileageKm: base.calibration.officialM / 1000,
+        segments: base.segments.length,
+        gaps: base.gaps.length,
+      });
+      const applied = applyEdits(basePts, r.edits, w, h);
       setAi(r);
-      const px = normToPx(r.polyline, imgSize?.w ?? shot.width, imgSize?.h ?? shot.height);
-      setAiPts(px);
+      setAiPts(applied.points);
+      setAiMarks(applied.marks);
+      setAiCount({ add: applied.added, del: applied.removed, move: applied.moved });
+      setAiThink(r.thinking || r.notes);
 
-      // 模型报的校准依据：只补空位，别抢用户已经填好的
+      // 模型报的校准依据：只补空位，不动用户手填的
       const next: Partial<ExtractOptions> = {};
       if (r.scale && (!opts.scaleMeter || !opts.scalePx)) {
         next.scaleMeter = r.scale.meter;
@@ -294,29 +362,42 @@ export function LabTrackSection() {
       }
       if (r.mileageKm && !opts.mileageKm) next.mileageKm = r.mileageKm;
       if (r.northDeg != null) setBearing(r.northDeg);
-      if (Object.keys(next).length) {
-        patch(next);
-        runExtract(next);
-      }
+      if (Object.keys(next).length) patch(next);
 
       const bits = [
         `模型 ${r.model}`,
-        `${r.polyline.length} 点`,
+        `增 ${applied.added} · 删 ${applied.removed} · 改 ${applied.moved}`,
+        `${basePts.length} → ${applied.points.length} 点`,
         r.scale ? `比例尺 ${r.scale.meter}m=${r.scale.px}px` : '',
         r.mileageKm ? `里程 ${r.mileageKm} km` : '',
         r.startGeo ? `起点坐标 ${r.startGeo.lat.toFixed(4)},${r.startGeo.lng.toFixed(4)}` : '',
         r.northDeg != null ? `正北 ${r.northDeg}°` : '',
       ].filter(Boolean);
       setAiLog(`${bits.join(' · ')}${r.notes ? `\n${r.notes}` : ''}`);
-      setStatus(`AI 校准完成：${r.polyline.length} 点，已与提取结果叠在一起对比`);
+      setStatus(
+        r.edits.length
+          ? `AI 优化完成：增 ${applied.added} / 删 ${applied.removed} / 改 ${applied.moved}，已叠在原结果上对比`
+          : 'AI 优化完成：模型认为当前结果不需要改（没返回增删改）',
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setStatus(`AI 校准失败：${msg}`);
-      showToast(`AI 校准失败：${msg}`, 4200);
+      setStatus(`AI 优化失败：${msg}`);
+      showToast(`AI 优化失败：${msg}`, 4200);
     } finally {
       setBusy(null);
     }
-  }, [busy, imgSize, opts.mileageKm, opts.scaleMeter, opts.scalePx, patch, runExtract, visionModel]);
+  }, [
+    autoCalibrate,
+    busy,
+    calibrated,
+    imgSize,
+    opts.mileageKm,
+    opts.scaleMeter,
+    opts.scalePx,
+    patch,
+    result,
+    visionModel,
+  ]);
 
   /* ---------------- 载入 / 导出 ---------------- */
 
@@ -349,9 +430,13 @@ export function LabTrackSection() {
         setResult(null);
         setAi(null);
         setAiPts([]);
+        setAiMarks([]);
+        setAiCount({ add: 0, del: 0, move: 0 });
+        setAiThink('');
         setAutoLog([]);
         setAiLog('');
-        setStatus(`已载入 ${img.width}×${img.height}，点「提取轨迹」或「AI 校准」`);
+        setCalibrated(false);
+        setStatus(`已载入 ${img.width}×${img.height}，点「提取轨迹」或「AI 优化」`);
       };
       img.onerror = () => setStatus('图片加载失败');
       img.src = url;
@@ -651,8 +736,13 @@ export function LabTrackSection() {
         <button className="btn" disabled={!imgSize || !!busy} onClick={autoCalibrate}>
           {busy === 'auto' ? '校准中…' : '参数自动校准'}
         </button>
-        <button className="btn" disabled={!canAI} onClick={aiCalibrate} title="让视觉模型独立提一遍，用于对比与校准">
-          {busy === 'ai' ? 'AI 读图中…' : 'AI 校准'}
+        <button
+          className="btn"
+          disabled={!canAI}
+          onClick={aiOptimize}
+          title="先做参数自动校准，再让视觉模型对照原图增删改点"
+        >
+          {busy === 'ai' ? 'AI 优化中…' : 'AI 优化'}
         </button>
         {models.length > 1 && (
           <select className="lab-track-num" value={visionModel?.alias ?? ''} onChange={(e) => setAlias(e.target.value)} aria-label="AI 模型">
@@ -795,7 +885,7 @@ export function LabTrackSection() {
               onChange={(e) => setLayers((l) => ({ ...l, ai: e.target.checked }))}
             />
             <i className="lab-track-dot" style={{ background: COLOR_AI }} />
-            AI 提取的轨迹
+            AI 优化后的轨迹
             {aiPts.length ? <span className="lab-track-count"> {aiPts.length} 点</span> : null}
           </label>
           {diff && (
@@ -810,31 +900,32 @@ export function LabTrackSection() {
         <canvas ref={origCanvasRef} hidden />
         <div className="muted small lab-track-gaps">
           {result ? `${result.segments.length} 段 · ${gapsInfo}` : '还没有提取结果'}
-          {aiPts.length ? '' : ' · AI 层是虚线'}
+          {aiPts.length ? ' · AI 层虚线：绿点新增、蓝圈移动、红叉删除' : ' · AI 层还没有结果'}
         </div>
       </div>
 
       <div className="lab-track-status">{status}</div>
 
-      {cal && cal.mPerPx > 0 && (
+      {mPerPx > 0 && (
         <div className="lab-track-calib">
           <div>
             <span className="lab-track-k">比例尺</span>
             <span className="lab-track-v">
-              {cal.mPerPx.toFixed(3)} 米/像素{cal.source === 'scale' ? '（由截图比例尺定标）' : '（由官方里程反推）'}
+              {mPerPx.toFixed(3)} 米/像素
+              {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
             </span>
           </div>
           <div>
             <span className="lab-track-k">提取总长</span>
-            <span className="lab-track-v">{fmtLen(cal.totalM)}</span>
+            <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
           </div>
-          {cal.officialM > 0 && (
+          {cal && cal.officialM > 0 && (
             <div>
               <span className="lab-track-k">官方里程</span>
               <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
             </div>
           )}
-          {cal.coverage >= 0 && (
+          {cal && cal.coverage >= 0 && (
             <div>
               <span className="lab-track-k">覆盖率</span>
               <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
@@ -845,9 +936,37 @@ export function LabTrackSection() {
         </div>
       )}
 
+      {aiThink && (
+        <details className="lab-help lab-track-think" open>
+          <summary>AI 的思考过程（它看图和看当前点列后的判断）</summary>
+          <pre className="lab-track-log lab-track-reason">{aiThink}</pre>
+          {ai && ai.edits.length > 0 && (
+            <ul className="lab-track-edits">
+              {ai.edits.slice(0, 60).map((e, i) => (
+                <li key={`${e.op}-${e.index}-${i}`} className={`is-${e.op}`}>
+                  <span className="lab-track-eop">{e.op === 'move' ? '移动' : e.op === 'delete' ? '删除' : '新增'}</span>
+                  <span className="lab-track-eidx">#{e.index}</span>
+                  {e.op !== 'delete' && e.x != null && e.y != null && (
+                    <span className="lab-track-eat">
+                      → ({e.x.toFixed(3)}, {e.y.toFixed(3)})
+                    </span>
+                  )}
+                  <span className="lab-track-ereason">{e.reason || '模型没给理由'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {ai && ai.edits.length > 60 && (
+            <p className="muted small">只列前 60 处，共 {ai.edits.length} 处。</p>
+          )}
+        </details>
+      )}
+
       {aiLog && (
-        <details className="lab-help" open>
-          <summary>AI 校准记录</summary>
+        <details className="lab-help">
+          <summary>
+            AI 优化记录（增 {aiCount.add} · 删 {aiCount.del} · 改 {aiCount.move}）
+          </summary>
           <pre className="lab-track-log">{aiLog}</pre>
         </details>
       )}
@@ -963,9 +1082,16 @@ export function LabTrackSection() {
           ⑦ 校准：填「比例尺 500 米 = 200 像素」就能得到米制坐标与覆盖率；只填官方里程则以里程反推比例尺。
         </p>
         <p className="muted small">
-          AI 校准走的是另一条路：把截图（长边缩到 1400px）发给能看图的模型，要它按比例坐标描一条轨迹，
-          并抄下比例尺、官方里程和图上正北方向。两套结果的偏差按弧长对齐后逐点算，单位是截图像素；
-          定标之后可以换算成米。虚线是 AI 的，实线是算法的，红色小点是算法的断口。
+          AI 优化走的是「在原结果上改」而不是「重画一条」：点它时会先跑参数自动校准（拿分最高的那组参数），
+          再把当前点列（抽样到 160 个，带原始下标）和截图（长边缩到 1400px）一起发给能看图的模型。
+          模型只返回最小必要的三类修改——断口处 insert、把图标当轨迹的 delete、整段偏了的 move，
+          外带一段 reasoning 说明它为什么这么改。页面按下标把这些修改应用回完整点列，所以「AI 优化后」
+          和「提取的轨迹」点一一对应，偏差也还是按弧长对齐逐点算。图上绿点是新增、蓝圈是移动、红叉是删除
+          （叉画在原位置），实线是算法结果、虚线是优化后的结果，红色小圆点是算法断口。
+        </p>
+        <p className="muted small">
+          为什么不让模型直接描一条：像素阈值法已经把「红线在哪」做得很准，它的错误集中在断口、图标和整段平移；
+          从零描线等于把正确的部分也重算一遍，偏差更大，也说不清改了什么。
         </p>
         <p className="muted small">
           地图复现要三样东西：比例尺（米/像素）、一个起点（地图上点一下 / 当前位置 / AI 读到的坐标）、

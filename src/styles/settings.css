@@ -658,6 +658,73 @@
   line-height: 1.6;
 }
 
+/* AI 的思考过程 + 增删改清单：每一处都写清「改哪个点、改成什么、为什么」 */
+.lab-track-think summary {
+  color: var(--primary);
+}
+
+.lab-track-reason {
+  margin-bottom: 8px;
+  line-height: 1.8;
+}
+
+.lab-track-edits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lab-track-edits li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.lab-track-eop {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lab-track-edits li.is-move .lab-track-eop {
+  color: var(--primary);
+}
+
+.lab-track-edits li.is-delete .lab-track-eop {
+  color: var(--danger);
+}
+
+.lab-track-edits li.is-insert .lab-track-eop {
+  color: #2e7d32;
+}
+
+.lab-track-eidx,
+.lab-track-eat {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+}
+
+.lab-track-eat {
+  color: var(--text);
+}
+
+.lab-track-ereason {
+  flex: 1 1 100%;
+  min-width: 0;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 /* 地图复现：地图自己带边框了，工具条别再多一层壳 */
 .lab-track-map {
   height: 360px;

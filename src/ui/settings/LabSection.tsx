@@ -35,8 +35,8 @@ export function LabSection({ onPick }: { onPick: (k: SettingsKey) => void }) {
     {
       key: 'labTrack',
       title: '轨迹提取',
-      desc: '上传两步路 App 的截图，筛出红色轨迹线；可以再让视觉模型独立提一遍叠图对比，落到地图上复现，最后存成本库的定位文件。图片只在浏览器里处理。',
-      hint: '截图 → 轨迹 · AI 对比 · 地图复现 · 存为 .drloc',
+      desc: '上传两步路 App 的截图，筛出红色轨迹线；参数自动校准之后，再让视觉模型对照原图增删改点（附它的思考过程），叠图对比、落到地图上复现，最后存成本库的定位文件。图片只在浏览器里处理。',
+      hint: '截图 → 轨迹 · AI 优化 · 地图复现 · 存为 .drloc',
     },
   ];
   return (

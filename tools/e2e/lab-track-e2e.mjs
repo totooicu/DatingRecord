@@ -3,8 +3,8 @@
 // 覆盖这一页最容易坏掉的几处：
 //   T1 选图卡是按钮 + 拖拽区（不是裸的原生 file 控件），选中后显示文件名/尺寸
 //   T2 提取轨迹出结果，画布上真的画上了东西
-//   T3 AI 校准打到模型上（带 image_url），AI 层出现在画布上，给出偏差读数
-//   T4 「原图 / 提取的轨迹 / AI 提取的轨迹」复选框真的控制图层（逐层开关画布内容变化）
+//   T3 AI 优化：先做参数自动校准，再把点列（带 index）+ 图片发给模型，拿回 edits 与思考过程
+//   T4 「原图 / 提取的轨迹 / AI 优化后的轨迹」复选框真的控制图层（逐层开关画布内容变化）
 //   T5 地图复现：地图初始化、可点起点、复现推进里程、可停止
 //   T6 保存为 .drloc：出现在「功能面板 → 定位 → 文件」里，点开能看到点数
 //
@@ -47,7 +47,7 @@ const CURVE = Array.from({ length: PICKS }, (_, i) => {
   return { x: 300 + r * Math.cos(a), y: 300 + r * Math.sin(a) };
 });
 
-const visionStats = { calls: 0, withImage: 0 };
+const visionStats = { calls: 0, withImage: 0, withPoints: 0 };
 const vision = http.createServer((req, res) => {
   const cors = {
     'access-control-allow-origin': '*',
@@ -76,14 +76,38 @@ const vision = http.createServer((req, res) => {
     const parts = (body.messages ?? []).flatMap((m) => (Array.isArray(m.content) ? m.content : []));
     visionStats.calls += 1;
     if (parts.some((x) => x?.type === 'image_url' && x.image_url?.url?.startsWith('data:image/'))) visionStats.withImage += 1;
+    if ((parts.find((x) => x?.type === 'text')?.text ?? '').includes('"index":')) visionStats.withPoints += 1;
 
-    // AI 的轨迹：同一条曲线，整体偏 3px，模拟「大方向对、细节有差」
-    const polyline = CURVE.map((pt) => ({
-      x: Number(((pt.x + 3) / 600).toFixed(4)),
-      y: Number(((pt.y - 3) / 600).toFixed(4)),
-    }));
+    // 假模型在「给定点列」上做增删改：从提示词里把点列读回来，只挪一点点，
+    // 模拟真实模型「大方向对、只微调几处」的行为
+    const text = parts.find((x) => x?.type === 'text')?.text ?? '';
+    let pts = [];
+    const arr = /\[\{"index":.*?\}\]/s.exec(text);
+    try {
+      pts = arr ? JSON.parse(arr[0]) : [];
+    } catch {
+      pts = [];
+    }
+    const at = (k) => pts[Math.min(pts.length - 1, Math.floor((pts.length * k) / 5))] ?? { index: k * 10, x: 0.5, y: 0.5 };
+    const a = at(1);
+    const pos = pts.findIndex((x) => x.index === a.index);
+    const nxt = pts[pos + 1] ?? a;
+    const last = pts.at(-1) ?? { index: 5 };
+    const edits = [
+      { op: 'move', index: a.index, x: Number((a.x + 0.004).toFixed(4)), y: Number((a.y + 0.004).toFixed(4)), reason: '这一段整体偏左，实际红线在右边' },
+      // 插在同一下标之后、取与后一个采样点的中点：局部补点，全局走向不变
+      { op: 'insert', index: nxt.index, x: Number(((a.x + nxt.x) / 2).toFixed(4)), y: Number(((a.y + nxt.y) / 2).toFixed(4)), reason: '两点之间缺一段弯道' },
+      { op: 'delete', index: last.index, reason: '这里取到了红色 POI 图标，不是轨迹' },
+    ];
     const content = JSON.stringify({
-      polyline,
+      reasoning:
+        '先看整张图：红色轨迹是一条外扩的螺旋，起点在右侧、顺时针收到中心。' +
+        '再看给出的点列：中段有几处贴不到红线上，偏差约 3~5px；第 ' +
+        `${edits[0].index} 个点附近整体偏左，` +
+        `第 ${edits[2].index} 个点落在一个红色圆点上（那是 POI 不是轨迹），` +
+        '另外两个采样点之间缺一段弧。' +
+        '因此只做三处最小修改：挪一段、补一点、删一个误检点。',
+      edits,
       scale: { meter: 500, px: 100 },
       mileageKm: 6.4,
       startName: '假起点',
@@ -91,7 +115,7 @@ const vision = http.createServer((req, res) => {
       startGeo: { lat: 30.2741, lng: 120.1551 },
       endGeo: null,
       northDeg: 0,
-      notes: 'e2e 假模型：沿红色折线取样',
+      notes: 'e2e 假模型：在点列上做三处最小修改',
     });
     res.writeHead(200, { ...cors, 'content-type': 'application/json' });
     res.end(
@@ -288,17 +312,31 @@ check('T2 轨迹真的画到了画布上', afterExtract !== beforeExtract);
 /* ---------------- T3 AI 校准 ---------------- */
 
 const beforeAI = await canvasSum();
-await p.getByRole('button', { name: 'AI 校准' }).click();
+await p.getByRole('button', { name: 'AI 优化' }).click();
 await p.waitForFunction(
-  () => /AI 校准完成|AI 校准失败/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  () => /AI 优化完成|AI 优化失败/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
   null,
-  { timeout: 30000 },
+  { timeout: 45000 },
 );
-check('T3 AI 校准成功', /AI 校准完成/.test(await status()), await status());
-check('T3 模型收到了图片', visionStats.calls > 0 && visionStats.withImage > 0, JSON.stringify(visionStats));
+const aiStatus = await status();
+check('T3 AI 优化成功且报出增删改', /AI 优化完成/.test(aiStatus) && /增 1 \/ 删 1 \/ 改 1/.test(aiStatus), aiStatus);
+check(
+  'T3 模型收到了图片和带 index 的点列',
+  visionStats.withImage > 0 && visionStats.withPoints > 0,
+  JSON.stringify(visionStats),
+);
+const think = await p.locator('.lab-track-reason').innerText().catch(() => '');
+check('T3 展示 AI 的思考过程', think.includes('螺旋') && think.includes('最小修改'), think.slice(0, 80).replace(/\s+/g, ' '));
+const editItems = await p.locator('.lab-track-edits li').allInnerTexts();
+check('T3 增删改逐条列出（带理由）', editItems.length === 3 && editItems.every((t) => /为什么|偏|缺|POI|红线|图标/.test(t)), JSON.stringify(editItems));
 const diffText = await p.locator('.lab-track-diff').innerText().catch(() => '');
 check('T3 显示两条轨迹的偏差', /平均\s*[\d.]+px/.test(diffText) && /长度/.test(diffText), diffText.replace(/\s+/g, ' '));
-check('T3 AI 校准记录写进日志', /比例尺|里程/.test(await p.locator('.lab-track-log').first().innerText()));
+const aiLogText = await p
+  .locator('.lab-help')
+  .filter({ hasText: 'AI 优化记录' })
+  .locator('.lab-track-log')
+  .evaluate((el) => el.textContent ?? '');
+check('T3 AI 优化记录写进日志', /增 1 · 删 1 · 改 1/.test(aiLogText), aiLogText.replace(/\s+/g, ' ').slice(0, 90));
 const afterAI = await canvasSum();
 check('T3 AI 虚线画进了画布', afterAI !== beforeAI);
 
@@ -312,10 +350,10 @@ check('T4 关掉原图后画布变了', noImg !== allOn);
 await layerToggle(/^原图/).check();
 check('T4 打开原图恢复', (await canvasSum()) === allOn);
 
-await layerToggle(/^AI 提取的轨迹/).uncheck();
+await layerToggle(/^AI 优化后的轨迹/).uncheck();
 const noAI = await canvasSum();
 check('T4 关掉 AI 层后画布变了', noAI !== allOn);
-await layerToggle(/^AI 提取的轨迹/).check();
+await layerToggle(/^AI 优化后的轨迹/).check();
 check('T4 AI 层可重新打开', (await canvasSum()) === allOn);
 
 await layerToggle(/^提取的轨迹/).uncheck();
