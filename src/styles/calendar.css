@@ -187,7 +187,7 @@
   padding: 3px 1px;
   border: none;
   border-radius: 9px;
-  background: #fff;
+  background: var(--panel);
   color: inherit;
   cursor: pointer;
   overflow: hidden;
@@ -210,7 +210,7 @@
 
 /* 将来：白（默认值，这里写出来只为读代码时一目了然） */
 .cal-cell.cal-future {
-  background: #fff;
+  background: var(--panel);
 }
 
 /* 窗口之外的邻月补位（最顶上的上月尾巴 / 最底下的下月开头）：
@@ -430,7 +430,7 @@
   padding: 10px 4px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   color: var(--text);
   cursor: pointer;
 }
@@ -470,7 +470,7 @@
   padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   color: var(--text);
   font-size: 13px;
   cursor: pointer;

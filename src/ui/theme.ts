@@ -24,10 +24,14 @@ export interface BaseTone {
   };
 }
 
+export type AppearanceMode = 'light' | 'dark';
+
 export interface Appearance {
   /** 已归一化、已保证对比度的 #rrggbb */
   accent: string;
   base: string;
+  /** 浅色 / 夜间。夜间模式的背景由主题色色相派生（明显着色） */
+  mode: AppearanceMode;
 }
 
 export interface ApplyResult {
@@ -122,7 +126,7 @@ const KEY = 'dr.appearance.v1';
 /** 给 index.html 的首屏脚本用：HTML 比主包先到，先按这份把 CSS 变量点上 */
 const VARS_KEY = 'dr.appearance.vars.v1';
 
-const DEFAULT_APPEARANCE: Appearance = { accent: DEFAULT_ACCENT, base: 'warm' };
+const DEFAULT_APPEARANCE: Appearance = { accent: DEFAULT_ACCENT, base: 'warm', mode: 'light' };
 
 function normalizeHex(input: string): string | null {
   const s = input.trim().replace(/^#/, '');
@@ -244,8 +248,33 @@ function baseTone(key: string): BaseTone {
   return BASE_TONES.find((b) => b.key === key) ?? BASE_TONES[0];
 }
 
+/**
+ * 夜间模式的中性色：由主题色的色相派生，明显着色。
+ *
+ * 取 accent 的色相 h 与饱和度 s，背景压到低亮度、保留中高饱和，于是深夜底色
+ * 也带着主题色色调（湖蓝主题→蓝调夜景，朱砂主题→暗红夜景）；文字接近白、只
+ * 微微着色，保证可读。灰度主题（石墨）饱和本来就低，自然落到近中性深灰。
+ * --primary 在深色底上提亮，链接 / 标记 / 边框才看得清。
+ */
+function darkVarsFor(accent: string): Record<string, string> {
+  const [h, s] = rgbToHsl(...parseHex(accent));
+  const dark = (l: number, sat = s) => hslToHex(h, Math.min(0.5, sat + 0.06), l);
+  return {
+    '--bg': dark(0.13, Math.min(0.5, s + 0.04)),
+    '--panel': dark(0.18),
+    '--side': dark(0.15),
+    '--border': dark(0.3),
+    '--text': dark(0.93, Math.min(0.2, s + 0.1)),
+    '--muted': dark(0.6, Math.min(0.22, s + 0.08)),
+    '--primary': dark(0.66, Math.min(0.7, s + 0.12)),
+    '--primary-dark': dark(0.58, Math.min(0.7, s + 0.12)),
+    '--fg': dark(0.93, Math.min(0.2, s + 0.1)),
+  };
+}
+
 /** base.css 里的同名变量；--fg 是日历等零星位置用的别名 */
 function varsFor(a: Appearance): Record<string, string> {
+  if (a.mode === 'dark') return darkVarsFor(a.accent);
   const base = baseTone(a.base).vars;
   return {
     '--primary': a.accent,
@@ -260,8 +289,9 @@ function varsFor(a: Appearance): Record<string, string> {
   };
 }
 
-function paint(vars: Record<string, string>): void {
+function paint(vars: Record<string, string>, mode: AppearanceMode): void {
   const root = document.documentElement;
+  root.setAttribute('data-mode', mode);
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
   // 手机浏览器地址栏/状态栏跟随主色，别让顶部还留着旧粉
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -276,7 +306,8 @@ export function getAppearance(): Appearance {
     const parsed = JSON.parse(raw) as Partial<Appearance>;
     const accent = typeof parsed.accent === 'string' ? normalizeHex(parsed.accent) : null;
     const base = BASE_TONES.some((b) => b.key === parsed.base) ? (parsed.base as string) : 'warm';
-    return { accent: accent ?? DEFAULT_ACCENT, base };
+    const mode = parsed.mode === 'dark' ? 'dark' : 'light';
+    return { accent: accent ?? DEFAULT_ACCENT, base, mode };
   } catch {
     return { ...DEFAULT_APPEARANCE };
   }
@@ -285,9 +316,13 @@ export function getAppearance(): Appearance {
 /** 应用并落盘；返回实际生效的值（浅色可能被自动加深） */
 export function applyAppearance(next: Appearance): ApplyResult {
   const { hex, adjusted } = readableAccent(next.accent);
-  const appearance: Appearance = { accent: hex, base: baseTone(next.base).key };
+  const appearance: Appearance = {
+    accent: hex,
+    base: baseTone(next.base).key,
+    mode: next.mode === 'dark' ? 'dark' : 'light',
+  };
   const vars = varsFor(appearance);
-  paint(vars);
+  paint(vars, appearance.mode);
   try {
     localStorage.setItem(KEY, JSON.stringify(appearance));
     localStorage.setItem(VARS_KEY, JSON.stringify(vars));
@@ -313,7 +348,7 @@ export function initAppearance(): void {
   } catch {
     return;
   }
-  paint(varsFor(getAppearance()));
+  paint(varsFor(getAppearance()), getAppearance().mode);
 }
 
 export function resetAppearance(): ApplyResult {
@@ -321,5 +356,5 @@ export function resetAppearance(): ApplyResult {
 }
 
 export function isDefaultAppearance(a: Appearance): boolean {
-  return a.accent === DEFAULT_ACCENT && a.base === 'warm';
+  return a.accent === DEFAULT_ACCENT && a.base === 'warm' && a.mode === 'light';
 }

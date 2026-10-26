@@ -216,7 +216,7 @@
   overflow: hidden;
   padding: 7px 10px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   color: var(--text);
   font-size: 13px;
   /* textarea 的 UA 默认行高是 normal，这里必须跟着用 normal */

@@ -17,7 +17,7 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fbfaf8;
+  background: var(--side);
   overscroll-behavior: contain;
 }
 
@@ -350,7 +350,7 @@
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   font-size: 13px;
 }
 
@@ -479,7 +479,7 @@
   font-size: 12.5px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--panel);
   cursor: pointer;
 }
 
@@ -521,7 +521,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   border-radius: 12px;
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--border);
 }
 
@@ -591,7 +591,7 @@
   color: var(--muted);
   border: 1px dashed var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--panel);
 }
 
 .aichat-activity-line::before {
@@ -712,7 +712,7 @@
   padding-bottom: 6px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   overflow: hidden;
 }
 
@@ -819,7 +819,7 @@
 
 .aichat-att-x:hover {
   color: #b42318;
-  background: #fff;
+  background: var(--panel);
 }
 
 /* 待发送的附件条：贴在输入框上方。自身不设死高，但要封顶，

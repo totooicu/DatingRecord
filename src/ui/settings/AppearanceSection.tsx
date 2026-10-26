@@ -44,6 +44,27 @@ export function AppearanceSection() {
 
   return (
     <div className="theme-page">
+      <Section title="外观模式" desc="深色模式的底色由主题色派生：选了湖蓝，夜景就偏蓝；选了朱砂，夜景就偏红。">
+        <div className="theme-mode">
+          <button
+            type="button"
+            className={appearance.mode === 'light' ? 'theme-mode-btn on' : 'theme-mode-btn'}
+            aria-pressed={appearance.mode === 'light'}
+            onClick={() => commit({ mode: 'light' })}
+          >
+            浅色
+          </button>
+          <button
+            type="button"
+            className={appearance.mode === 'dark' ? 'theme-mode-btn on' : 'theme-mode-btn'}
+            aria-pressed={appearance.mode === 'dark'}
+            onClick={() => commit({ mode: 'dark' })}
+          >
+            深色
+          </button>
+        </div>
+      </Section>
+
       <Section
         title="主题色"
         desc="按钮、链接、选中态都会换成这个颜色。颜色太浅时会自动加深，保证白字看得清。"

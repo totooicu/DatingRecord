@@ -743,7 +743,7 @@
   padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--panel);
 }
 
 .draft-name {
@@ -781,4 +781,32 @@
   flex: none;
   display: flex;
   gap: 6px;
+}
+
+/* 外观模式：浅色 / 深色 分段开关 */
+.theme-mode {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+
+.theme-mode-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 6px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.theme-mode-btn.on {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
 }
