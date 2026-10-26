@@ -222,7 +222,7 @@
 
 <div class="card">
   <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它是整机睡、被冻，还是被停 · 0.3.2-tune 起能读账本，0.3.3-tune 起才有三时钟探针和 60 秒闹钟</span></h2>
-  <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账）</label></div>
+  <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账 · 开着时策略和间隔都被压成每秒一次）</label></div>
   <div class="kv"><b>账本</b><span id="dg-stat">—</span></div>
   <div class="kv"><b>tick 覆盖率</b><span id="dg-cov">—</span></div>
   <div class="kv"><b>结论</b><span id="dg-verdict">—</span></div>
@@ -263,7 +263,7 @@
   // 本页的发布号与发布时间：每次改这个文件都成对往上加，配合「服务器上的本页」
   // 的 Last-Modified 一起看，就知道壳里跑的是不是最新页。
   // 时间同时存一份 epoch 毫秒——比较 Last-Modified 用 epoch，才不受时区影响。
-  var PAGE_VER = 'lab 10-26.10', PAGE_BUILD = '2026-10-26 23:58', PAGE_BUILD_MS = 1793030280000;
+  var PAGE_VER = 'lab 10-27.1', PAGE_BUILD = '2026-10-27 00:05', PAGE_BUILD_MS = 1793030700000;
   var LOAD_AT = Date.now();
   var BASE_MS = 1000, MAX_MS = 64000;
   var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
@@ -344,6 +344,14 @@
     if (sec < 60) return sec + ' 秒';
     if (sec < 3600) return Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒';
     return Math.floor(sec / 3600) + ' 小时 ' + Math.round((sec % 3600) / 60) + ' 分';
+  }
+  /** 毫秒间隔说人话：整秒就写「N 秒」，不到一秒写毫秒，退避中的 2/4/8 秒一眼能看出。 */
+  function fmtMs(ms) {
+    var v = Number(ms) || 0;
+    if (!v) return '—';
+    if (v < 1000) return v + ' ms';
+    var s = v / 1000;
+    return (s % 1 ? s.toFixed(1) : s) + ' 秒';
   }
   function lvlText(l) { return l === 'ok' ? '连续' : (l === 'warn' ? '有中断' : (l === 'err' ? '断线' : '未判定')); }
   function lvlCls(l) { return l === 'ok' ? 'ok' : (l === 'warn' ? 'warn' : (l === 'err' ? 'err' : '')); }
@@ -593,6 +601,7 @@
         ' → tracking=' + !!r.tracking + ' · 唤醒锁=' + (r.wakeLock ? '在手上' : '不在！') +
         (r.needPermission ? ' · 还缺定位权限' : ''), on ? 'ok' : '');
       if (on) { setTimeout(function () { pullJournal(0); }, 3000); }
+      refreshStatus();   // 开关一拨就把「壳的实际间隔 / 取证」状态拉回来，不用等下一次状态心跳
     }).catch(function (e) {
       if (isOldShell(e)) {
         $('dg-verdict').innerHTML = pill('warn', '壳太旧') +
@@ -980,6 +989,8 @@
       var lp = s.lastPoint || {};
       $('svc').textContent = (s.fineLocation ? '' : '缺前台权限 · ') +
         '点数 ' + (s.points || 0) + ' · rev ' + (s.rev || 0) +
+        ' · 壳的实际间隔 ' + fmtMs(s.intervalCurrentMs) +
+        (s.diag ? '（取证压成每秒，策略/间隔不生效）' : '') +
         (s.wakeLock ? ' · 唤醒锁开' : ' · 无唤醒锁') +
         (s.batteryOptimized ? ' · 电池未加白' : ' · 电池已加白');
       $('svc-tracking').innerHTML = s.tracking
@@ -1016,6 +1027,9 @@
       log('已推配置（' + why + '）：enabled=' + payload.enabled + ' threshold=' + state.cfg.thresholdM +
         ' strategy=' + state.cfg.strategy + ' diag=' + payload.diag + ' → tracking=' + !!r.tracking +
         (r.keptForDiag ? '（取证开着，壳拒绝停）' : ''), r.keptForDiag ? 'warn' : 'ok');
+      if (payload.diag) {
+        log('取证模式开着：壳把间隔固定成每秒一次，策略和基准/封顶这一版不会生效——想看退避，先把「取证模式」关掉', 'warn');
+      }
       return refreshStatus();
     }).catch(function (e) { log('推配置失败：' + e.message, 'err'); });
   }
