@@ -1,14 +1,15 @@
-// 轨迹提取 e2e：选图 → 提取 → AI 校准 → 三层对比 → 地图复现 → 存成定位文件。
+// 轨迹提取 e2e：选图 → 提取 → 自动画路径 → AI 校准 → 图层 → 擦除/补线 → 地图复现 → 存成定位文件。
 //
 // 覆盖这一页最容易坏掉的几处：
-//   T1 选图卡是按钮 + 拖拽区（不是裸的原生 file 控件），选中后显示文件名/尺寸
-//   T2 提取轨迹出结果，画布上真的画上了东西
-//   T3 AI 优化：先做参数自动校准，再把点列（带 index）+ 图片发给模型，拿回 edits 与思考过程
-//   T4 「原图 / 提取的点 / 自动连线 / AI 优化后的轨迹 / 手动路径」复选框真的控制图层（逐层开关画布内容变化）
+//   T1 两页签（图片·画路径 / 地图·复现与保存）+ 选图按钮（不是裸 file 控件），选中后显示文件名/尺寸
+//   T2 提取点只出点云，再「自动画路径」出轨迹，画布上真的画上了东西
+//   T3 AI 优化：图片 + 带 index 的点列发给模型，拿回 edits、思考过程与偏差
+//   T4 「原图 / 提取的点 / 自动路径 / AI 优化后的轨迹 / 手动路径」复选框真的控制图层
 //   T5 地图复现：地图初始化、可点起点、复现推进里程、可停止
 //   T6 保存为 .drloc：出现在「功能面板 → 定位 → 文件」里，点开能看到点数
 //   T7 放大 / 手动布线：A→B 沿轨迹导航、原路返回算重复、断网拉直线、撤销清空
-//   T8 距离聚类：两片互不相连的轨迹聚成 2 个连通簇、颜色分开、自动连线只簇内接
+//   T8 距离聚类：两片互不相连的轨迹聚成 2 个连通簇、颜色分开、自动画路径只簇内接
+//   T9 擦除点 / 撤销 / 补直线：直接改点云，改完轨迹层作废、点云可还原
 //
 // 依赖：先 `pnpm build`。自带静态服务器（dist）与假视觉模型服务，直接跑：
 //   node tools/e2e/lab-track-e2e.mjs
@@ -224,6 +225,25 @@ const toLocationFiles = async () => {
 
 const status = async () => (await p.locator('.lab-track-status').innerText()).replace(/\s+/g, ' ').trim();
 
+/** 页签：图片 · 画路径 / 地图 · 复现与保存 */
+const tabBtn = (re) => p.locator('.lab-track-tabs [role=tab]').filter({ hasText: re });
+
+const ensureImgTab = async () => {
+  const sel = await p.locator('.lab-track-tabs [role=tab]').first().getAttribute('aria-selected');
+  if (sel !== 'true') {
+    await tabBtn(/图片/).click();
+    await p.waitForTimeout(300);
+  }
+};
+
+/** 抽屉默认收起：点开再操作里面的控件 */
+const openDrawer = async (name) => {
+  const d = p.locator('.lab-track-drawers button').filter({ hasText: name });
+  const on = await d.evaluate((el) => el.classList.contains('on')).catch(() => false);
+  if (!on) await d.click();
+  await p.waitForTimeout(200);
+};
+
 /** 在画布上按「原图像素坐标」点一下（自动换算成当前 CSS 尺寸） */
 const clickImage = async (ix, iy) => {
   const c = p.locator('.lab-track-canvas');
@@ -310,11 +330,15 @@ await toLabTrack();
 
 const pick = p.locator('.lab-track-pick');
 check('T1 选图卡存在', (await pick.count()) === 1);
-const stepHeads = (await p.locator('.lab-track-stephead').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+const tabs = (await p.locator('.lab-track-tabs [role=tab]').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
 check(
-  'T1 页面按「提取点 → 画轨迹 → 地图复现」三步分组',
-  stepHeads.length === 3 && /提取点/.test(stepHeads[0]) && /画轨迹/.test(stepHeads[1]) && /地图复现/.test(stepHeads[2]),
-  JSON.stringify(stepHeads),
+  'T1 页面分成「图片 · 画路径 / 地图 · 复现与保存」两页签',
+  tabs.length === 2 && /图片/.test(tabs[0]) && /画路径/.test(tabs[0]) && /地图/.test(tabs[1]) && /保存/.test(tabs[1]),
+  JSON.stringify(tabs),
+);
+check(
+  'T1 默认停在图片页',
+  (await p.locator('.lab-track-tabs [role=tab]').first().getAttribute('aria-selected')) === 'true',
 );
 const pickBtn = p.locator('.lab-track-pickbtn');
 const btnBox = await pickBtn.boundingBox();
@@ -327,15 +351,18 @@ check(
   !!btnBox && btnBox.height >= 28 && btnStyle.pad !== '0px',
   `h=${btnBox?.height} bg=${btnStyle.bg} pad=${btnStyle.pad}`,
 );
-check('T1 原生 file 输入被隐藏', await p.locator('.lab-track-pick input[type=file]').evaluate((el) => el.hidden));
+check('T1 原生 file 输入被隐藏', await p.locator('.lab-track-pane input[type=file]').first().evaluate((el) => el.hidden));
 
-await p.locator('.lab-track-pick input[type=file]').setInputFiles({
+await p.locator('.lab-track-pane input[type=file]').first().setInputFiles({
   name: '两步路轨迹.svg',
   mimeType: 'image/svg+xml',
   buffer: Buffer.from(svg),
 });
-await p.waitForSelector('.lab-track-pick.has-file', { timeout: 8000 });
-check('T1 载入后显示文件名与尺寸', (await p.locator('.lab-track-pickname').innerText()).includes('两步路轨迹.svg'));
+await p.waitForSelector('.lab-track-stage', { timeout: 8000 });
+check(
+  'T1 载入后显示文件名与尺寸',
+  (await p.locator('.lab-track-filemeta .lab-track-pickname').innerText()).includes('两步路轨迹.svg'),
+);
 check('T1 状态栏显示尺寸', /已载入 600×600/.test(await status()), await status());
 
 /* ---------------- T2 提取 ---------------- */
@@ -349,34 +376,36 @@ await p.waitForFunction(
 );
 const pointStatus = await status();
 check('T2 只提取点：报出点数/骨架链、且没有轨迹', /提取点完成：\d+ 点/.test(pointStatus), pointStatus);
-check('T2 提取点阶段不产生轨迹', /还没有连线/.test(await p.locator('.lab-track-gaps').innerText()), await p.locator('.lab-track-gaps').innerText());
+check('T2 提取点阶段不产生轨迹', /还没有画路径/.test(await p.locator('.lab-track-gaps').innerText()), await p.locator('.lab-track-gaps').innerText());
 const pointPts = Number((/提取点完成：(\d+) 点/.exec(pointStatus) ?? [])[1] ?? 0);
 check('T2 点云真的画到了画布上', (await canvasSum()) !== beforeExtract && pointPts > 0, `points=${pointPts}`);
 const pointInfo = await p.locator('.lab-track-pointsinfo').innerText();
-check('T2 第一步的信息行给出点数/链数/丢弃', /\d+ 点 · \d+ 条骨架链/.test(pointInfo), pointInfo.replace(/\s+/g, ' '));
+check('T2 点云信息行给出点数/链数/丢弃', /\d+ 点 · \d+ 条骨架链/.test(pointInfo), pointInfo.replace(/\s+/g, ' '));
 check('T2 状态栏报出连通簇', /个连通簇/.test(pointStatus), pointStatus);
 check('T2 点云按所属连通簇上色', (await countColor('#00897B')) > 0, `teal=${await countColor('#00897B')}`);
 
-await p.getByRole('button', { name: '自动连线' }).click();
+await p.getByRole('button', { name: '自动画路径' }).click();
 await p.waitForFunction(
-  () => /连线完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  () => /画路径完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
   null,
   { timeout: 30000 },
 );
 check(
-  'T2 自动连线得到轨迹段与点数',
-  /连线完成：\d+ 个连通簇 \/ \d+ 段 \/ \d+ 点/.test(await status()),
+  'T2 自动画路径得到轨迹段与点数',
+  /画路径完成：\d+ 个连通簇 \/ \d+ 段 \/ \d+ 点/.test(await status()),
   await status(),
 );
-const linkM = /连线完成：(\d+) 个连通簇 \/ (\d+) 段/.exec(await status());
-check('T2 连线按簇分段（段数 ≤ 簇数）', !!linkM && Number(linkM[2]) <= Number(linkM[1]), await status());
+const linkM = /画路径完成：(\d+) 个连通簇 \/ (\d+) 段/.exec(await status());
+check('T2 按簇分段（段数 ≤ 簇数）', !!linkM && Number(linkM[2]) <= Number(linkM[1]), await status());
 const segText = await p.locator('.lab-track-gaps').innerText();
 check('T2 识别到轨迹段', /轨迹 \d+ 段/.test(segText), segText.replace(/\s+/g, ' '));
 const afterExtract = await canvasSum();
-check('T2 连线后画布又变了', afterExtract !== beforeExtract);
+check('T2 画路径后画布又变了', afterExtract !== beforeExtract);
 
 /* ---------------- T3 AI 校准 ---------------- */
 
+// 偏差与图层都在「图层与偏差」抽屉里
+await openDrawer('图层与偏差');
 const beforeAI = await canvasSum();
 await p.getByRole('button', { name: 'AI 优化' }).click();
 await p.waitForFunction(
@@ -428,10 +457,10 @@ check('T4 关掉点云层后画布变了', noPts !== allOn);
 await layerToggle(/^提取的点/).check();
 check('T4 点云层可重新打开', (await canvasSum()) === allOn);
 
-await layerToggle(/^自动连线/).uncheck();
+await layerToggle(/^自动路径/).uncheck();
 const noAlg = await canvasSum();
-check('T4 关掉自动连线层后画布变了', noAlg !== allOn);
-await layerToggle(/^自动连线/).check();
+check('T4 关掉自动路径层后画布变了', noAlg !== allOn);
+await layerToggle(/^自动路径/).check();
 
 /* ---------------- T7 放大 / 手动布线 ---------------- */
 
@@ -454,14 +483,17 @@ check('T7 手动布线模式可开启', (await p.getByRole('button', { name: '�
 
 // A 在螺旋外圈起点，B 是同一段轨迹中段：应该沿轨迹走，而不是拉直线
 await clickImage(CURVE[2].x, CURVE[2].y);
-check('T7 第一下选起点 A', /起点 A 已选/.test(await manInfo()), await manInfo());
+check('T7 第一下选起点 A', /起点 A 已选/.test(await status()), await status());
 await clickImage(CURVE[30].x, CURVE[30].y);
 const routeStatus = await status();
 check('T7 A→B 沿已提取的轨迹导航', /沿已提取的轨迹走过去/.test(routeStatus), routeStatus);
 check('T7 统计显示 1 段沿轨迹', /沿轨迹 1 · 直线 0/.test(await manInfo()), await manInfo());
 const manualDrawn = await canvasSum();
 check('T7 手动路径画进画布', manualDrawn !== beforeManual);
-check('T7 手动路径可当地图方案', await p.locator('.lab-track-mapbar').getByRole('button', { name: '手动路径' }).isEnabled());
+check(
+  'T7 手动路径可当地图方案',
+  await p.locator('.lab-track-mapbar .loc-seg button').filter({ hasText: '手动路径' }).isEnabled(),
+);
 
 // 原路返回：坐标重复出现，长度按两遍算
 await clickImage(CURVE[2].x, CURVE[2].y);
@@ -490,6 +522,10 @@ check('T7 手动路径有大小', manualCount > 10 && /沿轨迹 1/.test(manualI
 
 /* ---------------- T5 地图复现 ---------------- */
 
+// 地图与保存都在第二个页签
+await tabBtn(/地图/).click();
+await p.waitForTimeout(700);
+check('T5 地图页签被选中', (await p.locator('.lab-track-tabs [role=tab]').nth(1).getAttribute('aria-selected')) === 'true');
 check('T5 地图已初始化', (await p.locator('.lab-track-map.leaflet-container').count()) === 1);
 await p.getByRole('button', { name: '在地图上点起点' }).click();
 await p.locator('.lab-track-map').click({ position: { x: 180, y: 150 } });
@@ -545,7 +581,7 @@ check('T6 打开后点数对得上', /(\d+) 个点/.test(head) && Number(/(\d+) 
 /* ---------------- T8 两片网络：先聚类，再按簇分段画 ---------------- */
 
 // 两个互不相连的半圆弧，中间空 120px（默认断口阈值 60px）：
-// 聚类必须认出「2 个连通网络」，自动连线不能在中间硬接一条假线。
+// 聚类必须认出「2 个连通网络」，自动画路径不能在中间硬接一条假线。
 const arc = (cx, cy, a0, a1) =>
   Array.from({ length: 48 }, (_, i) => {
     const a = a0 + ((a1 - a0) * i) / 47;
@@ -560,7 +596,8 @@ const svgTwo = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"
 </svg>`;
 
 await toLabTrack();
-await p.locator('.lab-track-pick input[type=file]').setInputFiles({
+await ensureImgTab();
+await p.locator('.lab-track-pane input[type=file]').first().setInputFiles({
   name: '两片轨迹.svg',
   mimeType: 'image/svg+xml',
   buffer: Buffer.from(svgTwo),
@@ -581,15 +618,75 @@ const teal = await countColor('#00897B');
 const purple = await countColor('#8E24AA');
 check('T8 两簇在画布上颜色不同', teal > 0 && purple > 0, `teal=${teal} purple=${purple}`);
 
-await p.getByRole('button', { name: '自动连线' }).click();
+await p.getByRole('button', { name: '自动画路径' }).click();
 await p.waitForFunction(
-  () => /连线完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  () => /画路径完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
   null,
   { timeout: 30000 },
 );
 const twoLink = await status();
-check('T8 自动连线仍是 2 簇 2 段（没有跨簇硬接）', /2 个连通簇 \/ 2 段/.test(twoLink), twoLink);
+check('T8 自动画路径仍是 2 簇 2 段（没有跨簇硬接）', /2 个连通簇 \/ 2 段/.test(twoLink), twoLink);
 check('T8 面板同样报 2 段', /轨迹 2 段/.test(await p.locator('.lab-track-gaps').innerText()), await p.locator('.lab-track-gaps').innerText());
+
+/* ---------------- T9 擦除点 / 撤销 / 补直线 ---------------- */
+
+const ptsNow = async () => {
+  const t = (await p.locator('.lab-track-pointsinfo').innerText()).trim();
+  return Number((/^(\d+) 点/.exec(t) ?? [])[1] ?? -1);
+};
+const pointCount0 = await ptsNow();
+
+// 擦除：画笔 20px 落在左半圆弧的中段，擦掉一圈点
+await p.getByRole('button', { name: '擦除点' }).click();
+await p.waitForTimeout(200);
+check('T9 擦除模式带画笔滑块', (await p.locator('.lab-track-brush input[type=range]').count()) === 1);
+await clickImage(60, 300);
+const eraseStatus = await status();
+const pointCount1 = await ptsNow();
+check('T9 擦掉画笔范围内的点', /擦掉 \d+ 个点/.test(eraseStatus) && pointCount1 < pointCount0, `${pointCount0}→${pointCount1} ${eraseStatus}`);
+check(
+  'T9 点云一改，已画的路径作废',
+  /还没有画路径/.test(await p.locator('.lab-track-gaps').innerText()),
+  await p.locator('.lab-track-gaps').innerText(),
+);
+
+// 撤销：点云回到擦之前
+await p.getByRole('button', { name: '撤销擦除 / 补线' }).click();
+await p.waitForTimeout(250);
+check(
+  'T9 撤销擦除后点数复原',
+  (await ptsNow()) === pointCount0 && /已撤销/.test(await status()),
+  `${await ptsNow()} vs ${pointCount0} · ${await status()}`,
+);
+check('T9 撤销完按钮收起', (await p.getByRole('button', { name: '撤销擦除 / 补线' }).count()) === 0);
+
+// 补直线：两下点，把一段线接进点云
+await p.getByRole('button', { name: '补直线' }).click();
+await p.waitForTimeout(200);
+await clickImage(300, 120);
+check('T9 补直线第一下选出起点', /已选起点/.test(await status()), await status());
+await clickImage(300, 480);
+const pointCount2 = await ptsNow();
+check(
+  'T9 补的直线接进点云',
+  /补了一条 \d+px 的直线/.test(await status()) && pointCount2 > pointCount0,
+  `${pointCount0}→${pointCount2} ${await status()}`,
+);
+const lineGrid = await p.evaluate(() => {
+  const c = document.querySelector('.lab-track-canvas');
+  const { data } = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+  // 两片弧都在 x≤150 / x≥450，中轴 x≈300 本来全是白色底图；
+  // 补的竖线画上去以后，这一列应该有成片的非白像素
+  let n = 0;
+  for (let y = 130; y < 470; y += 1) {
+    for (let x = 295; x <= 305; x += 1) {
+      const i = (y * c.width + x) * 4;
+      if (data[i] < 240 || data[i + 1] < 240 || data[i + 2] < 240) n += 1;
+    }
+  }
+  return n;
+});
+check('T9 补的线真的画在画布上', lineGrid > 100, `band=${lineGrid}`);
 
 console.log(`\n结果：${failures.length === 0 ? '全部通过' : `${failures.length} 项失败`}`);
 if (failures.length) console.log(failures.map((f) => ` - ${f}`).join('\n'));

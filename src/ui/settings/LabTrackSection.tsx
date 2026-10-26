@@ -61,6 +61,7 @@ import {
 import { clusterChains, clusterColor, type ClusterResult } from '../../core/tools/trackCluster';
 import { createLocation } from '../../core/location/locationFile';
 import { locateMe } from '../../core/runtime/locationAuto';
+import { addLinePath, erasePoints } from '../../core/tools/trackEdit';
 import { listModels, type AiModel } from '../../core/ai';
 import { bump } from '../../store';
 import { LabHead } from './LabEdgeSection';
@@ -134,6 +135,8 @@ interface ManualLeg {
 
 /** 点选时离轨迹多远以内算「点在轨迹上」 */
 const SNAP_PX = 18;
+/** 手动布线的转角权重：直行不加钱，急转加价，路口就不会来回切 */
+const TURN_K = 0.8;
 
 export function LabTrackSection() {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -167,9 +170,18 @@ export function LabTrackSection() {
   const [models, setModels] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState('');
   // 手动布线：A 是上一次点的位置，点 B 就自动从 A 走到 B
-  const [manualMode, setManualMode] = useState(false);
+  const [mode, setMode] = useState<'browse' | 'manual' | 'erase' | 'line'>('browse');
+  const manualMode = mode === 'manual';
   const [manualLegs, setManualLegs] = useState<ManualLeg[]>([]);
   const [manualAnchor, setManualAnchor] = useState<{ idx: number | null; pt: TrackPoint } | null>(null);
+  // 擦除半径 / 补线起点 / 点云历史（撤销用）
+  const [brush, setBrush] = useState(20);
+  const [lineStart, setLineStart] = useState<TrackPoint | null>(null);
+  const [dotHistory, setDotHistory] = useState<ExtractPointsResult[]>([]);
+  const [cursor, setCursor] = useState<TrackPoint | null>(null);
+  // 两个视图：图片（画路径）/ 地图（复现 + 保存）
+  const [tab, setTab] = useState<'img' | 'map'>('img');
+  const [drawer, setDrawer] = useState<'' | 'params' | 'layers'>('');
   // 缩放：'fit' = 适应窗口；数字 = 相对原图的倍数
   const [zoom, setZoom] = useState<number | 'fit'>('fit');
   const viewRef = useRef<HTMLDivElement | null>(null);
@@ -225,14 +237,96 @@ export function LabTrackSection() {
     };
   }, [manualLegs, manualPts]);
 
+  /** 点/连线一变，AI 层与手动路径都作废（下标和段号都指向旧结果） */
+  const clearTrackLayers = useCallback(() => {
+    setResult(null);
+    setAi(null);
+    setAiPts([]);
+    setAiMarks([]);
+    setAiCount({ add: 0, del: 0, move: 0 });
+    setAiThink('');
+    setAiLog('');
+    setManualLegs([]);
+    setManualAnchor(null);
+    setCalibrated(false);
+  }, []);
+
+  /** 擦除 / 补线：改的是点云本身，先记一份历史，再清掉依赖点云的轨迹层 */
+  const applyDot = useCallback(
+    (next: ExtractPointsResult, why: string) => {
+      if (dotRes) setDotHistory((h) => [...h.slice(-9), dotRes]);
+      setDotRes(next);
+      clearTrackLayers();
+      setStatus(why);
+    },
+    [clearTrackLayers, dotRes],
+  );
+
+  const undoDot = useCallback(() => {
+    const prev = dotHistory[dotHistory.length - 1];
+    if (!prev) return;
+    setDotHistory(dotHistory.slice(0, -1));
+    setDotRes(prev);
+    clearTrackLayers();
+    setStatus(`已撤销：点云回到 ${prev.points.length} 点`);
+  }, [clearTrackLayers, dotHistory]);
+
+  /** 点在附近已有轨迹上就吸附过去，让补的线能和原轨迹接上 */
+  const snapDot = useCallback(
+    (x: number, y: number): TrackPoint => {
+      let best: TrackPoint = { x, y };
+      let bd = Math.max(12, brush);
+      for (const p of dotRes?.points ?? []) {
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < bd) {
+          bd = d;
+          best = p;
+        }
+      }
+      return { x: best.x, y: best.y };
+    },
+    [brush, dotRes],
+  );
+
   const onCanvasClick = useCallback(
     (e: MouseEvent<HTMLCanvasElement>) => {
-      if (!manualMode) return;
       const c = overlayRef.current;
       if (!c || !imgSize) return;
       const rect = c.getBoundingClientRect();
       const x = (e.clientX - rect.left) * (c.width / rect.width);
       const y = (e.clientY - rect.top) * (c.height / rect.height);
+
+      // 擦除：点一下删掉画笔范围内的点，之后重新聚类/重连
+      if (mode === 'erase') {
+        if (!dotRes?.points.length) {
+          showToast('先「提取点」，才有东西可擦', 2600);
+          return;
+        }
+        const next = erasePoints(dotRes, x, y, brush);
+        const gone = dotRes.points.length - next.points.length;
+        applyDot(next, gone ? `擦掉 ${gone} 个点（剩 ${next.points.length} 点），点「自动画路径」重连` : '画笔范围内没有点');
+        return;
+      }
+
+      // 补直线：点两下，把漏掉的一段直接补进点云
+      if (mode === 'line') {
+        if (!dotRes?.points.length) {
+          showToast('先「提取点」，再补线', 2600);
+          return;
+        }
+        const p = snapDot(x, y);
+        if (!lineStart) {
+          setLineStart(p);
+          setStatus('补直线：已选起点，再点终点（这里漏提取的红线会被接上）');
+          return;
+        }
+        const next = addLinePath(dotRes, lineStart, p);
+        setLineStart(null);
+        applyDot(next, `补了一条 ${Math.round(Math.hypot(p.x - lineStart.x, p.y - lineStart.y))}px 的直线，点「自动画路径」重连`);
+        return;
+      }
+
+      if (mode !== 'manual') return;
       const hit = graph ? nearestNode(graph, x, y, SNAP_PX) : null;
       const target: TrackPoint = hit && graph ? graph.pts[hit.idx] : { x, y };
 
@@ -246,7 +340,7 @@ export function LabTrackSection() {
         return;
       }
 
-      const routed = graph && hit && manualAnchor.idx != null ? shortestPath(graph, manualAnchor.idx, hit.idx) : null;
+      const routed = graph && hit && manualAnchor.idx != null ? shortestPath(graph, manualAnchor.idx, hit.idx, TURN_K) : null;
       const leg = routed ?? straightLine(manualAnchor.pt, target);
       if (leg.length < 2) return;
       setManualLegs((prev) => [...prev, { pts: leg, straight: !routed }]);
@@ -256,7 +350,7 @@ export function LabTrackSection() {
         `手动布线：${routed ? '沿已提取的轨迹走过去' : '两点不在同一网络，直接拉直线'}（${Math.round(len)}px）`,
       );
     },
-    [graph, imgSize, manualAnchor, manualMode],
+    [applyDot, brush, dotRes, graph, imgSize, lineStart, manualAnchor, mode, snapDot],
   );
 
   /* ---------------- 放大 / 平移 ---------------- */
@@ -368,9 +462,29 @@ export function LabTrackSection() {
       }
     }
 
+    // 擦除画笔：跟着鼠标画一个圈，让人知道这一下会擦掉多大范围
+    if (mode === 'erase' && cursor) {
+      ctx.beginPath();
+      ctx.arc(cursor.x, cursor.y, brush, 0, Math.PI * 2);
+      ctx.strokeStyle = cssVar('--danger', '#e04b4b');
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // 补直线的起点：先点一下的那个点
+    if (mode === 'line' && lineStart) {
+      ctx.beginPath();
+      ctx.arc(lineStart.x, lineStart.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#7E57C2';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     // AI 改过的地方标出来：新增绿点、移动蓝圈、删除红叉（画在原位置）
-    if (layers.ai && aiMarks.length) {
-      for (const m of aiMarks) {
+    if (layers.ai && aiMarks.length) {      for (const m of aiMarks) {
         ctx.beginPath();
         if (m.kind === 'del') {
           ctx.strokeStyle = cssVar('--danger', '#e04b4b');
@@ -392,7 +506,21 @@ export function LabTrackSection() {
         }
       }
     }
-  }, [aiMarks, algPath, aiPts, clusters, dotRes, layers, manualAnchor, manualLegs, result]);
+  }, [
+    aiMarks,
+    algPath,
+    aiPts,
+    brush,
+    clusters,
+    cursor,
+    dotRes,
+    layers,
+    lineStart,
+    manualAnchor,
+    manualLegs,
+    mode,
+    result,
+  ]);
 
   useEffect(() => {
     drawOverlay();
@@ -425,9 +553,11 @@ export function LabTrackSection() {
       setManualLegs([]);
       setManualAnchor(null);
       setCalibrated(false);
+      setDotHistory([]);
+      setLineStart(null);
       setStatus(
         r.points.length
-          ? `提取点完成：${r.points.length} 点 · ${r.chains.length} 条骨架链 · ${cl} 个连通簇（${r.stats.ms.toFixed(0)}ms）。下一步去「画轨迹」连线`
+          ? `提取点完成：${r.points.length} 点 · ${r.chains.length} 条骨架链 · ${cl} 个连通簇（${r.stats.ms.toFixed(0)}ms）。下一步点「自动画路径」`
           : '没提取到点：把「红色阈值」调低、或把「最小面积」调小',
       );
       return r;
@@ -477,8 +607,8 @@ export function LabTrackSection() {
         if (cal.coverage >= 0) parts.push(`覆盖率 ${(cal.coverage * 100).toFixed(0)}%`);
         setStatus(
           r.segments.length
-            ? `连线完成：${parts.join(' · ')}（${r.stats.ms.toFixed(0)}ms）`
-            : '连线没得到轨迹：把「断口阈值」调大、或把「最小面积」调小',
+            ? `画路径完成：${parts.join(' · ')}（${r.stats.ms.toFixed(0)}ms）`
+            : '没画出路径：把「断口阈值」调大、或把「最小面积」调小',
         );
       }
       return r;
@@ -531,7 +661,7 @@ export function LabTrackSection() {
       setStatus(
         `自动校准完成：采用得分 ${best.score.toFixed(3)} 的那组参数（${pr.points.length} 点、${pr.chains.length} 条骨架链、${
           clusterChains(pr.chains, { ...opts, ...best.patch }.gapPx).clusters.length
-        } 个连通簇），下一步去「画轨迹」连线`,
+        } 个连通簇），下一步点「自动画路径」`,
       );
       out = { res: pr, patch: best.patch };
     }
@@ -686,7 +816,10 @@ export function LabTrackSection() {
         setCalibrated(false);
         setManualLegs([]);
         setManualAnchor(null);
-        setManualMode(false);
+        setMode('browse');
+        setDotHistory([]);
+        setLineStart(null);
+        setTab('img');
         setZoom('fit');
         setStatus(`已载入 ${img.width}×${img.height}，点「提取点」开始`);
       };
@@ -715,9 +848,10 @@ export function LabTrackSection() {
       const sy = rc.height / rect.height;
       const x = Math.round((e.clientX - rect.left) * sx);
       const y = Math.round((e.clientY - rect.top) * sy);
+      if (mode === 'erase' || mode === 'line') setCursor({ x, y });
       setCoord(mPerPx > 0 ? `像素 (${x}, ${y}) ≈ (${(x * mPerPx).toFixed(0)}m, ${(y * mPerPx).toFixed(0)}m)` : `像素 (${x}, ${y})`);
     },
-    [mPerPx],
+    [mPerPx, mode],
   );
 
   /* ---------------- 地图复现 ---------------- */
@@ -932,55 +1066,134 @@ export function LabTrackSection() {
   const canAI = !!imgSize && !busy;
   const aiGeoStart = ai?.startGeo ?? null;
 
-  return (
-    <div className="lab-page">
-      <LabHead title="轨迹提取" subKey="labTrack" />
+  const modeHint =
+    mode === 'manual'
+      ? manualAnchor
+        ? '起点 A 已选：点下一个点，自动沿轨迹走过去'
+        : '点轨迹上的起点 A（18px 内自动吸附）'
+      : mode === 'erase'
+        ? '点图上误检的红点/图标，擦掉后重新画路径'
+        : mode === 'line'
+          ? '点两下补一条漏掉的红线（端点会自动吸附到附近轨迹）'
+          : '浏览：滚轮 / 双指缩放，拖动平移';
 
-      <p className="muted small lab-track-lead">
-        把两步路 App 的截图拖进来，分三步走：先只提取点（红色阈值 + 骨架形状校准，留下轨迹上的像素，
-        还不连线）；再画轨迹（自动连线 / AI 优化 / 手动点 A、点 B 让系统沿轨迹导航）；最后落到地图上复现，
-        满意了直接存成本库的定位文件。图片只在你浏览器里处理。
-      </p>
+  return (
+    <div className="lab-page lab-track">
+      <LabHead title="轨迹提取" subKey="labTrack" />
 
       <div className="lab-track-status">{status}</div>
 
-      {/* ① 提取点 */}
-      <section className="lab-track-step">
-        <h2 className="lab-track-stephead">
-          <span className="lab-track-stepno">1</span>
-          提取点
-          <em>选图 → 阈值筛红 → 连通域形状校准：先只留下点，再按距离聚成连通网络，不连线</em>
-        </h2>
-
-        {/* 选图：一个真正的按钮 + 拖拽区，别让人去点一个没有样式的原生控件 */}
-        <div
-          className={`lab-track-pick${dragging ? ' is-drag' : ''}${hasImageNow(imgSize) ? ' has-file' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          const f = e.dataTransfer.files?.[0];
-          if (f) loadFile(f);
-        }}
-      >
-        <button type="button" className="btn btn-primary lab-track-pickbtn" onClick={() => fileRef.current?.click()}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <rect x="3.2" y="4.6" width="17.6" height="14.8" rx="2" />
-            <circle cx="8.6" cy="9.6" r="1.6" />
-            <path d="M4.4 17l4.8-4.6 3.6 3.4 2.8-2.6 4 3.8" />
-          </svg>
-          选择截图
+      <div className="lab-track-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          className={tab === 'img' ? 'on' : undefined}
+          aria-selected={tab === 'img'}
+          onClick={() => setTab('img')}
+        >
+          图片 · 画路径
         </button>
-        <div className="lab-track-pickmeta">
-          <div className="lab-track-pickname">{imgSize ? fileName || '已载入截图' : '把两步路截图拖到这里，或点左边选一张'}</div>
-          <div className="muted small">
-            {imgSize ? `${imgSize.w}×${imgSize.h} · 只在本机处理` : 'PNG / JPG · 图片不上传，只发给用户自己配置的模型'}
+        <button
+          type="button"
+          role="tab"
+          className={tab === 'map' ? 'on' : undefined}
+          aria-selected={tab === 'map'}
+          onClick={() => {
+            setTab('map');
+            setTimeout(() => mapRef.current?.invalidateSize(), 80);
+          }}
+        >
+          地图 · 复现与保存
+        </button>
+      </div>
+
+      <div className={`lab-track-pane${tab === 'img' ? '' : ' is-off'}`}>
+        {!imgSize ? (
+          <div
+            className={`lab-track-pick${dragging ? ' is-drag' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) loadFile(f);
+            }}
+          >
+            <button type="button" className="btn btn-primary lab-track-pickbtn" onClick={() => fileRef.current?.click()}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3.2" y="4.6" width="17.6" height="14.8" rx="2" />
+                <circle cx="8.6" cy="9.6" r="1.6" />
+                <path d="M4.4 17l4.8-4.6 3.6 3.4 2.8-2.6 4 3.8" />
+              </svg>
+              选择截图
+            </button>
+            <div className="lab-track-pickmeta">
+              <div className="lab-track-pickname">把两步路截图拖到这里，或点左边选一张</div>
+              <div className="muted small">PNG / JPG · 图片不上传，只发给用户自己配置的模型</div>
+            </div>
           </div>
+        ) : (
+          <div className="lab-track-filemeta muted small">
+            <span className="lab-track-pickname">{fileName || '已载入截图'}</span>
+            <span>
+              {imgSize.w}×{imgSize.h} · 只在本机处理
+            </span>
+          </div>
+        )}
+        {/* 画布始终挂着：首次选图时 loadFile 要靠 overlayRef 写尺寸，卸掉就永远加载不进来 */}
+        <div className={`lab-track-stage${imgSize ? '' : ' is-off'}`}>
+          {/* 离屏画布：载入时把原图拍成像素，之后取点/取色都读它 */}
+          <canvas ref={origCanvasRef} hidden />
+          <div className="lab-track-view" ref={viewRef}>
+            <canvas
+              ref={overlayRef}
+              className={`lab-track-canvas${mode !== 'browse' ? ' is-editing' : ''}`}
+              onMouseMove={onMove}
+              onMouseLeave={() => setCursor(null)}
+              onClick={onCanvasClick}
+              style={
+                zoom === 'fit' || !imgSize
+                  ? undefined
+                  : { width: `${Math.round(imgSize.w * zoom)}px`, maxWidth: 'none' }
+              }
+            />
+          </div>
+          <div className="lab-track-zoombar">
+            <button className="btn btn-ghost" onClick={() => zoomBy(1 / 1.5)} title="缩小">
+              −
+            </button>
+            <span className="lab-track-val">{zoom === 'fit' ? '适应' : `${Math.round(zoom * 100)}%`}</span>
+            <button className="btn btn-ghost" onClick={() => zoomBy(1.5)} title="放大">
+              +
+            </button>
+            <button className="btn btn-ghost" onClick={() => applyZoom('fit')}>
+              适应窗口
+            </button>
+            <button className="btn btn-ghost" onClick={() => applyZoom(1)}>
+              1:1
+            </button>
+            <span className="lab-track-coord">{coord}</span>
+          </div>
+          {mode === 'erase' && (
+            <label className="lab-track-brush">
+              画笔
+              <input
+                type="range"
+                min={8}
+                max={60}
+                step={2}
+                value={brush}
+                onChange={(e) => setBrush(Number(e.target.value))}
+              />
+              <span className="lab-track-val">{brush}px</span>
+            </label>
+          )}
         </div>
+
         <input
           ref={fileRef}
           type="file"
@@ -992,18 +1205,134 @@ export function LabTrackSection() {
             e.target.value = '';
           }}
         />
-      </div>
 
-        <div className="lab-track-bar">
+        <div className="lab-track-modes">
+          <button
+            type="button"
+            className={mode === 'manual' ? 'on' : undefined}
+            aria-pressed={mode === 'manual'}
+            disabled={!imgSize}
+            onClick={() => {
+              setMode(mode === 'manual' ? 'browse' : 'manual');
+              setManualAnchor(null);
+              setLineStart(null);
+              if (mode !== 'manual') setLayers((l) => ({ ...l, man: true }));
+              setStatus(
+                mode === 'manual'
+                  ? '已结束手动布线'
+                  : graph
+                    ? '手动布线：点轨迹上的起点 A，再点 B，系统自动从 A 导航到 B'
+                    : '手动布线：还没有画好的路径，点两下只能拉直线（先「自动画路径」才能沿轨迹走）',
+              );
+            }}
+          >
+            {manualMode ? '结束布线' : '手动布线'}
+          </button>
+          <button
+            type="button"
+            className={mode === 'erase' ? 'on' : undefined}
+            aria-pressed={mode === 'erase'}
+            disabled={!imgSize || !dotRes?.points.length}
+            onClick={() => {
+              setMode(mode === 'erase' ? 'browse' : 'erase');
+              setLineStart(null);
+              setStatus(
+                mode === 'erase' ? '已结束擦除' : '擦除：点图上误检的红点/图标，擦完重新「自动画路径」',
+              );
+            }}
+          >
+            擦除点
+          </button>
+          <button
+            type="button"
+            className={mode === 'line' ? 'on' : undefined}
+            aria-pressed={mode === 'line'}
+            disabled={!imgSize || !dotRes?.points.length}
+            onClick={() => {
+              setMode(mode === 'line' ? 'browse' : 'line');
+              setLineStart(null);
+              setStatus(mode === 'line' ? '已结束补线' : '补直线：点两下，把漏提取的一段接上');
+            }}
+          >
+            补直线
+          </button>
+          {manualMode && (
+            <>
+              <button
+                className="btn btn-ghost"
+                disabled={!manualLegs.length}
+                onClick={() => {
+                  setManualLegs((prev) => {
+                    const next = prev.slice(0, -1);
+                    const last = next[next.length - 1];
+                    if (!last) {
+                      setManualAnchor(null);
+                    } else {
+                      const end = last.pts[last.pts.length - 1];
+                      const hit = graph ? nearestNode(graph, end.x, end.y, SNAP_PX) : null;
+                      setManualAnchor({ idx: hit ? hit.idx : null, pt: end });
+                    }
+                    return next;
+                  });
+                }}
+              >
+                撤销一段
+              </button>
+              <button
+                className="btn btn-ghost"
+                disabled={!manualLegs.length}
+                onClick={() => {
+                  setManualLegs([]);
+                  setManualAnchor(null);
+                  setStatus('手动路径已清空');
+                }}
+              >
+                清空手动
+              </button>
+            </>
+          )}
+          {dotHistory.length > 0 && (
+            <button className="btn btn-ghost" onClick={undoDot}>
+              撤销擦除 / 补线
+            </button>
+          )}
+          <span className="muted small lab-track-modehint">{modeHint}</span>
+          {(manualMode || manualLegs.length > 0) && (
+            <span className="lab-track-maninfo">
+              {manualLegs.length
+                ? `${manualLegs.length} 段（沿轨迹 ${manStats.along} · 直线 ${manStats.line}）· ${manualPts.length} 点 · ${fmtLen(
+                    manStats.lenPx * mPerPx,
+                  )}${manStats.dupPts ? ` · 重复经过 ${manStats.dupPts} 点` : ''}`
+                : '手动路径是「A→B 沿轨迹导航」：同一条路可以反复经过，长度按走两遍算'}
+            </span>
+          )}
+        </div>
+
+        <div className="lab-track-actions">
           <button className="btn btn-primary" disabled={!imgSize || !!busy} onClick={() => runPoints()}>
             {busy === 'extract' ? '提取中…' : '提取点'}
           </button>
-          <button className="btn" disabled={!imgSize || !!busy} onClick={autoCalibrate}>
-            {busy === 'auto' ? '校准中…' : '参数自动校准'}
+          <button
+            className="btn btn-primary"
+            disabled={!dotRes?.chains.length || !!busy}
+            onClick={() => autoLink()}
+            title="按连通簇在点图上找最长的一条路，短枝丢掉、长枝按往返"
+          >
+            {busy === 'link' ? '画路径中…' : '自动画路径'}
           </button>
+          <button className="btn" disabled={!canAI} onClick={aiOptimize} title="让视觉模型对照原图增删改点">
+            {busy === 'ai' ? 'AI 优化中…' : 'AI 优化'}
+          </button>
+          <button className="btn" disabled={!imgSize || !!busy} onClick={autoCalibrate}>
+            {busy === 'auto' ? '校准中…' : '自动校准'}
+          </button>
+          {imgSize && (
+            <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>
+              换图
+            </button>
+          )}
         </div>
 
-        {/* 第一步的产出：只有点和短链，还没有轨迹 */}
         <div className="muted small lab-track-pointsinfo">
           {dotRes
             ? `${dotRes.points.length} 点 · ${dotRes.chains.length} 条骨架链 · ${clusters?.clusters.length ?? 0} 个连通簇（最大 ${clusters?.clusters[0]?.points ?? 0} 点）· 红色像素 ${dotRes.stats.redPx} · 丢弃 ${dotRes.stats.droppedSegments} 个色块`
@@ -1021,551 +1350,425 @@ export function LabTrackSection() {
             {clusters.clusters.length > 6 ? ' …' : ''}
           </div>
         ) : null}
-
-      {/* 校准：比例尺定标 + 官方里程验收 */}
-      <div className="lab-track-bar">
-        <span className="lab-track-group">校准</span>
-        <label>
-          比例尺
-          <input
-            className="lab-track-num"
-            type="number"
-            min={0}
-            step={100}
-            value={opts.scaleMeter}
-            onChange={(e) => patch({ scaleMeter: Number(e.target.value) })}
-          />
-          米 =
-          <input
-            className="lab-track-num"
-            type="number"
-            min={0}
-            step={1}
-            value={opts.scalePx}
-            onChange={(e) => patch({ scalePx: Number(e.target.value) })}
-          />
-          像素
-        </label>
-        <label>
-          官方里程
-          <input
-            className="lab-track-num"
-            type="number"
-            min={0}
-            step={0.01}
-            value={opts.mileageKm}
-            onChange={(e) => patch({ mileageKm: Number(e.target.value) })}
-          />
-          公里
-        </label>
-        <label>
-          断口阈值
-          <input type="range" min={10} max={200} step={5} value={opts.gapPx} onChange={(e) => patch({ gapPx: Number(e.target.value) })} />
-          <span className="lab-track-val">{opts.gapPx}</span>
-        </label>
-        <label>
-          插值间距
-          <input type="range" min={1} max={12} step={0.5} value={opts.resamplePx} onChange={(e) => patch({ resamplePx: Number(e.target.value) })} />
-          <span className="lab-track-val">{opts.resamplePx}px</span>
-        </label>
-        <button className="btn btn-ghost" onClick={() => setShowAdv((v) => !v)}>
-          {showAdv ? '收起参数' : '算法参数'}
-        </button>
-      </div>
-
-      {showAdv && (
-        <div className="lab-track-bar lab-track-adv">
-          <label>
-            饱和下限
-            <input type="range" min={30} max={150} value={opts.redSat} onChange={(e) => patch({ redSat: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.redSat}</span>
-          </label>
-          <label>
-            明度下限
-            <input type="range" min={20} max={120} value={opts.redVal} onChange={(e) => patch({ redVal: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.redVal}</span>
-          </label>
-          <label>
-            色相上界
-            <input type="range" min={6} max={24} value={opts.hueHi} onChange={(e) => patch({ hueHi: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.hueHi}°</span>
-          </label>
-          <label>
-            红优势
-            <input type="range" min={1} max={1.8} step={0.05} value={opts.rDominance} onChange={(e) => patch({ rDominance: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.rDominance.toFixed(2)}</span>
-          </label>
-          <label>
-            最小面积
-            <input type="range" min={100} max={4000} step={50} value={opts.minArea} onChange={(e) => patch({ minArea: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.minArea}</span>
-          </label>
-          <label>
-            短碎片下限
-            <input type="range" min={0} max={160} step={5} value={opts.minFinalPx} onChange={(e) => patch({ minFinalPx: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.minFinalPx}px</span>
-          </label>
-          <label>
-            补断口
-            <input type="range" min={0} max={4} value={opts.closeIter} onChange={(e) => patch({ closeIter: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.closeIter}</span>
-          </label>
-          <label>
-            平滑窗口
-            <input type="range" min={1} max={21} step={2} value={opts.smoothWin} onChange={(e) => patch({ smoothWin: Number(e.target.value) })} />
-            <span className="lab-track-val">{opts.smoothWin}</span>
-          </label>
-          <label>
-            骨架精度
-            <select className="lab-track-num" value={opts.skeletonScale} onChange={(e) => patch({ skeletonScale: Number(e.target.value) })}>
-              <option value={1}>1× 慢但准</option>
-              <option value={2}>2× 均衡</option>
-              <option value={3}>3× 快</option>
-            </select>
-          </label>
-        </div>
-      )}
-
-      {autoLog.length > 0 && (
-        <details className="lab-help">
-          <summary>参数自动校准记录（在参数网格上真跑，按评分挑最好的一组）</summary>
-          <pre className="lab-track-log">{autoLog.join('\n')}</pre>
-        </details>
-      )}
-
-      {dotRes && dotRes.stats.droppedSegments > 0 && (
-        <div className="lab-track-dropped muted small">
-          已丢弃 {dotRes.stats.droppedSegments} 个非轨迹色块：
-          {Object.entries(dotRes.stats.droppedBy)
-            .map(([k, v]) => `${k} ${v}`)
-            .join(' · ')}
-        </div>
-      )}
-      </section>
-
-      {/* ② 画轨迹：自动 / AI / 手动，叠在一张图上对比 */}
-      <section className="lab-track-step">
-        <h2 className="lab-track-stephead">
-          <span className="lab-track-stepno">2</span>
-          画轨迹
-          <em>先聚类再画：簇内自动连线 / AI 优化 / 手动布线，各一层叠在图上对比</em>
-        </h2>
-
-        <div className="lab-track-bar">
-          <span className="lab-track-group">自动</span>
-          <button
-            className="btn btn-primary"
-            disabled={!dotRes?.chains.length || !!busy}
-            onClick={() => autoLink()}
-            title="把第一步的骨架链串成一条有序轨迹"
-          >
-            {busy === 'link' ? '连线中…' : '自动连线'}
-          </button>
-          <button className="btn" disabled={!result?.segments.length} onClick={downloadCSV}>
-            下载 CSV
-          </button>
-          <span className="muted small">把第一步的点串成有序轨迹：串链 → 平滑 → 等距重采样</span>
-        </div>
-        <div className="lab-track-bar">
-          <span className="lab-track-group">AI</span>
-          <button
-            className="btn"
-            disabled={!canAI}
-            onClick={aiOptimize}
-            title="先做参数自动校准，再让视觉模型对照原图增删改点"
-          >
-            {busy === 'ai' ? 'AI 优化中…' : 'AI 优化'}
-          </button>
-          {models.length > 1 && (
-            <select className="lab-track-num" value={visionModel?.alias ?? ''} onChange={(e) => setAlias(e.target.value)} aria-label="AI 模型">
-              {models.map((m) => (
-                <option key={m.alias} value={m.alias}>
-                  {m.alias}
-                  {m.capabilities.includes('image') ? '' : '（不支持图片）'}
-                </option>
-              ))}
-            </select>
-          )}
-          <span className="muted small">在「提取点」的结果上增删改，不重画；思考过程列在下面</span>
-        </div>
-
-      {/* 对比：三层叠在一张图上，勾选决定看哪几层 */}
-      <div className="lab-track-panel lab-track-compare">
-        <div className="lab-track-layers">
-          <label>
-            <input type="checkbox" checked={layers.img} onChange={(e) => setLayers((l) => ({ ...l, img: e.target.checked }))} />
-            原图
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={layers.pts}
-              disabled={!dotRes?.points.length}
-              onChange={(e) => setLayers((l) => ({ ...l, pts: e.target.checked }))}
-            />
-            <i className="lab-track-dot" style={{ background: COLOR_DOT }} />
-            提取的点
-            {dotRes ? <span className="lab-track-count"> {dotRes.points.length} 点</span> : null}
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={layers.alg}
-              disabled={!result?.segments.length}
-              onChange={(e) => setLayers((l) => ({ ...l, alg: e.target.checked }))}
-            />
-            <i className="lab-track-dot" style={{ background: 'var(--primary)' }} />
-            自动连线
-            {result ? <span className="lab-track-count"> {result.stats.outPoints} 点</span> : null}
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={layers.ai}
-              disabled={!aiPts.length}
-              onChange={(e) => setLayers((l) => ({ ...l, ai: e.target.checked }))}
-            />
-            <i className="lab-track-dot" style={{ background: COLOR_AI }} />
-            AI 优化后的轨迹
-            {aiPts.length ? <span className="lab-track-count"> {aiPts.length} 点</span> : null}
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={layers.man}
-              disabled={!manualPts.length}
-              onChange={(e) => setLayers((l) => ({ ...l, man: e.target.checked }))}
-            />
-            <i className="lab-track-dot" style={{ background: COLOR_MAN }} />
-            手动路径
-            {manualPts.length ? <span className="lab-track-count"> {manualPts.length} 点</span> : null}
-          </label>
-          {diff && (
-            <span className="lab-track-diff">
-              偏差 平均 {diff.meanPx.toFixed(1)}px · 最大 {diff.maxPx.toFixed(1)}px
-              {mPerPx > 0 ? `（约 ${(diff.meanPx * mPerPx).toFixed(0)}m）` : ''} · 长度 {diff.lenDiffPct >= 0 ? '+' : ''}
-              {diff.lenDiffPct.toFixed(1)}%
-            </span>
-          )}
-        </div>
-
-        {/* 手动布线：A → B 自动沿已提取的轨迹导航；两点不连通就拉直线 */}
-        <div className="lab-track-manual">
-          <button
-            className={`btn${manualMode ? ' btn-primary' : ''}`}
-            disabled={!imgSize}
-            onClick={() => {
-              setManualMode((v) => !v);
-              setManualAnchor(null);
-              if (!manualMode) setLayers((l) => ({ ...l, man: true }));
-              setStatus(
-                manualMode
-                  ? '已结束手动布线'
-                  : graph
-                    ? '手动布线：点轨迹上的起点 A，再点 B，系统自动从 A 导航到 B'
-                    : '手动布线：还没有连好的轨迹，点两下只能拉直线（先「自动连线」才能沿轨迹走）',
-              );
-            }}
-            aria-pressed={manualMode}
-          >
-            {manualMode ? '结束布线' : '手动布线'}
-          </button>
-          <button
-            className="btn btn-ghost"
-            disabled={!manualLegs.length}
-            onClick={() => {
-              setManualLegs((prev) => {
-                const next = prev.slice(0, -1);
-                const last = next[next.length - 1];
-                if (!last) {
-                  setManualAnchor(null);
-                } else {
-                  const end = last.pts[last.pts.length - 1];
-                  const hit = graph ? nearestNode(graph, end.x, end.y, SNAP_PX) : null;
-                  setManualAnchor({ idx: hit ? hit.idx : null, pt: end });
-                }
-                return next;
-              });
-            }}
-          >
-            撤销一段
-          </button>
-          <button
-            className="btn btn-ghost"
-            disabled={!manualLegs.length}
-            onClick={() => {
-              setManualLegs([]);
-              setManualAnchor(null);
-              setStatus('手动路径已清空');
-            }}
-          >
-            清空手动
-          </button>
-          <span className="lab-track-maninfo">
-            {manualLegs.length
-              ? `${manualLegs.length} 段（沿轨迹 ${manStats.along} · 直线 ${manStats.line}）· ${manualPts.length} 点 · ${fmtLen(manStats.lenPx * mPerPx)}${
-                  manStats.dupPts ? ` · 重复经过 ${manStats.dupPts} 点` : ''
-                }`
-              : manualMode
-                ? manualAnchor
-                  ? '起点 A 已选：点下一个点，自动走 A→B'
-                  : '点轨迹上的起点 A（18px 内自动吸附）'
-                : '手动布线可以补算法漏掉的、改错的；同一条路可以反复经过'}
-          </span>
-        </div>
-
-        <div className="lab-track-zoombar">
-          <button className="btn btn-ghost" onClick={() => zoomBy(1 / 1.5)} disabled={!imgSize} title="缩小">
-            −
-          </button>
-          <span className="lab-track-val">{zoom === 'fit' ? '适应' : `${Math.round(zoom * 100)}%`}</span>
-          <button className="btn btn-ghost" onClick={() => zoomBy(1.5)} disabled={!imgSize} title="放大">
-            +
-          </button>
-          <button className="btn btn-ghost" onClick={() => applyZoom('fit')} disabled={!imgSize}>
-            适应窗口
-          </button>
-          <button className="btn btn-ghost" onClick={() => applyZoom(1)} disabled={!imgSize}>
-            1:1
-          </button>
-          <span className="lab-track-coord">{coord}</span>
-          {manualMode && <span className="muted small">手动布线中：放大后拖动查看，点图选下一个点</span>}
-        </div>
-
-        <div className="lab-track-view" ref={viewRef}>
-          <canvas
-            ref={overlayRef}
-            className={`lab-track-canvas${manualMode ? ' is-manual' : ''}`}
-            onMouseMove={onMove}
-            onClick={onCanvasClick}
-            style={
-              zoom === 'fit' || !imgSize
-                ? undefined
-                : { width: `${Math.round(imgSize.w * zoom)}px`, maxWidth: 'none' }
-            }
-          />
-        </div>
-        <canvas ref={origCanvasRef} hidden />
         <div className="muted small lab-track-gaps">
-          {dotRes ? `点 ${dotRes.points.length} 个 · ${dotRes.chains.length} 条骨架链` : '还没有提取点'}
-          {result ? ` · 轨迹 ${result.segments.length} 段 · ${gapsInfo}` : ' · 还没有连线'}
-          {aiPts.length ? ' · AI 层虚线：绿点新增、蓝圈移动、红叉删除' : ' · AI 层还没有结果'}
-          {manualPts.length ? ' · 橙色实线沿轨迹、虚线段是不连通时拉的直线' : ''}
+          {result ? `轨迹 ${result.segments.length} 段 · ${gapsInfo} · ${result.stats.outPoints} 点` : '还没有画路径'}
+          {aiPts.length ? ' · AI 层虚线：绿点新增、蓝圈移动、红叉删除' : ''}
+          {manualPts.length ? ` · 手动 ${manualLegs.length} 段（沿轨迹 ${manStats.along} · 直线 ${manStats.line}）· ${manualPts.length} 点` : ''}
+          {manStats.dupPts ? ` · 重复经过 ${manStats.dupPts} 点` : ''}
         </div>
-      {/* 定标读数：把像素换算成米之后，才知道这条轨迹有多长 */}
-      {mPerPx > 0 && (
-        <div className="lab-track-calib">
-          <div>
-            <span className="lab-track-k">比例尺</span>
-            <span className="lab-track-v">
-              {mPerPx.toFixed(3)} 米/像素
-              {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
-            </span>
-          </div>
-          <div>
-            <span className="lab-track-k">提取总长</span>
-            <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
-          </div>
-          {cal && cal.officialM > 0 && (
-            <div>
-              <span className="lab-track-k">官方里程</span>
-              <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
-            </div>
-          )}
-          {cal && cal.coverage >= 0 && (
-            <div>
-              <span className="lab-track-k">覆盖率</span>
-              <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
-                {(cal.coverage * 100).toFixed(1)}%
-              </span>
-            </div>
-          )}
-        </div>
-      )}
 
+        <div className="lab-track-drawers">
+          <button
+            type="button"
+            className={drawer === 'params' ? 'on' : undefined}
+            onClick={() => setDrawer(drawer === 'params' ? '' : 'params')}
+          >
+            参数与校准
+          </button>
+          <button
+            type="button"
+            className={drawer === 'layers' ? 'on' : undefined}
+            onClick={() => setDrawer(drawer === 'layers' ? '' : 'layers')}
+          >
+            图层与偏差
+          </button>
+        </div>
+
+        {drawer === 'params' && (
+          <>
+            <div className="lab-track-bar">
+              <span className="lab-track-group">校准</span>
+              <label>
+                比例尺
+                <input
+                  className="lab-track-num"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={opts.scaleMeter}
+                  onChange={(e) => patch({ scaleMeter: Number(e.target.value) })}
+                />
+                米 =
+                <input
+                  className="lab-track-num"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={opts.scalePx}
+                  onChange={(e) => patch({ scalePx: Number(e.target.value) })}
+                />
+                像素
+              </label>
+              <label>
+                官方里程
+                <input
+                  className="lab-track-num"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={opts.mileageKm}
+                  onChange={(e) => patch({ mileageKm: Number(e.target.value) })}
+                />
+                公里
+              </label>
+              <label>
+                断口阈值
+                <input type="range" min={10} max={200} step={5} value={opts.gapPx} onChange={(e) => patch({ gapPx: Number(e.target.value) })} />
+                <span className="lab-track-val">{opts.gapPx}</span>
+              </label>
+              <label>
+                插值间距
+                <input type="range" min={1} max={12} step={0.5} value={opts.resamplePx} onChange={(e) => patch({ resamplePx: Number(e.target.value) })} />
+                <span className="lab-track-val">{opts.resamplePx}px</span>
+              </label>
+              <button className="btn btn-ghost" onClick={() => setShowAdv((v) => !v)}>
+                {showAdv ? '收起高级参数' : '高级参数'}
+              </button>
+            </div>
+
+            {showAdv && (
+              <div className="lab-track-bar lab-track-adv">
+                <label>
+                  饱和下限
+                  <input type="range" min={30} max={150} value={opts.redSat} onChange={(e) => patch({ redSat: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.redSat}</span>
+                </label>
+                <label>
+                  明度下限
+                  <input type="range" min={20} max={120} value={opts.redVal} onChange={(e) => patch({ redVal: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.redVal}</span>
+                </label>
+                <label>
+                  色相上界
+                  <input type="range" min={6} max={24} value={opts.hueHi} onChange={(e) => patch({ hueHi: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.hueHi}°</span>
+                </label>
+                <label>
+                  红优势
+                  <input type="range" min={1} max={1.8} step={0.05} value={opts.rDominance} onChange={(e) => patch({ rDominance: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.rDominance.toFixed(2)}</span>
+                </label>
+                <label>
+                  最小面积
+                  <input type="range" min={100} max={4000} step={50} value={opts.minArea} onChange={(e) => patch({ minArea: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.minArea}</span>
+                </label>
+                <label>
+                  短碎片下限
+                  <input type="range" min={0} max={160} step={5} value={opts.minFinalPx} onChange={(e) => patch({ minFinalPx: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.minFinalPx}px</span>
+                </label>
+                <label>
+                  补断口
+                  <input type="range" min={0} max={4} value={opts.closeIter} onChange={(e) => patch({ closeIter: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.closeIter}</span>
+                </label>
+                <label>
+                  平滑窗口
+                  <input type="range" min={1} max={21} step={2} value={opts.smoothWin} onChange={(e) => patch({ smoothWin: Number(e.target.value) })} />
+                  <span className="lab-track-val">{opts.smoothWin}</span>
+                </label>
+                <label>
+                  骨架精度
+                  <select className="lab-track-num" value={opts.skeletonScale} onChange={(e) => patch({ skeletonScale: Number(e.target.value) })}>
+                    <option value={1}>1× 慢但准</option>
+                    <option value={2}>2× 均衡</option>
+                    <option value={3}>3× 快</option>
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {mPerPx > 0 && (
+              <div className="lab-track-calib">
+                <div>
+                  <span className="lab-track-k">比例尺</span>
+                  <span className="lab-track-v">
+                    {mPerPx.toFixed(3)} 米/像素
+                    {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
+                  </span>
+                </div>
+                <div>
+                  <span className="lab-track-k">提取总长</span>
+                  <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
+                </div>
+                {cal && cal.officialM > 0 && (
+                  <div>
+                    <span className="lab-track-k">官方里程</span>
+                    <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
+                  </div>
+                )}
+                {cal && cal.coverage >= 0 && (
+                  <div>
+                    <span className="lab-track-k">覆盖率</span>
+                    <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
+                      {(cal.coverage * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {autoLog.length > 0 && (
+              <details className="lab-help">
+                <summary>参数自动校准记录（在参数网格上真跑，按评分挑最好的一组）</summary>
+                <pre className="lab-track-log">{autoLog.join('\n')}</pre>
+              </details>
+            )}
+
+            {dotRes && dotRes.stats.droppedSegments > 0 && (
+              <div className="lab-track-dropped muted small">
+                已丢弃 {dotRes.stats.droppedSegments} 个非轨迹色块：
+                {Object.entries(dotRes.stats.droppedBy)
+                  .map(([k, v]) => `${k} ${v}`)
+                  .join(' · ')}
+              </div>
+            )}
+          </>
+        )}
+
+        {drawer === 'layers' && (
+          <div className="lab-track-panel lab-track-compare">
+            <div className="lab-track-layers">
+              <label>
+                <input type="checkbox" checked={layers.img} onChange={(e) => setLayers((l) => ({ ...l, img: e.target.checked }))} />
+                原图
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={layers.pts}
+                  disabled={!dotRes?.points.length}
+                  onChange={(e) => setLayers((l) => ({ ...l, pts: e.target.checked }))}
+                />
+                <i className="lab-track-dot" style={{ background: COLOR_DOT }} />
+                提取的点
+                {dotRes ? <span className="lab-track-count"> {dotRes.points.length} 点</span> : null}
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={layers.alg}
+                  disabled={!result?.segments.length}
+                  onChange={(e) => setLayers((l) => ({ ...l, alg: e.target.checked }))}
+                />
+                <i className="lab-track-dot" style={{ background: 'var(--primary)' }} />
+                自动路径
+                {result ? <span className="lab-track-count"> {result.stats.outPoints} 点</span> : null}
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={layers.ai}
+                  disabled={!aiPts.length}
+                  onChange={(e) => setLayers((l) => ({ ...l, ai: e.target.checked }))}
+                />
+                <i className="lab-track-dot" style={{ background: COLOR_AI }} />
+                AI 优化后的轨迹
+                {aiPts.length ? <span className="lab-track-count"> {aiPts.length} 点</span> : null}
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={layers.man}
+                  disabled={!manualPts.length}
+                  onChange={(e) => setLayers((l) => ({ ...l, man: e.target.checked }))}
+                />
+                <i className="lab-track-dot" style={{ background: COLOR_MAN }} />
+                手动路径
+                {manualPts.length ? <span className="lab-track-count"> {manualPts.length} 点</span> : null}
+              </label>
+              {diff && (
+                <span className="lab-track-diff">
+                  偏差 平均 {diff.meanPx.toFixed(1)}px · 最大 {diff.maxPx.toFixed(1)}px
+                  {mPerPx > 0 ? `（约 ${(diff.meanPx * mPerPx).toFixed(0)}m）` : ''} · 长度 {diff.lenDiffPct >= 0 ? '+' : ''}
+                  {diff.lenDiffPct.toFixed(1)}%
+                </span>
+              )}
+            </div>
+            <div className="lab-track-bar">
+              <button className="btn btn-ghost" disabled={!result?.segments.length} onClick={downloadCSV}>
+                下载 CSV
+              </button>
+              <span className="muted small">x,y 是截图像素，cum_m 是段内累计米数</span>
+            </div>
+            {models.length > 0 && (
+              <label className="muted small">
+                AI 模型
+                <select className="lab-track-num" value={visionModel?.alias ?? ''} onChange={(e) => setAlias(e.target.value)}>
+                  {models.map((m) => (
+                    <option key={m.alias} value={m.alias}>
+                      {m.alias}
+                      {m.capabilities.includes('image') ? '' : '（不支持图片）'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+
+        {aiThink && (
+          <details className="lab-help lab-track-think" open>
+            <summary>AI 的思考过程（它看图和看当前点列后的判断）</summary>
+            <pre className="lab-track-log lab-track-reason">{aiThink}</pre>
+            {ai && ai.edits.length > 0 && (
+              <ul className="lab-track-edits">
+                {ai.edits.slice(0, 60).map((e, i) => (
+                  <li key={`${e.op}-${e.index}-${i}`} className={`is-${e.op}`}>
+                    <span className="lab-track-eop">{e.op === 'move' ? '移动' : e.op === 'delete' ? '删除' : '新增'}</span>
+                    <span className="lab-track-eidx">#{e.index}</span>
+                    {e.op !== 'delete' && e.x != null && e.y != null && (
+                      <span className="lab-track-eat">
+                        → ({e.x.toFixed(3)}, {e.y.toFixed(3)})
+                      </span>
+                    )}
+                    <span className="lab-track-ereason">{e.reason || '模型没给理由'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {ai && ai.edits.length > 60 && <p className="muted small">只列前 60 处，共 {ai.edits.length} 处。</p>}
+          </details>
+        )}
+
+        {aiLog && (
+          <details className="lab-help">
+            <summary>
+              AI 优化记录（增 {aiCount.add} · 删 {aiCount.del} · 改 {aiCount.move}）
+            </summary>
+            <pre className="lab-track-log">{aiLog}</pre>
+          </details>
+        )}
       </div>
 
-      {aiThink && (
-        <details className="lab-help lab-track-think" open>
-          <summary>AI 的思考过程（它看图和看当前点列后的判断）</summary>
-          <pre className="lab-track-log lab-track-reason">{aiThink}</pre>
-          {ai && ai.edits.length > 0 && (
-            <ul className="lab-track-edits">
-              {ai.edits.slice(0, 60).map((e, i) => (
-                <li key={`${e.op}-${e.index}-${i}`} className={`is-${e.op}`}>
-                  <span className="lab-track-eop">{e.op === 'move' ? '移动' : e.op === 'delete' ? '删除' : '新增'}</span>
-                  <span className="lab-track-eidx">#{e.index}</span>
-                  {e.op !== 'delete' && e.x != null && e.y != null && (
-                    <span className="lab-track-eat">
-                      → ({e.x.toFixed(3)}, {e.y.toFixed(3)})
-                    </span>
-                  )}
-                  <span className="lab-track-ereason">{e.reason || '模型没给理由'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {ai && ai.edits.length > 60 && (
-            <p className="muted small">只列前 60 处，共 {ai.edits.length} 处。</p>
-          )}
-        </details>
-      )}
+      <div className={`lab-track-pane${tab === 'map' ? '' : ' is-off'}`}>
+        <div className="lab-track-panel lab-track-mapwrap">
+          <div className="lab-track-bar lab-track-mapbar">
+            <span className="lab-track-group">方案</span>
+            <div className="loc-seg">
+              <button className={scheme === 'alg' ? 'on' : undefined} onClick={() => setScheme('alg')} aria-pressed={scheme === 'alg'}>
+                自动轨迹
+              </button>
+              <button
+                className={scheme === 'ai' ? 'on' : undefined}
+                disabled={!aiPts.length}
+                onClick={() => setScheme('ai')}
+                aria-pressed={scheme === 'ai'}
+              >
+                AI 轨迹
+              </button>
+              <button
+                className={scheme === 'man' ? 'on' : undefined}
+                disabled={!manualPts.length}
+                onClick={() => setScheme('man')}
+                aria-pressed={scheme === 'man'}
+              >
+                手动路径
+              </button>
+            </div>
+            <button className={`btn${pickingAnchor ? ' btn-primary' : ''}`} onClick={() => setPickingAnchor(true)}>
+              {pickingAnchor ? '点地图选起点…' : '在地图上点起点'}
+            </button>
+            <button className="btn" onClick={useMyLocation}>
+              用当前位置
+            </button>
+            {aiGeoStart && (
+              <button className="btn" onClick={() => setAnchorGeo(aiGeoStart)} title="模型从截图里读出的起点坐标">
+                用 AI 读到的起点
+              </button>
+            )}
+            <label>
+              方位
+              <input type="range" min={0} max={359} value={bearing} onChange={(e) => setBearing(Number(e.target.value))} />
+              <span className="lab-track-val">{bearing}°</span>
+            </label>
+            <label>
+              复现速度
+              <input type="range" min={2} max={60} step={2} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
+              <span className="lab-track-val">{speed}m/s</span>
+            </label>
+            <button className="btn btn-primary" disabled={!geoLine.length} onClick={() => (replaying ? setReplaying(false) : startReplay())}>
+              {replaying ? '⏹ 停止' : '▶ 复现'}
+            </button>
+            <span className="muted small">
+              {anchor
+                ? `${fmtLen(geoLenM)} · 已走 ${progM}m`
+                : mPerPx > 0
+                  ? '在地图上点一下起点（或用当前位置）'
+                  : '先定标（比例尺 / 官方里程），再选一个起点'}
+            </span>
+          </div>
+          <div ref={mapEl} className="map-leaflet lab-track-map" />
+        </div>
 
-      {aiLog && (
-        <details className="lab-help">
-          <summary>
-            AI 优化记录（增 {aiCount.add} · 删 {aiCount.del} · 改 {aiCount.move}）
-          </summary>
-          <pre className="lab-track-log">{aiLog}</pre>
-        </details>
-      )}
-      </section>
-
-      {/* ③ 地图复现：像素轨迹落到真实地图上走一遍，满意就存成本库定位 */}
-      <section className="lab-track-step">
-        <h2 className="lab-track-stephead">
-          <span className="lab-track-stepno">3</span>
-          地图复现
-          <em>选一个方案，按比例尺 + 起点 + 方位落到真实地图上走一遍，存成 .drloc</em>
-        </h2>
-
-      <div className="lab-track-panel lab-track-mapwrap">
-        <div className="lab-track-bar lab-track-mapbar">
-          <span className="lab-track-group">方案</span>
+        <div className="lab-track-bar">
+          <span className="lab-track-group">存成本库定位</span>
           <div className="loc-seg">
-            <button className={scheme === 'alg' ? 'on' : undefined} onClick={() => setScheme('alg')} aria-pressed={scheme === 'alg'}>
+            <button className={saveScheme === 'alg' ? 'on' : undefined} onClick={() => setSaveScheme('alg')} aria-pressed={saveScheme === 'alg'}>
               自动轨迹
             </button>
             <button
-              className={scheme === 'ai' ? 'on' : undefined}
+              className={saveScheme === 'ai' ? 'on' : undefined}
               disabled={!aiPts.length}
-              onClick={() => setScheme('ai')}
-              aria-pressed={scheme === 'ai'}
+              onClick={() => setSaveScheme('ai')}
+              aria-pressed={saveScheme === 'ai'}
             >
               AI 轨迹
             </button>
             <button
-              className={scheme === 'man' ? 'on' : undefined}
+              className={saveScheme === 'man' ? 'on' : undefined}
               disabled={!manualPts.length}
-              onClick={() => setScheme('man')}
-              aria-pressed={scheme === 'man'}
+              onClick={() => setSaveScheme('man')}
+              aria-pressed={saveScheme === 'man'}
             >
               手动路径
             </button>
           </div>
-          <button className={`btn${pickingAnchor ? ' btn-primary' : ''}`} onClick={() => setPickingAnchor(true)}>
-            {pickingAnchor ? '点地图选起点…' : '在地图上点起点'}
+          <input
+            className="lab-track-num lab-track-name"
+            placeholder="文件名（默认按日期）"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={saveAsLocation}>
+            保存为定位文件
           </button>
-          <button className="btn" onClick={useMyLocation}>
-            用当前位置
-          </button>
-          {aiGeoStart && (
-            <button className="btn" onClick={() => setAnchorGeo(aiGeoStart)} title="模型从截图里读出的起点坐标">
-              用 AI 读到的起点
-            </button>
-          )}
-          <label>
-            方位
-            <input type="range" min={0} max={359} value={bearing} onChange={(e) => setBearing(Number(e.target.value))} />
-            <span className="lab-track-val">{bearing}°</span>
-          </label>
-          <label>
-            复现速度
-            <input type="range" min={2} max={60} step={2} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
-            <span className="lab-track-val">{speed}m/s</span>
-          </label>
-          <button className="btn btn-primary" disabled={!geoLine.length} onClick={() => (replaying ? setReplaying(false) : startReplay())}>
-            {replaying ? '⏹ 停止' : '▶ 复现'}
-          </button>
-          <span className="muted small">
-            {anchor
-              ? `${fmtLen(geoLenM)} · 已走 ${progM}m`
-              : mPerPx > 0
-                ? '在地图上点一下起点（或用当前位置）'
-                : '先定标（比例尺 / 官方里程），再选一个起点'}
-          </span>
+          <span className="muted small">{pathOf(saveScheme).length} 点 · 按 1.2m/s 均匀配时间</span>
         </div>
-        <div ref={mapEl} className="map-leaflet lab-track-map" />
       </div>
-
-      {/* 保存：选一个方案，直接存成 .drloc */}
-      <div className="lab-track-bar">
-        <span className="lab-track-group">存成本库定位</span>
-        <div className="loc-seg">
-          <button className={saveScheme === 'alg' ? 'on' : undefined} onClick={() => setSaveScheme('alg')} aria-pressed={saveScheme === 'alg'}>
-            自动轨迹
-          </button>
-          <button
-            className={saveScheme === 'ai' ? 'on' : undefined}
-            disabled={!aiPts.length}
-            onClick={() => setSaveScheme('ai')}
-            aria-pressed={saveScheme === 'ai'}
-          >
-            AI 轨迹
-          </button>
-          <button
-            className={saveScheme === 'man' ? 'on' : undefined}
-            disabled={!manualPts.length}
-            onClick={() => setSaveScheme('man')}
-            aria-pressed={saveScheme === 'man'}
-          >
-            手动路径
-          </button>
-        </div>
-        <input
-          className="lab-track-num lab-track-name"
-          placeholder="文件名（默认按日期）"
-          value={saveName}
-          onChange={(e) => setSaveName(e.target.value)}
-        />
-        <button className="btn btn-primary" onClick={saveAsLocation}>
-          保存为定位文件
-        </button>
-        <span className="muted small">
-          {pathOf(saveScheme).length} 点 · 按 1.2m/s 均匀配时间
-        </span>
-      </div>
-      </section>
 
       <details className="lab-help">
-        <summary>它是怎么取的 / 两套结果的差别</summary>
+        <summary>它是怎么取点的 / 路径是怎么画出来的</summary>
         <p className="muted small">
-          <b>第一步只取点</b>：① 红色判定——饱和度、明度都过线，色相落在 0~{opts.hueHi}° 或{' '}
-          {opts.hueLo}~180°，并且 R 通道要明显压过 G/B（不把橙黄道路、蓝色水面当轨迹）；
-          ② 闭运算补 1~3px 的细断口；③ 连通域之后做形状校准——轨迹是细长曲线，骨架长一定超过包围盒
-          对角线，红圈「终」、POI 图标是实心块或圆环，据此丢掉；④ 每个连通域骨架化后按分叉点切成若干
-          简单链，摊平成点云。这一步没有顺序、也不连线，图上看到的就是一片红点。
+          <b>① 提取点</b>：红色判定（饱和度、明度过线，色相落在 0~{opts.hueHi}° 或 {opts.hueLo}~180°，
+          且 R 通道明显压过 G/B）→ 闭运算补 1~3px 细断口 → 连通域 + 形状校准（骨架长 / 包围盒对角线
+          &lt; 0.95 判为圆形图标，实心块直接丢）→ 骨架化后按分叉点切成简单链，摊成点云。
+          点云按<b>距离聚类</b>上色：同色 = 一个能连起来的网络，颜色一变中间就是断的。
         </p>
         <p className="muted small">
-          <b>第二步才连线</b>：⑤ 串联——最长链作种子，贪心把其余链接到两端，间距超过「断口阈值」的不接；
-          ⑥ 沿弧长等距重采样 + 移动平均平滑，得到有序轨迹；⑦ 定标——填「比例尺 500 米 = 200 像素」就能
-          得到米制坐标与覆盖率，只填官方里程则以里程反推比例尺。点变了（阈值/面积/重跑）连线和手动路径
-          都会作废，因为它们都建立在那一批点上。
+          <b>② 自动画路径</b>：把点连成一张图（链内相邻、簇内端点桥接），从任一端点做两次最短路
+          求出<b>最长测地线</b>当主干；主轴之外的短枝丢掉、长枝按「往返」写回点列，环线剩下的半圈在末尾
+          接回去，所以整条路只画一遍、不会重复。之后沿弧长等距重采样 + 移动平均平滑。
         </p>
         <p className="muted small">
-          AI 优化走的是「在连好的结果上改」而不是「重画一条」：还没连线时它会先补一次自动校准 + 自动连线，
-          再把当前点列（抽样到 160 个，带原始下标）和截图（长边缩到 1400px）一起发给能看图的模型。
-          模型只返回最小必要的三类修改——断口处 insert、把图标当轨迹的 delete、整段偏了的 move，
-          外带一段 reasoning 说明它为什么这么改。页面按下标把这些修改应用回完整点列，所以「AI 优化后」
-          和「自动连线」的点一一对应，偏差也还是按弧长对齐逐点算。图上绿点是新增、蓝圈是移动、红叉是删除
-          （叉画在原位置），实线是算法结果、虚线是优化后的结果，红色小圆点是算法断口。
+          <b>③ 手动布线</b>：点起点 A（18px 内吸附到轨迹）再点 B，在图上跑带<b>转角惩罚</b>的最短路——
+          直行不加钱、急转加价，所以路口不会来回切；跨连通簇找不到路时直接拉直线（橙色虚线）。
+          手动路径是<b>有序点列</b>，A→B→A 会把同一条路算两遍，统计里的「重复经过」就是它。
         </p>
         <p className="muted small">
-          为什么不让模型直接描一条：像素阈值法已经把「红线在哪」做得很准，它的错误集中在断口、图标和整段平移；
-          从零描线等于把正确的部分也重算一遍，偏差更大，也说不清改了什么。
+          <b>擦除点 / 补直线</b>：擦除是按画笔半径删掉点云里的一圈点（图标被误检时用），补直线是把
+          漏提取的一段直接接进点云；两者改的都是点云本身，之后重新聚类、重新画路径，结果才是自洽的。
         </p>
         <p className="muted small">
-          手动布线不是让人自由画曲线：点「手动布线」后点起点 A（18px 内自动吸附到轨迹上），再点 B，
-          系统就在提取出来的点列上跑一次最短路，把 A→B 之间沿轨迹的那段填进来；线条太密时可以用
-          「放大 / 适应窗口」看细节。提取器把能接的都接上了，剩下的断口就是真的不连通，这时 A→B 直接
-          拉一条橙色虚线，和「这里没有路」的直觉一致。手动路径是<b>有序点列</b>而不是像素集合，所以
-          A→B→A 会把同一条路算两遍：长度、地图复现、保存都按两遍走，统计里的「重复经过 N 点」就是
-          重复走的部分。
+          <b>AI 优化</b>：只做「最小必要修改」——断口处 insert、误检 delete、整段偏了 move，附带 reasoning。
+          模型不重画整条线：像素阈值已经把「红线在哪」做得很准，重画等于把正确的部分也重算一遍。
+          图上绿点是新增、蓝圈是移动、红叉是删除，实线是算法结果、虚线是优化后的结果。
         </p>
         <p className="muted small">
-          地图复现要三样东西：比例尺（米/像素）、一个起点（地图上点一下 / 当前位置 / AI 读到的坐标）、
-          以及「方位」——截图正上方相对真北的角度，截图上指北针朝哪就调多少。最后「保存为定位文件」会把
-          当前方案的像素点按这些参数换成经纬度，写进文件库，和自动打点是同一个 <code>.drloc</code> 格式。
+          <b>地图复现</b>要三样东西：比例尺（米/像素）、起点（地图上点一下 / 当前位置 / AI 读到的坐标）、
+          方位（截图正上方相对真北的角度）。「保存为定位文件」会把当前方案的像素点换成经纬度，
+          写进文件库，和自动打点是同一个 <code>.drloc</code> 格式。
         </p>
         <p className="muted small">
           CSV 列：<code>idx,x,y,x_m,y_m,cum_m,seg</code>。x/y 是截图像素坐标；x_m/y_m 以每段首点为原点、
@@ -1574,9 +1777,4 @@ export function LabTrackSection() {
       </details>
     </div>
   );
-}
-
-/** 只是让 className 表达式短一点：有图就点亮选图卡 */
-function hasImageNow(size: { w: number; h: number } | null): boolean {
-  return !!size;
 }

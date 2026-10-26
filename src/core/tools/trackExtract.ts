@@ -13,8 +13,8 @@
 //      这一条能把红圈按钮从轨迹里踢出去，是原版工具（只按面积过滤）做不到的。
 //   ④ 每段骨架化（Zhang-Suen）→ 修剪成 1px → 在分叉/端点处切成若干「简单链」，
 //      这样分叉处的每条支线都会被走到，不会被抄近路画成假直线。
-//   ⑤ 串联：最长段作种子，贪心把其余段接到链的两端（比端点距离）。**距离超过
-//      gapPx 的段不接**——否则会在图上拉一条斜穿全图的假直线，长度直接虚增。
+//   ⑤ 自动画路径（见 trackAuto.ts）：按连通簇分组后，在「点 + 邻接」图上找最长测地线
+//      当主干；主轴之外的短枝丢掉、长枝按往返写回点列。**跨簇不连**、**不跨 gapPx 硬接**。
 //   ⑥ 插值：弧长参数化 → 等距重采样（resamplePx）→ 移动平均平滑（smoothWin），
 //      输出的点间距均匀，可直接喂给地图/绘图，也可按需加密。
 //   ⑦ 校准：截图里有人眼一看就有的「官方里程」。给一个里程，就把整条路径换算成
@@ -22,6 +22,8 @@
 //      量化的精度指标：覆盖率 100% 说明一条红线都没漏。
 //
 // 纯函数、不碰 DOM：输入 ImageData 的 data 数组，输出点列。UI 只负责画和导出。
+
+import { autoOrder } from './trackAuto';
 
 export interface TrackPoint {
   x: number;
@@ -871,8 +873,7 @@ export function buildTrack(
     };
   }
 
-  // ⑤ 串链：按连通簇分组，簇内最长链作种子、贪心接两端；超 gapPx 不接 → 断成新链。
-  //    跨簇不接——聚类已经说过「它们不是一个网络」，这里再连就自相矛盾了。
+  // ⑤ 自动画路径：按连通簇分组，簇内在点图上找最长测地线当主干（见 trackAuto.ts）
   const groups: number[][] = [];
   if (meta.clusterOf && meta.clusterOf.length === segs.length) {
     const byCluster = new Map<number, number[]>();
@@ -888,89 +889,32 @@ export function buildTrack(
     groups.push(segs.map((_, i) => i));
   }
 
-  const chains: SkeletonPath[][] = [];
+  // ⑥ 每簇（或每块连不起来的网）一条有序点列 → 平滑 → 等距重采样
+  // 短于一个断口阈值的旁支基本是图标残渣/细化毛刺，当往返补进点列只会让长度虚增
+  const spur = Math.max(30, o.gapPx);
+  const segments: TrackSegment[] = [];
   for (const group of groups) {
-    const order = group.slice().sort((a, b) => segs[b].len - segs[a].len);
-    const used = new Set<number>();
-    for (const seed of order) {
-      if (used.has(seed)) continue;
-      const chain: SkeletonPath[] = [segs[seed]];
-      used.add(seed);
-      let head = segs[seed].path[0];
-      let tail = segs[seed].path[segs[seed].path.length - 1];
-      let grew = true;
-      while (grew) {
-        grew = false;
-        let best: { d: number; j: number; rev: boolean; at: 'head' | 'tail' } | null = null;
-        for (const j of order) {
-          if (used.has(j)) continue;
-          const p0 = segs[j].path[0];
-          const p1 = segs[j].path[segs[j].path.length - 1];
-          const cands: { d: number; rev: boolean; at: 'head' | 'tail' }[] = [
-            { d: Math.hypot(p0.x - tail.x, p0.y - tail.y), rev: false, at: 'tail' },
-            { d: Math.hypot(p1.x - tail.x, p1.y - tail.y), rev: true, at: 'tail' },
-            { d: Math.hypot(p0.x - head.x, p0.y - head.y), rev: true, at: 'head' },
-            { d: Math.hypot(p1.x - head.x, p1.y - head.y), rev: false, at: 'head' },
-          ];
-          for (const c of cands) {
-            if (!best || c.d < best.d) best = { d: c.d, j, rev: c.rev, at: c.at };
-          }
-        }
-        if (best && best.d <= o.gapPx) {
-          const sg = segs[best.j];
-          const pts = best.rev ? sg.path.slice().reverse() : sg.path;
-          if (best.at === 'tail') {
-            chain.push(sg);
-            tail = pts[pts.length - 1];
-          } else {
-            chain.unshift(sg);
-            head = pts[0];
-          }
-          used.add(best.j);
-          grew = true;
-        }
-      }
-      chains.push(chain);
+    const pool = group.map((i) => segs[i]);
+    const area = pool.reduce((m, x) => Math.max(m, x.area), 0);
+    for (const ordered of autoOrder(pool, o.gapPx, spur)) {
+      if (ordered.length < 2) continue;
+      const dense = resampleByArcLength(ordered, Math.max(0.5, o.resamplePx));
+      const sm = smoothMoving(dense, o.smoothWin);
+      segments.push({ points: sm, lengthPx: pathLength(sm), skelPx: ordered.length, area });
     }
   }
-
-  // ⑥ 每链拼成一条折线 → 平滑 → 等距重采样
-  const segments: TrackSegment[] = chains.map((chain) => {
-    let raw: TrackPoint[] = [];
-    let skelPx = 0;
-    let area = 0;
-    let prevEnd: TrackPoint | null = null;
-    for (const sg of chain) {
-      let pts = sg.path;
-      // 每段的走向要接上前一段的末点（贪心时已定方向，这里按最近端点对齐）
-      if (prevEnd) {
-        const dHead = Math.hypot(pts[0].x - prevEnd.x, pts[0].y - prevEnd.y);
-        const dTail = Math.hypot(
-          pts[pts.length - 1].x - prevEnd.x,
-          pts[pts.length - 1].y - prevEnd.y,
-        );
-        if (dTail < dHead) pts = pts.slice().reverse();
-      }
-      raw = raw.length ? raw.concat(pts.slice(1)) : pts.slice();
-      prevEnd = raw[raw.length - 1];
-      skelPx += sg.skelPx;
-      area = Math.max(area, sg.area); // 同一连通域切出多条链时不能累加
-    }
-    const dense = resampleByArcLength(raw, Math.max(0.5, o.resamplePx));
-    const sm = smoothMoving(dense, o.smoothWin);
-    return { points: sm, lengthPx: pathLength(sm), skelPx, area };
-  }).filter((seg) => seg.lengthPx >= o.minFinalPx);
+  const kept = segments.filter((seg) => seg.lengthPx >= o.minFinalPx);
 
   // 断口：相邻链端点距离
   const gaps: { afterSegment: number; distPx: number }[] = [];
-  for (let i = 0; i < segments.length - 1; i++) {
-    const a = segments[i].points[segments[i].points.length - 1];
-    const b = segments[i + 1].points[0];
+  for (let i = 0; i < kept.length - 1; i++) {
+    const a = kept[i].points[kept[i].points.length - 1];
+    const b = kept[i + 1].points[0];
     gaps.push({ afterSegment: i, distPx: Math.hypot(a.x - b.x, a.y - b.y) });
   }
 
   // ⑦ 校准：比例尺优先（独立定标），否则用官方里程反推
-  const totalPx = segments.reduce((s, x) => s + x.lengthPx, 0);
+  const totalPx = kept.reduce((s, x) => s + x.lengthPx, 0);
   const officialM = o.mileageKm * 1000;
   let mPerPx = 0;
   let source: Calibration['source'] = 'none';
@@ -985,15 +929,15 @@ export function buildTrack(
   // 覆盖率只在「比例尺独立定标 + 有官方里程」时才有意义
   const coverage = source === 'scale' && officialM > 0 ? totalM / officialM : -1;
 
-  const outPoints = segments.reduce((s, x) => s + x.points.length, 0);
+  const outPoints = kept.reduce((s, x) => s + x.points.length, 0);
 
   return {
-    segments,
+    segments: kept,
     gaps,
     calibration: { mPerPx, source, totalPx, totalM, officialM, coverage },
     stats: {
       redPx,
-      keptSegments: segments.length,
+      keptSegments: kept.length,
       droppedSegments,
       droppedBy,
       outPoints,

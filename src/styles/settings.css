@@ -407,54 +407,149 @@
   line-height: 1.6;
 }
 
-/* 三步流水线：提取点 → 画轨迹 → 地图复现，每步一块，标题带序号 */
-.lab-track-step {
+/* 版式：一张大画布 + 底部模式栏，参数收进抽屉。和手机上用截图工具的直觉一致——
+   看的就是图，动不动就要滚三屏的大卡片在这里帮不上忙。 */
+.lab-track-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 10px 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.lab-track-tabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.lab-track-tabs button.on {
+  color: #fff;
+  background: var(--primary);
+  font-weight: 600;
+}
+
+/* 切换 tab 时整块隐藏，但地图节点得一直挂着，Leaflet 不能反复销毁重建 */
+.lab-track-pane.is-off {
+  display: none;
+}
+
+.lab-track-stage {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 0 4px;
-  border-top: 1px solid var(--border);
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
-.lab-track-step:first-of-type {
-  border-top: 0;
-  padding-top: 4px;
+/* 还没选图：画布留在 DOM 里（loadFile 要用），但不占地方 */
+.lab-track-stage.is-off {
+  display: none;
 }
 
-.lab-track-stephead {
+.lab-track-filemeta {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
+  gap: 4px 10px;
+  margin-bottom: 8px;
 }
 
-.lab-track-stepno {
-  display: inline-flex;
+/* 模式栏：手动 / 擦除 / 补线，点开后直接在图上下手 */
+.lab-track-modes {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  gap: 6px;
+  padding: 8px;
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.lab-track-modes > button {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.lab-track-modes > button.on {
   color: #fff;
   background: var(--primary);
-  border-radius: 50%;
-  transform: translateY(2px);
+  border-color: var(--primary);
 }
 
-.lab-track-stephead em {
+.lab-track-modes > button:disabled {
+  opacity: 0.5;
+}
+
+.lab-track-modehint {
   flex: 1 1 200px;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 400;
-  font-style: normal;
   line-height: 1.5;
+}
+
+/* 动作行：三个主操作按重要性排，主按钮更宽 */
+.lab-track-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lab-track-actions .btn {
+  justify-content: center;
+}
+
+/* 抽屉开关：参数与图层默认收起来，别把画布挤没了 */
+.lab-track-drawers {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.lab-track-drawers > button {
+  flex: 1 1 0;
+  padding: 7px 10px;
+  font-size: 12.5px;
   color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.lab-track-drawers > button.on {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.lab-track-brush {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.lab-track-brush input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 80px;
 }
 
 /* 连通簇图例：同色 = 一个网络，一眼看出点被分成了几片 */
@@ -573,7 +668,7 @@
   border-radius: 0;
 }
 
-.lab-track-view .lab-track-canvas.is-manual {
+.lab-track-view .lab-track-canvas.is-editing {
   cursor: crosshair;
 }
 

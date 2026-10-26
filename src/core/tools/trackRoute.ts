@@ -127,8 +127,9 @@ export function nearestNode(
 }
 
 /** 图上最短路；两点不连通返回 null（调用方据此走直线） */
-export function shortestPath(g: RouteGraph, a: number, b: number): TrackPoint[] | null {
+export function shortestPath(g: RouteGraph, a: number, b: number, turnPenalty = 0): TrackPoint[] | null {
   if (a === b) return [g.pts[a]];
+  if (turnPenalty > 0) return smoothShortestPath(g, a, b, turnPenalty);
   const n = g.pts.length;
   const dist = new Float64Array(n).fill(Infinity);
   const prev = new Int32Array(n).fill(-1);
@@ -155,6 +156,76 @@ export function shortestPath(g: RouteGraph, a: number, b: number): TrackPoint[] 
   for (let v = b; v !== -1; v = prev[v]) {
     path.push(g.pts[v]);
     if (v === a) break;
+  }
+  return path.reverse();
+}
+
+/**
+ * 带转角惩罚的最短路：状态是「有向边」，所以 Dijkstra 知道「从哪个方向来的」。
+ *
+ * 为什么需要：纯最短距离在岔路口会贴着最短路切，锯齿一样来回抖；人走路会挑「顺着走」
+ * 的那条。代价 = 边长 × (1 + k·(1−cosθ))，θ 是前后两段方向的夹角，直行 θ=0 不加钱，
+ * 掉头 θ=180° 加最多。k 取 0.8 时路口基本不会乱拐，也不会为了直而绕远路。
+ */
+function smoothShortestPath(g: RouteGraph, a: number, b: number, k: number): TrackPoint[] | null {
+  const n = g.pts.length;
+  // 把无向边拆成两向状态：每条状态记得自己是「从哪里来、到哪里去」
+  const from: number[] = [];
+  const to: number[] = [];
+  const wgt: number[] = [];
+  const out: number[][] = Array.from({ length: n }, () => []);
+  g.adj.forEach((list, u) => {
+    for (const e of list) {
+      const id = from.length;
+      from.push(u);
+      to.push(e.to);
+      wgt.push(e.w);
+      out[u].push(id);
+    }
+  });
+
+  const dist = new Float64Array(from.length).fill(Infinity);
+  const prev = new Int32Array(from.length).fill(-1);
+  const done = new Uint8Array(from.length);
+  const heap = new MinHeap();
+  for (const s of out[a]) {
+    dist[s] = wgt[s];
+    heap.push(s, dist[s]);
+  }
+  let hit = -1;
+  while (heap.size) {
+    const s = heap.pop();
+    if (done[s]) continue;
+    done[s] = 1;
+    if (to[s] === b) {
+      hit = s;
+      break;
+    }
+    const f = from[s];
+    const t = to[s];
+    const ax = g.pts[t].x - g.pts[f].x;
+    const ay = g.pts[t].y - g.pts[f].y;
+    const al = Math.hypot(ax, ay) || 1;
+    for (const s2 of out[t]) {
+      if (done[s2]) continue;
+      const nx = g.pts[to[s2]].x - g.pts[t].x;
+      const ny = g.pts[to[s2]].y - g.pts[t].y;
+      const nl = Math.hypot(nx, ny) || 1;
+      const cos = (ax * nx + ay * ny) / (al * nl);
+      const extra = wgt[s2] * (1 + k * (1 - cos));
+      const nd = dist[s] + extra;
+      if (nd < dist[s2]) {
+        dist[s2] = nd;
+        prev[s2] = s;
+        heap.push(s2, nd);
+      }
+    }
+  }
+  if (hit < 0) return null;
+  const path: TrackPoint[] = [g.pts[b]];
+  for (let s = hit; s !== -1; s = prev[s]) {
+    path.push(g.pts[from[s]]);
+    if (from[s] === a) break;
   }
   return path.reverse();
 }
