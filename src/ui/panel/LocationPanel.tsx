@@ -1321,7 +1321,7 @@ export function LocationPanel() {
                 )}
               </div>
               {segments.length > 0 && (
-                <div className="loc-seg">
+                <div className="loc-segbox">
                   <div className="muted small">分段修正 {segments.length} 段 · 只影响列出的区间，原始点不动</div>
                   <ul className="loc-seg-list">
                     {segments.map((s) => {

@@ -473,9 +473,13 @@
 
 .lab-track-canvas {
   display: block;
+  width: auto;
+  height: auto;
   max-width: 100%;
   margin: 0 auto;
   background: var(--panel);
+  cursor: crosshair;
+  border-radius: 8px;
 }
 
 .lab-track-status {
@@ -562,9 +566,140 @@
   line-height: 1.6;
 }
 
+/* 选图卡：一个真正带样式的按钮 + 拖拽区（不再把没样式的原生 file 控件摆在页面上） */
+.lab-track-pick {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s, background 0.15s, border-style 0.15s;
+}
+
+.lab-track-pick.is-drag {
+  border-color: var(--primary);
+  border-style: solid;
+}
+
+.lab-track-pick.has-file {
+  border-style: solid;
+}
+
+.lab-track-pickbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 9px 16px;
+}
+
+.lab-track-pickmeta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lab-track-pickname {
+  margin-bottom: 3px;
+  font-size: 13.5px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+/* 对比画布：三层叠一张图，鼠标移上去读像素坐标 */
+.lab-track-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lab-track-layers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.lab-track-layers label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lab-track-layers label:has(input:disabled) {
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+.lab-track-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.lab-track-diff {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-track-gaps {
+  line-height: 1.6;
+}
+
+/* 地图复现：地图自己带边框了，工具条别再多一层壳 */
+.lab-track-map {
+  height: 360px;
+  margin-top: 4px;
+}
+
+.lab-track-mapwrap {
+  margin-top: 12px;
+}
+
+.lab-track-mapbar {
+  margin-bottom: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.lab-track-name {
+  width: 180px;
+}
+
 @media (max-width: 700px) {
   .lab-track-panels {
     grid-template-columns: 1fr;
+  }
+
+  .lab-track-pick {
+    flex-wrap: wrap;
+  }
+
+  .lab-track-pickbtn {
+    flex: 1 1 auto;
+  }
+
+  .lab-track-name {
+    width: 100%;
+  }
+
+  .lab-track-diff {
+    margin-left: 0;
+    width: 100%;
   }
 }
 

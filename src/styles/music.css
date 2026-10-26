@@ -496,8 +496,8 @@
   border-bottom: 9px solid var(--primary, #e8a317);
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.45));
 }
-/* 分段修正列表 */
-.loc-seg {
+/* 分段修正列表（不要叫 .loc-seg：那个是回放的二选一开关） */
+.loc-segbox {
   display: flex;
   flex-direction: column;
   gap: 6px;
