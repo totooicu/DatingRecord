@@ -112,7 +112,7 @@
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   color: var(--muted);
 }
 
@@ -250,7 +250,7 @@
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fbfaf8;
+  background: var(--side);
 }
 
 .file-filter-group {
@@ -310,7 +310,7 @@
   padding: 0;
   border: 1.5px solid #cfc9bf;
   border-radius: 6px;
-  background: #fff;
+  background: var(--panel);
   color: #fff;
 }
 

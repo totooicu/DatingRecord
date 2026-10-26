@@ -194,7 +194,7 @@
 
 .pv-rate button {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--panel);
   color: var(--muted);
   border-radius: 999px;
   padding: 3px 8px;

@@ -17,7 +17,7 @@
   padding: 6px 2px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fbfaf8;
+  background: var(--side);
 }
 
 .chat-empty {
@@ -76,7 +76,7 @@
   min-width: 0;
   padding: 7px 11px;
   border-radius: 12px;
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--border);
   font-size: 13px;
   line-height: 1.6;
@@ -372,7 +372,7 @@
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 

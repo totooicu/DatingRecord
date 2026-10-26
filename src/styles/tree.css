@@ -10,7 +10,7 @@
 }
 
 .tree-row-on {
-  background: #fff;
+  background: var(--panel);
   border-left: 3px solid var(--primary);
 }
 

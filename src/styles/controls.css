@@ -189,3 +189,16 @@
 .checkbox input {
   width: auto;
 }
+
+/* ---------- 夜间模式专属覆盖 ---------- */
+/* 深色底上 --primary 已提亮，主按钮白字会糊；翻成深色字。 */
+[data-mode="dark"] .btn-primary,
+[data-mode="dark"] .btn-privacy {
+  color: var(--bg);
+}
+
+/* 次按钮 hover 不要再写死浅底，否则深夜会蹦出白块 */
+[data-mode="dark"] .btn:hover {
+  background: var(--side);
+  border-color: var(--border);
+}
