@@ -26,9 +26,12 @@ import 'leaflet/dist/leaflet.css';
 
 import {
   DEFAULT_OPTIONS,
+  buildTrack,
+  extractPoints,
   extractTrack,
   toCsv,
   type ExtractOptions,
+  type ExtractPointsResult,
   type ExtractResult,
   type TrackPoint,
 } from '../../core/tools/trackExtract';
@@ -55,6 +58,7 @@ import {
   shortestPath,
   straightLine,
 } from '../../core/tools/trackRoute';
+import { clusterChains, clusterColor, type ClusterResult } from '../../core/tools/trackCluster';
 import { createLocation } from '../../core/location/locationFile';
 import { locateMe } from '../../core/runtime/locationAuto';
 import { listModels, type AiModel } from '../../core/ai';
@@ -105,9 +109,10 @@ const AUTO_GRID: Partial<ExtractOptions>[] = [
   { redSat: 70, redVal: 35, hueHi: 11, rDominance: 1.05, minArea: 150, gapPx: 45 },
 ];
 
-/** 对比图里的图层：底图 / 算法轨迹 / AI 优化 / 手动布线 */
+/** 对比图里的图层：底图 / 提取的点 / 算法轨迹 / AI 优化 / 手动布线 */
 interface Layers {
   img: boolean;
+  pts: boolean;
   alg: boolean;
   ai: boolean;
   man: boolean;
@@ -118,6 +123,8 @@ type Scheme = 'alg' | 'ai' | 'man';
 const COLOR_AI = '#2196F3';
 const COLOR_ALG = '#d9536b';
 const COLOR_MAN = '#F57C00';
+/** 点云用青色：和原图红线、AI 蓝、手动橙都能分开 */
+const COLOR_DOT = '#00897B';
 
 /** 手动布线的一条腿：沿线走 or 两段不连通只能拉直线 */
 interface ManualLeg {
@@ -140,10 +147,12 @@ export function LabTrackSection() {
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const [fileName, setFileName] = useState('');
   const [result, setResult] = useState<ExtractResult | null>(null);
+  /** 第一步的产物：点云（还没连线） */
+  const [dotRes, setDotRes] = useState<ExtractPointsResult | null>(null);
   const [ai, setAi] = useState<AiTrackResult | null>(null);
   const [aiPts, setAiPts] = useState<TrackPoint[]>([]);
-  const [layers, setLayers] = useState<Layers>({ img: true, alg: true, ai: true, man: true });
-  const [busy, setBusy] = useState<'extract' | 'auto' | 'ai' | null>(null);
+  const [layers, setLayers] = useState<Layers>({ img: true, pts: true, alg: true, ai: true, man: true });
+  const [busy, setBusy] = useState<'extract' | 'link' | 'auto' | 'ai' | null>(null);
   const [status, setStatus] = useState('就绪：选一张两步路截图');
   const [coord, setCoord] = useState('悬停看像素坐标');
   const [autoLog, setAutoLog] = useState<string[]>([]);
@@ -183,6 +192,13 @@ export function LabTrackSection() {
   /* ---------------- 图层：把三样东西叠在一张画布上 ---------------- */
 
   const algPath = useMemo<TrackPoint[]>(() => (result ? flattenSegments(result) : []), [result]);
+
+  // 距离聚类：把第一步的点按「隔得够近」归成连通网络。第二步只在这些网络内部串链，
+  // 网络之间绝不连——图上看得出是两片，画出来就不能硬接成一条。
+  const clusters = useMemo<ClusterResult | null>(
+    () => (dotRes?.chains.length ? clusterChains(dotRes.chains, opts.gapPx) : null),
+    [dotRes, opts.gapPx],
+  );
 
   // 比例尺优先用提取结果里的定标值；还没点「提取」时直接用手填的比例尺，
   // 这样只填 500 米 = 200 像素也能马上落图、马上保存。
@@ -296,6 +312,16 @@ export function LabTrackSection() {
     ctx.fillRect(0, 0, W, H);
     if (layers.img && imgElRef.current) ctx.drawImage(imgElRef.current, 0, 0, W, H);
 
+    // 第一步的点云：只说明「这里检出了红点」，没有顺序、也不连线。
+    // 按连通簇上色：同一种颜色 = 一个能连起来的网络；颜色一变，中间就是断的
+    if (layers.pts && dotRes?.chains.length) {
+      const { chains } = dotRes;
+      for (let i = 0; i < chains.length; i++) {
+        ctx.fillStyle = clusterColor(clusters?.clusterOf[i] ?? 0);
+        for (const p of chains[i].path) ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+      }
+    }
+
     const stroke = (pts: TrackPoint[], color: string, width: number, dashed = false) => {
       if (pts.length < 2) return;
       ctx.beginPath();
@@ -366,7 +392,7 @@ export function LabTrackSection() {
         }
       }
     }
-  }, [aiMarks, algPath, aiPts, layers, manualAnchor, manualLegs, result]);
+  }, [aiMarks, algPath, aiPts, clusters, dotRes, layers, manualAnchor, manualLegs, result]);
 
   useEffect(() => {
     drawOverlay();
@@ -377,34 +403,94 @@ export function LabTrackSection() {
     setManualAnchor(null);
   }, [result]);
 
-  /* ---------------- 提取 ---------------- */
+  /* ---------------- 第一步：只提取点 ---------------- */
 
-  const runExtract = useCallback(
-    (override?: Partial<ExtractOptions>, silent = false): ExtractResult | null => {
+  const runPoints = useCallback(
+    (override?: Partial<ExtractOptions>): ExtractPointsResult | null => {
       const img = imageDataRef.current;
       if (!img) return null;
-      const merged = { ...opts, ...override };
-      const r = extractTrack(img.data, img.width, img.height, merged);
-      if (!silent) {
-        setResult(r);
-        setCalibrated(false);
-        const cal = r.calibration;
-        const parts: string[] = [`${r.segments.length} 段 / ${r.stats.outPoints} 点`, `像素长 ${Math.round(cal.totalPx)}`];
-        if (cal.mPerPx > 0) parts.push(`约 ${(cal.totalM / 1000).toFixed(2)} 公里`);
-        if (cal.coverage >= 0) parts.push(`覆盖率 ${(cal.coverage * 100).toFixed(0)}%`);
-        setStatus(
-          r.segments.length
-            ? `完成：${parts.join(' · ')}（${r.stats.ms.toFixed(0)}ms）`
-            : '没提取到轨迹线：把「红色阈值」调低、或把「最小面积」调小',
-        );
-      }
+      const r = extractPoints(img.data, img.width, img.height, { ...opts, ...override });
+      const cl = r.chains.length
+        ? clusterChains(r.chains, { ...opts, ...override }.gapPx).clusters.length
+        : 0;
+      setDotRes(r);
+      // 点变了，之前的连线和手动路径都作废（点集不同，下标/图都不可复用）
+      setResult(null);
+      setAi(null);
+      setAiPts([]);
+      setAiMarks([]);
+      setAiCount({ add: 0, del: 0, move: 0 });
+      setAiThink('');
+      setAiLog('');
+      setManualLegs([]);
+      setManualAnchor(null);
+      setCalibrated(false);
+      setStatus(
+        r.points.length
+          ? `提取点完成：${r.points.length} 点 · ${r.chains.length} 条骨架链 · ${cl} 个连通簇（${r.stats.ms.toFixed(0)}ms）。下一步去「画轨迹」连线`
+          : '没提取到点：把「红色阈值」调低、或把「最小面积」调小',
+      );
       return r;
     },
     [opts],
   );
 
-  /** 自动校准：网格上真跑几遍，按评分挑最好的一组；返回采用的那份结果（AI 优化要用） */
-  const autoCalibrate = useCallback(async (): Promise<ExtractResult | null> => {
+  /* ---------------- 第二步：把点连成轨迹 ---------------- */
+
+  /** 自动连线：串链 → 平滑 → 等距重采样 → 定标，得到一条有序轨迹 */
+  const autoLink = useCallback(
+    async (
+      override: Partial<ExtractOptions> = {},
+      silent = false,
+      src: ExtractPointsResult | null = dotRes,
+    ): Promise<ExtractResult | null> => {
+      const img = imageDataRef.current;
+      if (!img || !src?.chains.length || busy) return null;
+      setBusy('link');
+      // 串链是 O(链数²) 的贪心，先让「连线中…」渲染出来再算
+      await new Promise((res) => setTimeout(res, 0));
+      const merged = { ...opts, ...override };
+      // 先聚类，再串链：簇内才允许连接，所以「自动连线」出来的是每簇一段
+      const cl = clusterChains(src.chains, merged.gapPx);
+      const r = buildTrack(src.chains, merged, {
+        redPx: src.stats.redPx,
+        droppedBy: src.stats.droppedBy,
+        droppedSegments: src.stats.droppedSegments,
+        clusterOf: cl.clusterOf,
+      });
+      setBusy(null);
+      if (!silent) {
+        setResult(r);
+        // 重新连线后点列变了，AI 层按下标存的修改全部失效
+        setAi(null);
+        setAiPts([]);
+        setAiMarks([]);
+        setAiCount({ add: 0, del: 0, move: 0 });
+        setAiThink('');
+        setAiLog('');
+        const cal = r.calibration;
+        const parts: string[] = [
+          `${cl.clusters.length} 个连通簇 / ${r.segments.length} 段 / ${r.stats.outPoints} 点`,
+          `像素长 ${Math.round(cal.totalPx)}`,
+        ];
+        if (cal.mPerPx > 0) parts.push(`约 ${(cal.totalM / 1000).toFixed(2)} 公里`);
+        if (cal.coverage >= 0) parts.push(`覆盖率 ${(cal.coverage * 100).toFixed(0)}%`);
+        setStatus(
+          r.segments.length
+            ? `连线完成：${parts.join(' · ')}（${r.stats.ms.toFixed(0)}ms）`
+            : '连线没得到轨迹：把「断口阈值」调大、或把「最小面积」调小',
+        );
+      }
+      return r;
+    },
+    [busy, dotRes, opts],
+  );
+
+  /** 参数自动校准：网格上真跑几遍（内部会连一次线来评分），挑最好的一组；结果只留点云 */
+  const autoCalibrate = useCallback(async (): Promise<{
+    res: ExtractPointsResult;
+    patch: Partial<ExtractOptions>;
+  } | null> => {
     const img = imageDataRef.current;
     if (!img || busy) return null;
     setBusy('auto');
@@ -423,20 +509,35 @@ export function LabTrackSection() {
       // 让出主线程，别让页面卡死
       await new Promise((res) => setTimeout(res, 0));
     }
+    let out: { res: ExtractPointsResult; patch: Partial<ExtractOptions> } | null = null;
     if (best) {
       patch(best.patch);
-      setResult(best.r);
+      // 校准只负责「用什么阈值取点」，轨迹留给第二步
+      const pr = extractPoints(img.data, img.width, img.height, { ...opts, ...best.patch });
+      setDotRes(pr);
+      setResult(null);
+      setAi(null);
+      setAiPts([]);
+      setAiMarks([]);
+      setAiCount({ add: 0, del: 0, move: 0 });
+      setAiThink('');
+      setAiLog('');
+      setManualLegs([]);
+      setManualAnchor(null);
       setCalibrated(true);
       log.push(
         `已采用：饱和${best.patch.redSat} 明度${best.patch.redVal} 色相≤${best.patch.hueHi}° 红优势${best.patch.rDominance} 面积${best.patch.minArea} 断口${best.patch.gapPx}`,
       );
       setStatus(
-        `自动校准完成：${best.r.segments.length} 段 · ${best.r.stats.outPoints} 点 · 得分 ${best.score.toFixed(3)}`,
+        `自动校准完成：采用得分 ${best.score.toFixed(3)} 的那组参数（${pr.points.length} 点、${pr.chains.length} 条骨架链、${
+          clusterChains(pr.chains, { ...opts, ...best.patch }.gapPx).clusters.length
+        } 个连通簇），下一步去「画轨迹」连线`,
       );
+      out = { res: pr, patch: best.patch };
     }
     setAutoLog(log);
     setBusy(null);
-    return best ? best.r : null;
+    return out;
   }, [busy, opts, patch]);
 
   /**
@@ -452,12 +553,22 @@ export function LabTrackSection() {
       return;
     }
     let base = result;
-    if (!base?.segments.length || !calibrated) {
-      setStatus('先做参数自动校准，AI 在它的结果上优化…');
-      base = await autoCalibrate();
+    if (!base?.segments.length) {
+      // AI 只改「已有轨迹」：先确保点提取出来了，再自动连线
+      let pr = dotRes;
+      let extra: Partial<ExtractOptions> = {};
+      if (!pr?.chains.length || !calibrated) {
+        setStatus('先提取点并自动连线，AI 在连好的轨迹上优化…');
+        const best = await autoCalibrate();
+        if (best) {
+          pr = best.res;
+          extra = best.patch;
+        }
+      }
+      base = await autoLink(extra, false, pr);
     }
     if (!base?.segments.length) {
-      showToast('没提取到轨迹：先把「红色阈值」「最小面积」调低，或换一张图', 3800);
+      showToast('没有可优化的轨迹：先「提取点」，再「自动连线」', 3800);
       return;
     }
     const W = imgSize?.w ?? 0;
@@ -522,8 +633,10 @@ export function LabTrackSection() {
     }
   }, [
     autoCalibrate,
+    autoLink,
     busy,
     calibrated,
+    dotRes,
     imgSize,
     opts.mileageKm,
     opts.scaleMeter,
@@ -562,6 +675,7 @@ export function LabTrackSection() {
         setImgSize({ w: img.width, h: img.height });
         setFileName(file.name);
         setResult(null);
+        setDotRes(null);
         setAi(null);
         setAiPts([]);
         setAiMarks([]);
@@ -574,7 +688,7 @@ export function LabTrackSection() {
         setManualAnchor(null);
         setManualMode(false);
         setZoom('fit');
-        setStatus(`已载入 ${img.width}×${img.height}，点「提取轨迹」或「AI 优化」`);
+        setStatus(`已载入 ${img.width}×${img.height}，点「提取点」开始`);
       };
       img.onerror = () => setStatus('图片加载失败');
       img.src = url;
@@ -823,9 +937,9 @@ export function LabTrackSection() {
       <LabHead title="轨迹提取" subKey="labTrack" />
 
       <p className="muted small lab-track-lead">
-        把两步路 App 的截图拖进来：先按红色阈值 + 骨架形状校准筛出轨迹线，再把断开的段串成一条，
-        最后沿弧长等距插值。可以让视觉模型再独立提一遍做对比，也可以手动点 A、点 B 让系统沿轨迹导航，
-        修完把方案落到地图上走一遍，满意了直接存成本库的定位文件。图片只在你浏览器里处理。
+        把两步路 App 的截图拖进来，分三步走：先只提取点（红色阈值 + 骨架形状校准，留下轨迹上的像素，
+        还不连线）；再画轨迹（自动连线 / AI 优化 / 手动点 A、点 B 让系统沿轨迹导航）；最后落到地图上复现，
+        满意了直接存成本库的定位文件。图片只在你浏览器里处理。
       </p>
 
       <div className="lab-track-status">{status}</div>
@@ -835,7 +949,7 @@ export function LabTrackSection() {
         <h2 className="lab-track-stephead">
           <span className="lab-track-stepno">1</span>
           提取点
-          <em>选图 → 阈值筛红 → 拆段串链 → 等距插值，顺手把比例尺定标</em>
+          <em>选图 → 阈值筛红 → 连通域形状校准：先只留下点，再按距离聚成连通网络，不连线</em>
         </h2>
 
         {/* 选图：一个真正的按钮 + 拖拽区，别让人去点一个没有样式的原生控件 */}
@@ -881,16 +995,32 @@ export function LabTrackSection() {
       </div>
 
         <div className="lab-track-bar">
-          <button className="btn btn-primary" disabled={!imgSize || !!busy} onClick={() => runExtract()}>
-            {busy === 'extract' ? '提取中…' : '提取轨迹'}
+          <button className="btn btn-primary" disabled={!imgSize || !!busy} onClick={() => runPoints()}>
+            {busy === 'extract' ? '提取中…' : '提取点'}
           </button>
           <button className="btn" disabled={!imgSize || !!busy} onClick={autoCalibrate}>
             {busy === 'auto' ? '校准中…' : '参数自动校准'}
           </button>
-          <button className="btn" disabled={!result?.segments.length} onClick={downloadCSV}>
-            下载 CSV
-          </button>
         </div>
+
+        {/* 第一步的产出：只有点和短链，还没有轨迹 */}
+        <div className="muted small lab-track-pointsinfo">
+          {dotRes
+            ? `${dotRes.points.length} 点 · ${dotRes.chains.length} 条骨架链 · ${clusters?.clusters.length ?? 0} 个连通簇（最大 ${clusters?.clusters[0]?.points ?? 0} 点）· 红色像素 ${dotRes.stats.redPx} · 丢弃 ${dotRes.stats.droppedSegments} 个色块`
+            : '还没有提取点：这一步只找红色轨迹上的像素，不连线'}
+        </div>
+        {clusters && clusters.clusters.length > 1 ? (
+          <div className="muted small lab-track-clusterinfo">
+            同色 = 一个连通网络（最近距离 ≤ {opts.gapPx}px）。共 {clusters.clusters.length} 个网络：
+            {clusters.clusters.slice(0, 6).map((c, i) => (
+              <span key={i} className="lab-track-clusterchip">
+                <i style={{ background: clusterColor(i) }} />
+                {c.points} 点
+              </span>
+            ))}
+            {clusters.clusters.length > 6 ? ' …' : ''}
+          </div>
+        ) : null}
 
       {/* 校准：比例尺定标 + 官方里程验收 */}
       <div className="lab-track-bar">
@@ -996,37 +1126,6 @@ export function LabTrackSection() {
         </div>
       )}
 
-      {/* 定标读数：把像素换算成米之后，才知道这条轨迹有多长 */}
-      {mPerPx > 0 && (
-        <div className="lab-track-calib">
-          <div>
-            <span className="lab-track-k">比例尺</span>
-            <span className="lab-track-v">
-              {mPerPx.toFixed(3)} 米/像素
-              {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
-            </span>
-          </div>
-          <div>
-            <span className="lab-track-k">提取总长</span>
-            <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
-          </div>
-          {cal && cal.officialM > 0 && (
-            <div>
-              <span className="lab-track-k">官方里程</span>
-              <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
-            </div>
-          )}
-          {cal && cal.coverage >= 0 && (
-            <div>
-              <span className="lab-track-k">覆盖率</span>
-              <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
-                {(cal.coverage * 100).toFixed(1)}%
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
       {autoLog.length > 0 && (
         <details className="lab-help">
           <summary>参数自动校准记录（在参数网格上真跑，按评分挑最好的一组）</summary>
@@ -1034,10 +1133,10 @@ export function LabTrackSection() {
         </details>
       )}
 
-      {result && result.stats.droppedSegments > 0 && (
+      {dotRes && dotRes.stats.droppedSegments > 0 && (
         <div className="lab-track-dropped muted small">
-          已丢弃 {result.stats.droppedSegments} 个非轨迹色块：
-          {Object.entries(result.stats.droppedBy)
+          已丢弃 {dotRes.stats.droppedSegments} 个非轨迹色块：
+          {Object.entries(dotRes.stats.droppedBy)
             .map(([k, v]) => `${k} ${v}`)
             .join(' · ')}
         </div>
@@ -1049,9 +1148,24 @@ export function LabTrackSection() {
         <h2 className="lab-track-stephead">
           <span className="lab-track-stepno">2</span>
           画轨迹
-          <em>自动结果、AI 优化、手动布线各一层，勾选决定看哪几层</em>
+          <em>先聚类再画：簇内自动连线 / AI 优化 / 手动布线，各一层叠在图上对比</em>
         </h2>
 
+        <div className="lab-track-bar">
+          <span className="lab-track-group">自动</span>
+          <button
+            className="btn btn-primary"
+            disabled={!dotRes?.chains.length || !!busy}
+            onClick={() => autoLink()}
+            title="把第一步的骨架链串成一条有序轨迹"
+          >
+            {busy === 'link' ? '连线中…' : '自动连线'}
+          </button>
+          <button className="btn" disabled={!result?.segments.length} onClick={downloadCSV}>
+            下载 CSV
+          </button>
+          <span className="muted small">把第一步的点串成有序轨迹：串链 → 平滑 → 等距重采样</span>
+        </div>
         <div className="lab-track-bar">
           <span className="lab-track-group">AI</span>
           <button
@@ -1083,9 +1197,25 @@ export function LabTrackSection() {
             原图
           </label>
           <label>
-            <input type="checkbox" checked={layers.alg} onChange={(e) => setLayers((l) => ({ ...l, alg: e.target.checked }))} />
+            <input
+              type="checkbox"
+              checked={layers.pts}
+              disabled={!dotRes?.points.length}
+              onChange={(e) => setLayers((l) => ({ ...l, pts: e.target.checked }))}
+            />
+            <i className="lab-track-dot" style={{ background: COLOR_DOT }} />
+            提取的点
+            {dotRes ? <span className="lab-track-count"> {dotRes.points.length} 点</span> : null}
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={layers.alg}
+              disabled={!result?.segments.length}
+              onChange={(e) => setLayers((l) => ({ ...l, alg: e.target.checked }))}
+            />
             <i className="lab-track-dot" style={{ background: 'var(--primary)' }} />
-            提取的轨迹
+            自动连线
             {result ? <span className="lab-track-count"> {result.stats.outPoints} 点</span> : null}
           </label>
           <label>
@@ -1133,7 +1263,7 @@ export function LabTrackSection() {
                   ? '已结束手动布线'
                   : graph
                     ? '手动布线：点轨迹上的起点 A，再点 B，系统自动从 A 导航到 B'
-                    : '手动布线：还没有提取结果，点两下只能拉直线（先「提取轨迹」才能沿轨迹走）',
+                    : '手动布线：还没有连好的轨迹，点两下只能拉直线（先「自动连线」才能沿轨迹走）',
               );
             }}
             aria-pressed={manualMode}
@@ -1217,10 +1347,42 @@ export function LabTrackSection() {
         </div>
         <canvas ref={origCanvasRef} hidden />
         <div className="muted small lab-track-gaps">
-          {result ? `${result.segments.length} 段 · ${gapsInfo}` : '还没有提取结果'}
+          {dotRes ? `点 ${dotRes.points.length} 个 · ${dotRes.chains.length} 条骨架链` : '还没有提取点'}
+          {result ? ` · 轨迹 ${result.segments.length} 段 · ${gapsInfo}` : ' · 还没有连线'}
           {aiPts.length ? ' · AI 层虚线：绿点新增、蓝圈移动、红叉删除' : ' · AI 层还没有结果'}
           {manualPts.length ? ' · 橙色实线沿轨迹、虚线段是不连通时拉的直线' : ''}
         </div>
+      {/* 定标读数：把像素换算成米之后，才知道这条轨迹有多长 */}
+      {mPerPx > 0 && (
+        <div className="lab-track-calib">
+          <div>
+            <span className="lab-track-k">比例尺</span>
+            <span className="lab-track-v">
+              {mPerPx.toFixed(3)} 米/像素
+              {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
+            </span>
+          </div>
+          <div>
+            <span className="lab-track-k">提取总长</span>
+            <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
+          </div>
+          {cal && cal.officialM > 0 && (
+            <div>
+              <span className="lab-track-k">官方里程</span>
+              <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
+            </div>
+          )}
+          {cal && cal.coverage >= 0 && (
+            <div>
+              <span className="lab-track-k">覆盖率</span>
+              <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
+                {(cal.coverage * 100).toFixed(1)}%
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       </div>
 
       {aiThink && (
@@ -1272,7 +1434,7 @@ export function LabTrackSection() {
           <span className="lab-track-group">方案</span>
           <div className="loc-seg">
             <button className={scheme === 'alg' ? 'on' : undefined} onClick={() => setScheme('alg')} aria-pressed={scheme === 'alg'}>
-              提取的轨迹
+              自动轨迹
             </button>
             <button
               className={scheme === 'ai' ? 'on' : undefined}
@@ -1331,7 +1493,7 @@ export function LabTrackSection() {
         <span className="lab-track-group">存成本库定位</span>
         <div className="loc-seg">
           <button className={saveScheme === 'alg' ? 'on' : undefined} onClick={() => setSaveScheme('alg')} aria-pressed={saveScheme === 'alg'}>
-            提取的轨迹
+            自动轨迹
           </button>
           <button
             className={saveScheme === 'ai' ? 'on' : undefined}
@@ -1368,20 +1530,24 @@ export function LabTrackSection() {
       <details className="lab-help">
         <summary>它是怎么取的 / 两套结果的差别</summary>
         <p className="muted small">
-          ① 红色判定：饱和度、明度都过线，色相落在 0~{opts.hueHi}° 或 {opts.hueLo}~180°，并且 R
-          通道要明显压过 G/B——最后这条是为了不把橙黄色道路和蓝色水面当成轨迹。
-          ② 闭运算补 1~3px 的细断口。③ 连通域之后做形状校准：轨迹是细长曲线，骨架长度一定
-          超过包围盒对角线；红圈「终」、POI 图标是实心块或圆环，据此丢掉。④ 每段骨架化后按分叉点
-          切成若干简单链，每条支路都走一遍（不会在岔口抄近路画假直线）。⑤ 串联：最长段作种子，
-          贪心把其余链接到两端，间距超过「断口阈值」的不接。⑥ 插值：沿弧长等距重采样 + 移动平均平滑。
-          ⑦ 校准：填「比例尺 500 米 = 200 像素」就能得到米制坐标与覆盖率；只填官方里程则以里程反推比例尺。
+          <b>第一步只取点</b>：① 红色判定——饱和度、明度都过线，色相落在 0~{opts.hueHi}° 或{' '}
+          {opts.hueLo}~180°，并且 R 通道要明显压过 G/B（不把橙黄道路、蓝色水面当轨迹）；
+          ② 闭运算补 1~3px 的细断口；③ 连通域之后做形状校准——轨迹是细长曲线，骨架长一定超过包围盒
+          对角线，红圈「终」、POI 图标是实心块或圆环，据此丢掉；④ 每个连通域骨架化后按分叉点切成若干
+          简单链，摊平成点云。这一步没有顺序、也不连线，图上看到的就是一片红点。
         </p>
         <p className="muted small">
-          AI 优化走的是「在原结果上改」而不是「重画一条」：点它时会先跑参数自动校准（拿分最高的那组参数），
+          <b>第二步才连线</b>：⑤ 串联——最长链作种子，贪心把其余链接到两端，间距超过「断口阈值」的不接；
+          ⑥ 沿弧长等距重采样 + 移动平均平滑，得到有序轨迹；⑦ 定标——填「比例尺 500 米 = 200 像素」就能
+          得到米制坐标与覆盖率，只填官方里程则以里程反推比例尺。点变了（阈值/面积/重跑）连线和手动路径
+          都会作废，因为它们都建立在那一批点上。
+        </p>
+        <p className="muted small">
+          AI 优化走的是「在连好的结果上改」而不是「重画一条」：还没连线时它会先补一次自动校准 + 自动连线，
           再把当前点列（抽样到 160 个，带原始下标）和截图（长边缩到 1400px）一起发给能看图的模型。
           模型只返回最小必要的三类修改——断口处 insert、把图标当轨迹的 delete、整段偏了的 move，
           外带一段 reasoning 说明它为什么这么改。页面按下标把这些修改应用回完整点列，所以「AI 优化后」
-          和「提取的轨迹」点一一对应，偏差也还是按弧长对齐逐点算。图上绿点是新增、蓝圈是移动、红叉是删除
+          和「自动连线」的点一一对应，偏差也还是按弧长对齐逐点算。图上绿点是新增、蓝圈是移动、红叉是删除
           （叉画在原位置），实线是算法结果、虚线是优化后的结果，红色小圆点是算法断口。
         </p>
         <p className="muted small">

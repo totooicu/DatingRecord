@@ -613,7 +613,8 @@ export function smoothMoving(pts: TrackPoint[], win: number): TrackPoint[] {
 /* ⑦ 主流程                                                            */
 /* ------------------------------------------------------------------ */
 
-interface RawSeg {
+/** 骨架切出来的一段简单链（还没串联成「轨迹」，也没有整体顺序） */
+export interface SkeletonPath {
   path: TrackPoint[];
   len: number;
   skelPx: number;
@@ -676,16 +677,20 @@ function looksLikeStarIcon(chains: SkeletonChain[], skelPx: number): boolean {
 }
 
 
-export function extractTrack(
+/** 扫描：红色掩码 → 闭运算 → 连通域 → 形状校准 → 骨架切链。只得到「点/短链」，不串联、不重采样 */
+interface ScanResult {
+  segs: SkeletonPath[];
+  redPx: number;
+  droppedBy: Record<string, number>;
+  dropped: number;
+}
+
+function scanSkeleton(
   data: Uint8ClampedArray | Uint8Array,
   w: number,
   h: number,
-  userOpts: Partial<ExtractOptions> = {},
-): ExtractResult {
-  const t0 =
-    typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-  const o: ExtractOptions = { ...DEFAULT_OPTIONS, ...userOpts };
-
+  o: ExtractOptions,
+): ScanResult {
   // ① 掩码
   let mask = buildRedMask(data, w, h, o);
   let redPx = 0;
@@ -702,7 +707,7 @@ export function extractTrack(
   const drop = (why: string) => {
     droppedBy[why] = (droppedBy[why] || 0) + 1;
   };
-  const segs: RawSeg[] = [];
+  const segs: SkeletonPath[] = [];
   for (const comp of comps) {
     if (comp.area < o.minArea) {
       drop('面积太小');
@@ -748,6 +753,100 @@ export function extractTrack(
       });
     }
   }
+  return { segs, redPx, droppedBy, dropped: Object.values(droppedBy).reduce((a, b) => a + b, 0) };
+}
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+}
+
+/**
+ * 第一步：只提取点。
+ *
+ * 与 `extractTrack` 的区别是「不串联、不排序、不重采样」——输出的是骨架点云，
+ * 页面上就是一片点，还谈不上一条轨迹。轨迹留到第二步：自动连线（`buildTrack`）、
+ * 手动点 A/B、或交给模型优化。
+ */
+export interface ExtractPointsResult {
+  /** 保留下来的骨架链（只是短链，没有整体顺序；自动连线要用） */
+  chains: SkeletonPath[];
+  /** 去重后的骨架点：画在图上就是点云，也是「有多少点」的答案 */
+  points: TrackPoint[];
+  stats: {
+    /** 红色掩码像素数 */
+    redPx: number;
+    /** 留下的骨架链数 */
+    keptChains: number;
+    /** 被丢弃的色块数 */
+    droppedSegments: number;
+    /** 丢弃原因统计 */
+    droppedBy: Record<string, number>;
+    /** 输出的点数 */
+    outPoints: number;
+    /** 耗时（毫秒） */
+    ms: number;
+  };
+}
+
+export function extractPoints(
+  data: Uint8ClampedArray | Uint8Array,
+  w: number,
+  h: number,
+  userOpts: Partial<ExtractOptions> = {},
+): ExtractPointsResult {
+  const t0 = nowMs();
+  const o: ExtractOptions = { ...DEFAULT_OPTIONS, ...userOpts };
+  const sc = scanSkeleton(data, w, h, o);
+
+  // 链是逐像素走的，直接摊平成点云；同一像素只留一次（邻链在分叉点会重叠）
+  const seen = new Set<string>();
+  const points: TrackPoint[] = [];
+  for (const sg of sc.segs) {
+    for (const p of sg.path) {
+      const key = `${Math.round(p.x)},${Math.round(p.y)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      points.push({ x: p.x, y: p.y });
+    }
+  }
+
+  return {
+    chains: sc.segs,
+    points,
+    stats: {
+      redPx: sc.redPx,
+      keptChains: sc.segs.length,
+      droppedSegments: sc.dropped,
+      droppedBy: sc.droppedBy,
+      outPoints: points.length,
+      ms: nowMs() - t0,
+    },
+  };
+}
+
+/**
+ * 第二步（自动）：把第一步留下的骨架链串成有序轨迹 → 平滑 → 等距重采样 → 定标。
+ * 数据来源仍是第一步那张图，所以阈值/断口改了要重跑 `extractPoints` 再连线。
+ */
+export function buildTrack(
+  segsInput: SkeletonPath[],
+  userOpts: Partial<ExtractOptions> = {},
+  meta: {
+    redPx?: number;
+    droppedBy?: Record<string, number>;
+    droppedSegments?: number;
+    t0?: number;
+    /** 与 segsInput 对齐的簇号（距离聚类的结果）：只在簇内串链 */
+    clusterOf?: number[];
+  } = {},
+): ExtractResult {
+  const t0 = meta.t0 ?? nowMs();
+  const o: ExtractOptions = { ...DEFAULT_OPTIONS, ...userOpts };
+  const redPx = meta.redPx ?? 0;
+  const droppedBy = meta.droppedBy ?? {};
+  const droppedSegments = meta.droppedSegments ?? Object.values(droppedBy).reduce((a, b) => a + b, 0);
+  // 排序会改传入数组的顺序，复制一份
+  const segs = segsInput.slice();
 
   if (!segs.length) {
     return {
@@ -764,57 +863,75 @@ export function extractTrack(
       stats: {
         redPx,
         keptSegments: 0,
-        droppedSegments: Object.values(droppedBy).reduce((a, b) => a + b, 0),
+        droppedSegments,
         droppedBy,
         outPoints: 0,
-        ms: (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - t0,
+        ms: nowMs() - t0,
       },
     };
   }
 
-  // ⑤ 串联：最长段作种子，贪心接两端；超 gapPx 不接 → 断成新链
-  segs.sort((a, b) => b.len - a.len);
-  const chains: RawSeg[][] = [];
-  const used = new Set<number>();
-  for (let i = 0; i < segs.length; i++) {
-    if (used.has(i)) continue;
-    const chain: RawSeg[] = [segs[i]];
-    used.add(i);
-    let head = segs[i].path[0];
-    let tail = segs[i].path[segs[i].path.length - 1];
-    let grew = true;
-    while (grew) {
-      grew = false;
-      let best: { d: number; j: number; rev: boolean; at: 'head' | 'tail' } | null = null;
-      for (let j = 0; j < segs.length; j++) {
-        if (used.has(j)) continue;
-        const p0 = segs[j].path[0];
-        const p1 = segs[j].path[segs[j].path.length - 1];
-        const cands: { d: number; rev: boolean; at: 'head' | 'tail' }[] = [
-          { d: Math.hypot(p0.x - tail.x, p0.y - tail.y), rev: false, at: 'tail' },
-          { d: Math.hypot(p1.x - tail.x, p1.y - tail.y), rev: true, at: 'tail' },
-          { d: Math.hypot(p0.x - head.x, p0.y - head.y), rev: true, at: 'head' },
-          { d: Math.hypot(p1.x - head.x, p1.y - head.y), rev: false, at: 'head' },
-        ];
-        for (const c of cands) {
-          if (!best || c.d < best.d) best = { d: c.d, j, rev: c.rev, at: c.at };
+  // ⑤ 串链：按连通簇分组，簇内最长链作种子、贪心接两端；超 gapPx 不接 → 断成新链。
+  //    跨簇不接——聚类已经说过「它们不是一个网络」，这里再连就自相矛盾了。
+  const groups: number[][] = [];
+  if (meta.clusterOf && meta.clusterOf.length === segs.length) {
+    const byCluster = new Map<number, number[]>();
+    segs.forEach((_, i) => {
+      const c = meta.clusterOf![i];
+      const arr = byCluster.get(c);
+      if (arr) arr.push(i);
+      else byCluster.set(c, [i]);
+    });
+    const sizeOf = (ids: number[]) => ids.reduce((sum, i) => sum + segs[i].len, 0);
+    groups.push(...[...byCluster.values()].sort((a, b) => sizeOf(b) - sizeOf(a)));
+  } else {
+    groups.push(segs.map((_, i) => i));
+  }
+
+  const chains: SkeletonPath[][] = [];
+  for (const group of groups) {
+    const order = group.slice().sort((a, b) => segs[b].len - segs[a].len);
+    const used = new Set<number>();
+    for (const seed of order) {
+      if (used.has(seed)) continue;
+      const chain: SkeletonPath[] = [segs[seed]];
+      used.add(seed);
+      let head = segs[seed].path[0];
+      let tail = segs[seed].path[segs[seed].path.length - 1];
+      let grew = true;
+      while (grew) {
+        grew = false;
+        let best: { d: number; j: number; rev: boolean; at: 'head' | 'tail' } | null = null;
+        for (const j of order) {
+          if (used.has(j)) continue;
+          const p0 = segs[j].path[0];
+          const p1 = segs[j].path[segs[j].path.length - 1];
+          const cands: { d: number; rev: boolean; at: 'head' | 'tail' }[] = [
+            { d: Math.hypot(p0.x - tail.x, p0.y - tail.y), rev: false, at: 'tail' },
+            { d: Math.hypot(p1.x - tail.x, p1.y - tail.y), rev: true, at: 'tail' },
+            { d: Math.hypot(p0.x - head.x, p0.y - head.y), rev: true, at: 'head' },
+            { d: Math.hypot(p1.x - head.x, p1.y - head.y), rev: false, at: 'head' },
+          ];
+          for (const c of cands) {
+            if (!best || c.d < best.d) best = { d: c.d, j, rev: c.rev, at: c.at };
+          }
+        }
+        if (best && best.d <= o.gapPx) {
+          const sg = segs[best.j];
+          const pts = best.rev ? sg.path.slice().reverse() : sg.path;
+          if (best.at === 'tail') {
+            chain.push(sg);
+            tail = pts[pts.length - 1];
+          } else {
+            chain.unshift(sg);
+            head = pts[0];
+          }
+          used.add(best.j);
+          grew = true;
         }
       }
-      if (best && best.d <= o.gapPx) {
-        const sg = segs[best.j];
-        const pts = best.rev ? sg.path.slice().reverse() : sg.path;
-        if (best.at === 'tail') {
-          chain.push(sg);
-          tail = pts[pts.length - 1];
-        } else {
-          chain.unshift(sg);
-          head = pts[0];
-        }
-        used.add(best.j);
-        grew = true;
-      }
+      chains.push(chain);
     }
-    chains.push(chain);
   }
 
   // ⑥ 每链拼成一条折线 → 平滑 → 等距重采样
@@ -869,8 +986,6 @@ export function extractTrack(
   const coverage = source === 'scale' && officialM > 0 ? totalM / officialM : -1;
 
   const outPoints = segments.reduce((s, x) => s + x.points.length, 0);
-  const ms =
-    (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - t0;
 
   return {
     segments,
@@ -879,12 +994,30 @@ export function extractTrack(
     stats: {
       redPx,
       keptSegments: segments.length,
-      droppedSegments: Object.values(droppedBy).reduce((a, b) => a + b, 0),
+      droppedSegments,
       droppedBy,
       outPoints,
-      ms,
+      ms: nowMs() - t0,
     },
   };
+}
+
+/** 一步到位的旧接口：提取点 + 自动连线（CLI / 回归脚本还在用） */
+export function extractTrack(
+  data: Uint8ClampedArray | Uint8Array,
+  w: number,
+  h: number,
+  userOpts: Partial<ExtractOptions> = {},
+): ExtractResult {
+  const t0 = nowMs();
+  const o: ExtractOptions = { ...DEFAULT_OPTIONS, ...userOpts };
+  const sc = scanSkeleton(data, w, h, o);
+  return buildTrack(sc.segs, o, {
+    redPx: sc.redPx,
+    droppedBy: sc.droppedBy,
+    droppedSegments: sc.dropped,
+    t0,
+  });
 }
 
 /* ------------------------------------------------------------------ */

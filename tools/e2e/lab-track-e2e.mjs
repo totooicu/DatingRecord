@@ -4,10 +4,11 @@
 //   T1 选图卡是按钮 + 拖拽区（不是裸的原生 file 控件），选中后显示文件名/尺寸
 //   T2 提取轨迹出结果，画布上真的画上了东西
 //   T3 AI 优化：先做参数自动校准，再把点列（带 index）+ 图片发给模型，拿回 edits 与思考过程
-//   T4 「原图 / 提取的轨迹 / AI 优化后的轨迹」复选框真的控制图层（逐层开关画布内容变化）
+//   T4 「原图 / 提取的点 / 自动连线 / AI 优化后的轨迹 / 手动路径」复选框真的控制图层（逐层开关画布内容变化）
 //   T5 地图复现：地图初始化、可点起点、复现推进里程、可停止
 //   T6 保存为 .drloc：出现在「功能面板 → 定位 → 文件」里，点开能看到点数
 //   T7 放大 / 手动布线：A→B 沿轨迹导航、原路返回算重复、断网拉直线、撤销清空
+//   T8 距离聚类：两片互不相连的轨迹聚成 2 个连通簇、颜色分开、自动连线只簇内接
 //
 // 依赖：先 `pnpm build`。自带静态服务器（dist）与假视觉模型服务，直接跑：
 //   node tools/e2e/lab-track-e2e.mjs
@@ -250,6 +251,26 @@ const canvasSum = () =>
     return s;
   });
 
+/** 画布上有多少个像素接近这个颜色：验证「按连通簇上色」真的生效 */
+const countColor = (hex) =>
+  p.evaluate((hex) => {
+    const c = document.querySelector('.lab-track-canvas');
+    if (!c) return -1;
+    const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const { data } = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (
+        Math.abs(data[i] - want[0]) < 6 &&
+        Math.abs(data[i + 1] - want[1]) < 6 &&
+        Math.abs(data[i + 2] - want[2]) < 6
+      ) {
+        n += 1;
+      }
+    }
+    return n;
+  }, hex);
+
 console.log('\n=== 轨迹提取 端到端 ===');
 
 await p.goto(APP, { waitUntil: 'load' });
@@ -320,17 +341,39 @@ check('T1 状态栏显示尺寸', /已载入 600×600/.test(await status()), awa
 /* ---------------- T2 提取 ---------------- */
 
 const beforeExtract = await canvasSum();
-await p.getByRole('button', { name: '提取轨迹' }).click();
+await p.getByRole('button', { name: '提取点' }).click();
 await p.waitForFunction(
-  () => /完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  () => /提取点完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
   null,
   { timeout: 30000 },
 );
-check('T2 提取完成并给出段数/点数', /(\d+) 段/.test(await status()), await status());
+const pointStatus = await status();
+check('T2 只提取点：报出点数/骨架链、且没有轨迹', /提取点完成：\d+ 点/.test(pointStatus), pointStatus);
+check('T2 提取点阶段不产生轨迹', /还没有连线/.test(await p.locator('.lab-track-gaps').innerText()), await p.locator('.lab-track-gaps').innerText());
+const pointPts = Number((/提取点完成：(\d+) 点/.exec(pointStatus) ?? [])[1] ?? 0);
+check('T2 点云真的画到了画布上', (await canvasSum()) !== beforeExtract && pointPts > 0, `points=${pointPts}`);
+const pointInfo = await p.locator('.lab-track-pointsinfo').innerText();
+check('T2 第一步的信息行给出点数/链数/丢弃', /\d+ 点 · \d+ 条骨架链/.test(pointInfo), pointInfo.replace(/\s+/g, ' '));
+check('T2 状态栏报出连通簇', /个连通簇/.test(pointStatus), pointStatus);
+check('T2 点云按所属连通簇上色', (await countColor('#00897B')) > 0, `teal=${await countColor('#00897B')}`);
+
+await p.getByRole('button', { name: '自动连线' }).click();
+await p.waitForFunction(
+  () => /连线完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  null,
+  { timeout: 30000 },
+);
+check(
+  'T2 自动连线得到轨迹段与点数',
+  /连线完成：\d+ 个连通簇 \/ \d+ 段 \/ \d+ 点/.test(await status()),
+  await status(),
+);
+const linkM = /连线完成：(\d+) 个连通簇 \/ (\d+) 段/.exec(await status());
+check('T2 连线按簇分段（段数 ≤ 簇数）', !!linkM && Number(linkM[2]) <= Number(linkM[1]), await status());
 const segText = await p.locator('.lab-track-gaps').innerText();
-check('T2 识别到轨迹段', /\d+ 段/.test(segText), segText.replace(/\s+/g, ' '));
+check('T2 识别到轨迹段', /轨迹 \d+ 段/.test(segText), segText.replace(/\s+/g, ' '));
 const afterExtract = await canvasSum();
-check('T2 轨迹真的画到了画布上', afterExtract !== beforeExtract);
+check('T2 连线后画布又变了', afterExtract !== beforeExtract);
 
 /* ---------------- T3 AI 校准 ---------------- */
 
@@ -379,10 +422,16 @@ check('T4 关掉 AI 层后画布变了', noAI !== allOn);
 await layerToggle(/^AI 优化后的轨迹/).check();
 check('T4 AI 层可重新打开', (await canvasSum()) === allOn);
 
-await layerToggle(/^提取的轨迹/).uncheck();
+await layerToggle(/^提取的点/).uncheck();
+const noPts = await canvasSum();
+check('T4 关掉点云层后画布变了', noPts !== allOn);
+await layerToggle(/^提取的点/).check();
+check('T4 点云层可重新打开', (await canvasSum()) === allOn);
+
+await layerToggle(/^自动连线/).uncheck();
 const noAlg = await canvasSum();
-check('T4 关掉算法层后画布变了', noAlg !== allOn);
-await layerToggle(/^提取的轨迹/).check();
+check('T4 关掉自动连线层后画布变了', noAlg !== allOn);
+await layerToggle(/^自动连线/).check();
 
 /* ---------------- T7 放大 / 手动布线 ---------------- */
 
@@ -464,7 +513,7 @@ await p.waitForTimeout(600);
 const manMapText = await p.locator('.lab-track-mapbar .muted.small').innerText();
 check('T5 手动路径能落到地图上', /(公里|米)/.test(manMapText), manMapText.replace(/\s+/g, ' '));
 check('T5 手动方案可复现', await p.getByRole('button', { name: '▶ 复现' }).isEnabled());
-await p.locator('.lab-track-mapbar').getByRole('button', { name: '提取的轨迹' }).click();
+await p.locator('.lab-track-mapbar').getByRole('button', { name: '自动轨迹' }).click();
 await p.waitForTimeout(300);
 
 /* ---------------- T6 存成本库定位 ---------------- */
@@ -492,6 +541,55 @@ await row.getByRole('button', { name: '打开' }).click();
 await p.waitForTimeout(900);
 const head = await p.locator('.loc-card-head').filter({ hasText: '个点' }).first().innerText();
 check('T6 打开后点数对得上', /(\d+) 个点/.test(head) && Number(/(\d+) 个点/.exec(head)[1]) >= 2, head.replace(/\s+/g, ' '));
+
+/* ---------------- T8 两片网络：先聚类，再按簇分段画 ---------------- */
+
+// 两个互不相连的半圆弧，中间空 120px（默认断口阈值 60px）：
+// 聚类必须认出「2 个连通网络」，自动连线不能在中间硬接一条假线。
+const arc = (cx, cy, a0, a1) =>
+  Array.from({ length: 48 }, (_, i) => {
+    const a = a0 + ((a1 - a0) * i) / 47;
+    return `${(cx + 90 * Math.cos(a)).toFixed(1)},${(cy + 90 * Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+const svgTwo = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">
+  <rect width="600" height="600" fill="#ffffff"/>
+  <polyline points="${arc(150, 300, Math.PI / 2, (Math.PI * 3) / 2)}"
+    fill="none" stroke="#e00000" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="${arc(450, 300, -Math.PI / 2, Math.PI / 2)}"
+    fill="none" stroke="#e00000" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+await toLabTrack();
+await p.locator('.lab-track-pick input[type=file]').setInputFiles({
+  name: '两片轨迹.svg',
+  mimeType: 'image/svg+xml',
+  buffer: Buffer.from(svgTwo),
+});
+await p.waitForFunction(() => /已载入 600×600/.test(document.querySelector('.lab-track-status')?.textContent ?? ''));
+await p.getByRole('button', { name: '提取点' }).click();
+await p.waitForFunction(
+  () => /提取点完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  null,
+  { timeout: 30000 },
+);
+const twoStatus = await status();
+check('T8 两片轨迹被聚成 2 个连通簇', /2 个连通簇/.test(twoStatus), twoStatus);
+const chip = await p.locator('.lab-track-clusterinfo').innerText().catch(() => '');
+check('T8 图例列出 2 个网络', /共 2 个网络/.test(chip), chip.replace(/\s+/g, ' '));
+// 两簇用调色板前两种颜色，画布上要同时看得到
+const teal = await countColor('#00897B');
+const purple = await countColor('#8E24AA');
+check('T8 两簇在画布上颜色不同', teal > 0 && purple > 0, `teal=${teal} purple=${purple}`);
+
+await p.getByRole('button', { name: '自动连线' }).click();
+await p.waitForFunction(
+  () => /连线完成：/.test(document.querySelector('.lab-track-status')?.textContent ?? ''),
+  null,
+  { timeout: 30000 },
+);
+const twoLink = await status();
+check('T8 自动连线仍是 2 簇 2 段（没有跨簇硬接）', /2 个连通簇 \/ 2 段/.test(twoLink), twoLink);
+check('T8 面板同样报 2 段', /轨迹 2 段/.test(await p.locator('.lab-track-gaps').innerText()), await p.locator('.lab-track-gaps').innerText());
 
 console.log(`\n结果：${failures.length === 0 ? '全部通过' : `${failures.length} 项失败`}`);
 if (failures.length) console.log(failures.map((f) => ` - ${f}`).join('\n'));

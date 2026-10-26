@@ -457,6 +457,34 @@
   color: var(--muted);
 }
 
+/* 连通簇图例：同色 = 一个网络，一眼看出点被分成了几片 */
+.lab-track-clusterinfo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: -4px;
+  line-height: 1.6;
+}
+
+.lab-track-clusterchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.lab-track-clusterchip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
 .lab-track-bar {
   display: flex;
   flex-wrap: wrap;
