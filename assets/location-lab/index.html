@@ -221,7 +221,7 @@
 </div>
 
 <div class="card">
-  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它是整机睡、被冻，还是被停 · 需 0.3.3-tune 以上</span></h2>
+  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它是整机睡、被冻，还是被停 · 0.3.2-tune 起能读账本，0.3.3-tune 起才有三时钟探针和 60 秒闹钟</span></h2>
   <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账）</label></div>
   <div class="kv"><b>账本</b><span id="dg-stat">—</span></div>
   <div class="kv"><b>tick 覆盖率</b><span id="dg-cov">—</span></div>
@@ -238,6 +238,9 @@
   <b>空档落在灭屏期间</b> → 熄屏后被冻；<b>亮屏时也停、还报「没持唤醒锁」</b> → 壳自己没把锁拿到手；
   <b>空档只有 3~4 秒</b> → 取证节拍的抖动，标「抖动」不标冻结；
   <b>拍连着但没有 fix</b> → 醒着却拿不到定位（多半没给「始终允许」，或省电把 provider 掐了）。
+  <b>覆盖率只有七八成、却一处 2.5 秒以上的空档都没有</b> → 也不是睡：壳的取证节拍是「等上一发落定 + 1 秒」，
+  熄屏下取点慢（要等满 1.8 秒才算超时）会把平均节拍拉到 2 秒多一次，于是有几十个「空秒」——
+  看「发了多少次请求、平均几秒一次」那一行就知道，量的是尺子（每秒一拍）不匹配，不是壳停了。
   空档下面那行小字是壳自己的物证：<b>开机钟 ≈ 墙钟</b> = 手机醒着、只有壳被冻；<b>开机钟少走一大截</b> =
   整机深睡；<b>Doze / 省电模式 / GPS 被关</b> 是环境原因；<b>闹钟 N/M</b> 是 60 秒心跳的对照——
   一次都没进来就是被冻或被杀，进来了而拍没跟上就是线程问题。</p>
@@ -260,7 +263,7 @@
   // 本页的发布号与发布时间：每次改这个文件都成对往上加，配合「服务器上的本页」
   // 的 Last-Modified 一起看，就知道壳里跑的是不是最新页。
   // 时间同时存一份 epoch 毫秒——比较 Last-Modified 用 epoch，才不受时区影响。
-  var PAGE_VER = 'lab 10-26.9', PAGE_BUILD = '2026-10-26 23:47', PAGE_BUILD_MS = 1793029620000;
+  var PAGE_VER = 'lab 10-26.10', PAGE_BUILD = '2026-10-26 23:58', PAGE_BUILD_MS = 1793030280000;
   var LOAD_AT = Date.now();
   var BASE_MS = 1000, MAX_MS = 64000;
   var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
@@ -668,12 +671,13 @@
   function analyzeJournal(res) {
     var lines = Array.isArray(res.lines) ? res.lines : [];
     var beats = [], fixes = 0, fails = 0, skips = 0, nowl = 0, destroy = 0, scr = [], lc = [], probes = [], wakes = [];
+    var failWhys = {};
     lines.forEach(function (l) {
       if (!l || !l.t) return;
       if (l.k === 'tick' || l.k === 'fix' || l.k === 'fail' || l.k === 'skip') {
         beats.push(l);
         if (l.k === 'fix') fixes++;
-        if (l.k === 'fail') fails++;
+        if (l.k === 'fail') { fails++; failWhys[l.why || '?'] = (failWhys[l.why || '?'] || 0) + 1; }
         if (l.k === 'skip') skips++;
         if (l.wl === false) nowl++;
       } else if (l.k === 'screen') scr.push(l);
@@ -686,9 +690,15 @@
     });
     lc.sort(function (a, b) { return a.t - b.t; });
     beats.sort(function (a, b) { return a.t - b.t; });
+    // 失败按原因分类：超时/丢锁/请求没发出/闹钟拉不回，四者处置完全不同
+    var failText = Object.keys(failWhys).map(function (w) {
+      return ({ timeout: '超时', 'wakelock-lost': '锁被收走', requestSingleUpdate: '请求没发出',
+        'wake-resume-blocked': '闹钟拉不回' }[w] || w) + ' ' + failWhys[w];
+    }).join('、');
     $('dg-stat').textContent = '读了 ' + lines.length + ' 行（账本共 ' + (res.total || 0) + ' 行 / ' +
       Math.round((res.bytes || 0) / 1024) + ' KB）· 壳累计 tick ' + (res.ticks || 0) +
-      ' · 取到 ' + fixes + ' 次 · 失败 ' + fails + ' 次' + (skips ? ' · 跳拍 ' + skips + ' 次' : '') +
+      ' · 取到 ' + fixes + ' 次 · 失败 ' + fails + ' 次' + (fails && failText ? '（' + failText + '）' : '') +
+      (skips ? ' · 跳拍 ' + skips + ' 次' : '') +
       (nowl ? ' · ' + nowl + ' 拍没持唤醒锁' : '') +
       (lc.length ? ' · 起停/销毁 ' + lc.length + ' 条' : '') +
       (probes.length ? ' · 空档探针 ' + probes.length + ' 条' : '') +
@@ -706,8 +716,26 @@
     var span = beats[beats.length - 1].t - beats[0].t;
     var expect = Math.max(1, Math.round(span / 1000) + 1);
     var cov = beatSeconds / expect;
+    // 跨度内一格都没写的秒 = 漏拍；按连续段分组，才能分清「整段睡死」和「节拍被切碎」
+    var holeRuns = [], curHole = null;
+    for (var hs = Math.floor(beats[0].t / 1000); hs <= Math.floor(beats[beats.length - 1].t / 1000); hs++) {
+      if (seen[hs]) { if (curHole) { holeRuns.push(curHole); curHole = null; } continue; }
+      if (!curHole) curHole = { a: hs * 1000, n: 0 };
+      curHole.n++;
+    }
+    if (curHole) holeRuns.push(curHole);
+    holeRuns.sort(function (x, y) { return y.n - x.n; });
+    var holes = holeRuns.length;
+    var holeSecs = holeRuns.reduce(function (m, r) { return m + r.n; }, 0);
+    var longestHole = holes ? holeRuns[0].n : 0;
+    // 取证节拍是「等上一发落定 + 1 秒」，不是一秒独立滴答：算出发了几次请求、平均多久一次，
+    // 才能把「秒数没写满」讲成等待时间，而不是漏拍。
+    var tickRows = beats.filter(function (l) { return l.k === 'tick'; }).length;
+    var cycleMs = tickRows > 1 ? Math.round(span / tickRows) : 0;
     $('dg-cov').textContent = beatSeconds + ' 拍 / 应为 ' + expect + '（' + Math.round(cov * 100) + '%）· 跨度 ' +
-      fmtDur(Math.round(span / 1000));
+      fmtDur(Math.round(span / 1000)) +
+      (tickRows ? ' · 发了 ' + tickRows + ' 次请求，平均 ' + (cycleMs / 1000).toFixed(1) + ' 秒一次' : '') +
+      (holes ? ' · 空秒 ' + holeSecs + ' 个，分 ' + holes + ' 处（最长连 ' + longestHole + ' 秒）' : ' · 一秒没空');
     var gaps = [];
     for (var i = 1; i < beats.length; i++) {
       var d = beats[i].t - beats[i - 1].t;
@@ -766,6 +794,14 @@
       verdict = '只是节拍抖动：' + gaps.length + ' 处，最长 ' + Math.round(gaps[0].ms / 1000) +
         ' 秒（取证把间隔压到 1 秒，几秒的抖动属正常，不是冻结）';
       kind = 'warn';
+    } else if (tickRows > 1 && longestHole <= 2) {
+      // 一秒都没落下超过 2 秒的空档，却没写满：是节拍在等上一发回包，不是漏拍
+      verdict = '没睡：全程没有 2.5 秒以上的空档，空掉的 ' + holeSecs + ' 秒是节拍在等上一发落定——这段发了 ' +
+        tickRows + ' 次请求、平均 ' + (cycleMs / 1000).toFixed(1) + ' 秒一次' +
+        (failWhys.timeout ? '（' + failWhys.timeout + ' 次要等满 1.8 秒才算超时）' : '') +
+        (fixes ? '，期间仍取到 ' + fixes + ' 次点' : '，一次点都没取到') +
+        '。覆盖率低是「每秒一拍」这把尺子量错了，不是壳睡';
+      kind = fixes ? 'on' : 'warn';
     } else {
       verdict = '覆盖率 ' + Math.round(cov * 100) + '%，取到 ' + fixes + ' 次';
       kind = cov >= 0.8 ? 'warn' : 'off';
