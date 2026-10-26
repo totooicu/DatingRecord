@@ -289,6 +289,12 @@ await toLabTrack();
 
 const pick = p.locator('.lab-track-pick');
 check('T1 选图卡存在', (await pick.count()) === 1);
+const stepHeads = (await p.locator('.lab-track-stephead').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+check(
+  'T1 页面按「提取点 → 画轨迹 → 地图复现」三步分组',
+  stepHeads.length === 3 && /提取点/.test(stepHeads[0]) && /画轨迹/.test(stepHeads[1]) && /地图复现/.test(stepHeads[2]),
+  JSON.stringify(stepHeads),
+);
 const pickBtn = p.locator('.lab-track-pickbtn');
 const btnBox = await pickBtn.boundingBox();
 const btnStyle = await pickBtn.evaluate((el) => {

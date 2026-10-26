@@ -828,9 +828,19 @@ export function LabTrackSection() {
         修完把方案落到地图上走一遍，满意了直接存成本库的定位文件。图片只在你浏览器里处理。
       </p>
 
-      {/* 选图：一个真正的按钮 + 拖拽区，别让人去点一个没有样式的原生控件 */}
-      <div
-        className={`lab-track-pick${dragging ? ' is-drag' : ''}${hasImageNow(imgSize) ? ' has-file' : ''}`}
+      <div className="lab-track-status">{status}</div>
+
+      {/* ① 提取点 */}
+      <section className="lab-track-step">
+        <h2 className="lab-track-stephead">
+          <span className="lab-track-stepno">1</span>
+          提取点
+          <em>选图 → 阈值筛红 → 拆段串链 → 等距插值，顺手把比例尺定标</em>
+        </h2>
+
+        {/* 选图：一个真正的按钮 + 拖拽区，别让人去点一个没有样式的原生控件 */}
+        <div
+          className={`lab-track-pick${dragging ? ' is-drag' : ''}${hasImageNow(imgSize) ? ' has-file' : ''}`}
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -870,36 +880,17 @@ export function LabTrackSection() {
         />
       </div>
 
-      <div className="lab-track-bar">
-        <button className="btn btn-primary" disabled={!imgSize || !!busy} onClick={() => runExtract()}>
-          {busy === 'extract' ? '提取中…' : '提取轨迹'}
-        </button>
-        <button className="btn" disabled={!imgSize || !!busy} onClick={autoCalibrate}>
-          {busy === 'auto' ? '校准中…' : '参数自动校准'}
-        </button>
-        <button
-          className="btn"
-          disabled={!canAI}
-          onClick={aiOptimize}
-          title="先做参数自动校准，再让视觉模型对照原图增删改点"
-        >
-          {busy === 'ai' ? 'AI 优化中…' : 'AI 优化'}
-        </button>
-        {models.length > 1 && (
-          <select className="lab-track-num" value={visionModel?.alias ?? ''} onChange={(e) => setAlias(e.target.value)} aria-label="AI 模型">
-            {models.map((m) => (
-              <option key={m.alias} value={m.alias}>
-                {m.alias}
-                {m.capabilities.includes('image') ? '' : '（不支持图片）'}
-              </option>
-            ))}
-          </select>
-        )}
-        <button className="btn" disabled={!result?.segments.length} onClick={downloadCSV}>
-          下载 CSV
-        </button>
-        <span className="lab-track-coord">{coord}</span>
-      </div>
+        <div className="lab-track-bar">
+          <button className="btn btn-primary" disabled={!imgSize || !!busy} onClick={() => runExtract()}>
+            {busy === 'extract' ? '提取中…' : '提取轨迹'}
+          </button>
+          <button className="btn" disabled={!imgSize || !!busy} onClick={autoCalibrate}>
+            {busy === 'auto' ? '校准中…' : '参数自动校准'}
+          </button>
+          <button className="btn" disabled={!result?.segments.length} onClick={downloadCSV}>
+            下载 CSV
+          </button>
+        </div>
 
       {/* 校准：比例尺定标 + 官方里程验收 */}
       <div className="lab-track-bar">
@@ -1004,6 +995,85 @@ export function LabTrackSection() {
           </label>
         </div>
       )}
+
+      {/* 定标读数：把像素换算成米之后，才知道这条轨迹有多长 */}
+      {mPerPx > 0 && (
+        <div className="lab-track-calib">
+          <div>
+            <span className="lab-track-k">比例尺</span>
+            <span className="lab-track-v">
+              {mPerPx.toFixed(3)} 米/像素
+              {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
+            </span>
+          </div>
+          <div>
+            <span className="lab-track-k">提取总长</span>
+            <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
+          </div>
+          {cal && cal.officialM > 0 && (
+            <div>
+              <span className="lab-track-k">官方里程</span>
+              <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
+            </div>
+          )}
+          {cal && cal.coverage >= 0 && (
+            <div>
+              <span className="lab-track-k">覆盖率</span>
+              <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
+                {(cal.coverage * 100).toFixed(1)}%
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {autoLog.length > 0 && (
+        <details className="lab-help">
+          <summary>参数自动校准记录（在参数网格上真跑，按评分挑最好的一组）</summary>
+          <pre className="lab-track-log">{autoLog.join('\n')}</pre>
+        </details>
+      )}
+
+      {result && result.stats.droppedSegments > 0 && (
+        <div className="lab-track-dropped muted small">
+          已丢弃 {result.stats.droppedSegments} 个非轨迹色块：
+          {Object.entries(result.stats.droppedBy)
+            .map(([k, v]) => `${k} ${v}`)
+            .join(' · ')}
+        </div>
+      )}
+      </section>
+
+      {/* ② 画轨迹：自动 / AI / 手动，叠在一张图上对比 */}
+      <section className="lab-track-step">
+        <h2 className="lab-track-stephead">
+          <span className="lab-track-stepno">2</span>
+          画轨迹
+          <em>自动结果、AI 优化、手动布线各一层，勾选决定看哪几层</em>
+        </h2>
+
+        <div className="lab-track-bar">
+          <span className="lab-track-group">AI</span>
+          <button
+            className="btn"
+            disabled={!canAI}
+            onClick={aiOptimize}
+            title="先做参数自动校准，再让视觉模型对照原图增删改点"
+          >
+            {busy === 'ai' ? 'AI 优化中…' : 'AI 优化'}
+          </button>
+          {models.length > 1 && (
+            <select className="lab-track-num" value={visionModel?.alias ?? ''} onChange={(e) => setAlias(e.target.value)} aria-label="AI 模型">
+              {models.map((m) => (
+                <option key={m.alias} value={m.alias}>
+                  {m.alias}
+                  {m.capabilities.includes('image') ? '' : '（不支持图片）'}
+                </option>
+              ))}
+            </select>
+          )}
+          <span className="muted small">在「提取点」的结果上增删改，不重画；思考过程列在下面</span>
+        </div>
 
       {/* 对比：三层叠在一张图上，勾选决定看哪几层 */}
       <div className="lab-track-panel lab-track-compare">
@@ -1118,7 +1188,7 @@ export function LabTrackSection() {
           <button className="btn btn-ghost" onClick={() => zoomBy(1 / 1.5)} disabled={!imgSize} title="缩小">
             −
           </button>
-          <span className="lab-track-val">{zoom === 'fit' ? '适应窗口' : `${Math.round(zoom * 100)}%`}</span>
+          <span className="lab-track-val">{zoom === 'fit' ? '适应' : `${Math.round(zoom * 100)}%`}</span>
           <button className="btn btn-ghost" onClick={() => zoomBy(1.5)} disabled={!imgSize} title="放大">
             +
           </button>
@@ -1128,6 +1198,7 @@ export function LabTrackSection() {
           <button className="btn btn-ghost" onClick={() => applyZoom(1)} disabled={!imgSize}>
             1:1
           </button>
+          <span className="lab-track-coord">{coord}</span>
           {manualMode && <span className="muted small">手动布线中：放大后拖动查看，点图选下一个点</span>}
         </div>
 
@@ -1151,38 +1222,6 @@ export function LabTrackSection() {
           {manualPts.length ? ' · 橙色实线沿轨迹、虚线段是不连通时拉的直线' : ''}
         </div>
       </div>
-
-      <div className="lab-track-status">{status}</div>
-
-      {mPerPx > 0 && (
-        <div className="lab-track-calib">
-          <div>
-            <span className="lab-track-k">比例尺</span>
-            <span className="lab-track-v">
-              {mPerPx.toFixed(3)} 米/像素
-              {cal?.source === 'scale' ? '（由截图比例尺定标）' : cal?.source === 'mileage' ? '（由官方里程反推）' : '（手填）'}
-            </span>
-          </div>
-          <div>
-            <span className="lab-track-k">提取总长</span>
-            <span className="lab-track-v">{fmtLen(pathLengthPx(algPath) * mPerPx)}</span>
-          </div>
-          {cal && cal.officialM > 0 && (
-            <div>
-              <span className="lab-track-k">官方里程</span>
-              <span className="lab-track-v">{fmtLen(cal.officialM)}</span>
-            </div>
-          )}
-          {cal && cal.coverage >= 0 && (
-            <div>
-              <span className="lab-track-k">覆盖率</span>
-              <span className="lab-track-v" style={{ color: cal.coverage > 0.9 ? 'var(--primary)' : 'var(--danger)' }}>
-                {(cal.coverage * 100).toFixed(1)}%
-              </span>
-            </div>
-          )}
-        </div>
-      )}
 
       {aiThink && (
         <details className="lab-help lab-track-think" open>
@@ -1218,26 +1257,17 @@ export function LabTrackSection() {
           <pre className="lab-track-log">{aiLog}</pre>
         </details>
       )}
+      </section>
 
-      {autoLog.length > 0 && (
-        <details className="lab-help">
-          <summary>参数自动校准记录（在参数网格上真跑，按评分挑最好的一组）</summary>
-          <pre className="lab-track-log">{autoLog.join('\n')}</pre>
-        </details>
-      )}
+      {/* ③ 地图复现：像素轨迹落到真实地图上走一遍，满意就存成本库定位 */}
+      <section className="lab-track-step">
+        <h2 className="lab-track-stephead">
+          <span className="lab-track-stepno">3</span>
+          地图复现
+          <em>选一个方案，按比例尺 + 起点 + 方位落到真实地图上走一遍，存成 .drloc</em>
+        </h2>
 
-      {result && result.stats.droppedSegments > 0 && (
-        <div className="lab-track-dropped muted small">
-          已丢弃 {result.stats.droppedSegments} 个非轨迹色块：
-          {Object.entries(result.stats.droppedBy)
-            .map(([k, v]) => `${k} ${v}`)
-            .join(' · ')}
-        </div>
-      )}
-
-      {/* 地图复现：像素轨迹落到真实地图上走一遍 */}
       <div className="lab-track-panel lab-track-mapwrap">
-        <h3>地图复现</h3>
         <div className="lab-track-bar lab-track-mapbar">
           <span className="lab-track-group">方案</span>
           <div className="loc-seg">
@@ -1333,6 +1363,7 @@ export function LabTrackSection() {
           {pathOf(saveScheme).length} 点 · 按 1.2m/s 均匀配时间
         </span>
       </div>
+      </section>
 
       <details className="lab-help">
         <summary>它是怎么取的 / 两套结果的差别</summary>
