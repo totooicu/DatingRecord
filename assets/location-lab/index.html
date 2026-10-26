@@ -23,14 +23,17 @@
     location.status       → {tracking, startedAt, points, rev, lastPoint, config,
                              batteryOptimized, fineLocation, backgroundLocation,
                              lastFixAt, provider, wakeLock, fixes, failures,
-                             lastError, intervalCurrentMs}
-    location.setConfig    {enabled, thresholdM, moveThresholdM, strategy, intervalBaseMs, intervalMaxMs}
+                             lastError, intervalCurrentMs, ticks, diag, journalBytes}
+    location.setConfig    {enabled, thresholdM, moveThresholdM, strategy, intervalBaseMs, intervalMaxMs, diag}
     location.start / location.stop
     location.getHistory   {since?} → {points:[{ts,lat,lng,accuracy,rev}], rev}
     location.clearHistory → {ok}
     location.requestPermissions      {background?} → {fine, background}
     location.batteryOptimization     → {ignoring}
     location.requestBatteryExemption → {launched}
+    location.setDiag      {on} → 取证模式：壳改成逐秒申请定位，并把每一拍追加写进手机里的账本
+    location.journal      {since?,tail?} → {lines:[{t,k,...}],count,total,bytes,ticks,diag,tracking}
+    location.clearJournal → {ok}
   事件：location.point {ts,lat,lng,accuracy,rev}、location.state {tracking,points,rev,reason}
 
   坐标：原生给的是 WGS-84，底图是高德（GCJ-02），合并前必须换算（下面 wgs84ToGcj02）。
@@ -47,6 +50,11 @@
      Last-Modified（HEAD 查询串绕缓存）；安卓侧显示 getEnv 的 version/builtAt/commit。
      可选每 10/30/60/300 秒自动刷新，勾选后到点整页重载（用来拿新部署的网页）。
      存档键：dr.locationLab.autoRefresh。
+  3) 休眠分析（取证账本）：打开「取证模式」后壳把采样强制改成逐秒，并把每一拍（tick）、每一次取到
+     的定位（fix）、每一次失败（fail）、屏幕亮灭、服务起停/销毁追加写到手机本地文件
+     files/bg_journal.jsonl（超 1.5 MB 自动裁掉旧的一半）。这一页拉回账本后按「有记录的秒数 / 应该
+     有的秒数」算覆盖率，把相邻两拍相差 >2.5 秒记为空档，并对空档判：覆盖率满但零 fix = 醒着但拿不到
+     定位；空档落在熄屏期间 = 熄屏后被冻；亮屏时也停 = 被系统冻住；账本里有销毁/重建 = 可能被杀。
 -->
 <style>
   :root {
@@ -207,6 +215,23 @@
 </div>
 
 <div class="card">
+  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它到底睡没睡</span></h2>
+  <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账）</label></div>
+  <div class="kv"><b>账本</b><span id="dg-stat">—</span></div>
+  <div class="kv"><b>tick 覆盖率</b><span id="dg-cov">—</span></div>
+  <div class="kv"><b>结论</b><span id="dg-verdict">—</span></div>
+  <div class="row">
+    <button id="dg-pull">拉账本并分析</button>
+    <button class="gray" id="dg-clear">清空账本</button>
+  </div>
+  <ul class="list" id="dg-list"></ul>
+  <p class="hint">壳在取证模式下每秒写一行账（tick=申请了一次，fix=申请成功并带当时的经纬度，fail=失败或超时，
+  screen=灭屏/亮屏/解锁，destroy=服务销毁）。判读口径：<b>tick 序号连续、时间戳也连续</b> → 壳没睡；
+  <b>tick 之间出现大空档</b> → 那段被系统冻结（空档和灭屏对齐看就知道是不是熄屏引起）；
+  <b>tick 连着但没有 fix</b> → 醒着却拿不到定位（多半没给「始终允许」，或省电把 provider 掐了）。</p>
+</div>
+
+<div class="card">
   <h2>日志 <span class="tag">最近 60 条</span></h2>
   <pre id="log"></pre>
 </div>
@@ -223,7 +248,7 @@
   // 本页的发布号与发布时间：每次改这个文件都成对往上加，配合「服务器上的本页」
   // 的 Last-Modified 一起看，就知道壳里跑的是不是最新页。
   // 时间同时存一份 epoch 毫秒——比较 Last-Modified 用 epoch，才不受时区影响。
-  var PAGE_VER = 'lab 10-26.4', PAGE_BUILD = '2026-10-26 21:47', PAGE_BUILD_MS = 1793022420000;
+  var PAGE_VER = 'lab 10-26.5', PAGE_BUILD = '2026-10-26 22:31', PAGE_BUILD_MS = 1793025060000;
   var BASE_MS = 1000, MAX_MS = 64000;
   var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
 
@@ -532,6 +557,102 @@
     $('ar-reload').checked = cfg.reload;
   }
 
+  // ---- 休眠分析：读壳的逐秒账本（bg_journal.jsonl）----
+  function pill(kind, text) { return '<span class="pill ' + kind + '">' + text + '</span>'; }
+
+  function setDiag(on) {
+    if (!state.bridge) { log('不在壳里，开不了取证', 'warn'); renderDiag(false); return; }
+    invoke('location.setDiag', { on: on }, 12000).then(function (r) {
+      state.svc = r; renderDiag(on);
+      log('取证模式：' + (on ? '开（壳改成每秒申请一次，不再退避）' : '关') +
+        ' → tracking=' + !!r.tracking + (r.needPermission ? ' · 还缺定位权限' : ''), on ? 'ok' : '');
+      if (on) { setTimeout(function () { pullJournal(0); }, 3000); }
+    }).catch(function (e) {
+      log('设置取证模式失败：' + e.message, 'err');
+      renderDiag(!!(state.svc && state.svc.diag));
+    });
+  }
+
+  function renderDiag(on) { var el = $('dg-on'); if (el) el.checked = !!on; }
+
+  function pullJournal(since, note) {
+    if (!state.bridge) { $('dg-verdict').textContent = '不在壳里，没有账本可读'; return Promise.resolve(); }
+    if (note) { log(note); }
+    return invoke('location.journal', { since: since || 0, tail: 20000 }, 20000)
+      .then(function (r) { analyzeJournal(r || {}); return r; })
+      .catch(function (e) {
+        $('dg-verdict').textContent = '读账本失败：' + e.message;
+        log('读账本失败：' + e.message, 'err');
+      });
+  }
+
+  function analyzeJournal(res) {
+    var lines = Array.isArray(res.lines) ? res.lines : [];
+    var beats = [], fixes = 0, fails = 0, destroy = 0, scr = [];
+    lines.forEach(function (l) {
+      if (!l || !l.t) return;
+      if (l.k === 'tick' || l.k === 'fix' || l.k === 'fail') { beats.push(l); if (l.k === 'fix') fixes++; if (l.k === 'fail') fails++; }
+      else if (l.k === 'screen') scr.push(l);
+      else if (l.k === 'destroy' || l.k === 'create' || l.k === 'taskRemoved') destroy++;
+    });
+    beats.sort(function (a, b) { return a.t - b.t; });
+    $('dg-stat').textContent = '读了 ' + lines.length + ' 行（账本共 ' + (res.total || 0) + ' 行 / ' +
+      Math.round((res.bytes || 0) / 1024) + ' KB）· 壳累计 tick ' + (res.ticks || 0) +
+      ' · 取到 ' + fixes + ' 次 · 失败 ' + fails + ' 次' +
+      (destroy ? ' · 生命周期事件 ' + destroy + ' 条' : '') + ' · 在记=' + (res.tracking ? '是' : '否');
+    var ul = $('dg-list'); if (ul) ul.innerHTML = '';
+    if (beats.length < 5) {
+      $('dg-cov').textContent = '样本太少';
+      $('dg-verdict').innerHTML = pill('', '样本太少') + ' 开着取证等半分钟，再点「拉账本并分析」';
+      return;
+    }
+    // 覆盖率按「有记录的秒数」算，不按行数——同一秒既有 tick 又有 fix 只算一拍
+    var seen = {};
+    beats.forEach(function (l) { seen[Math.floor(l.t / 1000)] = 1; });
+    var beatSeconds = Object.keys(seen).length;
+    var span = beats[beats.length - 1].t - beats[0].t;
+    var expect = Math.max(1, Math.round(span / 1000) + 1);
+    var cov = beatSeconds / expect;
+    $('dg-cov').textContent = beatSeconds + ' 拍 / 应为 ' + expect + '（' + Math.round(cov * 100) + '%）· 跨度 ' +
+      fmtDur(Math.round(span / 1000));
+    var gaps = [];
+    for (var i = 1; i < beats.length; i++) {
+      var d = beats[i].t - beats[i - 1].t;
+      if (d <= 2500) continue;
+      var a = beats[i - 1].t, b = beats[i].t, dark = false;
+      // 空档结束前最后一次屏幕事件是「灭屏」，就说明这整段都在熄屏里
+      scr.forEach(function (s) { if (s.t <= b) dark = /SCREEN_OFF$/.test(String(s.what || '')); });
+      gaps.push({ a: a, b: b, ms: d, lost: Math.max(0, Math.round(d / 1000) - 1), dark: dark });
+    }
+    gaps.sort(function (x, y) { return y.ms - x.ms; });
+    var verdict, kind;
+    if (cov >= 0.95 && fixes > 0) { verdict = '没睡：每一拍都在，并且持续取得到定位'; kind = 'on'; }
+    else if (cov >= 0.95 && fixes === 0) {
+      verdict = '醒着，但一个点都没取到（失败 ' + fails + ' 次）→ 后台拿不到定位，查「始终允许」和省电策略';
+      kind = 'off';
+    } else if (gaps.length && gaps[0].dark) {
+      verdict = '熄屏后被冻：最大空档 ' + Math.round(gaps[0].ms / 1000) + ' 秒正好落在灭屏期间';
+      kind = 'off';
+    } else if (gaps.length) {
+      verdict = '被冻 ' + gaps.length + ' 段，最长 ' + Math.round(gaps[0].ms / 1000) + ' 秒没跳（与灭屏不对齐）';
+      kind = 'off';
+    } else {
+      verdict = '覆盖率 ' + Math.round(cov * 100) + '%，取到 ' + fixes + ' 次';
+      kind = cov >= 0.8 ? 'warn' : 'off';
+    }
+    if (destroy) verdict += '（账本里有生命周期事件：服务被销毁或重建过，可能被杀）';
+    $('dg-verdict').innerHTML = pill(kind, kind === 'on' ? '正常' : (kind === 'warn' ? '可疑' : '异常')) + ' ' + verdict;
+    log('休眠分析：' + verdict, kind === 'on' ? 'ok' : (kind === 'warn' ? 'warn' : 'err'));
+    gaps.slice(0, 8).forEach(function (g) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="t">' + fmtTime(g.a) + '</span><span class="c">停 ' +
+        Math.round(g.ms / 1000) + ' 秒（少 ' + g.lost + ' 拍）' +
+        (g.dark ? ' · <span class="warn">落在熄屏期间</span>' : ' · 亮屏时也停') + '</span>' +
+        pill('warn', '冻结');
+      ul.appendChild(li);
+    });
+  }
+
   // ---- 协议（和 src/core/compat/bridge.ts 同一套） ----
   var pending = {}, listeners = {}, seq = 0;
   window.addEventListener('message', function (e) {
@@ -684,6 +805,7 @@
       $('perm').textContent = '前台 ' + (s.fineLocation ? '有' : '无') + ' · 后台 ' + (s.backgroundLocation ? '有' : '无');
       $('hb-native').textContent = lp.ts ? fmtTime(lp.ts) + '（' + fmtAgo(lp.ts) + '）' : '—';
       $('pt-native').textContent = (s.points || 0) + ' / ' + (s.rev || 0);
+      renderDiag(s.diag);
       // 前台也查停摆：服务在跑、但很久没有新定位 → 信号断了
       var stall = $('bg-stall');
       if (s.tracking && lp.ts) {
@@ -886,7 +1008,10 @@
     log('页面回到前台：补拉原生历史，并对后台这段时间做判定');
     pullNative()
       .then(function () { return refreshStatus(); })
-      .then(function () { return auditBackground(start, Date.now(), note); });
+      .then(function () { return auditBackground(start, Date.now(), note); })
+      .then(function () {
+        if (state.svc && state.svc.diag) { pullJournal(0, '回前台：读账本，看这段壳到底跳没跳'); }
+      });
   });
 
   // 页面心跳：每秒一跳。退到后台被冻住就停跳——和「原生心跳」对比着看。
@@ -920,12 +1045,23 @@
   });
   $('btn-ver').addEventListener('click', function () { autoTick(); log('手动刷新一次版本与状态'); });
 
+  // ---- 休眠分析开关与拉账本 ----
+  $('dg-on').addEventListener('change', function () { setDiag($('dg-on').checked); });
+  $('dg-pull').addEventListener('click', function () { pullJournal(0); });
+  $('dg-clear').addEventListener('click', function () {
+    invoke('location.clearJournal', {}, 8000).then(function (r) {
+      log('账本已清空' + (r.cleared ? '' : '（失败）'), r.cleared ? 'ok' : 'warn');
+      pullJournal(0);
+    }).catch(function (e) { log('清空账本失败：' + e.message, 'err'); });
+  });
+
   // ---- 启动 ----
   initMap();
   render();
   renderBg();
   renderAr();
   renderClock();
+  $('dg-verdict').textContent = state.bridge ? '—' : '不在壳里';
   checkServed();
   markAlive();
   log('定位磨合台启动（' + PAGE_VER + '）；存档配置：' + JSON.stringify(state.cfg));
@@ -934,7 +1070,10 @@
       return pushConfig('页面启动接管').then(function () { return pullNative(); });
     }
     armPageTimer();
-  }).then(function () { resumeAudit(); });
+  }).then(function () {
+    resumeAudit();
+    if (state.svc && state.svc.diag) { pullJournal(0, '启动：先读一份账本，看上次后台停没停拍'); }
+  });
 })();
 </script>
 </body>
