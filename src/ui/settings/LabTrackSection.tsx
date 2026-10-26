@@ -48,6 +48,13 @@ import {
   toLocationPoints,
   type GeoAnchor,
 } from '../../core/tools/trackGeo';
+import {
+  buildRouteGraph,
+  manualStats,
+  nearestNode,
+  shortestPath,
+  straightLine,
+} from '../../core/tools/trackRoute';
 import { createLocation } from '../../core/location/locationFile';
 import { locateMe } from '../../core/runtime/locationAuto';
 import { listModels, type AiModel } from '../../core/ai';
@@ -98,17 +105,28 @@ const AUTO_GRID: Partial<ExtractOptions>[] = [
   { redSat: 70, redVal: 35, hueHi: 11, rDominance: 1.05, minArea: 150, gapPx: 45 },
 ];
 
-/** 对比图里的三层：底图 / 算法轨迹 / AI 轨迹 */
+/** 对比图里的图层：底图 / 算法轨迹 / AI 优化 / 手动布线 */
 interface Layers {
   img: boolean;
   alg: boolean;
   ai: boolean;
+  man: boolean;
 }
 
-type Scheme = 'alg' | 'ai';
+type Scheme = 'alg' | 'ai' | 'man';
 
 const COLOR_AI = '#2196F3';
 const COLOR_ALG = '#d9536b';
+const COLOR_MAN = '#F57C00';
+
+/** 手动布线的一条腿：沿线走 or 两段不连通只能拉直线 */
+interface ManualLeg {
+  pts: TrackPoint[];
+  straight: boolean;
+}
+
+/** 点选时离轨迹多远以内算「点在轨迹上」 */
+const SNAP_PX = 18;
 
 export function LabTrackSection() {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -124,7 +142,7 @@ export function LabTrackSection() {
   const [result, setResult] = useState<ExtractResult | null>(null);
   const [ai, setAi] = useState<AiTrackResult | null>(null);
   const [aiPts, setAiPts] = useState<TrackPoint[]>([]);
-  const [layers, setLayers] = useState<Layers>({ img: true, alg: true, ai: true });
+  const [layers, setLayers] = useState<Layers>({ img: true, alg: true, ai: true, man: true });
   const [busy, setBusy] = useState<'extract' | 'auto' | 'ai' | null>(null);
   const [status, setStatus] = useState('就绪：选一张两步路截图');
   const [coord, setCoord] = useState('悬停看像素坐标');
@@ -139,6 +157,13 @@ export function LabTrackSection() {
   const [dragging, setDragging] = useState(false);
   const [models, setModels] = useState<AiModel[]>(() => listModels());
   const [alias, setAlias] = useState('');
+  // 手动布线：A 是上一次点的位置，点 B 就自动从 A 走到 B
+  const [manualMode, setManualMode] = useState(false);
+  const [manualLegs, setManualLegs] = useState<ManualLeg[]>([]);
+  const [manualAnchor, setManualAnchor] = useState<{ idx: number | null; pt: TrackPoint } | null>(null);
+  // 缩放：'fit' = 适应窗口；数字 = 相对原图的倍数
+  const [zoom, setZoom] = useState<number | 'fit'>('fit');
+  const viewRef = useRef<HTMLDivElement | null>(null);
 
   const patch = useCallback((p: Partial<ExtractOptions>) => {
     setOpts((prev) => ({ ...prev, ...p }));
@@ -170,6 +195,94 @@ export function LabTrackSection() {
     if (algPath.length < 2 || aiPts.length < 2) return null;
     return compareTracks(algPath, aiPts);
   }, [algPath, aiPts]);
+
+  /* ---------------- 手动布线：点 A → 点 B，自动沿轨迹导航 ---------------- */
+
+  const graph = useMemo(() => (result && result.segments.length ? buildRouteGraph(result) : null), [result]);
+  const manualPts = useMemo(() => manualLegs.flatMap((l) => l.pts), [manualLegs]);
+  const manStats = useMemo(() => {
+    const st = manualStats(manualPts);
+    return {
+      ...st,
+      along: manualLegs.filter((l) => !l.straight).length,
+      line: manualLegs.filter((l) => l.straight).length,
+    };
+  }, [manualLegs, manualPts]);
+
+  const onCanvasClick = useCallback(
+    (e: MouseEvent<HTMLCanvasElement>) => {
+      if (!manualMode) return;
+      const c = overlayRef.current;
+      if (!c || !imgSize) return;
+      const rect = c.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (c.width / rect.width);
+      const y = (e.clientY - rect.top) * (c.height / rect.height);
+      const hit = graph ? nearestNode(graph, x, y, SNAP_PX) : null;
+      const target: TrackPoint = hit && graph ? graph.pts[hit.idx] : { x, y };
+
+      if (!manualAnchor) {
+        if (!hit) {
+          showToast('起笔请点在轨迹上（18px 内会自动吸附）', 3200);
+          return;
+        }
+        setManualAnchor({ idx: hit.idx, pt: target });
+        setStatus('手动布线：起点 A 已选，再点一个点就自动沿轨迹走过去');
+        return;
+      }
+
+      const routed = graph && hit && manualAnchor.idx != null ? shortestPath(graph, manualAnchor.idx, hit.idx) : null;
+      const leg = routed ?? straightLine(manualAnchor.pt, target);
+      if (leg.length < 2) return;
+      setManualLegs((prev) => [...prev, { pts: leg, straight: !routed }]);
+      setManualAnchor({ idx: hit ? hit.idx : null, pt: target });
+      const len = pathLengthPx(leg);
+      setStatus(
+        `手动布线：${routed ? '沿已提取的轨迹走过去' : '两点不在同一网络，直接拉直线'}（${Math.round(len)}px）`,
+      );
+    },
+    [graph, imgSize, manualAnchor, manualMode],
+  );
+
+  /* ---------------- 放大 / 平移 ---------------- */
+
+  const currentScale = useCallback(() => {
+    const c = overlayRef.current;
+    if (!c || !imgSize) return 1;
+    const w = c.getBoundingClientRect().width;
+    return w > 0 ? w / imgSize.w : 1;
+  }, [imgSize]);
+
+  /** 换缩放档位：保住视口中心对着的那个原图像素，不会一放大就跑到角落 */
+  const applyZoom = useCallback(
+    (next: number | 'fit') => {
+      const view = viewRef.current;
+      if (!imgSize) return;
+      const cur = zoom === 'fit' ? currentScale() : zoom;
+      let cx = 0.5;
+      let cy = 0.5;
+      if (view && cur > 0) {
+        cx = (view.scrollLeft + view.clientWidth / 2) / (imgSize.w * cur);
+        cy = (view.scrollTop + view.clientHeight / 2) / (imgSize.h * cur);
+      }
+      setZoom(next);
+      if (view && next !== 'fit') {
+        requestAnimationFrame(() => {
+          view.scrollLeft = Math.max(0, cx * imgSize.w * next - view.clientWidth / 2);
+          view.scrollTop = Math.max(0, cy * imgSize.h * next - view.clientHeight / 2);
+        });
+      }
+    },
+    [currentScale, imgSize, zoom],
+  );
+
+  const zoomBy = useCallback(
+    (f: number) => {
+      if (!imgSize) return;
+      const cur = zoom === 'fit' ? currentScale() : zoom;
+      applyZoom(Math.max(0.2, Math.min(6, Number((cur * f).toFixed(2)))));
+    },
+    [applyZoom, currentScale, imgSize, zoom],
+  );
 
   const drawOverlay = useCallback(() => {
     const c = overlayRef.current;
@@ -213,6 +326,22 @@ export function LabTrackSection() {
     }
     if (layers.ai && aiPts.length > 1) stroke(aiPts, COLOR_AI, 2.5, true);
 
+    // 手动布线：沿线走实线，不连通拉直线用虚线；当前起点 A 画一个圆点
+    if (layers.man && manualLegs.length) {
+      for (const leg of manualLegs) {
+        if (leg.pts.length > 1) stroke(leg.pts, COLOR_MAN, 3, leg.straight);
+      }
+      if (manualAnchor) {
+        ctx.beginPath();
+        ctx.arc(manualAnchor.pt.x, manualAnchor.pt.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = COLOR_MAN;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+
     // AI 改过的地方标出来：新增绿点、移动蓝圈、删除红叉（画在原位置）
     if (layers.ai && aiMarks.length) {
       for (const m of aiMarks) {
@@ -237,11 +366,16 @@ export function LabTrackSection() {
         }
       }
     }
-  }, [aiMarks, algPath, aiPts, layers, result]);
+  }, [aiMarks, algPath, aiPts, layers, manualAnchor, manualLegs, result]);
 
   useEffect(() => {
     drawOverlay();
   }, [drawOverlay]);
+
+  // 重新提取后图变了，之前的起点下标不再有效；已画好的腿保留
+  useEffect(() => {
+    setManualAnchor(null);
+  }, [result]);
 
   /* ---------------- 提取 ---------------- */
 
@@ -436,6 +570,10 @@ export function LabTrackSection() {
         setAutoLog([]);
         setAiLog('');
         setCalibrated(false);
+        setManualLegs([]);
+        setManualAnchor(null);
+        setManualMode(false);
+        setZoom('fit');
         setStatus(`已载入 ${img.width}×${img.height}，点「提取轨迹」或「AI 优化」`);
       };
       img.onerror = () => setStatus('图片加载失败');
@@ -487,7 +625,10 @@ export function LabTrackSection() {
   const [saveName, setSaveName] = useState('');
   const [saveScheme, setSaveScheme] = useState<Scheme>('alg');
 
-  const schemePath = scheme === 'ai' ? aiPts : algPath;
+  const pathOf = (s: Scheme) => (s === 'ai' ? aiPts : s === 'man' ? manualPts : algPath);
+  const schemeColor = (s: Scheme) => (s === 'ai' ? COLOR_AI : s === 'man' ? COLOR_MAN : cssVar('--primary', COLOR_ALG));
+
+  const schemePath = pathOf(scheme);
 
   /** 锚点：像素原点取所选方案的首点，经纬度来自地图上点的那一下 */
   const anchor = useMemo<GeoAnchor | null>(() => {
@@ -536,12 +677,12 @@ export function LabTrackSection() {
     headRef.current = null;
     if (geoLine.length < 2) return;
     L.polyline(geoLine, { color: '#ffffff', weight: 7, opacity: 0.9 }).addTo(layer);
-    L.polyline(geoLine, { color: scheme === 'ai' ? COLOR_AI : cssVar('--primary', COLOR_ALG), weight: 4 }).addTo(layer);
+    L.polyline(geoLine, { color: schemeColor(scheme), weight: 4 }).addTo(layer);
     headRef.current = L.circleMarker(geoLine[0], {
       radius: 6,
       color: '#fff',
       weight: 2,
-      fillColor: scheme === 'ai' ? COLOR_AI : cssVar('--primary', COLOR_ALG),
+      fillColor: schemeColor(scheme),
       fillOpacity: 1,
     }).addTo(layer);
     map.fitBounds(L.latLngBounds(geoLine).pad(0.25));
@@ -637,7 +778,7 @@ export function LabTrackSection() {
   /* ---------------- 保存为 .drloc ---------------- */
 
   const saveAsLocation = async () => {
-    const path = saveScheme === 'ai' ? aiPts : algPath;
+    const path = pathOf(saveScheme);
     if (path.length < 2) {
       showToast('这个方案还没有轨迹', 2600);
       return;
@@ -683,8 +824,8 @@ export function LabTrackSection() {
 
       <p className="muted small lab-track-lead">
         把两步路 App 的截图拖进来：先按红色阈值 + 骨架形状校准筛出轨迹线，再把断开的段串成一条，
-        最后沿弧长等距插值。可以让视觉模型再独立提一遍做对比，也可以把选中的方案落到地图上走一遍，
-        满意了直接存成本库的定位文件。图片只在你浏览器里处理。
+        最后沿弧长等距插值。可以让视觉模型再独立提一遍做对比，也可以手动点 A、点 B 让系统沿轨迹导航，
+        修完把方案落到地图上走一遍，满意了直接存成本库的定位文件。图片只在你浏览器里处理。
       </p>
 
       {/* 选图：一个真正的按钮 + 拖拽区，别让人去点一个没有样式的原生控件 */}
@@ -888,6 +1029,17 @@ export function LabTrackSection() {
             AI 优化后的轨迹
             {aiPts.length ? <span className="lab-track-count"> {aiPts.length} 点</span> : null}
           </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={layers.man}
+              disabled={!manualPts.length}
+              onChange={(e) => setLayers((l) => ({ ...l, man: e.target.checked }))}
+            />
+            <i className="lab-track-dot" style={{ background: COLOR_MAN }} />
+            手动路径
+            {manualPts.length ? <span className="lab-track-count"> {manualPts.length} 点</span> : null}
+          </label>
           {diff && (
             <span className="lab-track-diff">
               偏差 平均 {diff.meanPx.toFixed(1)}px · 最大 {diff.maxPx.toFixed(1)}px
@@ -896,11 +1048,107 @@ export function LabTrackSection() {
             </span>
           )}
         </div>
-        <canvas ref={overlayRef} className="lab-track-canvas" onMouseMove={onMove} />
+
+        {/* 手动布线：A → B 自动沿已提取的轨迹导航；两点不连通就拉直线 */}
+        <div className="lab-track-manual">
+          <button
+            className={`btn${manualMode ? ' btn-primary' : ''}`}
+            disabled={!imgSize}
+            onClick={() => {
+              setManualMode((v) => !v);
+              setManualAnchor(null);
+              if (!manualMode) setLayers((l) => ({ ...l, man: true }));
+              setStatus(
+                manualMode
+                  ? '已结束手动布线'
+                  : graph
+                    ? '手动布线：点轨迹上的起点 A，再点 B，系统自动从 A 导航到 B'
+                    : '手动布线：还没有提取结果，点两下只能拉直线（先「提取轨迹」才能沿轨迹走）',
+              );
+            }}
+            aria-pressed={manualMode}
+          >
+            {manualMode ? '结束布线' : '手动布线'}
+          </button>
+          <button
+            className="btn btn-ghost"
+            disabled={!manualLegs.length}
+            onClick={() => {
+              setManualLegs((prev) => {
+                const next = prev.slice(0, -1);
+                const last = next[next.length - 1];
+                if (!last) {
+                  setManualAnchor(null);
+                } else {
+                  const end = last.pts[last.pts.length - 1];
+                  const hit = graph ? nearestNode(graph, end.x, end.y, SNAP_PX) : null;
+                  setManualAnchor({ idx: hit ? hit.idx : null, pt: end });
+                }
+                return next;
+              });
+            }}
+          >
+            撤销一段
+          </button>
+          <button
+            className="btn btn-ghost"
+            disabled={!manualLegs.length}
+            onClick={() => {
+              setManualLegs([]);
+              setManualAnchor(null);
+              setStatus('手动路径已清空');
+            }}
+          >
+            清空手动
+          </button>
+          <span className="lab-track-maninfo">
+            {manualLegs.length
+              ? `${manualLegs.length} 段（沿轨迹 ${manStats.along} · 直线 ${manStats.line}）· ${manualPts.length} 点 · ${fmtLen(manStats.lenPx * mPerPx)}${
+                  manStats.dupPts ? ` · 重复经过 ${manStats.dupPts} 点` : ''
+                }`
+              : manualMode
+                ? manualAnchor
+                  ? '起点 A 已选：点下一个点，自动走 A→B'
+                  : '点轨迹上的起点 A（18px 内自动吸附）'
+                : '手动布线可以补算法漏掉的、改错的；同一条路可以反复经过'}
+          </span>
+        </div>
+
+        <div className="lab-track-zoombar">
+          <button className="btn btn-ghost" onClick={() => zoomBy(1 / 1.5)} disabled={!imgSize} title="缩小">
+            −
+          </button>
+          <span className="lab-track-val">{zoom === 'fit' ? '适应窗口' : `${Math.round(zoom * 100)}%`}</span>
+          <button className="btn btn-ghost" onClick={() => zoomBy(1.5)} disabled={!imgSize} title="放大">
+            +
+          </button>
+          <button className="btn btn-ghost" onClick={() => applyZoom('fit')} disabled={!imgSize}>
+            适应窗口
+          </button>
+          <button className="btn btn-ghost" onClick={() => applyZoom(1)} disabled={!imgSize}>
+            1:1
+          </button>
+          {manualMode && <span className="muted small">手动布线中：放大后拖动查看，点图选下一个点</span>}
+        </div>
+
+        <div className="lab-track-view" ref={viewRef}>
+          <canvas
+            ref={overlayRef}
+            className={`lab-track-canvas${manualMode ? ' is-manual' : ''}`}
+            onMouseMove={onMove}
+            onClick={onCanvasClick}
+            style={
+              zoom === 'fit' || !imgSize
+                ? undefined
+                : { width: `${Math.round(imgSize.w * zoom)}px`, maxWidth: 'none' }
+            }
+          />
+        </div>
         <canvas ref={origCanvasRef} hidden />
         <div className="muted small lab-track-gaps">
           {result ? `${result.segments.length} 段 · ${gapsInfo}` : '还没有提取结果'}
           {aiPts.length ? ' · AI 层虚线：绿点新增、蓝圈移动、红叉删除' : ' · AI 层还没有结果'}
+          {manualPts.length ? ' · 橙色实线沿轨迹、虚线段是不连通时拉的直线' : ''}
         </div>
       </div>
 
@@ -1004,6 +1252,14 @@ export function LabTrackSection() {
             >
               AI 轨迹
             </button>
+            <button
+              className={scheme === 'man' ? 'on' : undefined}
+              disabled={!manualPts.length}
+              onClick={() => setScheme('man')}
+              aria-pressed={scheme === 'man'}
+            >
+              手动路径
+            </button>
           </div>
           <button className={`btn${pickingAnchor ? ' btn-primary' : ''}`} onClick={() => setPickingAnchor(true)}>
             {pickingAnchor ? '点地图选起点…' : '在地图上点起点'}
@@ -1055,6 +1311,14 @@ export function LabTrackSection() {
           >
             AI 轨迹
           </button>
+          <button
+            className={saveScheme === 'man' ? 'on' : undefined}
+            disabled={!manualPts.length}
+            onClick={() => setSaveScheme('man')}
+            aria-pressed={saveScheme === 'man'}
+          >
+            手动路径
+          </button>
         </div>
         <input
           className="lab-track-num lab-track-name"
@@ -1066,7 +1330,7 @@ export function LabTrackSection() {
           保存为定位文件
         </button>
         <span className="muted small">
-          {(saveScheme === 'ai' ? aiPts : algPath).length} 点 · 按 1.2m/s 均匀配时间
+          {pathOf(saveScheme).length} 点 · 按 1.2m/s 均匀配时间
         </span>
       </div>
 
@@ -1092,6 +1356,14 @@ export function LabTrackSection() {
         <p className="muted small">
           为什么不让模型直接描一条：像素阈值法已经把「红线在哪」做得很准，它的错误集中在断口、图标和整段平移；
           从零描线等于把正确的部分也重算一遍，偏差更大，也说不清改了什么。
+        </p>
+        <p className="muted small">
+          手动布线不是让人自由画曲线：点「手动布线」后点起点 A（18px 内自动吸附到轨迹上），再点 B，
+          系统就在提取出来的点列上跑一次最短路，把 A→B 之间沿轨迹的那段填进来；线条太密时可以用
+          「放大 / 适应窗口」看细节。提取器把能接的都接上了，剩下的断口就是真的不连通，这时 A→B 直接
+          拉一条橙色虚线，和「这里没有路」的直觉一致。手动路径是<b>有序点列</b>而不是像素集合，所以
+          A→B→A 会把同一条路算两遍：长度、地图复现、保存都按两遍走，统计里的「重复经过 N 点」就是
+          重复走的部分。
         </p>
         <p className="muted small">
           地图复现要三样东西：比例尺（米/像素）、一个起点（地图上点一下 / 当前位置 / AI 读到的坐标）、

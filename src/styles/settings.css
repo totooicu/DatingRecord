@@ -482,6 +482,56 @@
   border-radius: 8px;
 }
 
+/* 放大后画布比视口宽，外面这层负责滚动；适应窗口时它就是个普通容器 */
+.lab-track-view {
+  overflow: auto;
+  max-height: 70vh;
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.lab-track-view .lab-track-canvas {
+  margin: 0;
+  border-radius: 0;
+}
+
+.lab-track-view .lab-track-canvas.is-manual {
+  cursor: crosshair;
+}
+
+/* 缩放工具条 */
+.lab-track-zoombar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lab-track-zoombar .lab-track-val {
+  min-width: 56px;
+  text-align: center;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 手动布线：开关、撤销、清空 + 一段统计 */
+.lab-track-manual {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.lab-track-maninfo {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 .lab-track-status {
   margin-top: 12px;
   padding: 10px 12px;

@@ -7,6 +7,7 @@
 //   T4 「原图 / 提取的轨迹 / AI 优化后的轨迹」复选框真的控制图层（逐层开关画布内容变化）
 //   T5 地图复现：地图初始化、可点起点、复现推进里程、可停止
 //   T6 保存为 .drloc：出现在「功能面板 → 定位 → 文件」里，点开能看到点数
+//   T7 放大 / 手动布线：A→B 沿轨迹导航、原路返回算重复、断网拉直线、撤销清空
 //
 // 依赖：先 `pnpm build`。自带静态服务器（dist）与假视觉模型服务，直接跑：
 //   node tools/e2e/lab-track-e2e.mjs
@@ -222,6 +223,22 @@ const toLocationFiles = async () => {
 
 const status = async () => (await p.locator('.lab-track-status').innerText()).replace(/\s+/g, ' ').trim();
 
+/** 在画布上按「原图像素坐标」点一下（自动换算成当前 CSS 尺寸） */
+const clickImage = async (ix, iy) => {
+  const c = p.locator('.lab-track-canvas');
+  const box = await c.boundingBox();
+  const nat = await c.evaluate((el) => ({ w: el.width, h: el.height }));
+  await c.click({ position: { x: (ix / nat.w) * box.width, y: (iy / nat.h) * box.height } });
+  await p.waitForTimeout(250);
+};
+
+const canvasCssWidth = async () => {
+  const box = await p.locator('.lab-track-canvas').boundingBox();
+  return Math.round(box.width);
+};
+
+const manInfo = async () => (await p.locator('.lab-track-maninfo').innerText()).replace(/\s+/g, ' ').trim();
+
 /** 画布内容指纹：逐像素求和，用来判断图层开关有没有真的重绘 */
 const canvasSum = () =>
   p.evaluate(() => {
@@ -361,6 +378,61 @@ const noAlg = await canvasSum();
 check('T4 关掉算法层后画布变了', noAlg !== allOn);
 await layerToggle(/^提取的轨迹/).check();
 
+/* ---------------- T7 放大 / 手动布线 ---------------- */
+
+const fitW = await canvasCssWidth();
+await p.getByRole('button', { name: '+', exact: true }).click();
+await p.waitForTimeout(300);
+const zoomVal = await p.locator('.lab-track-zoombar .lab-track-val').innerText();
+const zoomW = await canvasCssWidth();
+check('T7 放大后画布变宽、显示百分比', zoomW > fitW * 1.3 && /%$/.test(zoomVal.trim()), `${fitW} → ${zoomW} (${zoomVal.trim()})`);
+await p.getByRole('button', { name: '1:1' }).click();
+await p.waitForTimeout(300);
+check('T7 1:1 按原图像素显示', (await canvasCssWidth()) >= 590, `w=${await canvasCssWidth()}`);
+await p.getByRole('button', { name: '适应窗口' }).first().click();
+await p.waitForTimeout(300);
+check('T7 回到适应窗口', Math.abs((await canvasCssWidth()) - fitW) <= 2, `${await canvasCssWidth()} vs ${fitW}`);
+
+const beforeManual = await canvasSum();
+await p.getByRole('button', { name: '手动布线' }).click();
+check('T7 手动布线模式可开启', (await p.getByRole('button', { name: '结束布线' }).count()) === 1);
+
+// A 在螺旋外圈起点，B 是同一段轨迹中段：应该沿轨迹走，而不是拉直线
+await clickImage(CURVE[2].x, CURVE[2].y);
+check('T7 第一下选起点 A', /起点 A 已选/.test(await manInfo()), await manInfo());
+await clickImage(CURVE[30].x, CURVE[30].y);
+const routeStatus = await status();
+check('T7 A→B 沿已提取的轨迹导航', /沿已提取的轨迹走过去/.test(routeStatus), routeStatus);
+check('T7 统计显示 1 段沿轨迹', /沿轨迹 1 · 直线 0/.test(await manInfo()), await manInfo());
+const manualDrawn = await canvasSum();
+check('T7 手动路径画进画布', manualDrawn !== beforeManual);
+check('T7 手动路径可当地图方案', await p.locator('.lab-track-mapbar').getByRole('button', { name: '手动路径' }).isEnabled());
+
+// 原路返回：坐标重复出现，长度按两遍算
+await clickImage(CURVE[2].x, CURVE[2].y);
+check('T7 原路返回计入「重复经过」', /重复经过 \d+ 点/.test(await manInfo()), await manInfo());
+check('T7 原路返回后是 2 段', /沿轨迹 2 · 直线 0/.test(await manInfo()), await manInfo());
+
+// 点空白处（离轨迹 > 18px）：两个网络不连通 → 直线
+await clickImage(60, 555);
+const lineStatus = await status();
+check('T7 不连通时拉直线', /不在同一网络，直接拉直线/.test(lineStatus), lineStatus);
+check('T7 统计显示 1 段直线', /直线 1/.test(await manInfo()), await manInfo());
+
+await p.getByRole('button', { name: '撤销一段' }).click();
+await p.waitForTimeout(200);
+check('T7 撤销一段', /沿轨迹 2 · 直线 0/.test(await manInfo()), await manInfo());
+await p.getByRole('button', { name: '清空手动' }).click();
+await p.waitForTimeout(200);
+check('T7 清空手动路径', /点轨迹上的起点 A|同一条路可以反复经过/.test(await manInfo()), await manInfo());
+
+// 留一条 A→B 给地图复现与保存用
+await clickImage(CURVE[2].x, CURVE[2].y);
+await clickImage(CURVE[30].x, CURVE[30].y);
+const manualInfoText = await manInfo();
+const manualCount = Number((/· (\d+) 点/.exec(manualInfoText) ?? [])[1] ?? 0);
+check('T7 手动路径有大小', manualCount > 10 && /沿轨迹 1/.test(manualInfoText), manualInfoText);
+
 /* ---------------- T5 地图复现 ---------------- */
 
 check('T5 地图已初始化', (await p.locator('.lab-track-map.leaflet-container').count()) === 1);
@@ -380,13 +452,29 @@ const prog2 = await p.locator('.lab-track-mapbar .muted.small').innerText();
 check('T5 里程继续增加', prog2 !== prog1, `${prog1.trim()} → ${prog2.trim()}`);
 if (await stopped.count()) await stopped.click();
 
+// 手动方案也能复现：切过去后地图上换成橙色路径，里程按手动点列算
+await p.locator('.lab-track-mapbar').getByRole('button', { name: '手动路径' }).click();
+await p.waitForTimeout(600);
+const manMapText = await p.locator('.lab-track-mapbar .muted.small').innerText();
+check('T5 手动路径能落到地图上', /(公里|米)/.test(manMapText), manMapText.replace(/\s+/g, ' '));
+check('T5 手动方案可复现', await p.getByRole('button', { name: '▶ 复现' }).isEnabled());
+await p.locator('.lab-track-mapbar').getByRole('button', { name: '提取的轨迹' }).click();
+await p.waitForTimeout(300);
+
 /* ---------------- T6 存成本库定位 ---------------- */
 
 await p.locator('.lab-track-name').fill('截图轨迹E2E');
+// 存手动方案：验证选中的方案真的进了文件，而不只是算法那条
+await p
+  .locator('.lab-track-bar')
+  .filter({ hasText: '存成本库定位' })
+  .getByRole('button', { name: '手动路径' })
+  .click();
 await p.getByRole('button', { name: '保存为定位文件' }).click();
 await p.waitForSelector('.toast', { timeout: 8000 }).catch(() => {});
 const saveStatus = await status();
 check('T6 保存成功并报出点数', /已保存「截图轨迹E2E(\.drloc)?」/.test(saveStatus), saveStatus);
+check('T6 存的是手动方案的点数', saveStatus.includes(`${manualCount} 点`), `${manualCount} vs ${saveStatus}`);
 
 await toLocationFiles();
 await p.getByRole('button', { name: '选已有定位文件' }).click();
