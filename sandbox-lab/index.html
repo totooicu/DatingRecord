@@ -3,166 +3,154 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>沙盒试验台 · 批量修改指令的预览 / 执行 / 放弃 / 恢复</title>
+<title>沙盒试验台 · 指令集：预览 / 执行｜回退 / 放弃</title>
 <style>
   :root {
-    --bg: #14121a;
-    --panel: #1c1a24;
-    --panel-2: #221f2c;
-    --line: #322d40;
-    --ink: #eceaf3;
-    --ink-2: #a9a3bd;
-    --ink-3: #7d778f;
-    --ok: #4cc38a;
-    --warn: #e8a33d;
-    --bad: #ef5f6b;
-    --add: #7ee2a8;
-    --del: #ff9aa4;
-    --accent: #8b7bff;
+    --bg: #14121a; --panel: #1c1a24; --panel-2: #221f2c; --line: #322d40;
+    --ink: #eceaf3; --ink-2: #a9a3bd; --ink-3: #7d778f;
+    --ok: #4cc38a; --warn: #e8a33d; --bad: #ef5f6b;
+    --add: #7ee2a8; --del: #ff9aa4; --accent: #8b7bff;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    padding-bottom: 84px;
-  }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; padding-bottom: 84px; }
   header { padding: 16px 14px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { margin: 0 0 4px; font-size: 17px; }
   header p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
   .wrap { padding: 12px; display: grid; gap: 12px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .card > h2 {
-    margin: 0; padding: 10px 12px; font-size: 13.5px; letter-spacing: .04em;
-    color: var(--ink-2); background: var(--panel-2); border-bottom: 1px solid var(--line);
-    display: flex; align-items: center; gap: 8px;
-  }
+  .card > h2 { margin: 0; padding: 10px 12px; font-size: 13.5px; letter-spacing: .04em; color: var(--ink-2);
+    background: var(--panel-2); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
   .card > h2 .spacer { flex: 1; }
   .card .body { padding: 10px 12px; }
   .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; align-items: center; }
-  .stat { font-size: 12px; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line);
-    border-radius: 999px; padding: 3px 9px; }
+  .stat { font-size: 12px; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
   .stat b { color: var(--ink); font-weight: 600; }
-  button {
-    font: inherit; font-size: 13px; color: var(--ink); background: var(--panel-2);
-    border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; cursor: pointer;
-  }
+  button { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; cursor: pointer; }
   button:active { transform: translateY(1px); }
   button.good { background: #245040; border-color: #2f6b53; color: #cff3e2; }
   button.warn { color: var(--warn); }
   button.ghost { background: transparent; }
   button.mini { padding: 4px 9px; font-size: 12px; border-radius: 7px; }
   button[disabled] { opacity: .42; cursor: not-allowed; }
-  .tools { padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
-  .ins { border-top: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 7px; }
-  .ins .line1 { display: flex; gap: 8px; align-items: flex-start; }
-  .ins .t { font-size: 14px; }
-  .ins .op { color: var(--ink-3); font-size: 12px; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
-  .ins .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tools { padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); align-items: center; }
+  .tools input[type=text] { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; width: 130px; }
+  .row { border-top: 1px solid var(--line); padding: 9px 12px; display: grid; gap: 6px; }
+  .row .line1 { display: flex; gap: 8px; align-items: flex-start; }
+  .row .t { font-size: 14px; }
+  .row .op { color: var(--ink-3); font-size: 12px; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+  .row .btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
-  .tag.pending { color: var(--accent); border-color: #4a3f80; }
-  .tag.applied { color: var(--add); border-color: #2f6b53; }
-  .tag.discarded { color: var(--ink-3); }
-  .tag.needs { color: var(--warn); border-color: #6b5527; }
+  .tag.draft { color: var(--accent); border-color: #4a3f80; }
+  .tag.committed { color: var(--add); border-color: #2f6b53; }
+  .tag.discarded, .tag.reverted { color: var(--ink-3); }
+  .tag.add { color: var(--add); border-color: #2f6b53; }
+  .tag.del { color: var(--del); border-color: #6b2f38; }
+  .tag.mod { color: var(--warn); border-color: #6b5527; }
   .err { color: var(--warn); font-size: 12.5px; }
-  .ghead { padding: 8px 12px 2px; font-size: 12px; color: var(--ink-3); letter-spacing: .04em; }
+  .set { border: 1px solid var(--line); border-radius: 12px; margin: 10px 12px; overflow: hidden; background: var(--panel-2); }
+  .set.active { border-color: #4a3f80; box-shadow: 0 0 0 1px #4a3f80 inset; }
+  .set > .head { display: flex; gap: 8px; align-items: center; padding: 9px 11px; cursor: pointer; }
+  .set > .head .nm { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
+  .set > .head input[type=radio] { accent-color: var(--accent); }
+  .set .members { border-top: 1px solid var(--line); }
+  .set .foot { border-top: 1px solid var(--line); padding: 8px 11px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .set .row { border-top: 1px solid var(--line); background: var(--panel); }
   .doc { padding: 10px 12px; border-top: 1px solid var(--line); }
   .doc h3 { margin: 0 0 4px; font-size: 15px; }
   .doc pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.7 ui-monospace, Menlo, monospace; color: var(--ink-2); }
-  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; }
-  .dot.hidden { visibility: hidden; }
   .diff { font: 12.5px/1.65 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; padding: 2px 0 6px; }
   .diff .ln { padding: 1px 8px; border-left: 3px solid transparent; }
   .diff .add { color: var(--add); background: rgba(76, 195, 138, .1); border-left-color: var(--ok); }
   .diff .del { color: var(--del); background: rgba(239, 95, 107, .09); border-left-color: var(--bad); }
   .diff .ctx { color: var(--ink-3); }
-  .diff .fold { color: var(--ink-3); background: var(--panel-2); }
+  .diff .fold { color: var(--ink-3); background: var(--panel); }
   .dh { margin: 10px 0 3px; font-size: 13px; color: var(--ink); font-weight: 600; }
   .dh .sub { color: var(--ink-3); font-weight: 400; font-size: 12px; }
+  .sum { font-size: 12.5px; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; margin: 4px 0 8px; }
+  .sum b { color: var(--ink); }
   details.step { border-top: 1px solid var(--line); }
-  details.step > summary { cursor: pointer; padding: 8px 12px; font-size: 13px; list-style: none; }
+  details.step > summary { cursor: pointer; padding: 7px 10px; font-size: 12.5px; list-style: none; }
   details.step > summary::-webkit-details-marker { display: none; }
-  details.step .inner { padding: 0 12px 8px; }
-  .hist .row { display: flex; gap: 8px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 13px; }
-  .hist .row:first-child { border-top: 0; }
+  details.step .inner { padding: 0 10px 8px; }
+  .hist .row2 { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+  .hist .row2:first-child { border-top: 0; }
   .hist .seq { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
   .hist .lab { flex: 1; min-width: 0; }
   .hist .when { color: var(--ink-3); font-size: 11.5px; }
-  .actions {
-    position: fixed; left: 0; right: 0; bottom: 0; background: rgba(28, 26, 36, .96);
-    border-top: 1px solid var(--line); padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-    display: flex; gap: 8px; backdrop-filter: blur(6px);
-  }
+  .actions { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(28, 26, 36, .96); border-top: 1px solid var(--line);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 8px; backdrop-filter: blur(6px); }
   .actions button { flex: 1; }
-  .toast {
-    position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 9; max-width: 88vw;
-    background: #2b2740; color: var(--ink); border: 1px solid #4a3f80; border-radius: 10px;
-    padding: 8px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
-    opacity: 0; pointer-events: none; transition: opacity .18s;
-  }
+  .toast { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 9; max-width: 88vw; background: #2b2740;
+    color: var(--ink); border: 1px solid #4a3f80; border-radius: 10px; padding: 8px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    opacity: 0; pointer-events: none; transition: opacity .18s; }
   .toast.show { opacity: 1; }
   details.model { border-top: 1px solid var(--line); }
   details.model summary { cursor: pointer; padding: 9px 12px; font-size: 12.5px; color: var(--ink-2); }
   details.model .body { font-size: 12.5px; color: var(--ink-2); }
   details.model code { color: var(--ink); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
   .composer { display: grid; gap: 8px; }
-  .composer select, .composer input, .composer textarea {
-    font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
-    border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%;
-  }
+  .composer select, .composer input, .composer textarea { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%; }
   .composer textarea { min-height: 52px; resize: vertical; }
   .muted { color: var(--ink-3); font-size: 13px; }
+  .empty { padding: 10px 12px; color: var(--ink-3); font-size: 13px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>沙盒试验台 · 批量修改指令</h1>
-  <p>几篇初始文章 + 一堆修改指令，验证四个动作：预览（纯算不写回）、执行（提交成新版本）、放弃（丢指令不动内容）、恢复（回到旧版本 / 找回已放弃）。</p>
+  <h1>沙盒试验台 · 指令集</h1>
+  <p>先把一堆指令<strong>打包成指令集</strong>，再对整个集做四件事：预览（只看有增/删/改的文章）、执行、回退、放弃。</p>
 </header>
 
 <div class="wrap">
   <div class="card"><div class="bar" id="statusbar"></div></div>
 
   <div class="card">
-    <h2>修改指令 <span class="spacer"></span><button class="mini ghost" data-act="toggle-composer">＋ 新指令</button></h2>
-    <div class="body" id="composer" hidden>
-      <div class="composer">
-        <select id="c-target"></select>
-        <select id="c-op">
-          <option value="replace">替换片段（找不到就拒绝）</option>
-          <option value="replaceAll">整篇全局替换</option>
-          <option value="append">追加段落</option>
-          <option value="rename">改标题</option>
-        </select>
-        <input id="c-find" placeholder="原文片段（替换类必填）" />
-        <input id="c-to" placeholder="替换为（留空＝删掉该片段）" />
-        <textarea id="c-text" placeholder="追加的段落（追加类用）"></textarea>
-        <button class="good" data-act="add-instruction">加入队列</button>
-      </div>
-    </div>
-    <div id="inslist"></div>
+    <h2>指令集 <span class="spacer"></span><span class="muted" style="font-size:11.5px">选中一个集，底部按钮就作用于它</span></h2>
+    <div id="setlist"></div>
     <details class="model">
-      <summary>沙盒模型：为什么预览必须是纯函数</summary>
+      <summary>为什么以「指令集」为单位</summary>
       <div class="body">
-        <p>沙盒里只有两份真相：<code>docs</code>（已提交的文章）与 <code>instructions</code>（指令队列 + 每条的状态）。
-        <code>pass(docs, ids)</code> 在 docs 的深拷贝上按队列顺序跑一遍，返回「新内容 + 每条指令的成败 + 逐篇差异」，
-        全程不碰 <code>docs</code>，所以预览可以随便点、反复点。</p>
-        <p>指令互相喂：<code>i6</code> 要改的「小柚」是 <code>i5</code> 造出来的，所以不能缓存单条结果，
-        也不能并行跑——预览必须整条流水线重算。单条预览只是给孤立结果，放进队列重算才算数。</p>
-        <p>跑不通的指令（原文找不到、目标文章不存在、内容已经是这样）整条拒绝，进「需复核」并留原因，
-        绝不部分写入。批量执行时成功的照常提交、失败的留在队列，不因为一条坏指令把整批卡死。</p>
-        <p>四个动作都不销毁历史：<code>执行</code> 落一个新快照；<code>放弃</code> 只改指令状态，内容一个字节没动；
-        <code>恢复</code> 把当前现场也存成快照再切回去，所以回滚本身还能再回滚；<code>找回</code> 把已放弃的指令放回队列。</p>
+        <p>单条指令没有「成功」可言：它改的是同一批文章，A 的产物是 B 的输入。所以能提交、能回退、能放弃的最小单位
+        是<strong>一组指令</strong>，也就是指令集。指令池只负责攒料，攒够了打包。</p>
+        <p>指令集一生：<code>draft → committed → reverted</code>，或者 <code>draft → discarded</code>。
+        <strong>预览</strong>不落盘、可以反复点；<strong>执行</strong>才产生版本；<strong>回退</strong>与执行成对，
+        把内容切回这个集执行前的那一版（按后进先出，晚于它的集得先回退）；<strong>放弃</strong>只作用于还没执行的集——
+        执行过就没有「放弃」了，只有「回退」。</p>
+        <p>预览只列<strong>有增删改的文章</strong>，没被碰到的文章折叠成一行计数；这样三篇里改一篇时不会被两篇无关内容刷屏。</p>
       </div>
     </details>
   </div>
 
   <div class="card">
     <h2>预览</h2>
-    <div class="body" id="preview"><span class="muted">点底部「预览」按队列顺序重算，逐条展开看改动，底部是相对当前版本的整体差异。</span></div>
+    <div class="body" id="preview"><span class="muted">选一个指令集，点底部「预览」。</span></div>
   </div>
 
   <div class="card">
-    <h2>沙盒现状（docs）</h2>
+    <h2>指令池 <span class="spacer"></span><button class="mini ghost" data-act="toggle-composer">＋ 新指令</button></h2>
+    <div class="body" id="composer" hidden>
+      <div class="composer">
+        <select id="c-op">
+          <option value="replace">replace 替换片段（找不到就拒绝）</option>
+          <option value="replaceAll">replaceAll 全局替换</option>
+          <option value="append">append 追加段落</option>
+          <option value="rename">rename 改标题</option>
+          <option value="create">create 新建文章</option>
+          <option value="delete">delete 删除文章</option>
+        </select>
+        <select id="c-target"></select>
+        <input id="c-title" placeholder="新文章标题（create 用）" />
+        <input id="c-find" placeholder="原文片段（替换类必填）" />
+        <input id="c-to" placeholder="替换为（留空＝删掉片段）" />
+        <textarea id="c-text" placeholder="正文 / 追加段落（多行用空行分隔）"></textarea>
+        <button class="good" data-act="add-instruction">加入指令池</button>
+      </div>
+    </div>
+    <div id="poollist"></div>
+  </div>
+
+  <div class="card">
+    <h2>沙盒现状（文章）</h2>
     <div id="doclist"></div>
   </div>
 
@@ -183,7 +171,7 @@
 
 <script>
 'use strict';
-/* ================================================================ 种子数据 */
+/* ============================================================ 种子 */
 function seedDocs() {
   return [
     { id: 'a1', title: '西湖徒步路线笔记', lines: [
@@ -205,153 +193,165 @@ function seedDocs() {
     ] },
   ];
 }
-
 function seedInstructions() {
   return [
-    { id: 'i1', label: '路线笔记：写清出发地点', op: 'replace', target: 'a1', find: '上午九点出发', to: '上午九点从断桥出发' },
-    { id: 'i2', label: '餐厅记录：人均 120 改成 150', op: 'replace', target: 'a2', find: '人均 120', to: '人均 150' },
-    { id: 'i3', label: '拍照经验：补第四条（逆光）', op: 'append', target: 'a3', text: '四、逆光时先拍人，背景压暗是后期的事。' },
-    { id: 'i4', label: '餐厅记录：标题带上日期', op: 'rename', target: 'a2', to: '2026-10-18 · 第一次见面的餐厅' },
-    { id: 'i5', label: '全部文章：「她」统一成「小柚」', op: 'replaceAll', target: '*', find: '她', to: '小柚' },
-    { id: 'i6', label: '全部文章：「小柚」再改成「柚子」（吃 i5 的产物）', op: 'replaceAll', target: '*', find: '小柚', to: '柚子' },
-    { id: 'i7', label: '路线笔记：删除「明天再去一次」', op: 'replace', target: 'a1', find: '明天再去一次', to: '' },
-    { id: 'i8', label: '路线笔记：末尾补雨天备案', op: 'append', target: 'a1', text: '雨天备案：断桥 → 北山街 → 浙江省博，全程不爬坡。' },
+    { id: 'p1', label: '路线笔记：写清出发地点', op: 'replace', target: 'a1', find: '上午九点出发', to: '上午九点从断桥出发' },
+    { id: 'p2', label: '餐厅记录：人均 120 改成 150', op: 'replace', target: 'a2', find: '人均 120', to: '人均 150' },
+    { id: 'p3', label: '拍照经验：补第四条（逆光）', op: 'append', target: 'a3', text: '四、逆光时先拍人，背景压暗是后期的事。' },
+    { id: 'p4', label: '餐厅记录：标题带上日期', op: 'rename', target: 'a2', to: '2026-10-18 · 第一次见面的餐厅' },
+    { id: 'p5', label: '全部文章：「她」统一成「小柚」', op: 'replaceAll', target: '*', find: '她', to: '小柚' },
+    { id: 'p6', label: '全部文章：「小柚」再改成「柚子」（吃 p5 的产物）', op: 'replaceAll', target: '*', find: '小柚', to: '柚子' },
+    { id: 'p7', label: '路线笔记：删除「明天再去一次」', op: 'replace', target: 'a1', find: '明天再去一次', to: '' },
+    { id: 'p8', label: '新建一篇「下次想去的三家店」', op: 'create', title: '下次想去的三家店', text: '1. 运河边那家小馆，只在饭点开门。\n2. 满觉陇的茶室，桂花季去。\n3. 公司楼下的面馆，加班晚餐用。' },
+    { id: 'p9', label: '删除「关于拍照的三条经验」（已并入长文）', op: 'delete', target: 'a3' },
+    { id: 'p10', label: '路线笔记：末尾补雨天备案', op: 'append', target: 'a1', text: '雨天备案：断桥 → 北山街 → 浙江省博，全程不爬坡。' },
+    { id: 'p11', label: '餐厅记录：人均 200 改成 220（原文里其实是 120，用来演示跑不通）', op: 'replace', target: 'a2', find: '人均 200', to: '人均 220' },
   ];
 }
 
-/* ================================================================ 运行时状态 */
+/* ============================================================ 状态 */
 let docs = [];
-let instructions = [];
+let instructions = [];   // 指令定义，归属由 sets 决定
+let sets = [];           // 指令集
+let discarded = [];      // 放弃的散指令 id
 let history = [];
-let uid = 0;
+let seq = 0;             // 指令集编号
+let uid = 0;             // 指令 id
 let toastTimer = null;
-const ui = { selected: new Set(), preview: null, composer: false };
-let known = new Set();
+const ui = { picked: new Set(), active: null, composer: false, preview: null };
 
 function freshStart() {
   docs = seedDocs();
-  instructions = seedInstructions().map((i) => Object.assign({ status: 'pending' }, i));
-  history = [{ seq: 0, label: '初始文章', kind: 'seed', docs: clone(docs), notes: {}, ids: [], time: new Date().toISOString() }];
-  ui.selected = new Set(instructions.map((i) => i.id));
+  instructions = seedInstructions();
+  sets = [];
+  discarded = [];
+  history = [{ seq: 0, label: '初始文章', kind: 'seed', docs: clone(docs), setId: null, time: new Date().toISOString() }];
+  ui.picked = new Set(instructions.map((i) => i.id));
+  ui.active = null;
   ui.preview = null;
-  known = new Set(instructions.map((i) => i.id));
+  seq = 0; uid = 0;
 }
 
 function clone(v) { return JSON.parse(JSON.stringify(v)); }
-function esc(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function ins(id) { return instructions.find((i) => i.id === id); }
+function set(id) { return sets.find((s) => s.id === id); }
+function head() { return history[history.length - 1]; }
+function poolIds() {
+  const used = new Set();
+  sets.forEach((x) => { if (x.status !== 'discarded') x.ids.forEach((i) => used.add(i)); });
+  return instructions.filter((i) => !used.has(i.id) && !discarded.includes(i.id)).map((i) => i.id);
 }
-function getInstruction(id) { return instructions.find((i) => i.id === id); }
-function queue() { return instructions.filter((i) => i.status === 'pending' || i.status === 'needs'); }
-function selectedIds() { return queue().filter((i) => ui.selected.has(i.id)).map((i) => i.id); }
-function titleIn(pool, id) { const d = pool.find((x) => x.id === id); return d ? d.title : '（已删除的文章 ' + id + '）'; }
-function docLabel(id) { return titleIn(docs, id); }
+function activeSet() { return ui.active ? set(ui.active) : null; }
+function docText(id) { const d = docs.find((x) => x.id === id); return d ? [d.title].concat(d.lines).join('\n') : ''; }
+function titleOf(pool, id) { const d = pool.find((x) => x.id === id); return d ? d.title : '（已删除 ' + id + '）'; }
 
-/* ================================================================ 单篇应用（会就地改 d） */
-function applyDoc(d, ins) {
+/* ============================================================ 单步应用（就地改 cur） */
+function applyStep(cur, i) {
+  if (i.op === 'create') {
+    const title = String(i.title || '').trim();
+    if (!title) return { ok: false, err: '新文章标题为空' };
+    if (cur.some((d) => d.title === title)) return { ok: false, err: '已有同名文章「' + title + '」' };
+    const lines = String(i.text || '').split('\n').map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) return { ok: false, err: '新文章正文为空' };
+    const id = 'n' + i.id;
+    cur.push({ id, title, lines });
+    return { ok: true, text: '新建文章：' + title + '（' + lines.length + ' 段）' };
+  }
+  if (i.op === 'delete') {
+    const idx = cur.findIndex((d) => d.id === i.target);
+    if (idx < 0) return { ok: false, err: '要删的文章不存在（可能已被前面的指令删掉）' };
+    const [gone] = cur.splice(idx, 1);
+    return { ok: true, text: '删除文章：' + gone.title };
+  }
+  const targets = i.target === '*' ? cur.map((d) => d.id) : [i.target];
+  const notes = [];
+  for (const tid of targets) {
+    const d = cur.find((x) => x.id === tid);
+    if (!d) continue;
+    const r = applyDoc(d, i);
+    if (r.ok) notes.push(titleOf(cur, tid) + '：' + r.text);
+  }
+  if (!notes.length) {
+    if (i.target === '*') return { ok: false, err: '没有任何文章匹配「' + (i.find || '') + '」' };
+    const probe = cur.find((x) => x.id === i.target);
+    const r = probe ? applyDoc(clone([probe])[0], i) : { ok: false, err: '目标文章不存在（可能已被前面的指令删掉）' };
+    return { ok: false, err: r.err || '没有任何文章被这条指令改动' };
+  }
+  return { ok: true, text: notes.join('；') };
+}
+
+function applyDoc(d, i) {
   if (!d) return { ok: false, err: '目标文章不存在' };
-  if (ins.op === 'rename') {
-    const to = String(ins.to || '').trim();
+  if (i.op === 'rename') {
+    const to = String(i.to || '').trim();
     if (!to) return { ok: false, err: '新标题为空' };
-    if (d.title === to) return { ok: false, err: '标题已经是这个，没有可改的' };
+    if (d.title === to) return { ok: false, err: '标题已经是这个' };
     const before = d.title;
     d.title = to;
-    return { ok: true, text: '标题：' + before + ' → ' + to };
+    return { ok: true, text: '标题 ' + before + ' → ' + to };
   }
-  if (ins.op === 'append') {
-    const text = String(ins.text || '').trim();
+  if (i.op === 'append') {
+    const text = String(i.text || '').trim();
     if (!text) return { ok: false, err: '追加内容为空' };
     if (d.lines.includes(text)) return { ok: false, err: '该段落已经存在，不重复追加' };
     d.lines.push(text);
-    return { ok: true, text: '文末追加：' + text };
+    return { ok: true, text: '文末追加 1 段' };
   }
-  const find = ins.find || '';
-  const to = ins.to || '';
+  const find = i.find || '';
+  const to = i.to || '';
   if (!find) return { ok: false, err: '原文片段为空' };
-  if (ins.op === 'replace') {
+  if (i.op === 'replace') {
     const idx = d.lines.findIndex((l) => l.includes(find));
     if (idx < 0) return { ok: false, err: '找不到原文片段「' + find + '」' };
-    const hits = d.lines.filter((l) => l.includes(find)).length;
     d.lines[idx] = d.lines[idx].split(find).join(to);
-    return { ok: true, text: '第 ' + (idx + 1) + ' 行：「' + find + '」→「' + to + '」' + (hits > 1 ? '（本篇命中 ' + hits + ' 处，只改第 1 处）' : '') };
+    return { ok: true, text: '第 ' + (idx + 1) + ' 行「' + find + '」→「' + to + '」' };
   }
-  if (ins.op === 'replaceAll') {
-    const hits = d.lines.map((l, i) => (l.includes(find) ? i + 1 : 0)).filter(Boolean);
+  if (i.op === 'replaceAll') {
+    const hits = d.lines.map((l, n) => (l.includes(find) ? n + 1 : 0)).filter(Boolean);
     if (!hits.length) return { ok: false, err: '本篇找不到「' + find + '」' };
     d.lines = d.lines.map((l) => l.split(find).join(to));
-    return { ok: true, text: '第 ' + hits.join('、') + ' 行全局：「' + find + '」→「' + to + '」' };
+    return { ok: true, text: '第 ' + hits.join('、') + ' 行「' + find + '」→「' + to + '」' };
   }
-  return { ok: false, err: '未知操作：' + ins.op };
+  return { ok: false, err: '未知操作：' + i.op };
 }
 
-/* ================================================================ 流水线 */
-function pass(baseDocs, ids) {
+/* ============================================================ 流水线 */
+function runPass(baseDocs, ids) {
   const cur = clone(baseDocs);
-  const trace = [];
-  const notes = {};
-  for (const id of ids) {
-    const ins = getInstruction(id);
-    if (!ins) continue;
-    const targets = ins.target === '*' ? cur.map((d) => d.id) : [ins.target];
-    const changes = [];
-    let err = null;
-    for (const tid of targets) {
-      const d = cur.find((x) => x.id === tid) || null;
-      const r = applyDoc(d, ins);
-      if (r.ok) {
-        changes.push({ docId: tid, text: r.text, title: titleIn(cur, tid) });
-        (notes[tid] = notes[tid] || []).push({ text: r.text, title: titleIn(cur, tid) });
-      } else if (ins.target !== '*' && !err) err = r.err;
-    }
-    if (!changes.length) trace.push({ id, ok: false, err: err || '没有任何文章匹配「' + (ins.find || '') + '」', changes: [] });
-    else trace.push({ id, ok: true, changes });
-  }
-  return { docs: cur, trace, notes, changedDocs: diffDocs(baseDocs, cur) };
-}
-
-/* 逐条：每跑一条把结果当下一步的输入，这样依赖关系天然成立 */
-function passSteps(baseDocs, ids) {
-  let cur = clone(baseDocs);
   const steps = [];
   for (const id of ids) {
-    const res = pass(cur, [id]);
-    const t = res.trace[0];
-    steps.push({
-      id,
-      ok: !!(t && t.ok),
-      err: t ? t.err : '指令不存在',
-      changes: t ? t.changes : [],
-      diff: res.changedDocs,
-    });
-    if (t && t.ok) cur = res.docs;
+    const i = ins(id);
+    if (!i) continue;
+    const before = clone(cur);
+    const r = applyStep(cur, i);
+    steps.push({ id, ok: r.ok, err: r.ok ? '' : r.err, text: r.ok ? r.text : '', diff: r.ok ? classify(before, clone(cur)) : [] });
   }
-  const final = pass(baseDocs, ids);
-  return { docs: final.docs, steps, notes: final.notes, changedDocs: final.changedDocs, trace: final.trace };
+  return { docs: cur, steps, changed: classify(baseDocs, cur) };
 }
 
-/* ================================================================ diff */
-function diffDocs(before, after) {
+/* 只关心有增删改的文章 */
+function classify(before, after) {
   const out = [];
+  let untouched = 0;
   for (const d of after) {
     const b = before.find((x) => x.id === d.id);
-    if (!b) continue;
-    const aLines = [b.title].concat(b.lines);
-    const zLines = [d.title].concat(d.lines);
-    if (aLines.join('\n') !== zLines.join('\n')) {
-      out.push({ id: d.id, title: d.title, diff: diffLines(aLines, zLines) });
-    }
+    if (!b) { out.push({ id: d.id, title: d.title, kind: 'add', diff: diffLines([], [d.title].concat(d.lines)) }); continue; }
+    const same = b.title === d.title && b.lines.join('\n') === d.lines.join('\n');
+    if (same) { untouched++; continue; }
+    out.push({ id: d.id, title: d.title, kind: 'mod', diff: diffLines([b.title].concat(b.lines), [d.title].concat(d.lines)) });
   }
-  return out;
+  for (const b of before) {
+    if (!after.find((x) => x.id === b.id)) out.push({ id: b.id, title: b.title, kind: 'del', diff: diffLines([b.title].concat(b.lines), []) });
+  }
+  return { list: out, untouched };
 }
 
+/* ============================================================ diff */
 function diffLines(a, b) {
   const n = a.length, m = b.length;
   const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-  }
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
   const ops = [];
   let i = 0, j = 0;
   while (i < n && j < m) {
@@ -363,7 +363,6 @@ function diffLines(a, b) {
   while (j < m) ops.push({ t: 'add', s: b[j++] });
   return ops;
 }
-
 function renderDiff(ops) {
   const rows = [];
   let k = 0;
@@ -374,187 +373,232 @@ function renderDiff(ops) {
       if (run > 3) { rows.push('<div class="ln fold">… ' + run + ' 行未变 …</div>'); k += run; continue; }
     }
     const o = ops[k];
-    const mark = o.t === 'add' ? '+' : o.t === 'del' ? '−' : '\u00A0';
-    rows.push('<div class="ln ' + o.t + '">' + mark + ' ' + esc(o.s) + '</div>');
+    rows.push('<div class="ln ' + o.t + '">' + (o.t === 'add' ? '+' : o.t === 'del' ? '−' : '\u00A0') + ' ' + esc(o.s) + '</div>');
     k++;
   }
   return '<div class="diff">' + (rows.join('') || '<div class="ln ctx">（无变化）</div>') + '</div>';
 }
-
-function renderDocDiffs(list) {
-  if (!list || !list.length) return '<div class="muted">内容没有变化。</div>';
-  return list.map((c) => '<div class="dh">' + esc(c.title) + '</div>' + renderDiff(c.diff)).join('');
+function kindTag(k) { return '<span class="tag ' + k + '">' + (k === 'add' ? '增' : k === 'del' ? '删' : '改') + '</span>'; }
+function renderChanged(ch) {
+  if (!ch.list.length) return '<div class="muted">这个集跑完，一篇文章都没动。</div>';
+  return ch.list.map((c) => '<div class="dh">' + kindTag(c.kind) + ' ' + esc(c.title) + '</div>' + renderDiff(c.diff)).join('');
 }
 
-/* ================================================================ 提交 / 回滚 */
-function nextSeq() { return history[history.length - 1].seq + 1; }
+/* ============================================================ 集的操作 */
+function createSet(name) {
+  const ids = Array.from(ui.picked).filter((id) => poolIds().includes(id));
+  if (!ids.length) { toast('先在指令池里勾选几条'); return null; }
+  const s = { id: 'S' + (++seq), name: name || ('指令集 #' + seq), ids, status: 'draft', commitSeq: null, baseSeq: null, applied: [], failed: [], time: new Date().toISOString() };
+  sets.push(s);
+  ui.picked = new Set();
+  ui.active = s.id;
+  ui.preview = null;
+  return s;
+}
 
-function commitSnapshot(newDocs, label, notes, ids) {
-  const snap = { seq: nextSeq(), label, kind: 'commit', docs: clone(newDocs), notes: clone(notes || {}), ids: (ids || []).slice(), time: new Date().toISOString() };
-  history.push(snap);
+function executeSet(s) {
+  const res = runPass(docs, s.ids);
+  const applied = res.steps.filter((x) => x.ok).map((x) => x.id);
+  const failed = res.steps.filter((x) => !x.ok).map((x) => ({ id: x.id, err: x.err }));
+  if (!applied.length) {
+    s.status = 'draft'; s.applied = []; s.failed = failed;
+    ui.preview = res;
+    renderAll();
+    toast('这个集一条都跑不通，没有提交');
+    return;
+  }
+  s.baseSeq = head().seq;
+  commit('指令集「' + s.name + '」执行 ' + applied.length + ' 条（' + res.changed.list.length + ' 篇有增删改）', res.docs, s.id, 'commit');
+  s.commitSeq = head().seq;
+  s.status = 'committed';
+  s.applied = applied;
+  s.failed = failed;
+  ui.preview = res;
+}
+
+function revertSet(s) {
+  const later = sets.filter((x) => x.status === 'committed' && x.commitSeq > s.commitSeq);
+  if (later.length) {
+    toast('更晚的指令集「' + later[0].name + '」还没回退，按后进先出来');
+    return false;
+  }
+  const base = history.find((h) => h.seq === s.baseSeq);
+  if (!base) { toast('找不到这个集执行前的版本，回退不了'); return false; }
+  commit('回退指令集「' + s.name + '」→ 内容回到 #' + s.baseSeq, clone(base.docs), s.id, 'revert');
+  s.status = 'reverted';
+  s.applied = [];
+  s.failed = [];
+  s.commitSeq = null;
+  s.baseSeq = null;
+  ui.preview = null;
+  return true;
+}
+
+function discardSet(s) {
+  if (s.status === 'committed') { toast('已执行的集只能回退，不能放弃'); return false; }
+  if (s.status === 'reverted') { toast('已回退的集不必再放弃，指令可以直接退回池子'); return false; }
+  s.status = 'discarded';
+  s.ids.forEach((id) => ui.picked.add(id));
+  ui.preview = null;
+  ui.active = null;
+  return true;
+}
+
+function commit(label, newDocs, setId, kind) {
+  history.push({ seq: head().seq + 1, label, kind: kind || 'commit', docs: clone(newDocs), setId: setId || null, time: new Date().toISOString() });
   docs = clone(newDocs);
 }
 
-/* 恢复：先存现场，再切内容；晚于目标版本执行的指令退回队列，目标版本自带的指令标为已执行 */
-function rollbackTo(seq) {
-  const snap = history.find((s) => s.seq === seq);
-  if (!snap) return;
-  const curHead = history[history.length - 1];
-  const keep = { seq: nextSeq(), label: '恢复前的现场（原 #' + curHead.seq + '）', kind: 'checkpoint', docs: clone(docs), notes: {}, ids: [], time: new Date().toISOString() };
-  history.push(keep);
-  for (const s of history) {
-    if (s.kind !== 'commit' || s.seq <= snap.seq || s.seq > curHead.seq) continue;
-    for (const id of s.ids) {
-      const ins = getInstruction(id);
-      if (ins && ins.status === 'applied') ins.status = 'pending';
-    }
-  }
-  // 目标版本自带的那批指令，内容已经落在这版里，标回已执行，否则会重复跑
-  for (const id of snap.ids) {
-    const ins = getInstruction(id);
-    if (ins && (ins.status === 'pending' || ins.status === 'needs')) { ins.status = 'applied'; delete ins.err; }
-  }
-  const copy = { seq: nextSeq(), label: '恢复自 #' + snap.seq + '「' + snap.label + '」', kind: 'restore', docs: clone(snap.docs), notes: {}, ids: (snap.ids || []).slice(), time: new Date().toISOString() };
-  history.push(copy);
-  docs = clone(snap.docs);
-  queue().forEach((i) => { if (!known.has(i.id)) { known.add(i.id); ui.selected.add(i.id); } });
-}
-
-/* ================================================================ 渲染 */
+/* ============================================================ 渲染 */
 function renderStatus() {
-  const head = history[history.length - 1];
-  const cnt = (st) => instructions.filter((i) => i.status === st).length;
+  const cnt = (st) => sets.filter((s) => s.status === st).length;
   document.getElementById('statusbar').innerHTML =
-    '<span class="stat">当前版本 <b>#' + head.seq + '</b></span>' +
-    '<span class="stat">待执行 <b>' + queue().length + '</b></span>' +
-    '<span class="stat">需复核 <b style="color:var(--warn)">' + cnt('needs') + '</b></span>' +
-    '<span class="stat">已执行 <b style="color:var(--add)">' + cnt('applied') + '</b></span>' +
-    '<span class="stat">已放弃 <b>' + cnt('discarded') + '</b></span>' +
-    '<span class="stat">快照 <b>' + history.length + '</b></span>';
-  const sel = selectedIds().length;
-  document.getElementById('btn-preview').textContent = '预览（' + sel + '）';
-  document.getElementById('btn-preview').disabled = !sel;
-  document.getElementById('btn-execute').disabled = !sel;
-  document.getElementById('btn-discard').textContent = '放弃全部';
-  document.getElementById('btn-discard').disabled = !queue().length;
-  const bd = document.body.dataset;
-  bd.sbVersion = String(head.seq);
-  bd.sbPending = String(queue().length);
-  bd.sbNeeds = String(cnt('needs'));
-  bd.sbApplied = String(cnt('applied'));
-  bd.sbDiscarded = String(cnt('discarded'));
-  bd.sbSnaps = String(history.length);
+    '<span class="stat">当前版本 <b>#' + head().seq + '</b></span>' +
+    '<span class="stat">池中 <b>' + poolIds().length + '</b></span>' +
+    '<span class="stat">草稿 <b>' + cnt('draft') + '</b></span>' +
+    '<span class="stat">已执行 <b style="color:var(--add)">' + cnt('committed') + '</b></span>' +
+    '<span class="stat">已回退 <b>' + cnt('reverted') + '</b></span>' +
+    '<span class="stat">已放弃 <b>' + (cnt('discarded') + discarded.length) + '</b></span>';
+  const s = activeSet();
+  const draft = s && s.status === 'draft';
+  const committed = s && s.status === 'committed';
+  const bp = document.getElementById('btn-preview');
+  const be = document.getElementById('btn-execute');
+  const bd = document.getElementById('btn-discard');
+  bp.textContent = s ? '预览（' + s.ids.length + ' 条）' : '预览';
+  bp.disabled = !draft;
+  be.textContent = committed ? '回退' : '执行';
+  be.className = committed ? 'warn' : 'good';
+  be.disabled = !s || s.status === 'discarded' || s.status === 'reverted';
+  be.dataset.act = committed ? 'revert' : 'execute';
+  bd.textContent = '放弃';
+  bd.disabled = !s;
+  const d = document.body.dataset;
+  d.sbVersion = String(head().seq);
+  d.sbPool = String(poolIds().length);
+  d.sbDraft = String(cnt('draft'));
+  d.sbCommitted = String(cnt('committed'));
+  d.sbReverted = String(cnt('reverted'));
+  d.sbDiscarded = String(cnt('discarded') + discarded.length);
+  d.sbSnaps = String(history.length);
+  d.sbActive = s ? s.status : 'none';
 }
 
 function opSummary(i) {
-  const t = i.target === '*' ? '全部文章' : docLabel(i.target);
-  if (i.op === 'append') return '追加 → ' + t + '：' + (i.text || '');
-  if (i.op === 'rename') return '改标题 → ' + t + '：' + (i.to || '');
+  const t = i.target === '*' ? '全部文章' : (i.op === 'create' ? '（新文章）' : titleOf(docs, i.target));
+  if (i.op === 'create') return 'create → 新建「' + (i.title || '') + '」';
+  if (i.op === 'delete') return 'delete → 删除「' + titleOf(docs, i.target) + '」';
+  if (i.op === 'append') return 'append → ' + t + '：' + (i.text || '');
+  if (i.op === 'rename') return 'rename → ' + t + '：' + (i.to || '');
   return i.op + ' → ' + t + '：「' + (i.find || '') + '」→「' + (i.to || '') + '」';
 }
 
-function instructionRow(i, group) {
-  const box = group === 'queue'
-    ? '<input type="checkbox" class="cbsel" data-id="' + i.id + '"' + (ui.selected.has(i.id) ? ' checked' : '') + ' />'
-    : '<span style="width:14px"></span>';
-  const tag = group === 'queue'
-    ? (i.status === 'needs' ? '<span class="tag needs">需复核</span>' : '<span class="tag pending">待执行</span>')
-    : group === 'applied' ? '<span class="tag applied">已执行</span>' : '<span class="tag discarded">已放弃</span>';
-  const err = i.status === 'needs' && i.err ? '<div class="err">' + esc(i.err) + '</div>' : '';
-  const btns = group === 'queue'
-    ? '<button class="mini" data-act="preview-one" data-id="' + i.id + '">预览</button>' +
-      '<button class="mini good" data-act="execute-one" data-id="' + i.id + '">单独执行</button>' +
-      '<button class="mini warn" data-act="discard-one" data-id="' + i.id + '">放弃</button>' +
-      '<button class="mini ghost" data-act="move" data-dir="-1" data-id="' + i.id + '">↑</button>' +
-      '<button class="mini ghost" data-act="move" data-dir="1" data-id="' + i.id + '">↓</button>'
-    : '<button class="mini" data-act="requeue" data-id="' + i.id + '">' + (group === 'applied' ? '退回队列' : '找回') + '</button>';
-  return '<div class="ins"><div class="line1">' + box +
-    '<div style="flex:1;min-width:0"><div class="t">' + esc(i.label) + '</div>' +
-    '<div class="op">' + esc(opSummary(i)) + '</div>' + err + '</div>' + tag + '</div>' +
-    '<div class="btns">' + btns + '</div></div>';
+function insRow(i, opts) {
+  const o = opts || {};
+  const box = o.check ? '<input type="checkbox" class="cbpick" data-id="' + i.id + '"' + (ui.picked.has(i.id) ? ' checked' : '') + ' />' : '<span style="width:14px"></span>';
+  const btns = (o.inSet ? '<button class="mini ghost" data-act="set-move" data-dir="-1" data-id="' + i.id + '">↑</button>' +
+    '<button class="mini ghost" data-act="set-move" data-dir="1" data-id="' + i.id + '">↓</button>' +
+    '<button class="mini ghost" data-act="set-out" data-id="' + i.id + '">移出</button>' : '') +
+    (o.removable ? '<button class="mini warn" data-act="pool-discard" data-id="' + i.id + '">放弃</button>' : '');
+  return '<div class="row"><div class="line1">' + box +
+    '<div style="flex:1;min-width:0"><div class="t">' + esc(i.label) + '</div><div class="op">' + esc(opSummary(i)) + '</div>' +
+    (o.err ? '<div class="err">' + esc(o.err) + '</div>' : '') + '</div>' + (o.tag || '') + '</div>' +
+    (btns ? '<div class="btns">' + btns + '</div>' : '') + '</div>';
 }
 
-function renderInstructions() {
-  const q = queue();
-  const done = instructions.filter((i) => i.status === 'applied');
-  const gone = instructions.filter((i) => i.status === 'discarded');
-  const tools = q.length
-    ? '<div class="tools"><button class="mini ghost" data-act="sel-all">全选</button>' +
-      '<button class="mini ghost" data-act="sel-none">全不选</button>' +
-      '<button class="mini ghost" data-act="discard-all">放弃全部待执行</button></div>'
-    : '';
-  const groups =
-    (q.length ? '<div class="ghead">待执行 / 需复核 · ' + q.length + '</div>' + q.map((i) => instructionRow(i, 'queue')).join('') : '') +
-    (done.length ? '<div class="ghead">已执行 · ' + done.length + '</div>' + done.map((i) => instructionRow(i, 'applied')).join('') : '') +
-    (gone.length ? '<div class="ghead">已放弃（可找回）· ' + gone.length + '</div>' + gone.map((i) => instructionRow(i, 'discarded')).join('') : '') +
-    (instructions.length ? '' : '<div class="body muted">队列为空</div>');
-  document.getElementById('inslist').innerHTML = tools + groups;
-  document.getElementById('inslist').dataset.queueCount = String(q.length);
+function renderSets() {
+  const order = { draft: 0, committed: 1, reverted: 2, discarded: 3 };
+  const list = sets.slice().sort((a, b) => (order[a.status] - order[b.status]) || (b.commitSeq || 0) - (a.commitSeq || 0));
+  if (!list.length) { document.getElementById('setlist').innerHTML = '<div class="empty">还没有指令集。到下面「指令池」勾选指令，点「打包成指令集」。</div>'; return; }
+  document.getElementById('setlist').innerHTML = list.map((s) => {
+    const active = ui.active === s.id;
+    const tag = '<span class="tag ' + s.status + '">' + ({ draft: '草稿', committed: '已执行 #' + s.commitSeq, reverted: '已回退', discarded: '已放弃' }[s.status]) + '</span>';
+    const members = s.ids.map((id) => {
+      const f = (s.failed || []).find((x) => x.id === id);
+      const done = (s.applied || []).includes(id);
+      return insRow(ins(id), {
+        inSet: s.status === 'draft',
+        tag: f ? '<span class="tag mod">跑不通</span>' : done ? '<span class="tag committed">已提交</span>' : s.status === 'draft' ? '<span class="tag draft">待执行</span>' : '',
+        err: f ? f.err : '',
+      });
+    }).join('');
+    const foot = s.status === 'draft'
+      ? '<button class="mini" data-act="preview-set" data-id="' + s.id + '">预览</button>' +
+        '<button class="mini good" data-act="execute-set" data-id="' + s.id + '">执行</button>' +
+        '<button class="mini warn" data-act="discard-set" data-id="' + s.id + '">放弃</button>' +
+        '<button class="mini ghost" data-act="set-clear-fail" data-id="' + s.id + '">移出跑不通的</button>'
+      : s.status === 'committed'
+        ? '<button class="mini" data-act="preview-set" data-id="' + s.id + '">看它改了什么</button>' +
+          '<button class="mini warn" data-act="revert-set" data-id="' + s.id + '">回退</button>'
+        : (s.status === 'reverted'
+          ? '<button class="mini ghost" data-act="set-reedit" data-id="' + s.id + '">整集退回池子</button>'
+          : '<span class="muted" style="font-size:12px">指令已回池</span><button class="mini ghost" data-act="set-drop" data-id="' + s.id + '">删除记录</button>');
+    return '<div class="set' + (active ? ' active' : '') + '"><div class="head" data-act="set-active" data-id="' + s.id + '">' +
+      '<input type="radio" name="activeset"' + (active ? ' checked' : '') + ' data-act="set-active" data-id="' + s.id + '" />' +
+      '<span class="nm">' + esc(s.name) + ' <span class="muted" style="font-size:12px">' + s.ids.length + ' 条</span></span>' + tag + '</div>' +
+      '<div class="members">' + members + '</div><div class="foot">' + foot + '</div></div>';
+  }).join('');
+  document.getElementById('setlist').dataset.setCount = String(sets.length);
+}
+
+function renderPool() {
+  const ids = poolIds();
+  const tools = '<div class="tools"><button class="mini ghost" data-act="pick-all">全选</button>' +
+    '<button class="mini ghost" data-act="pick-none">全不选</button>' +
+    '<input type="text" id="set-name" placeholder="指令集名称（可空）" />' +
+    '<button class="mini good" data-act="pack">打包成指令集（' + ui.picked.size + '）</button>' +
+    (discarded.length ? '<button class="mini ghost" data-act="undiscard-all">找回已放弃的 ' + discarded.length + ' 条</button>' : '') + '</div>';
+  const rows = ids.length ? ids.map((id) => insRow(ins(id), { check: true, removable: true })).join('') : '<div class="empty">池子空了。</div>';
+  document.getElementById('poollist').innerHTML = tools + rows;
+  document.getElementById('poollist').dataset.poolCount = String(ids.length);
 }
 
 function renderDocs() {
-  const touched = new Set(ui.preview ? ui.preview.changedDocs.map((c) => c.id) : []);
   document.getElementById('doclist').innerHTML = docs.map((d) =>
-    '<div class="doc"><h3><span class="dot' + (touched.has(d.id) ? '' : ' hidden') + '"></span>' + esc(d.title) +
-    '</h3><pre>' + esc(d.lines.join('\n')) + '</pre></div>'
-  ).join('');
-  document.getElementById('doclist').dataset.docCount = String(docs.length);
-  document.getElementById('doclist').dataset.docHash = String(hash(docs.map((d) => d.title + '\u0001' + d.lines.join('\u0002')).join('\u0003')));
+    '<div class="doc"><h3>' + esc(d.title) + '</h3><pre>' + esc(d.lines.join('\n')) + '</pre></div>').join('');
+  const el = document.getElementById('doclist');
+  el.dataset.docCount = String(docs.length);
+  el.dataset.docHash = String(hash(docs.map((d) => d.title + '\u0001' + d.lines.join('\u0002')).join('\u0003')));
 }
-
-function hash(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
+function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 
 function renderHistory() {
-  const head = history[history.length - 1];
   document.getElementById('histlist').innerHTML = history.slice().reverse().map((s) => {
-    const cls = s.kind === 'restore' ? 'needs' : s.kind === 'checkpoint' ? 'discarded' : s.kind === 'seed' ? '' : 'applied';
-    const right = s.seq === head.seq
-      ? '<span class="tag pending">当前</span>'
-      : '<button class="mini" data-act="restore-diff" data-seq="' + s.seq + '">看差异</button>' +
-        '<button class="mini" data-act="restore" data-seq="' + s.seq + '">恢复</button>';
-    return '<div class="row"><span class="seq">#' + s.seq + '</span><span class="lab">' + esc(s.label) +
-      '<span class="tag ' + cls + '">' + kindName(s.kind) + '</span></span>' +
-      '<span class="when">' + hhmm(s.time) + '</span><span style="display:flex;gap:6px">' + right + '</span></div>';
+    const right = s.seq === head().seq ? '<span class="tag committed">当前</span>'
+      : '<button class="mini" data-act="hist-diff" data-seq="' + s.seq + '">看差异</button>';
+    return '<div class="row2"><span class="seq">#' + s.seq + '</span><span class="lab">' + esc(s.label) +
+      '<span class="tag ' + (s.kind === 'seed' ? '' : s.kind === 'commit' ? 'committed' : 'mod') + '">' + ({ seed: '初始', commit: '执行', revert: '回退' }[s.kind] || s.kind) + '</span></span>' +
+      '<span class="when">' + hhmm(s.time) + '</span>' + right + '</div>';
   }).join('');
   document.getElementById('histlist').dataset.snapCount = String(history.length);
 }
-function kindName(k) { return { seed: '初始', commit: '执行', restore: '恢复', checkpoint: '现场' }[k] || k; }
 function hhmm(iso) { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
 
 function renderPreview(res) {
+  const ch = res.changed;
+  const cnt = { add: 0, mod: 0, del: 0 };
+  ch.list.forEach((c) => { cnt[c.kind]++; });
+  const fail = res.steps.filter((s) => !s.ok);
+  const summary = '<div class="sum">影响 <b>' + ch.list.length + '</b> 篇：增 ' + cnt.add + ' / 改 ' + cnt.mod + ' / 删 ' + cnt.del +
+    '；<b>' + ch.untouched + '</b> 篇未受影响，已隐藏。' +
+    (fail.length ? ' <span style="color:var(--warn)">' + fail.length + ' 条跑不通</span>' : '') + '</div>';
   const steps = res.steps.map((st) => {
-    const i = getInstruction(st.id);
-    if (!i) return '';
-    const badge = st.ok ? '<span class="tag applied">' + st.changes.length + ' 处</span>' : '<span class="tag needs">拒绝</span>';
+    const i = ins(st.id);
+    const badge = st.ok ? '<span class="tag committed">' + st.diff.list.length + ' 篇</span>' : '<span class="tag mod">拒绝</span>';
     const inner = st.ok
-      ? '<div style="font-size:12.5px;color:var(--ink-2)">' + st.changes.map((c) => '· ' + esc(c.title) + '：' + esc(c.text)).join('<br>') + '</div>' +
-        renderDocDiffs(st.diff)
-      : '<div class="err">' + esc(st.err) + '</div>' +
-        '<div class="muted" style="margin-top:4px">放进队列时它跑不通；如果它依赖前面的指令，把前置勾上一起预览。</div>';
-    return '<details class="step"' + (st.ok && res.steps.length <= 3 ? ' open' : '') + '><summary>' + esc(i.label) + ' ' + badge + '</summary>' +
-      '<div class="inner">' + inner + '</div></details>';
+      ? '<div style="font-size:12.5px;color:var(--ink-2)">' + esc(st.text) + '</div>' + renderChanged(st.diff)
+      : '<div class="err">' + esc(st.err) + '</div>';
+    return '<details class="step"><summary>' + esc(i.label) + ' ' + badge + '</summary><div class="inner">' + inner + '</div></details>';
   }).join('');
-  const head = history[history.length - 1];
-  document.getElementById('preview').innerHTML =
-    '<div class="dh">逐条改动（按队列顺序喂入，共 ' + res.steps.length + ' 步）</div>' + steps +
-    '<div class="dh" style="margin-top:12px">整体差异 · 相对版本 #' + head.seq + '</div>' + renderDocDiffs(res.changedDocs);
-  const pv = document.getElementById('preview').dataset;
-  pv.pvSteps = String(res.steps.length);
-  pv.pvFail = String(res.steps.filter((s) => !s.ok).length);
-  pv.pvDocs = String(res.changedDocs.length);
-  pv.pvLines = String(res.changedDocs.reduce((n, c) => n + c.diff.filter((o) => o.t !== 'ctx').length, 0));
-}
-
-function renderPreviewFailure(id, err) {
-  document.getElementById('preview').innerHTML =
-    '<div class="dh" style="color:var(--warn)">该指令在当前内容上跑不通</div><div class="err">' + esc(err) + '</div>' +
-    '<div class="muted" style="margin-top:6px">它可能需要前面的指令先跑出内容。勾上前置指令，用底部「预览」整条重算。</div>';
-  document.getElementById('preview').dataset.pvFail = '1';
-  document.getElementById('preview').dataset.pvSteps = '1';
+  document.getElementById('preview').innerHTML = summary +
+    '<div class="dh">只看有增删改的文章（整个集的结果）</div>' + renderChanged(ch) +
+    '<div class="dh" style="margin-top:12px">逐条（按集内顺序）</div>' + steps;
+  const d = document.getElementById('preview').dataset;
+  d.pvSteps = String(res.steps.length);
+  d.pvFail = String(fail.length);
+  d.pvChanged = String(ch.list.length);
+  d.pvUntouched = String(ch.untouched);
+  d.pvKinds = ch.list.map((c) => c.kind).join(',');
 }
 
 function renderComposer() {
@@ -569,7 +613,8 @@ function renderComposer() {
 
 function renderAll() {
   renderStatus();
-  renderInstructions();
+  renderSets();
+  renderPool();
   renderDocs();
   renderHistory();
   renderComposer();
@@ -581,230 +626,222 @@ function toast(msg) {
   el.dataset.toast = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-/* ================================================================ 交互 */
+/* ============================================================ 交互 */
 document.addEventListener('change', (e) => {
-  if (!e.target.classList || !e.target.classList.contains('cbsel')) return;
-  if (e.target.checked) ui.selected.add(e.target.dataset.id);
-  else ui.selected.delete(e.target.dataset.id);
-  ui.preview = null;
-  document.getElementById('preview').innerHTML = '<span class="muted">选择变了，重新点「预览」。</span>';
-  renderStatus();
-  renderInstructions();
-  renderDocs();
+  const t = e.target;
+  if (t.classList && t.classList.contains('cbpick')) {
+    if (t.checked) ui.picked.add(t.dataset.id); else ui.picked.delete(t.dataset.id);
+    renderStatus();
+    renderPool();
+    return;
+  }
+  if (t.name === 'activeset') { ui.active = t.dataset.id; ui.preview = null; renderAll(); }
 });
 
-function markFailuresAsNeeds(steps) {
-  for (const st of steps) {
-    if (st.ok) continue;
-    const ins = getInstruction(st.id);
-    if (ins && ins.status === 'pending') { ins.status = 'needs'; ins.err = st.err; }
-  }
-}
-
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-act]');
-  if (!btn) return;
-  const act = btn.dataset.act;
-  const id = btn.dataset.id;
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  const id = el.dataset.id;
+  const s = activeSet();
+
+  const needDraft = () => { const x = activeSet(); if (!x || x.status !== 'draft') { toast('先选中一个草稿状态的指令集'); return null; } return x; };
 
   switch (act) {
-    case 'toggle-composer':
-      ui.composer = !ui.composer;
-      renderComposer();
-      return;
+    case 'toggle-composer': ui.composer = !ui.composer; renderComposer(); return;
 
     case 'add-instruction': {
-      const target = document.getElementById('c-target').value;
       const op = document.getElementById('c-op').value;
+      const target = document.getElementById('c-target').value;
+      const title = document.getElementById('c-title').value;
       const find = document.getElementById('c-find').value;
       const to = document.getElementById('c-to').value;
       const text = document.getElementById('c-text').value;
       if ((op === 'replace' || op === 'replaceAll') && !find) return toast('原文片段不能为空');
       if (op === 'append' && !text.trim()) return toast('追加内容不能为空');
       if (op === 'rename' && !to.trim()) return toast('新标题不能为空');
+      if (op === 'create' && (!title.trim() || !text.trim())) return toast('新建文章要同时给标题和正文');
       const nid = 'u' + (++uid);
-      instructions.push({ id: nid, status: 'pending', target, op, find, to, text, label: '自建指令 ' + uid + '（' + op + '）' });
-      known.add(nid);
-      ui.selected.add(nid);
-      ['c-find', 'c-to', 'c-text'].forEach((k) => { document.getElementById(k).value = ''; });
+      instructions.push({ id: nid, label: '自建 ' + uid + '（' + op + '）', op, target, title, find, to, text });
+      ui.picked.add(nid);
+      ['c-title', 'c-find', 'c-to', 'c-text'].forEach((k) => { document.getElementById(k).value = ''; });
       renderAll();
-      return toast('已加入队列，可直接预览');
+      return toast('已加入指令池（还没打包，不会改内容）');
     }
 
-    case 'sel-all':
-      queue().forEach((i) => ui.selected.add(i.id));
-      renderStatus(); renderInstructions();
-      return;
+    case 'pick-all': poolIds().forEach((x) => ui.picked.add(x)); renderStatus(); renderPool(); return;
+    case 'pick-none': ui.picked = new Set(); renderStatus(); renderPool(); return;
 
-    case 'sel-none':
-      ui.selected.clear();
-      renderStatus(); renderInstructions();
-      return;
+    case 'pack': {
+      const name = (document.getElementById('set-name').value || '').trim();
+      const made = createSet(name);
+      if (!made) return;
+      renderAll();
+      return toast('已打包「' + made.name + '」，' + made.ids.length + ' 条指令，可以预览了');
+    }
 
-    case 'discard-all':
-    case 'discard': {
-      const list = queue();
-      if (!list.length) return toast('没有待执行指令');
-      list.forEach((i) => { i.status = 'discarded'; ui.selected.delete(i.id); });
+    case 'pool-discard': {
+      discarded.push(id);
+      ui.picked.delete(id);
+      renderAll();
+      return toast('已放弃这条散指令（可在池底找回）');
+    }
+
+    case 'undiscard-all': {
+      discarded = [];
+      renderAll();
+      return toast('已放弃的散指令全部找回');
+    }
+
+    case 'set-active': ui.active = id; ui.preview = null; renderAll(); return;
+
+    case 'set-move': {
+      const x = sets.find((k) => k.ids.includes(id));
+      if (!x || x.status !== 'draft') return;
+      const from = x.ids.indexOf(id);
+      let to = from + Number(el.dataset.dir);
+      if (to < 0 || to >= x.ids.length) return;
+      const tmp = x.ids[from]; x.ids[from] = x.ids[to]; x.ids[to] = tmp;
+      x.failed = [];
       ui.preview = null;
-      document.getElementById('preview').innerHTML = '<span class="muted">指令已放弃，docs 未改动。</span>';
       renderAll();
-      return toast('已放弃 ' + list.length + ' 条（内容一个字节没动，可在「已放弃」里找回）');
+      return toast('集内顺序变了，预览要重算');
     }
 
-    case 'discard-one': {
-      const i = getInstruction(id);
-      i.status = 'discarded';
-      ui.selected.delete(id);
+    case 'set-out': {
+      const x = sets.find((k) => k.ids.includes(id));
+      if (!x || x.status !== 'draft') return;
+      x.ids = x.ids.filter((k) => k !== id);
+      ui.picked.add(id);
+      if (!x.ids.length) { sets = sets.filter((k) => k !== x); if (ui.active === x.id) ui.active = null; }
       renderAll();
-      return toast('已放弃：' + i.label);
+      return toast('已移出到指令池');
     }
 
-    case 'requeue': {
-      const i = getInstruction(id);
-      i.status = 'pending';
-      delete i.err;
-      ui.selected.add(id);
-      known.add(id);
+    case 'set-clear-fail': {
+      const x = set(id);
+      if (!x) return;
+      const bad = (x.failed || []).map((f) => f.id);
+      if (!bad.length) return toast('没有跑不通的指令');
+      x.ids = x.ids.filter((k) => !bad.includes(k));
+      bad.forEach((k) => ui.picked.add(k));
+      x.failed = [];
       renderAll();
-      return toast('已放回队列：' + i.label);
+      return toast('已把 ' + bad.length + ' 条跑不通的移回池子');
     }
 
-    case 'move': {
-      const dir = Number(btn.dataset.dir);
-      const from = instructions.findIndex((x) => x.id === id);
-      if (from < 0) return;
-      let to = from + dir;
-      while (to >= 0 && to < instructions.length && instructions[to].status !== 'pending' && instructions[to].status !== 'needs') to += dir;
-      if (to < 0 || to >= instructions.length) return;
-      const tmp = instructions[from];
-      instructions[from] = instructions[to];
-      instructions[to] = tmp;
-      // 顺序一变，之前的「需复核」判定就作废，等下一次预览重判
-      instructions.forEach((x) => { if (x.status === 'needs') { x.status = 'pending'; delete x.err; } });
-      ui.preview = null;
-      document.getElementById('preview').innerHTML = '<span class="muted">队列顺序变了，重新点「预览」按新顺序重算。</span>';
+    case 'set-reedit': {
+      const x = set(id);
+      if (!x) return;
+      sets = sets.filter((k) => k !== x);
+      x.ids.forEach((k) => ui.picked.add(k));
       renderAll();
-      return toast('已' + (dir < 0 ? '上移' : '下移') + '：' + tmp.label + '（顺序会改变执行结果）');
+      return toast('指令已回池，可重新打包');
     }
 
-    case 'preview': {
-      const ids = selectedIds();
-      if (!ids.length) return toast('先勾选指令');
-      const res = passSteps(docs, ids);
-      markFailuresAsNeeds(res.steps);
-      ui.preview = { steps: res.steps, changedDocs: res.changedDocs, notes: res.notes };
-      renderPreview(res);
-      renderStatus(); renderInstructions(); renderDocs();
-      return toast('预览完成，docs 未改动');
-    }
-
-    case 'preview-one': {
-      const res = passSteps(docs, [id]);
-      const st = res.steps[0];
-      if (!st.ok) { renderPreviewFailure(id, st.err); renderDocs(); return toast('跑不通：' + st.err); }
-      ui.preview = { changedDocs: res.changedDocs };
-      document.getElementById('preview').innerHTML =
-        '<div class="dh">单条预览 · ' + esc(getInstruction(id).label) + '</div>' +
-        '<div style="font-size:12.5px;color:var(--ink-2)">' + st.changes.map((c) => '· ' + esc(c.title) + '：' + esc(c.text)).join('<br>') + '</div>' +
-        renderDocDiffs(res.changedDocs) +
-        '<div class="muted" style="margin-top:6px">孤立结果。队列里若有前置指令，用底部「预览」看整条流水线。</div>';
-      const pv = document.getElementById('preview').dataset;
-      pv.pvSteps = '1'; pv.pvFail = '0'; pv.pvDocs = String(res.changedDocs.length);
-      renderDocs();
-      return toast('单条预览完成');
-    }
-
-    case 'execute': {
-      const ids = selectedIds();
-      if (!ids.length) return toast('先勾选指令');
-      const res = passSteps(docs, ids);
-      markFailuresAsNeeds(res.steps);
-      const okIds = res.steps.filter((s) => s.ok).map((s) => s.id);
-      okIds.forEach((x) => { getInstruction(x).status = 'applied'; });
-      const fail = res.steps.length - okIds.length;
-      if (okIds.length) commitSnapshot(res.docs, '执行 ' + okIds.length + ' 条指令（' + res.changedDocs.length + ' 篇有改动）', res.notes, okIds);
-      ui.preview = { steps: res.steps, changedDocs: res.changedDocs, notes: res.notes };
-      renderPreview(res);
-      renderAll();
-      return toast(okIds.length ? '已提交 # ' + history[history.length - 1].seq + '：执行 ' + okIds.length + ' 条' + (fail ? '，' + fail + ' 条进需复核' : '') : '全部跑不通，没有提交');
-    }
-
-    case 'execute-one': {
-      const res = passSteps(docs, [id]);
-      const st = res.steps[0];
-      if (!st.ok) {
-        const ins = getInstruction(id);
-        ins.status = 'needs'; ins.err = st.err;
-        renderPreviewFailure(id, st.err);
-        renderAll();
-        return toast('拒绝执行：' + st.err);
+    case 'preview': case 'preview-set': {
+      const x = act === 'preview' ? s : set(id);
+      if (!x) return toast('先选中一个指令集');
+      const res = runPass(docs, x.ids);
+      if (x.status === 'draft') {
+        x.failed = res.steps.filter((st) => !st.ok).map((st) => ({ id: st.id, err: st.err }));
       }
-      getInstruction(id).status = 'applied';
-      commitSnapshot(res.docs, '单独执行：' + getInstruction(id).label, res.notes, [id]);
-      ui.preview = { changedDocs: res.changedDocs };
-      renderDocs(); renderAll();
-      return toast('已提交 # ' + history[history.length - 1].seq);
+      ui.active = x.id;
+      ui.preview = res;
+      renderPreview(res);
+      renderAll();
+      return toast('预览完成，内容没动');
     }
 
-    case 'restore-diff': {
-      const snap = history.find((s) => s.seq === Number(btn.dataset.seq));
-      if (!snap) return;
-      document.getElementById('preview').innerHTML =
-        '<div class="dh">版本 #' + snap.seq + '「' + esc(snap.label) + '」与当前 #' + history[history.length - 1].seq + ' 的差异</div>' +
-        renderDocDiffs(diffDocs(snap.docs, docs));
+    case 'execute': case 'execute-set': {
+      const x = act === 'execute' ? needDraft() : set(id);
+      if (!x) return;
+      ui.active = x.id;
+      executeSet(x);
+      renderAll();
+      if (ui.preview) renderPreview(ui.preview);
       return;
     }
 
-    case 'restore': {
-      const target = Number(btn.dataset.seq);
-      if (!history.some((s) => s.seq === target)) return;
-      rollbackTo(target);
-      ui.preview = null;
-      const head = history[history.length - 1];
-      document.getElementById('preview').innerHTML = '<span class="muted">已恢复到 #' + target + '，docs 是它的副本。</span>';
+    case 'revert': case 'revert-set': {
+      const x = act === 'revert' ? s : set(id);
+      if (!x || x.status !== 'committed') return toast('只有已执行的集能回退');
+      const backTo = x.baseSeq;
+      if (!revertSet(x)) return;
       renderAll();
-      return toast('已恢复到 #' + target + '，现场存为 #' + (head.seq - 1) + '，回滚记录在 #' + head.seq);
+      if (ui.preview) renderPreview(ui.preview);
+      return toast('已回退「' + x.name + '」，内容回到 #' + backTo + '；点「整集退回池子」可再改再跑');
+    }
+
+    case 'discard': case 'discard-set': {
+      const x = act === 'discard' ? s : set(id);
+      if (!x) return toast('先选中一个指令集');
+      if (!discardSet(x)) return;
+      renderAll();
+      return toast('已放弃「' + x.name + '」：内容一个字节没动，指令已回池');
+    }
+
+    case 'set-drop': {
+      const x = set(id);
+      if (!x) return;
+      sets = sets.filter((k) => k !== x);
+      renderAll();
+      return toast('已从记录里移除「' + x.name + '」');
+    }
+
+    case 'hist-diff': {
+      const snap = history.find((h) => h.seq === Number(el.dataset.seq));
+      if (!snap) return;
+      const ch = classify(snap.docs, docs);
+      document.getElementById('preview').innerHTML = '<div class="sum">#' + snap.seq + '「' + esc(snap.label) + '」→ 当前 #' + head().seq +
+        '：' + ch.list.length + ' 篇有增删改，' + ch.untouched + ' 篇相同（已隐藏）</div>' + renderChanged(ch);
+      return;
     }
 
     case 'reset':
       freshStart();
-      document.getElementById('preview').innerHTML = '<span class="muted">已重置到初始状态。</span>';
+      document.getElementById('preview').innerHTML = '<span class="muted">已重置。</span>';
       renderAll();
-      return toast('试验台已重置（历史清空，这是研究用的重置，不参与恢复链）');
+      return toast('试验台已重置');
   }
 });
 
-/* ================================================================ 启动 */
+/* ============================================================ 启动 */
 freshStart();
 renderAll();
 
+function __sandbox_hash() { return hash(docs.map((d) => d.title + '\u0001' + d.lines.join('\u0002')).join('\u0003')); }
+
 window.__sandbox = {
   get docs() { return docs; },
+  get sets() { return sets; },
   get history() { return history; },
   get instructions() { return instructions; },
-  get selected() { return selectedIds(); },
-  pass,
-  passSteps,
-  byLabel(sub) { return instructions.find((i) => i.label.includes(sub)); },
-  selectAll() { ui.selected = new Set(queue().map((i) => i.id)); renderStatus(); renderInstructions(); },
-  selectNone() { ui.selected = new Set(); renderStatus(); renderInstructions(); },
-  pick(ids) { ui.selected = new Set(ids); renderStatus(); renderInstructions(); },
-  select(id) { ui.selected = new Set([id]); renderStatus(); renderInstructions(); },
+  get discarded() { return discarded; },
+  poolIds,
+  pick(ids) { ui.picked = new Set(ids); renderStatus(); renderPool(); },
+  activate(id) { ui.active = id; renderAll(); },
   click(act, opts) {
-    const b = document.querySelector('button[data-act="' + act + '"]');
+    const b = document.querySelector('[data-act="' + act + '"]');
     if (!b) return false;
-    if (opts && opts.id) b.dataset.id = opts.id;
-    if (opts && opts.seq !== undefined) b.dataset.seq = String(opts.seq);
-    if (opts && opts.dir !== undefined) b.dataset.dir = String(opts.dir);
+    if (opts) {
+      if (opts.id) b.dataset.id = opts.id;
+      if (opts.seq !== undefined) b.dataset.seq = String(opts.seq);
+      if (opts.dir !== undefined) b.dataset.dir = String(opts.dir);
+    }
     b.click();
     return true;
   },
-  docText(id) { const d = docs.find((x) => x.id === id); return d ? [d.title].concat(d.lines).join('\n') : ''; },
+  setName(v) { document.getElementById('set-name').value = v; },
+  docText,
+  docByTitle(t) { const d = docs.find((x) => x.title === t); return d ? [d.title].concat(d.lines).join('\n') : ''; },
+  docHash() { return document.getElementById('doclist').dataset.docHash; },
   toastText() { return document.getElementById('toast').dataset.toast || ''; },
+  pv() { return document.getElementById('preview').dataset; },
+  setOf(name) { return sets.find((s) => s.name === name); },
 };
 </script>
 </body>

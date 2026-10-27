@@ -1,5 +1,5 @@
-// 沙盒试验台自检：预览 / 执行 / 放弃 / 恢复 的语义验证
-// 用法：node sandbox-lab/selfcheck.mjs   （需要本机 playwright + chromium）
+// 沙盒试验台自检：指令集模型的 预览 / 执行｜回退 / 放弃 语义
+// 用法：node sandbox-lab/selfcheck.mjs
 import { chromium } from '/usr/local/node/lib/node_modules/playwright/index.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,132 +22,141 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
 const stat = () => page.evaluate(() => {
   const d = document.body.dataset;
-  return { version: d.sbVersion, pending: d.sbPending, needs: d.sbNeeds, applied: d.sbApplied, discarded: d.sbDiscarded, snaps: d.sbSnaps };
+  return { version: d.sbVersion, pool: d.sbPool, draft: d.sbDraft, committed: d.sbCommitted, reverted: d.sbReverted, discarded: d.sbDiscarded, snaps: d.sbSnaps, active: d.sbActive };
 });
 const pv = () => page.evaluate(() => {
   const d = document.getElementById('preview').dataset;
-  return { steps: d.pvSteps, fail: d.pvFail, docs: d.pvDocs };
+  return { steps: d.pvSteps, fail: d.pvFail, changed: d.pvChanged, untouched: d.pvUntouched, kinds: d.pvKinds || '' };
 });
-const hash = () => page.evaluate(() => document.getElementById('doclist').dataset.docHash);
+const hash = () => page.evaluate(() => window.__sandbox.docHash());
+const docCount = () => page.evaluate(() => document.getElementById('doclist').dataset.docCount);
 const text = (id) => page.evaluate((x) => window.__sandbox.docText(x), id);
 const click = (act, opts) => page.evaluate(([a, o]) => window.__sandbox.click(a, o), [act, opts]);
 const pick = (ids) => page.evaluate((x) => window.__sandbox.pick(x), ids);
-const allIds = () => page.evaluate(() => window.__sandbox.instructions.map((i) => i.id));
 const toast = () => page.evaluate(() => window.__sandbox.toastText());
-const previewText = () => page.textContent('#preview');
+const lastSet = () => page.evaluate(() => { const s = window.__sandbox.sets; return s.length ? { id: s[s.length - 1].id, name: s[s.length - 1].name, ids: s[s.length - 1].ids, status: s[s.length - 1].status } : null; });
+const setStatus = (name) => page.evaluate((n) => { const s = window.__sandbox.sets.find((x) => x.name === n); return s ? s.status : null; }, name);
+const pack = (ids, name) => page.evaluate(([x, n]) => { window.__sandbox.pick(x); if (n) window.__sandbox.setName(n); return true; }, [ids, name]).then(() => click('pack'));
 
-console.log('\n== 沙盒试验台自检 ==\n');
+console.log('\n== 沙盒试验台自检（指令集模型）==\n');
 
 await page.goto(url);
 await page.waitForSelector('#statusbar .stat');
 const h0 = await hash();
 ok(errors.length === 0, '页面无 JS 报错', errors);
 
-// 1. 初始状态
+// 1. 初始：只有指令池，没有集，内容就是原始文章
 let s = await stat();
-ok(s.version === '0' && s.pending === '8' && s.applied === '0' && s.snaps === '1', '初始：版本 #0，8 条待执行，只有 1 个初始快照', s);
+ok(s.version === '0' && s.pool === '11' && s.draft === '0' && s.snaps === '1', '初始：池中 11 条指令，零个指令集，版本 #0', s);
 
-// 2. 预览是纯函数：跑完 8 条，docs 一字未动
+// 2. 打包成集：池中取出，集成为操作单位
+await pack(['p1'], '只改出发地');
+s = await stat();
+ok(s.pool === '10' && s.draft === '1' && s.active === 'draft', '打包「只改出发地」：池 10 条，1 个草稿集，自动成为当前集', s);
+ok((await hash()) === h0, '打包本身不改内容');
+
+// 3. 预览只显示有增删改的文章
 await click('preview');
 let p = await pv();
-ok(p.steps === '8' && p.fail === '1', '预览跑完 8 步，1 条（i7）被拒绝', p);
-s = await stat();
-ok(s.needs === '1', '被拒绝的指令进「需复核」，不是被丢掉', s);
-ok((await hash()) === h0, '预览之后 docs 完全没变（纯函数）');
-ok((await text('a1')).includes('上午九点出发'), '预览不落盘：a1 仍是原文');
-await page.screenshot({ path: '/tmp/sandbox-preview.png', fullPage: true });
+ok(p.steps === '1' && p.changed === '1' && p.untouched === '2', '预览：1 篇有改动，2 篇未受影响被隐藏', p);
+ok((await hash()) === h0, '预览不落盘');
 
-// 3. 预览可反复点，结果稳定
-await click('preview');
-const p2 = await pv();
-ok(JSON.stringify(p2) === JSON.stringify(p), '预览可重复，结果一致', { p, p2 });
-
-// 4. 顺序依赖：单条预览 i6 必失败（它要的「小柚」还不存在）
-await click('preview-one', { id: 'i6' });
-ok((await pv()).fail === '1', '单条预览 i6 失败：依赖前置产物');
-ok((await previewText()).includes('前置'), '失败提示指向「需要前置指令先跑」');
-
-// 4b. 把 i6 挪到 i5 前面，整条预览的失败数从 1 变 2
-await pick(await allIds());
-await click('move', { id: 'i6', dir: -1 });
-await click('preview');
-p = await pv();
-ok(p.fail === '2', '顺序一变，i6 失去前置 → 失败数 1→2', p);
-s = await stat();
-ok(s.needs === '2' && (await hash()) === h0, '重排后需复核 2 条，docs 仍未动', s);
-await click('move', { id: 'i6', dir: 1 });
-await click('preview');
-ok((await pv()).fail === '1', '挪回原位，失败数回到 1');
-
-// 5. 放弃只改指令状态，内容一个字节都不动
-await pick(['i7']);
-await click('discard-one', { id: 'i7' });
-s = await stat();
-ok(s.discarded === '1' && s.pending === '7' && s.needs === '0', '放弃 i7：需复核清零，待执行剩 7', s);
-ok((await hash()) === h0, '放弃之后 docs 依然一字未动');
-
-// 6. 执行 = 把预览结果提交成新版本
-await pick(['i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i8']);
+// 4. 执行 → 版本；回退 → 内容回到执行前
 await click('execute');
 s = await stat();
-ok(s.version === '1' && s.snaps === '2' && s.applied === '7' && s.pending === '0', '执行 7 条 → 版本 #1，7 条已执行', s);
+ok(s.version === '1' && s.committed === '1' && s.snaps === '2', '执行 → 版本 #1，集变已执行', s);
 const h1 = await hash();
-ok(h1 !== h0, '执行之后 docs 真的变了');
-const a1 = await text('a1');
-const a2 = await text('a2');
-const a3 = await text('a3');
-ok(a1.includes('柚子') && a2.includes('柚子') && !a1.includes('小柚'), 'i5→i6 链路生效：她 → 小柚 → 柚子');
-ok(a1.includes('雨天备案') && a1.includes('上午九点从断桥出发'), 'i1/i8 生效');
-ok(a2.includes('人均 150') && a2.startsWith('2026-10-18'), 'i2 替换 + i4 改标题生效', a2.slice(0, 24));
-ok(a3.split('\n').length === 5, 'i3 让 a3 多出一段', a3.split('\n').length);
-ok((await toast()).includes('已提交'), '执行给出提交号', await toast());
+ok(h1 !== h0 && (await text('a1')).includes('上午九点从断桥出发'), '执行真的落盘');
+ok((await page.evaluate(() => document.getElementById('btn-execute').textContent)) === '回退', '执行后底部按钮从「执行」变「回退」');
+await click('revert');
+s = await stat();
+ok(s.version === '2' && s.reverted === '1' && (await hash()) === h0, '回退 → 版本 #2，内容精确回到 #0', s);
+ok((await page.evaluate(() => window.__sandbox.history[2].kind)) === 'revert', '回退在历史里是一条 revert，不是抹掉 commit');
+await click('set-reedit');
+s = await stat();
+ok(s.pool === '11' && s.draft === '0', '「整集退回池子」把指令还回池中', s);
 
-// 7. 队列空了，执行按钮置灰
-ok(await page.evaluate(() => document.getElementById('btn-execute').disabled), '无可执行指令时「执行」置灰');
-
-// 8. 恢复：回到 #0，现场被存下来，晚于它的执行退回队列
-await click('restore', { seq: 0 });
-s = await stat();
-ok(s.version === '3' && s.snaps === '4', '恢复产生 2 个快照：现场 + 恢复记录', s);
-ok((await hash()) === h0, '恢复后内容 == 初始内容');
-s = await stat();
-ok(s.applied === '0' && s.pending === '7' && s.discarded === '1', '那次执行的 7 条指令退回待执行（可重跑）', s);
-await click('restore', { seq: 1 });
-ok((await hash()) === h1, '反向恢复：回到 #1 又拿回执行后的内容');
-s = await stat();
-ok(s.applied === '7' && s.pending === '0', '恢复到 #1 时，那 7 条标回已执行，不会重复跑', s);
-
-// 9. 找回已放弃的指令；坏指令整条拒绝，绝不部分写入
-await click('requeue', { id: 'i7' });
-await pick(['i7']);
-await click('execute');
-s = await stat();
-ok(s.needs === '1', 'i7 找回后单独执行 → 进需复核', s);
-ok(s.snaps === '6' && s.version === '5' && (await hash()) === h1, '跑不通的执行不产生快照、不改内容', s);
-ok((await toast()).includes('全部跑不通'), '提示是「全部跑不通，没有提交」', await toast());
-
-// 10. 自己加一条指令：入队不等于改内容
-await page.evaluate(() => window.__sandbox.click('toggle-composer'));
-await page.selectOption('#c-target', 'a1');
-await page.selectOption('#c-op', 'append');
-await page.fill('#c-text', '测试段落：自建指令');
-await page.evaluate(() => window.__sandbox.click('add-instruction'));
-const nid = await page.evaluate(() => window.__sandbox.instructions[window.__sandbox.instructions.length - 1].id);
-s = await stat();
-ok(s.discarded === '0' && s.applied === '7', '新指令入队不动已有状态', s);
-ok((await hash()) === h1, '新指令只是入队，内容没变');
-await pick([nid]);
+// 5. 增 / 删 / 改三类都能被预览分出来
+await pack(['p8', 'p9', 'p10'], '增删改混合');
 await click('preview');
 p = await pv();
-ok(p.steps === '1' && p.fail === '0' && p.docs === '1', '单条自建指令预览成功', p);
-ok((await hash()) === h1, '自建指令预览同样不落盘');
+ok(p.changed === '3' && p.kinds.includes('add') && p.kinds.includes('del') && p.kinds.includes('mod'), '预览分类：1 增 1 删 1 改', p);
+ok(p.untouched === '1', '只有 a2 未受影响，被折叠成计数', p);
+await page.screenshot({ path: '/tmp/sandbox-set-preview.png', fullPage: true });
 await click('execute');
-ok((await text('a1')).includes('测试段落：自建指令'), '自建指令执行后真的落进 a1');
+ok((await docCount()) === '3', '执行后文章数 3（删了 a3、加了新店）', await docCount());
+ok((await page.evaluate(() => window.__sandbox.docByTitle('下次想去的三家店'))).includes('运河边那家小馆'), '新建的文章有正文');
+ok((await text('a3')) === '', '被删的文章不再存在');
+const h2 = await hash();
 
-// 11. 差异视图 + 无报错
-await click('restore-diff', { seq: 0 });
-ok((await previewText()).includes('差异'), '版本差异可查');
-await page.screenshot({ path: '/tmp/sandbox-final.png', fullPage: true });
+// 6. 回退按后进先出：晚执行的集没回退时，不许回退早的
+await pack(['p2'], '只改人均');
+await click('execute');
+s = await stat();
+ok(s.version === '4' && s.committed === '2', '第二个集执行 → 版本 #4，两个已执行', s);
+const hNow = await hash();
+await click('set-active', { id: 'S2' });
+await click('revert');
+s = await stat();
+ok(s.version === '4' && (await hash()) === hNow, '先回退较早的「增删改混合」被拒绝：版本和内容都不动', s);
+ok((await toast()).includes('更晚的指令集'), '拒绝理由指向后进先出', await toast());
+await click('set-active', { id: 'S3' });
+await click('revert');
+ok((await hash()) === h2 && (await stat()).version === '5', '回退最新的集，正常生效', await stat());
+await click('set-active', { id: 'S2' });
+await click('revert');
+ok((await hash()) === h0 && (await stat()).version === '6', '再回退前一个集，内容回到初始', await stat());
+
+// 7. 集里有跑不通的指令：预览标出来，执行时整条不进，好指令照常提交
+await pack(['p7', 'p3'], '含一条坏指令');
+await click('preview');
+p = await pv();
+ok(p.fail === '1' && p.changed === '1', '坏指令在预览里被标出，好指令的改动照常显示', p);
+const badErr = await page.evaluate(() => { const x = window.__sandbox.sets.find((k) => k.name === '含一条坏指令'); return x.failed.length ? x.failed[0].err : ''; });
+ok(badErr.includes('明天再去一次'), '失败原因写清了找不到哪段原文', badErr);
+await click('execute');
+s = await stat();
+ok(s.version === '7' && (await text('a3')).includes('四、逆光时先拍人'), '执行：好指令提交，坏指令留在集里', s);
+ok((await setStatus('含一条坏指令')) === 'committed', '集整体进入已执行', await setStatus('含一条坏指令'));
+
+// 7b. 全坏的集：一条都不提交
+await pack(['p11'], '只有坏指令');
+await click('execute');
+s = await stat();
+ok(s.version === '7' && s.snaps === '8' && (await setStatus('只有坏指令')) === 'draft', '全跑不通的集不产生版本，保持草稿', s);
+ok((await toast()).includes('一条都跑不通'), '提示「一条都跑不通，没有提交」', await toast());
+
+// 8. 放弃只作用于未执行的集：不产生版本、不改内容、指令回池
+const hKeep = await hash();
+await click('set-active', { id: 'S5' });
+await click('discard');
+s = await stat();
+ok(s.discarded === '1' && s.version === '7' && (await hash()) === hKeep, '放弃草稿集：不产生版本、内容一字未动', s);
+ok(await page.evaluate(() => window.__sandbox.poolIds().includes('p11')), '被放弃的集，指令回到池中');
+ok((await toast()).includes('一个字节没动'), '放弃的提示强调没改内容', await toast());
+// 已执行的集不给放弃
+await click('set-active', { id: 'S4' });
+await click('discard');
+ok((await setStatus('含一条坏指令')) === 'committed' && (await toast()).includes('只能回退'), '已执行的集拒绝「放弃」，只能回退', await toast());
+await click('set-drop', { id: 'S5' });
+ok(await page.evaluate(() => !window.__sandbox.sets.some((x) => x.id === 'S5')), '已放弃的集可以删除记录');
+
+// 9. 集内顺序影响结果，重排即作废上一轮判定
+await pack(['p6', 'p5'], '先柚子再小柚');
+await click('preview');
+ok((await pv()).fail === '1', 'p6 排在 p5 前 → 找不到「小柚」，1 条跑不通', await pv());
+await click('set-move', { id: 'p6', dir: 1 });
+await click('preview');
+p = await pv();
+ok(p.fail === '0' && p.changed === '2', '把 p6 挪到 p5 后面 → 全通，2 篇有改动', p);
+await click('execute');
+ok((await text('a1')).includes('柚子') && !(await text('a1')).includes('她'), '执行后顺序生效', (await text('a1')).slice(0, 60));
+
+// 10. 历史版本差异同样只列增删改
+await click('hist-diff', { seq: 0 });
+const hd = await pv();
+ok(Number(hd.changed) > 0 && Number(hd.untouched) >= 0, '历史差异按同一套「只看改动」渲染', hd);
+await page.screenshot({ path: '/tmp/sandbox-set-final.png', fullPage: true });
 ok(errors.length === 0, '全程无 JS 报错', errors);
 
 console.log('\n========== 汇总 ==========');
