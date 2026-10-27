@@ -274,8 +274,40 @@ export function applyOffset(
   });
 }
 
-/** 在 fromIndex 处放一段修正（替换已有同点段），返回按锚点升序的新数组 */
-export function upsertOffsetSegment(
+/** 两点间距离（米），haversine */
+function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+/**
+ * 相邻两点之间的速度（km/h），长度 = 点数 - 1。
+ *
+ * 时间不前进（同一秒连点两下、旧 CSV 的日期串解析不出来）时给 null——
+ * 硬写成 0 km/h 会把「不知道」画成「站着不动」，速度色阶上就分不清了。
+ * 距离用 haversine，入参是**已经应用过偏移**的坐标（线和点画的是同一份）。
+ */
+export function segmentSpeeds(points: { lat: number; lng: number; ts: string }[]): (number | null)[] {
+  const out: (number | null)[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dt = (Date.parse(b.ts) - Date.parse(a.ts)) / 1000;
+    if (!Number.isFinite(dt) || dt <= 0) {
+      out.push(null);
+      continue;
+    }
+    out.push((metersBetween(a, b) / dt) * 3.6);
+  }
+  return out;
+}
+
+/** 在 fromIndex 处放一段修正（替换已有同点段），返回按锚点升序的新数组 */export function upsertOffsetSegment(
   segments: OffsetSegment[] | undefined,
   fromIndex: number,
   offset: LocationOffset,

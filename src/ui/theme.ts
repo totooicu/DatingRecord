@@ -200,6 +200,19 @@ function luminance(hex: string): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
+/**
+ * 主题色的「同色系深浅」：保留色相，按需改亮度/饱和度。
+ *
+ * 给速度色阶这类地方用——一条轨迹从慢到快就是同一个主题色的浅→深，
+ * 换主题时整条线跟着换，不用另配一套调色板。
+ */
+export function tintHex(hex: string, lightness: number, saturationMul = 1): string {
+  const clean = normalizeHex(hex) ?? DEFAULT_ACCENT;
+  const [r, g, b] = parseHex(clean);
+  const [h, s] = rgbToHsl(r, g, b);
+  return hslToHex(h, Math.max(0, Math.min(1, s * saturationMul)), Math.max(0, Math.min(1, lightness)));
+}
+
 /** 白字压在这个颜色上的对比度；3:1 是 WCAG 对大字号/图形的最低要求 */
 export function contrastOnWhite(hex: string): number {
   return 1.05 / (luminance(hex) + 0.05);

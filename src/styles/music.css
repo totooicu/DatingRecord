@@ -363,6 +363,28 @@
   border-radius: 50%;
   display: inline-block;
 }
+/* 最新点：白芯深边，和速度线（主题色深浅阶）明显区分 */
+.loc-dot-point {
+  width: 7px;
+  height: 7px;
+  background: #fff;
+  border: 1.5px solid #2b2a28;
+}
+/* 历史点：线宽一半的小墨点 */
+.loc-dot-hist {
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+/* 速度色阶条：慢 → 快 */
+.loc-speedbar {
+  width: 30px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
 .loc-map {
   height: 360px;
 }
@@ -491,10 +513,11 @@
 .loc-arrow {
   width: 0;
   height: 0;
-  border-left: 4.5px solid transparent;
-  border-right: 4.5px solid transparent;
-  border-bottom: 9px solid var(--primary, #e8a317);
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.45));
+  border-left: 2.5px solid transparent;
+  border-right: 2.5px solid transparent;
+  /* 线是主题色的深浅阶：箭头用半透明墨色 + 白色描边，浅底深底都看得见 */
+  border-bottom: 5px solid rgba(25, 25, 25, 0.45);
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95));
 }
 /* 分段修正列表（不要叫 .loc-seg：那个是回放的二选一开关） */
 .loc-segbox {

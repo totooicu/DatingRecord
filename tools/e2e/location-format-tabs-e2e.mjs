@@ -4,7 +4,7 @@
 //   D1 定位页四个分段（地图 / 记录 / 文件 / 说明）可切换
 //   D2 新建 .drloc：文件进库、页面回到记录页
 //   D3 导入带 offset 的 .drloc：列表显示修正后的坐标，原文仍是原始坐标
-//   D4 地图配色 / 尺寸：历史点黄色、当前蓝点、选中红点，直径 = 2×线宽（8px）
+//   D4 地图渲染：线按速度上色、打点直径 = 线宽、历史点直径 = 线宽一半、当前蓝点、选中可追踪
 //   D5 改偏移写回文件：坐标整体平移，刷新后恢复；原始点不被改写
 //   D5b–D5e 三种修正方式：度数偏移 / 距离偏移 / 目标坐标（留空 = 不偏移）
 //   D6 文件库按「定位」筛选、类型徽标与预览
@@ -194,25 +194,31 @@ const locationBlobs = () =>
     return out;
   });
 
-const markerInfo = () =>
+/** 点位和速度线都画在 canvas 上，DOM 里查不到：读面板挂出来的这一帧摘要 */
+const renderInfo = () =>
+  p.evaluate(() => {
+    const el = document.querySelector('.loc-map');
+    const d = (el && el.dataset) || {};
+    return {
+      points: d.locPoints ?? '',
+      dot: d.locDot ?? '',
+      hist: d.locHist ?? '',
+      last: d.locLast ?? '',
+      selected: d.locSelected ?? '',
+      lines: d.locLines ?? '',
+      colors: (d.locColors ?? '').split(',').filter(Boolean),
+    };
+  });
+
+/** 当前蓝点仍是普通 DOM 标记（地图上只有一个「现在」） */
+const currentPins = () =>
   p.evaluate(() =>
-    Array.from(document.querySelectorAll('.leaflet-marker-icon'))
-      .map((el) => el.firstElementChild)
-      // 折线上的方向箭头也是 marker，但类名是 loc-arrow：只统计点位圆点
-      .filter((d) => d && d.classList.contains('loc-pin'))
-      .map((dot) => {
-        const box = dot.getBoundingClientRect();
-        return {
-          color: getComputedStyle(dot).backgroundColor,
-          w: Math.round(box.width),
-          h: Math.round(box.height),
-        };
-      }),
+    Array.from(document.querySelectorAll('.leaflet-marker-icon .loc-pin')).map(
+      (d) => getComputedStyle(d).backgroundColor,
+    ),
   );
 
-const YELLOW = 'rgb(255, 193, 7)';
 const BLUE = 'rgb(33, 150, 243)';
-const RED = 'rgb(229, 57, 53)';
 
 console.log('\n=== 定位 .drloc / 分段页 端到端 ===');
 
@@ -290,24 +296,27 @@ await p.locator('.file-item', { hasText: '偏移轨迹.drloc' }).getByRole('butt
 await p.waitForTimeout(900);
 check('切回带点的文件', (await p.locator('.loc-list .music-row').count()) === 2);
 
-console.log('\nD4 地图配色与尺寸');
+console.log('\nD4 地图渲染（速度线 + 点样式）');
 await tab('地图').click();
 await p.waitForTimeout(900);
-let marks = await markerInfo();
-check('历史点全部是黄色', marks.length === 2 && marks.every((m) => m.color === YELLOW), JSON.stringify(marks));
-check('点直径 = 2 × 4px 线宽', marks.length === 2 && marks.every((m) => m.w === 8 && m.h === 8));
+let info = await renderInfo();
+check('地图上画了 2 个记录点', info.points === '2', JSON.stringify(info));
+check('打点直径 = 线宽 4px', info.dot === '4', `dot=${info.dot}`);
+check('历史点直径 = 线宽一半 2px', info.hist === '2', `hist=${info.hist}`);
+check('最新点排在最后一个', info.last === '1', `last=${info.last}`);
+check('连线按速度取主题色的深浅', info.colors.length >= 1 && info.colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)), info.colors.join(' '));
+check('速度色不等于旧的黄色线', info.colors.every((c) => c.toLowerCase() !== '#ffc107'), info.colors.join(' '));
 await p.getByRole('button', { name: '定位到我的位置' }).click();
 await p.waitForTimeout(1000);
-marks = await markerInfo();
-check('当前位置是蓝点', marks.filter((m) => m.color === BLUE).length === 1);
+check('当前位置是蓝点', (await currentPins()).filter((c) => c === BLUE).length === 1);
 await tab('记录').click();
 await p.waitForTimeout(300);
 await p.locator('.loc-list .music-row').first().click();
 await p.waitForTimeout(900);
-marks = await markerInfo();
-check('选中的点是红点', marks.filter((m) => m.color === RED).length === 1);
-check('其余历史点仍是黄色', marks.filter((m) => m.color === YELLOW).length === 1);
-check('蓝点仍在', marks.filter((m) => m.color === BLUE).length === 1);
+info = await renderInfo();
+// 记录列表第一行是「最新」，选中它就是最后一个点
+check('选中的就是最新那个点', info.selected === info.last && info.selected !== '', `selected=${info.selected} / last=${info.last}`);
+check('蓝点仍在', (await currentPins()).filter((c) => c === BLUE).length === 1);
 
 console.log('\nD5 按米修改偏移并写回');
 await tab('文件').click();

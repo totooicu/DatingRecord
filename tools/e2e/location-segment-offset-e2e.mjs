@@ -293,10 +293,17 @@ const arrows = await p.evaluate(() =>
 );
 check('折线上有方向箭头', arrows.length > 0 && arrows.length <= 40, `共 ${arrows.length} 个`);
 check('箭头带旋转角（轨迹朝东北，约 45°）', arrows.some((a) => /rotate\(4[0-9]/.test(a.transform)), JSON.stringify(arrows.slice(0, 3)));
-check(
-  '点位圆点不受箭头影响（100 个 pin + 0 蓝点）',
-  (await p.locator('.leaflet-marker-icon .loc-pin').count()) === N,
-);
+// 点位改成 canvas 画（上千个点时 DOM 标记会卡），数量从面板挂出来的摘要里读
+const renderInfo = () =>
+  p.evaluate(() => {
+    const el = document.querySelector('.loc-map');
+    const d = (el && el.dataset) || {};
+    return { points: d.locPoints ?? '', hist: d.locHist ?? '', selected: d.locSelected ?? '', lines: d.locLines ?? '' };
+  });
+let info = await renderInfo();
+check('记录点全部画出来（100 个点 + 0 个蓝点）', info.points === String(N), `${info.points} / ${N}`);
+check('历史点直径是线宽的一半（2px）', info.hist === '2', `hist=${info.hist}`);
+check('地图上只有 DOM 蓝点之外的 canvas 层', (await p.locator('.leaflet-marker-icon .loc-pin').count()) === 0);
 
 console.log('\nE2 选中点追踪最新');
 await selectPoint(N); // 选中最后一个点
@@ -313,13 +320,8 @@ const afterAuto = await p.locator('.loc-list .music-row').count();
 check('自动打点新增了点', afterAuto > N, `${N} → ${afterAuto}`);
 const firstRowClass = await p.locator('.loc-list .music-row').first().getAttribute('class');
 check('选中跟随到最新点（第一行 = 最新，带 on）', !!firstRowClass && firstRowClass.includes('on'), firstRowClass || '');
-const redPins = await p.evaluate(
-  () =>
-    Array.from(document.querySelectorAll('.leaflet-marker-icon .loc-pin')).filter(
-      (d) => getComputedStyle(d).backgroundColor === 'rgb(229, 57, 53)',
-    ).length,
-);
-check('地图上仍只有一个红点（选中）', redPins === 1, `${redPins} 个`);
+info = await renderInfo();
+check('选中跟着落到最新点', info.selected === String(afterAuto - 1), `selected=${info.selected}`);
 await p.getByRole('button', { name: '⏹ 停止自动打点' }).click();
 await p.waitForTimeout(600);
 

@@ -24,6 +24,7 @@ import {
   offsetFromMeters,
   refLatOf,
   segmentRange,
+  segmentSpeeds,
   type LocationOffset,
   type LocationPoint,
 } from '../../core/location/format';
@@ -45,6 +46,7 @@ import {
   useLocationAuto,
 } from '../../core/runtime/locationAuto';
 import type { SampleStrategy } from '../../core/runtime/locationNative';
+import { SPEED_EDGES, speedColors, speedLines } from './locationPaint';
 
 type TabKey = 'map' | 'record' | 'file' | 'help';
 
@@ -62,15 +64,64 @@ const OFFSET_MODES: { key: OffsetMode; label: string }[] = [
   { key: 'target', label: '目标' },
 ];
 
-/** 线宽 4 → 点直径 2×线粗 = 8；蓝/黄/红都同一尺寸，只靠颜色区分 */
+/** 线宽 4；打的点直径与线同粗（4px），历史点直径是线的一半（2px） */
 const LINE_WEIGHT = 4;
-const DOT_SIZE = LINE_WEIGHT * 2;
-const COLOR_LINE = '#FFC107';
-const COLOR_POINT = '#FFC107';
+const DOT_RADIUS = LINE_WEIGHT / 2;
+const HIST_RADIUS = LINE_WEIGHT / 4;
+/** 线的颜色不是常量：按相邻两点速度取主题色的深浅（见 locationPaint.ts） */
 const COLOR_CURRENT = '#2196F3';
 const COLOR_SELECTED = '#E53935';
+/**
+ * 记录点的预留色：白芯 + 深色描边。
+ * 线本身就是主题色的浅→深阶，点再用主题色会糊在线上；白色芯在任何档位上都跳出来。
+ */
+const COLOR_POINT_FILL = '#ffffff';
+const COLOR_POINT_RING = '#2b2a28';
+/**
+ * 历史点：线宽一半的小白点。
+ *
+ * 原本想用小墨点，但速度线最快一档本身就是深色，黑点压上去直接消失；
+ * 白点在任何档位上都看得见，又只是 2px，不会抢速度线的视觉。
+ */
+const COLOR_HIST_POINT = 'rgba(30, 24, 26, 0.28)';
+/** 当前点（蓝点）比记录点大一圈，一眼认出「现在在哪」 */
+const CURRENT_SIZE = 10;
 /** 回放：走过的轨迹高亮 + 播放头。和选中红、当前蓝都拉开距离 */
 const COLOR_PLAY = '#7C4DFF';
+
+/** 当前主题色：每次重画时现读，换主题不用重建地图 */
+function themeAccent(): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+  return v || '#d9536b';
+}
+
+/**
+ * 记录点样式：
+ *   选中 —— 放大两倍、白边红芯；
+ *   最新 —— 与线同粗，白芯深边（刚打的那个点一眼能看到）；
+ *   历史 —— 线宽一半的小墨点。
+ */
+function pointStyle(selected: boolean, latest: boolean): L.CircleMarkerOptions {
+  if (selected) {
+    return { radius: DOT_RADIUS * 2, color: '#ffffff', weight: 2, fillColor: COLOR_SELECTED, fillOpacity: 1 };
+  }
+  if (latest) {
+    return {
+      radius: DOT_RADIUS,
+      color: COLOR_POINT_RING,
+      weight: 1.2,
+      fillColor: COLOR_POINT_FILL,
+      fillOpacity: 1,
+    };
+  }
+  // 2px 的淡墨点：只让线有一点「这里采过一个点」的质感，别把线串成珠子
+  return { radius: HIST_RADIUS, color: COLOR_HIST_POINT, weight: 0, fillColor: COLOR_HIST_POINT, fillOpacity: 1 };
+}
+
+/** 速度读数：<1 显示 0.x，两位数以上不留小数 */
+function fmtSpeed(kmh: number): string {
+  return `${kmh < 10 ? kmh.toFixed(1) : Math.round(kmh)} km/h`;
+}
 
 /** 回放进度标签用的时钟：HH:mm:ss（跨天也只是一串数字，够看） */
 function clockOf(ms: number): string {
@@ -80,25 +131,28 @@ function clockOf(ms: number): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** 一条轨迹最多画多少个方向箭头：点很密时按段数均摊，别把地图糊满 */
-const ARROW_MAX = 40;
+/** 一条轨迹最多画多少个方向箭头：点很密时按段数均摊，别把地图糊满
+ *  （线宽只有 4px，箭头画太密会把速度颜色整个盖住） */
+const ARROW_MAX = 12;
+/** 箭头大小：比线宽大一点就够指方向，别把整条线糊成白色 */
+const ARROW_SIZE = 6;
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
 
-function dotIcon(color: string): L.DivIcon {
+function dotIcon(color: string, size = CURRENT_SIZE): L.DivIcon {
   return L.divIcon({
     className: '',
-    html: `<div class="loc-pin" style="width:${DOT_SIZE}px;height:${DOT_SIZE}px;border-radius:50%;background:${color};box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></div>`,
-    iconSize: [DOT_SIZE, DOT_SIZE],
-    iconAnchor: [DOT_SIZE / 2, DOT_SIZE / 2],
+    html: `<div class="loc-pin" style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
 /** 回放播放头：比记录点大一圈、带白边，压在轨迹上也能一眼找到 */
 function playIcon(): L.DivIcon {
-  const size = DOT_SIZE * 2;
+  const size = 14;
   return L.divIcon({
     className: '',
     html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${COLOR_PLAY};box-sizing:border-box;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.35)"></div>`,
@@ -128,8 +182,8 @@ function addArrows(layer: L.LayerGroup, pts: LocationPoint[]): void {
     const icon = L.divIcon({
       className: '',
       html: `<div class="loc-arrow" style="transform: rotate(${bearingDeg(a, b).toFixed(1)}deg)"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
+      iconSize: [ARROW_SIZE, ARROW_SIZE],
+      iconAnchor: [ARROW_SIZE / 2, ARROW_SIZE / 2],
     });
     L.marker([(a.lat + b.lat) / 2, (a.lng + b.lng) / 2], { icon, interactive: false }).addTo(layer);
   }
@@ -189,7 +243,7 @@ export function LocationPanel() {
   const importRef = useRef<HTMLInputElement>(null);
   /** 轨迹图层（线 + 历史点）；蓝点单独一层，避免每秒定位重画整条轨迹 */
   const trackRef = useRef<L.LayerGroup | null>(null);
-  const pointMarkers = useRef<L.Marker[]>([]);
+  const pointMarkers = useRef<L.CircleMarker[]>([]);
   const currentMarker = useRef<L.Marker | null>(null);
   const selectedRef = useRef<number | null>(null);
   selectedRef.current = selectedIdx;
@@ -517,7 +571,10 @@ export function LocationPanel() {
   // 初始化地图（只一次）
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current).setView([30.2741, 120.1551], 12);
+    // canvas 渲染 + 8px 命中容差：上千个点时 SVG 会卡；小点也要点得中
+    const map = L
+      .map(containerRef.current, { preferCanvas: true, renderer: L.canvas({ tolerance: 8 }) })
+      .setView([30.2741, 120.1551], 12);
     mapRef.current = map;
     L.control.scale({ imperial: false, metric: true }).addTo(map);
     L.tileLayer(
@@ -557,30 +614,51 @@ export function LocationPanel() {
     pointMarkers.current = [];
 
     const pts = applyOffset(rows, offset, segments);
+    let lines: ReturnType<typeof speedLines> = [];
     if (pts.length > 1) {
-      L.polyline(
-        pts.map((r) => [r.lat, r.lng] as [number, number]),
-        // 回放时把整条轨迹压暗，让已走过的紫色段显出来
-        { color: COLOR_LINE, weight: LINE_WEIGHT, opacity: playActive ? 0.3 : 0.75 },
-      ).addTo(layer);
+      // 按相邻两点的速度分档染色：同档且首尾相接的段合并，最多 7 条 polyline
+      lines = speedLines(pts, themeAccent());
+      for (const line of lines) {
+        L.polyline(line.parts, {
+          color: line.color,
+          weight: LINE_WEIGHT,
+          // 回放时把整条轨迹压暗，让已走过的紫色段显出来
+          opacity: playActive ? 0.3 : 0.9,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(layer);
+      }
       // 折线上的方向箭头：按段中点放旋转三角，点密时均摊数量
       addArrows(layer, pts);
     }
 
+    const speeds = segmentSpeeds(pts);
+    const lastIdx = pts.length - 1;
     const sel = selectedRef.current;
     pts.forEach((r, i) => {
-      const marker = L.marker([r.lat, r.lng], {
-        icon: dotIcon(i === sel ? COLOR_SELECTED : COLOR_POINT),
-        zIndexOffset: i === sel ? 1000 : 0,
-      })
+      const spd = i > 0 ? speeds[i - 1] : null;
+      const marker = L
+        .circleMarker([r.lat, r.lng], pointStyle(i === sel, i === lastIdx))
         .on('click', () => setSelectedIdx(i))
         .bindPopup(
           `<div><strong>${esc(fmtTime(r.ts))}</strong><br/>${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}` +
+            `${spd !== null ? `<br/>上一段约 ${fmtSpeed(spd)}` : ''}` +
             `${r.accuracy ? `<br/>±${Math.round(r.accuracy)}m` : ''}${r.note ? `<br/>${esc(r.note)}` : ''}</div>`,
         );
       marker.addTo(layer);
+      if (i === sel) marker.bringToFront();
       pointMarkers.current.push(marker);
     });
+
+    // 点和线都画在 canvas 上，DOM 里查不到：把这一帧的结果挂成 data-*，调试和 e2e 都靠它
+    const el = map.getContainer();
+    el.dataset.locPoints = String(pts.length);
+    el.dataset.locDot = String(DOT_RADIUS * 2);
+    el.dataset.locHist = String(HIST_RADIUS * 2);
+    el.dataset.locLast = pts.length ? String(pts.length - 1) : '';
+    el.dataset.locSelected = sel === null ? '' : String(sel);
+    el.dataset.locLines = String(lines.length);
+    el.dataset.locColors = lines.map((l) => l.color).join(',');
 
     if (pts.length > 0 && fittedFile.current !== fileId) {
       fittedFile.current = fileId;
@@ -589,12 +667,15 @@ export function LocationPanel() {
     // rows / offset 是这条 effect 的数据源；用 rev + 偏移值当依赖，避免每秒重画
   }, [la.rev, offset.lat, offset.lng, fileId, segments, playActive]);
 
-  // 选中只换图标，不重建整层
+  // 选中只换样式，不重建整层（canvas 上没有 zIndexOffset，用 bringToFront）
   useEffect(() => {
+    const lastIdx = pointMarkers.current.length - 1;
     pointMarkers.current.forEach((m, i) => {
-      m.setIcon(dotIcon(i === selectedIdx ? COLOR_SELECTED : COLOR_POINT));
-      m.setZIndexOffset(i === selectedIdx ? 1000 : 0);
+      m.setStyle(pointStyle(i === selectedIdx, i === lastIdx));
+      if (i === selectedIdx) m.bringToFront();
     });
+    const el = mapRef.current?.getContainer();
+    if (el) el.dataset.locSelected = selectedIdx === null ? '' : String(selectedIdx);
   }, [selectedIdx]);
 
   // 蓝点属于「现在」，不写进文件；单独更新，自动打点每秒只动它一个
@@ -857,6 +938,9 @@ export function LocationPanel() {
     toast('高德 key 已保存');
   };
 
+  // 图例里的速度条：和地图上同一条色阶，换主题时一起变
+  const speedRamp = speedColors(themeAccent()).ramp;
+
   return (
     <div className="loc-panel">
       <div className="aichat-tabs" role="tablist">
@@ -878,8 +962,20 @@ export function LocationPanel() {
       <div className="loc-view" hidden={tab !== 'map'}>
         <div className="loc-legend">
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_CURRENT }} />当前位置</span>
-          <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_POINT }} />文件记录</span>
+          <span className="loc-legend-item" title="最新打的那个点：与线条同粗">
+            <i className="loc-dot loc-dot-point" />最新点
+          </span>
+          <span className="loc-legend-item" title="更早的记录点：直径是线宽的一半">
+            <i className="loc-dot loc-dot-hist" />历史点
+          </span>
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_SELECTED }} />选中</span>
+          <span
+            className="loc-legend-item"
+            title={`线条按相邻两点速度上色，慢 → 快，分界 ${SPEED_EDGES.join(' / ')} km/h`}
+          >
+            <i className="loc-speedbar" style={{ background: `linear-gradient(90deg, ${speedRamp.join(', ')})` }} />
+            速度
+          </span>
           {playActive && (
             <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_PLAY }} />回放</span>
           )}
