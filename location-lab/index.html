@@ -1,0 +1,1309 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>定位磨合台 · 壳后台续记测试页</title>
+<!-- 压掉 favicon 请求：这一页在子目录，浏览器默认会去请求一个不存在的图标，控制台白跳一条 404 -->
+<link rel="icon" href="data:,">
+<!--
+  定位磨合台（location-lab）
+
+  这是什么：网页端「定位」功能的精简搬运版，放在线上给壳调试用。
+  壳的分支 feat/location-tune 把 DEFAULT_URL 指到这一页，
+  专门磨合「壳退到后台 / 熄屏之后，定位还能不能继续记」。
+
+  和壳的协议（和网页仓库 src/core/compat/bridge.ts 完全一致，改一边要同步另一边）：
+    请求 → window.postMessage({type:'gv-bridge-request', id, action, params}, '*')
+    响应 ← {type:'gv-bridge-response', id, ok, result | error}
+    事件 ← {type:'gv-bridge-event', event, data}
+
+  location.* 动作：
+    ping                  → {pong, engine}
+    location.status       → {tracking, startedAt, points, rev, lastPoint, config,
+                             batteryOptimized, fineLocation, backgroundLocation,
+                             lastFixAt, provider, wakeLock, fixes, failures,
+                             lastError, intervalCurrentMs, ticks, diag, journalBytes}
+    location.setConfig    {enabled, thresholdM, moveThresholdM, strategy, intervalBaseMs, intervalMaxMs, diag}
+    location.start / location.stop
+    location.getHistory   {since?} → {points:[{ts,lat,lng,accuracy,rev}], rev}
+    location.clearHistory → {ok}
+    location.requestPermissions      {background?} → {fine, background}
+    location.batteryOptimization     → {ignoring}
+    location.requestBatteryExemption → {launched}
+    location.setDiag      {on} → 取证模式：壳改成逐秒申请定位，并把每一拍追加写进手机里的账本
+    location.journal      {since?,tail?} → {lines:[{t,k,...}],count,total,bytes,ticks,diag,tracking}
+    location.clearJournal → {ok}
+  事件：location.point {ts,lat,lng,accuracy,rev}、location.state {tracking,points,rev,reason}
+
+  坐标：原生给的是 WGS-84，底图是高德（GCJ-02），合并前必须换算（下面 wgs84ToGcj02）。
+  配置的存档键和网页端一样是 localStorage['dr.autoLocation']——壳在页面加载完会自己读一次，
+  所以这一页写存档 = 壳下次启动也能拿到最新配置。
+  地图用的 leaflet 是从网页仓库 node_modules 里拷过来的（MIT），不依赖任何外网 CDN。
+
+  这一页自己还会做两件事：
+  1) 后台判定（自动）：靠 visibilitychange 记下「壳退后台」的起止，回前台后从原生历史里取
+     这段窗口的点，把「起点/点/终点」连成时间轴算最长空档，按「退避封顶 + 30 秒余量」判
+     连续 / 有中断 / 断线。起点与基线都落本地，页面被系统在后台回收也能重开补判。
+     存档键：dr.locationLab.bgSessions（最近 8 次）、.lastAlive（心跳时刻）、.bgBase（退后台基线）。
+  2) 版本与自动刷新：网页侧显示页内写死的发布号（PAGE_VER/PAGE_BUILD）与服务器本页的
+     Last-Modified（HEAD 查询串绕缓存）；安卓侧显示 getEnv 的 version/builtAt/commit。
+     可选每 10/30/60/300 秒自动刷新，勾选后到点整页重载（用来拿新部署的网页）。
+     存档键：dr.locationLab.autoRefresh。
+  3) 休眠分析（取证账本）：打开「取证模式」后壳把采样强制改成逐秒，并把每一拍（tick）、上一发没回而
+     跳过的拍（skip）、每一次取到的定位（fix）、每一次失败/超时/唤醒锁被收走（fail）、屏幕亮灭、
+     服务起停（start/stop，带 why：page=页面推的、system-restart=系统重建）追加写到手机本地文件
+     files/bg_journal.jsonl（超 1.5 MB 自动裁掉旧的一半）。这一页拉回账本后按「有记录的秒数 / 应该
+     有的秒数」算覆盖率，把相邻两拍相差 >2.5 秒记为空档，再判：覆盖率满但零 fix = 醒着但拿不到定位；
+     空档两头正好有 stop 行 = 不是睡，是被停了；空档落在熄屏期间 = 熄屏后被冻；拍上标着 wl=false =
+     壳没拿到唤醒锁；账本里有销毁/重建 = 可能被杀。（0.3.2-tune 起才有 skip / stop 的 why / wl 真值）
+     0.3.3-tune 起还有两种行：probe = 断流后又落笔时补记的「空档解剖」，含三个时钟（墙钟、含深睡的
+     elapsedRealtime、不含深睡的 uptimeMillis）与当时的 Doze / 省电模式 / GPS 开关 / 电量——开机钟跟
+     墙钟走一样多 = 手机醒着只有壳被冻，开机钟少走一大截 = 整机真睡了；wake = 后台 60 秒一次的闹钟心跳
+     （带迟到秒数），当对照用：闹钟进不来 = 进程被冻或被杀，闹钟准点进来而 tick 没跟上 = 采集线程的事。
+-->
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --line: #e8eaee; --text: #1f2937; --muted: #6b7280;
+    --primary: #e0708f; --primary-soft: #fdeef2; --ok: #16a34a; --warn: #d97706; --err: #dc2626;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 10px 10px calc(24px + env(safe-area-inset-bottom));
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 16px; margin: 2px 0 6px; }
+  h1 small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .card { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .card h2 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+  .card h2 .tag { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .kv:last-child { border-bottom: 0; }
+  .kv b { font-weight: 600; }
+  .kv span { color: var(--muted); text-align: right; word-break: break-all; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  button {
+    padding: 9px 14px; border: 0; border-radius: 9px; background: var(--primary); color: #fff;
+    font-size: 13px; font-family: inherit;
+  }
+  button:active { opacity: .85; }
+  button.ghost { background: var(--primary-soft); color: var(--primary); }
+  button.gray { background: #eceef1; color: #374151; }
+  button[disabled] { opacity: .45; }
+  input[type="number"], input[type="text"], select {
+    padding: 8px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px;
+    background: #fff; color: inherit; font-family: inherit; min-width: 0;
+  }
+  input[type="number"] { width: 84px; }
+  label.field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .switch input { width: 20px; height: 20px; accent-color: var(--primary); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #eceef1; color: #374151; }
+  .pill.on { background: #dcfce7; color: #15803d; }
+  .pill.off { background: #fee2e2; color: #b91c1c; }
+  .pill.warn { background: #fef3c7; color: #b45309; }
+  #map { height: 46vh; min-height: 240px; border-radius: 10px; background: #e9ecef; }
+  .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .list { max-height: 240px; overflow: auto; margin: 6px 0 0; padding: 0; list-style: none; }
+  .list li { font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--line); display: flex; gap: 8px; }
+  .list li .t { color: var(--muted); flex: 0 0 auto; }
+  .list li .c { flex: 1; word-break: break-all; }
+  .src { flex: 0 0 auto; font-size: 11px; padding: 1px 6px; border-radius: 6px; }
+  .src.page { background: #e0edff; color: #1d4ed8; }
+  .src.native { background: #ffe8cc; color: #b45309; }
+  #log { font: 11px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; margin: 0; color: #374151; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+
+<h1>定位磨合台<small>壳后台续记测试页</small></h1>
+
+<div class="card">
+  <h2>原生桥 <span class="tag">能力靠发问，不靠猜环境</span></h2>
+  <div class="kv"><b>桥状态</b><span id="bridge-state">检测中…</span></div>
+  <div class="kv"><b>壳环境</b><span id="env">—</span></div>
+  <div class="kv"><b>原生服务</b><span id="svc">—</span></div>
+  <div class="kv"><b>采集中</b><span id="svc-tracking">—</span></div>
+  <div class="kv"><b>最近定位</b><span id="svc-lastfix">—</span></div>
+  <div class="kv"><b>权限</b><span id="perm">—</span></div>
+  <div class="row">
+    <button class="gray" id="btn-ping">重新检测</button>
+    <button class="ghost" id="btn-perm">请求定位权限</button>
+    <button class="ghost" id="btn-perm-bg">请求后台定位</button>
+    <button class="ghost" id="btn-battery">忽略电池优化</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>版本 <span class="tag">网页与壳各自的时间版本，可自动刷新</span></h2>
+  <div class="kv"><b>本页内置</b><span id="ver-web">—</span></div>
+  <div class="kv"><b>服务器上的本页</b><span id="ver-web-served">—</span></div>
+  <div class="kv"><b>壳（安卓）</b><span id="ver-shell">—</span></div>
+  <div class="kv"><b>设备时间</b><span id="ver-clock">—</span></div>
+  <div class="row">
+    <label class="field">自动刷新
+      <select id="ar-every">
+        <option value="0">关</option>
+        <option value="10">10 秒</option>
+        <option value="30">30 秒</option>
+        <option value="60">1 分钟</option>
+        <option value="300">5 分钟</option>
+      </select>
+    </label>
+    <label class="switch"><input type="checkbox" id="ar-reload"><span>到点整页重载</span></label>
+    <button class="gray" id="btn-ver">立即刷新</button>
+  </div>
+  <div class="kv"><b>下次刷新</b><span id="ar-next">—</span></div>
+  <p class="hint" id="ar-hint">「本页内置」是文件里写死的发布号；「服务器上的本页」用 HEAD 请求读 Last-Modified（绕过缓存）。
+  线上那份的改动时刻晚于本页装载的时刻，就说明装载之后又推过新版，勾选「到点整页重载」让页面自己换新——测网页端改动时不用手动下拉刷新。</p>
+</div>
+
+<div class="card">
+  <h2>自动打点 <span class="tag">配置推给壳，壳按同一份策略续记 · 改哪一项都当场推过去</span></h2>
+  <div class="switch"><input type="checkbox" id="cfg-enabled"><label for="cfg-enabled">开启自动打点（enabled）</label></div>
+  <div class="row">
+    <label class="field">阈值 <input type="number" id="cfg-threshold" min="0" step="1">米</label>
+    <label class="field">策略
+      <select id="cfg-strategy">
+        <option value="backoff">同点退避</option>
+        <option value="fixed">定时</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <label class="field">基准 <input type="number" id="cfg-base" min="200" step="100">ms</label>
+    <label class="field">封顶 <input type="number" id="cfg-max" min="1000" step="1000">ms</label>
+  </div>
+  <div class="row">
+    <button id="btn-apply">应用并推给壳</button>
+    <button class="gray" id="btn-punch">手动打一个点</button>
+  </div>
+  <p class="hint" id="cfg-hint">—</p>
+</div>
+
+<div class="card">
+  <h2>轨迹 <span class="tag">蓝=当前 橙=原生 红=最后一点</span></h2>
+  <div id="map"></div>
+  <div class="row">
+    <button class="gray" id="btn-fit">缩放到轨迹</button>
+    <button class="gray" id="btn-recenter">回到最后一点</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>记录 <span class="tag">网页侧只存本页内存，用来对照</span></h2>
+  <div class="kv"><b>本页点数</b><span id="pt-count">0</span></div>
+  <div class="kv"><b>原生点数 / rev</b><span id="pt-native">—</span></div>
+  <div class="kv"><b>已合并游标</b><span id="pt-cursor">—</span></div>
+  <div class="kv"><b>最后一点</b><span id="pt-last">—</span></div>
+  <div class="row">
+    <button class="ghost" id="btn-pull">拉取原生历史</button>
+    <button class="gray" id="btn-clear-native">清空原生历史</button>
+    <button class="gray" id="btn-clear-page">清空本页</button>
+  </div>
+  <ul class="list" id="pt-list"></ul>
+</div>
+
+<div class="card">
+  <h2>后台取证 <span class="tag">页面冻结不等于采集停止</span></h2>
+  <div class="kv"><b>页面心跳</b><span id="hb-page">—</span></div>
+  <div class="kv"><b>原生心跳</b><span id="hb-native">—</span></div>
+  <div class="kv"><b>后台判定</b><span id="bg-verdict">—</span></div>
+  <div class="kv"><b>上次后台</b><span id="bg-window">—</span></div>
+  <div class="kv"><b>最长空档</b><span id="bg-gap">—</span></div>
+  <div class="kv"><b>原生停摆</b><span id="bg-stall">—</span></div>
+  <ul class="list" id="bg-list"></ul>
+  <p class="hint">自动判定：页面用 visibilitychange 记下「壳退后台」的起止时刻，回到前台后从原生历史里取这段时间的点，
+  按「封顶间隔 + 余量」算最长空档——绿=连续、黄=有中断、红=断了。锁屏比切后台更狠，两个都试一遍。
+  页面若在后台被系统回收，重开时用最后一次心跳当起点补判。</p>
+</div>
+
+<div class="card">
+  <h2>休眠分析 <span class="tag">读壳的逐秒账本，判它是整机睡、被冻，还是被停 · 0.3.2-tune 起能读账本，0.3.3-tune 起才有三时钟探针和 60 秒闹钟</span></h2>
+  <div class="switch"><input type="checkbox" id="dg-on"><label for="dg-on">取证模式（壳每秒申请一次定位并记账 · 开着时策略和间隔都被压成每秒一次）</label></div>
+  <div class="kv"><b>账本</b><span id="dg-stat">—</span></div>
+  <div class="kv"><b>tick 覆盖率</b><span id="dg-cov">—</span></div>
+  <div class="kv"><b>结论</b><span id="dg-verdict">—</span></div>
+  <div class="row">
+    <button id="dg-pull">拉账本并分析</button>
+    <button class="gray" id="dg-clear">清空账本</button>
+  </div>
+  <ul class="list" id="dg-list"></ul>
+  <p class="hint">壳在取证模式下每秒写一行账：<b>tick</b>=真发了一次定位请求，<b>skip</b>=这一拍上一发还没回所以没发（也算进程活着），
+  <b>fix</b>=取到点并带当时经纬度，<b>fail</b>=失败/超时/唤醒锁被收走，<b>screen</b>=灭屏亮屏解锁，
+  <b>start / stop</b>=采集起来或被停（带是谁按的：page=页面推的配置、system-restart=系统重建后恢复），<b>destroy / taskRemoved</b>=服务被销毁、任务被划掉。
+  判读口径：<b>每拍都在且 fix 不断</b> → 壳没睡；<b>大空档前面正好有一行 stop</b> → 不是睡，是被停了（十有八九是页面把「自动打点」关了）；
+  <b>空档落在灭屏期间</b> → 熄屏后被冻；<b>亮屏时也停、还报「没持唤醒锁」</b> → 壳自己没把锁拿到手；
+  <b>空档只有 3~4 秒</b> → 取证节拍的抖动，标「抖动」不标冻结；
+  <b>拍连着但没有 fix</b> → 醒着却拿不到定位（多半没给「始终允许」，或省电把 provider 掐了）。
+  <b>覆盖率只有七八成、却一处 2.5 秒以上的空档都没有</b> → 也不是睡：壳的取证节拍是「等上一发落定 + 1 秒」，
+  熄屏下取点慢（要等满 1.8 秒才算超时）会把平均节拍拉到 2 秒多一次，于是有几十个「空秒」——
+  看「发了多少次请求、平均几秒一次」那一行就知道，量的是尺子（每秒一拍）不匹配，不是壳停了。
+  空档下面那行小字是壳自己的物证：<b>开机钟 ≈ 墙钟</b> = 手机醒着、只有壳被冻；<b>开机钟少走一大截</b> =
+  整机深睡；<b>Doze / 省电模式 / GPS 被关</b> 是环境原因；<b>闹钟 N/M</b> 是 60 秒心跳的对照——
+  一次都没进来就是被冻或被杀，进来了而拍没跟上就是线程问题。</p>
+</div>
+
+<div class="card">
+  <h2>日志 <span class="tag">最近 60 条</span></h2>
+  <pre id="log"></pre>
+</div>
+
+<link rel="stylesheet" href="./leaflet.css">
+<script src="./leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---- 常量：和网页端 locationNative.ts / locationAuto.ts 保持一致 ----
+  var CFG_KEY = 'dr.autoLocation';
+  var CUR_KEY = 'dr.autoLocation.cursor';
+  // 本页的发布号与发布时间：每次改这个文件都成对往上加，配合「服务器上的本页」
+  // 的 Last-Modified 一起看，就知道壳里跑的是不是最新页。
+  // 时间同时存一份 epoch 毫秒——比较 Last-Modified 用 epoch，才不受时区影响。
+  var PAGE_VER = 'lab 10-27.1', PAGE_BUILD = '2026-10-27 00:05', PAGE_BUILD_MS = 1793030700000;
+  var LOAD_AT = Date.now();
+  var BASE_MS = 1000, MAX_MS = 64000;
+  var DEFAULTS = { enabled: false, thresholdM: 5, moveThresholdM: 10, strategy: 'backoff', intervalBaseMs: BASE_MS, intervalMaxMs: MAX_MS };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = {
+    bridge: false, env: null, cfg: readCfg(), points: [], rev: 0,
+    timer: null, streak: 0, pending: false, pageTimer: null, hbCount: 0, hbAt: 0,
+    svc: null, nativeCur: readCursor(),
+    bg: { hiddenAt: 0, base: null }, ar: { nextAt: 0, count: 0 }
+  };
+
+  // ---- 工具 ----
+  function fmtTime(ms) {
+    if (!ms) return '—';
+    var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function fmtAgo(ms) {
+    if (!ms) return '—';
+    var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    return s < 1 ? '刚刚' : (s < 60 ? s + ' 秒前' : (s < 3600 ? Math.round(s / 60) + ' 分钟前' : Math.round(s / 3600) + ' 小时前'));
+  }
+  function log(msg, cls) {
+    var el = $('log');
+    var line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = fmtTime(Date.now()) + ' ' + msg;
+    el.appendChild(line);
+    while (el.childNodes.length > 60) el.removeChild(el.firstChild);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ---- 存档：键和网页端一模一样，壳在页面加载完会自己读 ----
+  function readCfg() {
+    try {
+      var o = JSON.parse(localStorage.getItem(CFG_KEY) || 'null') || {};
+      var num = function (v, d) { return typeof v === 'number' && isFinite(v) ? v : d; };
+      var base = num(o.intervalBaseMs, BASE_MS);
+      return {
+        enabled: o.enabled === true,
+        thresholdM: num(o.thresholdM, DEFAULTS.thresholdM),
+        moveThresholdM: num(o.moveThresholdM, DEFAULTS.moveThresholdM),
+        strategy: o.strategy === 'fixed' ? 'fixed' : 'backoff',
+        intervalBaseMs: base > 0 ? base : BASE_MS,
+        intervalMaxMs: num(o.intervalMaxMs, MAX_MS)
+      };
+    } catch (e) { return Object.assign({}, DEFAULTS); }
+  }
+  function writeCfg() {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(state.cfg)); } catch (e) {}
+  }
+  function readCursor() {
+    var n = Number(localStorage.getItem(CUR_KEY));
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+  function writeCursor(ts) {
+    state.nativeCur = ts;
+    try { localStorage.setItem(CUR_KEY, String(ts)); } catch (e) {}
+  }
+
+  // ---- 后台取证（自动）：页面自己判「壳进后台后信号断没断」 ----
+  //   机制：退后台瞬间记起点 + 原生计数基线；回前台从原生历史里捞这段窗口的点，
+  //   把「起点 / 点 / 终点」连成一条时间轴，算最长空档，按「退避封顶 + 余量」判级。
+  //   页面在后台被系统回收也不丢证据：心跳落 localStorage，重开用它补起点。
+  var BG_KEY = 'dr.locationLab.bgSessions';
+  var ALIVE_KEY = 'dr.locationLab.lastAlive';
+  var BG_BASE_KEY = 'dr.locationLab.bgBase';
+
+  function readJson(key, def) {
+    try { var v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? def : v; }
+    catch (e) { return def; }
+  }
+  function writeJson(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
+  function markAlive() { try { localStorage.setItem(ALIVE_KEY, String(Date.now())); } catch (e) {} }
+
+  function fmtDur(sec) {
+    if (sec < 60) return sec + ' 秒';
+    if (sec < 3600) return Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒';
+    return Math.floor(sec / 3600) + ' 小时 ' + Math.round((sec % 3600) / 60) + ' 分';
+  }
+  /** 毫秒间隔说人话：整秒就写「N 秒」，不到一秒写毫秒，退避中的 2/4/8 秒一眼能看出。 */
+  function fmtMs(ms) {
+    var v = Number(ms) || 0;
+    if (!v) return '—';
+    if (v < 1000) return v + ' ms';
+    var s = v / 1000;
+    return (s % 1 ? s.toFixed(1) : s) + ' 秒';
+  }
+  function lvlText(l) { return l === 'ok' ? '连续' : (l === 'warn' ? '有中断' : (l === 'err' ? '断线' : '未判定')); }
+  function lvlCls(l) { return l === 'ok' ? 'ok' : (l === 'warn' ? 'warn' : (l === 'err' ? 'err' : '')); }
+  function lvlPill(l) { return '<span class="pill ' + (l === 'ok' ? 'on' : (l === 'warn' ? 'warn' : 'off')) + '">' + lvlText(l) + '</span>'; }
+
+  /** 退后台瞬间存一份原生计数基线（页面若被回收，重开还能算增量）。 */
+  function snapshotBase() {
+    var s = state.svc || {};
+    var base = {
+      at: Date.now(), tracking: !!s.tracking,
+      points: s.points || 0, rev: s.rev || 0, fixes: s.fixes || 0, ticks: s.ticks || 0
+    };
+    state.bg.base = base;
+    writeJson(BG_BASE_KEY, base);
+    return base;
+  }
+
+  /** 容忍空档：退避封顶 + 落盘节流(15s) + 看门狗余量。静止时本来就不该更密。 */
+  function bgToleranceS() {
+    return Math.max(60, Math.round((state.cfg.intervalMaxMs + 30000) / 1000));
+  }
+
+  function pushSession(sess) {
+    var list = readJson(BG_KEY, []);
+    if (!Array.isArray(list)) list = [];
+    list.unshift(sess);
+    writeJson(BG_KEY, list.slice(0, 8));
+    log('后台判定（' + fmtDur(sess.durS) + '）：' + lvlText(sess.level) + ' · ' + sess.verdict, lvlCls(sess.level) || '');
+    renderBg();
+  }
+
+  /** 判定一次后台窗口。start/end 都当哨兵：起点到首点、末点到终点也算空档。 */
+  function auditBackground(start, end, note) {
+    var durS = Math.max(0, Math.round((end - start) / 1000));
+    if (!start || !end) { return Promise.resolve(null); }
+    if (durS < 20) { log('后台只有 ' + durS + ' 秒，太短不判定（至少 20 秒）', 'warn'); return Promise.resolve(null); }
+    if (durS > 2 * 3600) { log('上次离开超过 2 小时，跳过判定（多半是关页走人）', 'warn'); return Promise.resolve(null); }
+    if (!state.bridge) { log('没壳：页面定时器在后台必停，后台判定没有意义', 'warn'); return Promise.resolve(null); }
+    var base = state.bg.base || readJson(BG_BASE_KEY, null);
+    return Promise.all([
+      invoke('location.getHistory', {}, 12000),
+      invoke('location.status', {}, 6000).catch(function () { return null; })
+    ]).then(function (rs) {
+      var hist = rs[0] || {}, now = rs[1] || {};
+      var inWin = (Array.isArray(hist.points) ? hist.points : []).filter(function (o) {
+        return o && o.ts >= start - 2000 && o.ts <= end + 2000;
+      });
+      var ts = inWin.map(function (o) { return o.ts; }).sort(function (a, b) { return a - b; });
+      var seq = [start].concat(ts).concat([end]);
+      var maxGapMs = 0;
+      for (var i = 1; i < seq.length; i++) maxGapMs = Math.max(maxGapMs, seq[i] - seq[i - 1]);
+      var tolS = bgToleranceS();
+      var tracking = base ? !!base.tracking : !!(state.svc && state.svc.tracking);
+      var verdict, level;
+      if (!tracking) { verdict = '后台前没在记录，不算断'; level = 'na'; }
+      else if (!ts.length) { verdict = fmtDur(durS) + '里一个点都没记'; level = 'err'; }
+      else if (maxGapMs > tolS * 2 * 1000) { verdict = '最长 ' + Math.round(maxGapMs / 1000) + ' 秒没记（容忍 ' + tolS + ' 秒）'; level = 'err'; }
+      else if (maxGapMs > tolS * 1000) { verdict = '最长 ' + Math.round(maxGapMs / 1000) + ' 秒没记（容忍 ' + tolS + ' 秒）'; level = 'warn'; }
+      else { verdict = '最长空档 ' + Math.round(maxGapMs / 1000) + ' 秒（容忍 ' + tolS + ' 秒）'; level = 'ok'; }
+      var sess = {
+        start: start, end: end, durS: durS, n: ts.length,
+        gapS: Math.round(maxGapMs / 1000), tolS: tolS,
+        fixDelta: (base && typeof now.fixes === 'number') ? Math.max(0, now.fixes - base.fixes) : null,
+        tickDelta: (base && typeof now.ticks === 'number') ? Math.max(0, now.ticks - (base.ticks || 0)) : null,
+        trackingNow: !!now.tracking,
+        bgPerm: typeof now.backgroundLocation === 'boolean' ? now.backgroundLocation : null,
+        batteryOptimized: typeof now.batteryOptimized === 'boolean' ? now.batteryOptimized : null,
+        wakeLock: typeof now.wakeLock === 'boolean' ? now.wakeLock : null,
+        verdict: verdict, level: level, note: note || ''
+      };
+      // 「断了」有两种成因，别混着说：服务一次都没跳 = 进程被冻/被杀；跳了但没取到点 =
+      // 后台拿不到定位（没给始终允许 / provider 被省电掐掉 / 屋里没信号）。
+      if (sess.level !== 'na' && sess.fixDelta != null) {
+        if (sess.fixDelta === 0) {
+          if (sess.tickDelta != null && sess.tickDelta > 0) {
+            sess.verdict += '（服务跳 ' + sess.tickDelta + ' 次、一个点没取到：后台拿不到定位，不是睡着）';
+          } else if (sess.tickDelta === 0) {
+            sess.verdict += '（服务一次都没跳：进程被冻住或被杀）';
+          } else {
+            sess.verdict += '（后台一个点都没取到；这版壳没报心跳，分不清是睡着还是取不到）';
+          }
+        } else if (!ts.length) {
+          sess.verdict = '取到 ' + sess.fixDelta + ' 次但没落盘：合并刷新没写出去，查落盘';
+        }
+      }
+      pushSession(sess);
+      return sess;
+    }).catch(function (e) { log('后台判定失败：' + e.message, 'err'); return null; });
+  }
+
+  function renderBg() {
+    var list = readJson(BG_KEY, []);
+    if (!Array.isArray(list)) list = [];
+    var last = list[0];
+    var elV = $('bg-verdict'), elW = $('bg-window'), elG = $('bg-gap'), ul = $('bg-list');
+    if (!elV) return;
+    if (!last) {
+      elV.innerHTML = state.bg.hiddenAt
+        ? '<span class="pill warn">在后台</span> 等回前台判定'
+        : '<span class="pill">未判定</span>';
+      elW.textContent = state.bg.hiddenAt ? fmtTime(state.bg.hiddenAt) + ' 起' : '还没有一次完整后台';
+      elG.textContent = '—';
+    } else {
+      elV.innerHTML = lvlPill(last.level) + ' ' + last.verdict;
+      elW.textContent = fmtTime(last.start) + ' → ' + fmtTime(last.end) + '（' + fmtDur(last.durS) + '）' +
+        (last.note ? ' · ' + last.note : '') +
+        (state.bg.hiddenAt ? ' · 又进后台（' + fmtTime(state.bg.hiddenAt) + ' 起）' : '');
+      elG.textContent = last.n
+        ? last.gapS + ' 秒（容忍 ' + last.tolS + ' 秒）· 窗口内 ' + last.n + ' 个点'
+        : '窗口内没有点';
+    }
+    ul.innerHTML = '';
+    list.forEach(function (s) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="t">' + fmtTime(s.start) + '</span><span class="c">' +
+        fmtDur(s.durS) + ' · ' + (s.n || 0) + ' 点 · 空档 ' + (s.gapS || 0) + 's' +
+        (s.fixDelta != null ? ' · 取点 ' + s.fixDelta + ' 次' : '') +
+        (s.tickDelta != null ? ' · 心跳 ' + s.tickDelta + ' 次' : '') +
+        (s.wakeLock === false ? ' · <span class="warn">无唤醒锁</span>' : '') +
+        (s.bgPerm === false ? ' · <span class="warn">无后台定位权限</span>' : '') +
+        (s.batteryOptimized === true ? ' · <span class="warn">电池未加白</span>' : '') +
+        '<br>' + s.verdict +
+        '</span>' + lvlPill(s.level);
+      ul.appendChild(li);
+    });
+  }
+
+  /** 重开页面补判：上次心跳到现在的空档（可能整段都在后台）。 */
+  function resumeAudit() {
+    var alive = Number(localStorage.getItem(ALIVE_KEY) || 0);
+    if (!alive) { return; }
+    var gapS = Math.round((Date.now() - alive) / 1000);
+    if (gapS < 25) { return; }
+    if (!state.bridge) { return; }
+    log('上次心跳在 ' + fmtDur(gapS) + '前：补判这段空档');
+    auditBackground(alive, Date.now(), '起点用最后一次心跳估算');
+  }
+
+  // ---- 版本与自动刷新：网页自己的时间版本 + 壳（安卓）的时间版本 ----
+  var AR_KEY = 'dr.locationLab.autoRefresh';
+  var SRV_KEY = 'dr.locationLab.servedAt';
+
+  function readAr() {
+    var o = readJson(AR_KEY, null) || {};
+    var s = Number(o.everyS);
+    return { everyS: [0, 10, 30, 60, 300].indexOf(s) >= 0 ? s : 30, reload: o.reload === true };
+  }
+  function saveAr(o) { writeJson(AR_KEY, o); }
+
+  function fmtAbs(ms) {
+    if (!ms) return '—';
+    var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function pageBuildMs() { return PAGE_BUILD_MS; }
+
+  /** 用 HEAD 读服务器上本页的 Last-Modified；查询串绕开 CDN/WebView 缓存。 */
+  function checkServed() {
+    var el = $('ver-web-served');
+    if (!window.fetch) { el.textContent = '环境不支持 fetch'; return; }
+    var url = location.href.split('?')[0].split('#')[0] + '?_=' + Date.now();
+    el.textContent = '查询中…';
+    fetch(url, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+      var lm = r.headers.get('last-modified');
+      var t = lm ? Date.parse(lm) : 0;
+      if (t) { try { localStorage.setItem(SRV_KEY, String(t)); } catch (e) {} }
+      renderVer(t, r.status);
+    }).catch(function (e) {
+      var old = Number(localStorage.getItem(SRV_KEY) || 0);
+      el.textContent = old
+        ? '实时读不到（' + e.message + '），上次记 ' + fmtAbs(old)
+        : '实时读不到（本地打开或跨域被拦）';
+    });
+  }
+
+  function renderVer(servedMs, status) {
+    $('ver-web').textContent = PAGE_VER + '（' + PAGE_BUILD + '）';
+    if (servedMs) {
+      // 用「本页装载的时刻」判，不用发布时间：Pages 的 Last-Modified 是推送那一刻，
+      // 总比写进文件里的发布时间晚几分钟，拿它和内置时间比会永远显示「线上更新了一版」。
+      var newer = servedMs > LOAD_AT + 120000;
+      var stale = servedMs < pageBuildMs() - 5 * 60000;
+      $('ver-web-served').innerHTML = fmtAbs(servedMs) + (status ? '（HTTP ' + status + '）' : '') +
+        (newer ? ' <span class="warn">线上在这页装载之后又推过新版：重载才拿得到</span>'
+          : (stale ? ' <span class="warn">内置比线上新：可能吃到了旧缓存</span>'
+            : ' <span class="ok">一致</span>'));
+    }
+    var e = state.env || {};
+    $('ver-shell').textContent = state.bridge
+      ? (e.version || '?') + ' · 构建 ' + (e.builtAt || '—') + ' @ ' + (e.commit || '—') +
+        (e.platform ? ' · ' + e.platform + (e.bridge ? '/' + e.bridge : '') : '')
+      : '不在壳里（普通浏览器）';
+  }
+
+  function renderClock() {
+    var now = Date.now();
+    $('ver-clock').textContent = fmtAbs(now) + ' · epoch ' + Math.round(now / 1000);
+  }
+
+  /** 一次自动刷新：版本 + 状态 + 原生历史（走静默，别把日志刷满）。 */
+  function autoTick() {
+    state.ar.count++;
+    renderClock();
+    checkServed();
+    if (state.bridge) { refreshStatus(); pullNative(true); }
+  }
+
+  function tickAuto() {
+    var cfg = readAr(), el = $('ar-next');
+    if (!cfg.everyS) { el.textContent = '关'; return; }
+    if (!state.ar.nextAt) state.ar.nextAt = Date.now() + cfg.everyS * 1000;
+    if (state.ar.nextAt <= Date.now()) {
+      state.ar.nextAt = Date.now() + cfg.everyS * 1000;
+      if (cfg.reload && !document.hidden) {
+        log('自动刷新到点：整页重载，取最新网页版本');
+        location.reload();
+        return;
+      }
+      autoTick();
+    }
+    el.textContent = '第 ' + state.ar.count + ' 次 · 下次 ' +
+      Math.max(0, Math.round((state.ar.nextAt - Date.now()) / 1000)) + ' 秒后' +
+      (cfg.reload ? '（重载）' : '');
+  }
+
+  function renderAr() {
+    var cfg = readAr();
+    $('ar-every').value = String(cfg.everyS);
+    $('ar-reload').checked = cfg.reload;
+  }
+
+  // ---- 休眠分析：读壳的逐秒账本（bg_journal.jsonl）----
+  function pill(kind, text) { return '<span class="pill ' + kind + '">' + text + '</span>'; }
+
+  function setDiag(on) {
+    if (!state.bridge) { log('不在壳里，开不了取证', 'warn'); renderDiag(false); return; }
+    invoke('location.setDiag', { on: on }, 12000).then(function (r) {
+      state.svc = r; renderDiag(on);
+      // 取证 = 必须在采集。页面「自动打点」要是关着，下一次 pushConfig 就会把壳停掉，
+      // 账本立刻断流，看着跟睡着一模一样——所以这里一起抬上去。
+      if (on && !state.cfg.enabled) {
+        state.cfg.enabled = true; writeCfg();
+        var sw = $('cfg-enabled'); if (sw) sw.checked = true;
+        log('取证开着，页面「自动打点」已一起打开（否则一推配置就把采集停了）', 'warn');
+      }
+      log('取证模式：' + (on ? '开（壳改成每秒申请一次，不再退避）' : '关') +
+        ' → tracking=' + !!r.tracking + ' · 唤醒锁=' + (r.wakeLock ? '在手上' : '不在！') +
+        (r.needPermission ? ' · 还缺定位权限' : ''), on ? 'ok' : '');
+      if (on) { setTimeout(function () { pullJournal(0); }, 3000); }
+      refreshStatus();   // 开关一拨就把「壳的实际间隔 / 取证」状态拉回来，不用等下一次状态心跳
+    }).catch(function (e) {
+      if (isOldShell(e)) {
+        $('dg-verdict').innerHTML = pill('warn', '壳太旧') +
+          ' 这版壳没带取证接口（location.setDiag）。装 zhaohuixisi-0.3.3-tune-debug.apk，装好后「版本」卡的安卓版本要显示 ' +
+          '0.3.3-tune，再回这页重开取证';
+        log('开不了取证：这版壳不认 location.setDiag，说明跑的还是 0.3.0-tune 或更早的包 → 先重装 0.3.3-tune', 'err');
+      } else {
+        log('设置取证模式失败：' + e.message, 'err');
+      }
+      renderDiag(!!(state.svc && state.svc.diag));
+    });
+  }
+
+  // 老壳的兜底：0.3.0-tune 及以前没有 setDiag/journal，报的是 unknown location action
+  function isOldShell(e) { return /unknown (location )?action/i.test((e && e.message) || ''); }
+
+  function renderDiag(on) { var el = $('dg-on'); if (el) el.checked = !!on; }
+
+  function pullJournal(since, note) {
+    if (!state.bridge) { $('dg-verdict').textContent = '不在壳里，没有账本可读'; return Promise.resolve(); }
+    if (note) { log(note); }
+    return invoke('location.journal', { since: since || 0, tail: 20000 }, 20000)
+      .then(function (r) { analyzeJournal(r || {}); return r; })
+      .catch(function (e) {
+        if (isOldShell(e)) {
+          $('dg-verdict').innerHTML = pill('warn', '壳太旧') + ' 这版壳不认 location.journal，读不了账本 → 先装 0.3.3-tune';
+          log('读不了账本：这版壳没有 location.journal（0.3.0-tune 及以前）→ 先装 0.3.3-tune', 'err');
+        } else {
+          $('dg-verdict').textContent = '读账本失败：' + e.message;
+          log('读账本失败：' + e.message, 'err');
+        }
+      });
+  }
+
+  // 三个时钟：墙钟含一切，elapsedRealtime 含深睡，uptimeMillis 不含深睡。
+  // 差值一比就知道「整机睡了」还是「手机醒着、只有壳被冻」。
+  function sleepCause(pr) {
+    if (!pr || !(pr.gapWall > 0)) return '';
+    var wall = Math.round(pr.gapWall / 1000);
+    var up = pr.gapUp > 0 ? Math.round(pr.gapUp / 1000) : -1;
+    var el = pr.gapEl > 0 ? Math.round(pr.gapEl / 1000) : -1;
+    var parts = [];
+    if (up >= 0 && pr.gapWall / 1000 > 5) {
+      if (up / wall > 0.8) {
+        parts.push('CPU 全程醒着（开机时钟也走了 ' + up + ' 秒）→ 手机没睡，是壳的进程被冻住');
+      } else if (el >= 0 && (el - up) / wall > 0.5) {
+        parts.push('整机深睡：这 ' + wall + ' 秒里 CPU 只醒了 ' + up + ' 秒');
+      } else {
+        parts.push('墙钟 ' + wall + ' 秒 / 开机钟 ' + up + ' 秒 / 经过钟 ' + el + ' 秒');
+      }
+    }
+    if (pr.idle === true) parts.push('系统已进入 Doze 深度省电');
+    if (pr.light === true) parts.push('轻度 Doze');
+    if (pr.saver === true) parts.push('省电模式开着');
+    if (pr.gpsOn === false) parts.push('GPS 开关被关了');
+    if (pr.netOn === false && pr.gpsOn === false) parts.push('两个 provider 都不可用');
+    if (pr.interactive === false) parts.push('醒来时还黑着屏');
+    if (pr.wl === false) parts.push('当时没持唤醒锁');
+    if (typeof pr.bat === 'number' && pr.bat >= 0) parts.push('电量 ' + pr.bat + '%' + (pr.plugged ? '（在充电）' : ''));
+    return parts.join(' · ');
+  }
+
+  // 闹钟是对照实验：60 秒一次的 setAndAllowWhileIdle。它进不来 = 进程被冻/被杀；
+  // 它进得来而 tick 没跟上 = 进程能醒，问题在采集线程。
+  function alarmTold(g) {
+    if (!(g.wakeWant >= 1)) return '';
+    if (!g.wake.length) {
+      return '该段本该响 ' + g.wakeWant + ' 次闹钟，一次都没进来 → 进程是被冻住或被杀，不是线程没跑';
+    }
+    if (g.wakeLate > 15000) {
+      return '闹钟最迟迟到 ' + Math.round(g.wakeLate / 1000) + ' 秒（进来 ' + g.wake.length + '/' + g.wakeWant + ' 次）→ 投递也被压着，基本等于被冻';
+    }
+    return '闹钟进来了 ' + g.wake.length + '/' + g.wakeWant + ' 次且没迟到 → 进程能醒，是采集线程这段没被调度';
+  }
+
+  function analyzeJournal(res) {
+    var lines = Array.isArray(res.lines) ? res.lines : [];
+    var beats = [], fixes = 0, fails = 0, skips = 0, nowl = 0, destroy = 0, scr = [], lc = [], probes = [], wakes = [];
+    var failWhys = {};
+    lines.forEach(function (l) {
+      if (!l || !l.t) return;
+      if (l.k === 'tick' || l.k === 'fix' || l.k === 'fail' || l.k === 'skip') {
+        beats.push(l);
+        if (l.k === 'fix') fixes++;
+        if (l.k === 'fail') { fails++; failWhys[l.why || '?'] = (failWhys[l.why || '?'] || 0) + 1; }
+        if (l.k === 'skip') skips++;
+        if (l.wl === false) nowl++;
+      } else if (l.k === 'screen') scr.push(l);
+      else if (l.k === 'probe') probes.push(l);
+      else if (l.k === 'wake') wakes.push(l);
+      else if (l.k === 'start' || l.k === 'stop' || l.k === 'destroy' || l.k === 'create' || l.k === 'taskRemoved') {
+        lc.push(l);
+        if (l.k === 'destroy' || l.k === 'create' || l.k === 'taskRemoved') destroy++;
+      }
+    });
+    lc.sort(function (a, b) { return a.t - b.t; });
+    beats.sort(function (a, b) { return a.t - b.t; });
+    // 失败按原因分类：超时/丢锁/请求没发出/闹钟拉不回，四者处置完全不同
+    var failText = Object.keys(failWhys).map(function (w) {
+      return ({ timeout: '超时', 'wakelock-lost': '锁被收走', requestSingleUpdate: '请求没发出',
+        'wake-resume-blocked': '闹钟拉不回' }[w] || w) + ' ' + failWhys[w];
+    }).join('、');
+    $('dg-stat').textContent = '读了 ' + lines.length + ' 行（账本共 ' + (res.total || 0) + ' 行 / ' +
+      Math.round((res.bytes || 0) / 1024) + ' KB）· 壳累计 tick ' + (res.ticks || 0) +
+      ' · 取到 ' + fixes + ' 次 · 失败 ' + fails + ' 次' + (fails && failText ? '（' + failText + '）' : '') +
+      (skips ? ' · 跳拍 ' + skips + ' 次' : '') +
+      (nowl ? ' · ' + nowl + ' 拍没持唤醒锁' : '') +
+      (lc.length ? ' · 起停/销毁 ' + lc.length + ' 条' : '') +
+      (probes.length ? ' · 空档探针 ' + probes.length + ' 条' : '') +
+      (wakes.length ? ' · 闹钟 ' + wakes.length + ' 次' : '') + ' · 在记=' + (res.tracking ? '是' : '否');
+    var ul = $('dg-list'); if (ul) ul.innerHTML = '';
+    if (beats.length < 5) {
+      $('dg-cov').textContent = '样本太少';
+      $('dg-verdict').innerHTML = pill('', '样本太少') + ' 开着取证等半分钟，再点「拉账本并分析」';
+      return;
+    }
+    // 覆盖率按「有记录的秒数」算，不按行数——同一秒既有 tick 又有 fix 只算一拍
+    var seen = {};
+    beats.forEach(function (l) { seen[Math.floor(l.t / 1000)] = 1; });
+    var beatSeconds = Object.keys(seen).length;
+    var span = beats[beats.length - 1].t - beats[0].t;
+    var expect = Math.max(1, Math.round(span / 1000) + 1);
+    var cov = beatSeconds / expect;
+    // 跨度内一格都没写的秒 = 漏拍；按连续段分组，才能分清「整段睡死」和「节拍被切碎」
+    var holeRuns = [], curHole = null;
+    for (var hs = Math.floor(beats[0].t / 1000); hs <= Math.floor(beats[beats.length - 1].t / 1000); hs++) {
+      if (seen[hs]) { if (curHole) { holeRuns.push(curHole); curHole = null; } continue; }
+      if (!curHole) curHole = { a: hs * 1000, n: 0 };
+      curHole.n++;
+    }
+    if (curHole) holeRuns.push(curHole);
+    holeRuns.sort(function (x, y) { return y.n - x.n; });
+    var holes = holeRuns.length;
+    var holeSecs = holeRuns.reduce(function (m, r) { return m + r.n; }, 0);
+    var longestHole = holes ? holeRuns[0].n : 0;
+    // 取证节拍是「等上一发落定 + 1 秒」，不是一秒独立滴答：算出发了几次请求、平均多久一次，
+    // 才能把「秒数没写满」讲成等待时间，而不是漏拍。
+    var tickRows = beats.filter(function (l) { return l.k === 'tick'; }).length;
+    var cycleMs = tickRows > 1 ? Math.round(span / tickRows) : 0;
+    $('dg-cov').textContent = beatSeconds + ' 拍 / 应为 ' + expect + '（' + Math.round(cov * 100) + '%）· 跨度 ' +
+      fmtDur(Math.round(span / 1000)) +
+      (tickRows ? ' · 发了 ' + tickRows + ' 次请求，平均 ' + (cycleMs / 1000).toFixed(1) + ' 秒一次' : '') +
+      (holes ? ' · 空秒 ' + holeSecs + ' 个，分 ' + holes + ' 处（最长连 ' + longestHole + ' 秒）' : ' · 一秒没空');
+    var gaps = [];
+    for (var i = 1; i < beats.length; i++) {
+      var d = beats[i].t - beats[i - 1].t;
+      if (d <= 2500) continue;
+      var a = beats[i - 1].t, b = beats[i].t, dark = false, st = null, rs = null;
+      // 空档结束前最后一次屏幕事件是「灭屏」，就说明这整段都在熄屏里
+      scr.forEach(function (s) { if (s.t <= b) dark = /SCREEN_OFF$/.test(String(s.what || '')); });
+      // 空档两头有 stop/start 行 → 这段根本不是睡，是停着
+      lc.forEach(function (l) {
+        if (l.t >= a - 5000 && l.t <= b + 5000) {
+          if (l.k === 'stop' && !st) st = l;
+          if (l.k === 'start' && st && l.t > st.t && !rs) rs = l;
+        }
+      });
+      gaps.push({ a: a, b: b, ms: d, lost: Math.max(0, Math.round(d / 1000) - 1), dark: dark, stop: st, restart: rs,
+                  jitter: !st && d <= 4000 });
+    }
+    gaps.sort(function (x, y) { return y.ms - x.ms; });
+    gaps.forEach(function (g) {
+      g.probe = null;
+      probes.forEach(function (l) {
+        if (g.probe) return;
+        if (l.t > g.a && l.t <= g.b + 5000) g.probe = l;
+      });
+      g.wake = wakes.filter(function (l) { return l.t > g.a && l.t <= g.b; });
+      g.wakeWant = Math.floor(g.ms / 60000);
+      g.wakeLate = g.wake.reduce(function (m, l) { return Math.max(m, l.late || 0); }, 0);
+    });
+    // 4 秒以内的空档多是取证节拍自己的抖动（间隔 1 秒 + 看门狗余量），不算冻结
+    var hard = gaps.filter(function (g) { return !g.stop && !g.jitter; });
+    var top = hard.length ? hard[0] : (gaps.length ? gaps[0] : null);
+    var stopRow = top ? top.stop : null, restartRow = top ? top.restart : null;
+    var verdict, kind;
+    if (cov >= 0.95 && fixes > 0) { verdict = '没睡：每一拍都在，并且持续取得到定位'; kind = 'on'; }
+    else if (cov >= 0.95 && fixes === 0) {
+      verdict = '醒着，但一个点都没取到（失败 ' + fails + ' 次）→ 后台拿不到定位，查「始终允许」和省电策略';
+      kind = 'off';
+    } else if (stopRow) {
+      // 停一行把这段解释干净了：不是休眠，是有人按了停
+      verdict = '不是睡，是被停：' + fmtTime(stopRow.t) + ' 采集停了（来源 ' + (stopRow.why || '未记因') +
+        '，那时 enabled=' + (stopRow.enabled === false ? '否' : '是') + '）' +
+        (restartRow ? '，' + fmtTime(restartRow.t) + ' 才又起来（' + (restartRow.why || '') + '）'
+                    : '，之后再没起来——整段空白都是停着的状态');
+      kind = 'off';
+    } else if (hard.length && hard[0].dark) {
+      verdict = '熄屏后被冻：最大空档 ' + Math.round(hard[0].ms / 1000) + ' 秒正好落在灭屏期间';
+      kind = 'off';
+    } else if (nowl && hard.length) {
+      verdict = '唤醒锁不在手上，被冻 ' + hard.length + ' 段，最长 ' + Math.round(hard[0].ms / 1000) +
+        ' 秒没跳（没锁 = 熄屏后 CPU 一定睡，这是壳的问题）';
+      kind = 'off';
+    } else if (hard.length) {
+      verdict = '被冻 ' + hard.length + ' 段，最长 ' + Math.round(hard[0].ms / 1000) + ' 秒没跳（与灭屏不对齐）';
+      kind = 'off';
+    } else if (gaps.length) {
+      verdict = '只是节拍抖动：' + gaps.length + ' 处，最长 ' + Math.round(gaps[0].ms / 1000) +
+        ' 秒（取证把间隔压到 1 秒，几秒的抖动属正常，不是冻结）';
+      kind = 'warn';
+    } else if (tickRows > 1 && longestHole <= 2) {
+      // 一秒都没落下超过 2 秒的空档，却没写满：是节拍在等上一发回包，不是漏拍
+      verdict = '没睡：全程没有 2.5 秒以上的空档，空掉的 ' + holeSecs + ' 秒是节拍在等上一发落定——这段发了 ' +
+        tickRows + ' 次请求、平均 ' + (cycleMs / 1000).toFixed(1) + ' 秒一次' +
+        (failWhys.timeout ? '（' + failWhys.timeout + ' 次要等满 1.8 秒才算超时）' : '') +
+        (fixes ? '，期间仍取到 ' + fixes + ' 次点' : '，一次点都没取到') +
+        '。覆盖率低是「每秒一拍」这把尺子量错了，不是壳睡';
+      kind = fixes ? 'on' : 'warn';
+    } else {
+      verdict = '覆盖率 ' + Math.round(cov * 100) + '%，取到 ' + fixes + ' 次';
+      kind = cov >= 0.8 ? 'warn' : 'off';
+    }
+    if (destroy) verdict += '（账本里有生命周期事件：服务被销毁或重建过，可能被杀）';
+    if (top) {
+      var cause = sleepCause(top.probe);
+      if (cause) verdict += '（' + cause + '）';
+      var alarm = alarmTold(top);
+      if (alarm) verdict += ' ' + alarm;
+    }
+    $('dg-verdict').innerHTML = pill(kind, kind === 'on' ? '正常' : (kind === 'warn' ? '可疑' : '异常')) + ' ' + verdict;
+    log('休眠分析：' + verdict, kind === 'on' ? 'ok' : (kind === 'warn' ? 'warn' : 'err'));
+    lc.slice(-6).forEach(function (l) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="t">' + fmtTime(l.t) + '</span><span class="c">' +
+        ({ start: '采集起来（' + (l.why || '?') + '）', stop: '采集被停（' + (l.why || '?') + '）',
+           destroy: '服务销毁', create: '服务新建', taskRemoved: '任务被划掉' }[l.k] || l.k) +
+        (l.wl === false ? ' · 无唤醒锁' : '') + '</span>' + pill('', '生命周期');
+      ul.appendChild(li);
+    });
+    gaps.slice(0, 8).forEach(function (g) {
+      var li = document.createElement('li');
+      var cs = sleepCause(g.probe);
+      li.innerHTML = '<span class="t">' + fmtTime(g.a) + '</span><span class="c">' +
+        (g.stop ? '停 ' : '断 ') + Math.round(g.ms / 1000) + ' 秒（少 ' + g.lost + ' 拍）' +
+        (g.stop ? ' · <span class="warn">被停：' + (g.stop.why || '?') + '</span>'
+                : (g.dark ? ' · <span class="warn">落在熄屏期间</span>'
+                          : (g.jitter ? ' · 节拍抖动（间隔 1 秒 + 看门狗余量），不算冻结' : ' · 亮屏时也停'))) +
+        (cs ? '<br>' + cs : '') +
+        (g.wakeWant >= 1 ? ' · 闹钟 ' + g.wake.length + '/' + g.wakeWant : '') +
+        '</span>' + pill(g.stop || g.jitter ? '' : 'warn', g.stop ? '停机' : (g.jitter ? '抖动' : '冻结'));
+      ul.appendChild(li);
+    });
+  }
+
+  // ---- 协议（和 src/core/compat/bridge.ts 同一套） ----
+  var pending = {}, listeners = {}, seq = 0;
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object' || typeof m.type !== 'string') return;
+    if (m.type === 'gv-bridge-response') {
+      var p = pending[String(m.id)];
+      if (!p) return;
+      delete pending[String(m.id)];
+      clearTimeout(p.timer);
+      if (m.ok) p.resolve(m.result || {});
+      else p.reject(new Error(typeof m.error === 'string' && m.error ? m.error : '原生返回失败'));
+    } else if (m.type === 'gv-bridge-event' && typeof m.event === 'string') {
+      (listeners[m.event] || []).forEach(function (cb) { try { cb(m.data); } catch (err) {} });
+    }
+  });
+  function invoke(action, params, timeoutMs) {
+    params = params || {}; timeoutMs = timeoutMs || 15000;
+    return new Promise(function (resolve, reject) {
+      var id = 'r' + (++seq);
+      var timer = setTimeout(function () {
+        delete pending[id];
+        reject(new Error('超时：' + Math.round(timeoutMs / 1000) + ' 秒没有收到壳的回应'));
+      }, timeoutMs);
+      pending[id] = { resolve: resolve, reject: reject, timer: timer };
+      window.postMessage({ type: 'gv-bridge-request', id: id, action: action, params: params }, '*');
+    });
+  }
+  function onBridgeEvent(event, cb) {
+    (listeners[event] = listeners[event] || []).push(cb);
+  }
+
+  // ---- 坐标：WGS-84 → GCJ-02（和 locationAuto.ts 同一份算法） ----
+  var PI = Math.PI, A = 6378245.0, EE = 0.00669342162296594323;
+  function outOfChina(lat, lng) { return lng < 72.004 || lng > 137.8347 || lat < 0.8899 || lat > 55.8271; }
+  function tLat(x, y) {
+    var r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    r += ((20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2) / 3;
+    r += ((20 * Math.sin(y * PI) + 40 * Math.sin((y / 3) * PI)) * 2) / 3;
+    r += ((160 * Math.sin((y / 12) * PI) + 320 * Math.sin((y * PI) / 30)) * 2) / 3;
+    return r;
+  }
+  function tLng(x, y) {
+    var r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    r += ((20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2) / 3;
+    r += ((20 * Math.sin(y * PI) + 40 * Math.sin((y / 3) * PI)) * 2) / 3;
+    r += ((150 * Math.sin((y / 12) * PI) + 300 * Math.sin((y * PI) / 30)) * 2) / 3;
+    return r;
+  }
+  function wgs84ToGcj02(lat, lng) {
+    if (outOfChina(lat, lng)) return { lat: lat, lng: lng };
+    var dLat = tLat(lng - 105, lat - 35), dLng = tLng(lng - 105, lat - 35);
+    var radLat = (lat / 180) * PI, magic = Math.sin(radLat);
+    magic = 1 - EE * magic * magic;
+    var sqrtMagic = Math.sqrt(magic);
+    dLat = (dLat * 180) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI);
+    dLng = (dLng * 180) / ((A / sqrtMagic) * Math.cos(radLat) * PI);
+    return { lat: lat + dLat, lng: lng + dLng };
+  }
+  function distM(a, b) {
+    var R = 6371000, dLat = ((b.lat - a.lat) * PI) / 180, dLng = ((b.lng - a.lng) * PI) / 180;
+    var s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((a.lat * PI) / 180) * Math.cos((b.lat * PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  // ---- 打点：和网页端 appendPoint 同一套去重语义 ----
+  //   与最后一个点的距离 < 阈值 → 合并（只刷新 ts 与精度，坐标不动）；否则追加新点。
+  function appendPoint(p) {
+    var last = state.points[state.points.length - 1];
+    if (last && distM(last, p) < state.cfg.thresholdM) {
+      last.ts = p.ts;
+      if (p.accuracy) last.accuracy = p.accuracy;
+      last.touched = p.src;
+      return false;
+    }
+    state.points.push(p);
+    state.rev++;
+    return true;
+  }
+  function pageSampleMs(streak, strategy) {
+    if (strategy === 'fixed') return state.cfg.intervalBaseMs;
+    var n = Math.min(Math.max(0, Math.floor(streak)), 20);
+    return Math.min(state.cfg.intervalBaseMs * Math.pow(2, n), state.cfg.intervalMaxMs);
+  }
+
+  // ---- 页面定时器（只在没有原生服务时用：普通浏览器里也能测这一页） ----
+  function armPageTimer() {
+    clearTimeout(state.pageTimer);
+    if (!state.cfg.enabled || state.bridge) return;
+    state.pageTimer = setTimeout(tickPage, pageSampleMs(state.streak, state.cfg.strategy));
+  }
+  function tickPage() {
+    if (!state.cfg.enabled) return;
+    if (state.pending) { armPageTimer(); return; }
+    if (!navigator.geolocation) { log('本环境没有 geolocation', 'err'); state.cfg.enabled = false; render(); return; }
+    state.pending = true;
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      state.pending = false;
+      var g = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+      var added = appendPoint({ ts: Date.now(), lat: g.lat, lng: g.lng, accuracy: pos.coords.accuracy || 0, src: 'page' });
+      state.streak = added ? 0 : state.streak + 1;
+      render(); armPageTimer();
+    }, function (err) {
+      state.pending = false;
+      log('页面取点失败：' + (err && err.message ? err.message : err), 'warn');
+      armPageTimer();
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+
+  // ---- 壳侧 ----
+  function probe() {
+    $('bridge-state').textContent = '检测中…';
+    return invoke('ping', {}, 3000).then(function (r) {
+      state.bridge = true;
+      $('bridge-state').innerHTML = '<span class="ok">可用</span>（' + (r.engine || '?') + '）';
+      log('桥可用：' + JSON.stringify(r), 'ok');
+      if (window.AndroidBridge && typeof window.AndroidBridge.getEnv === 'function') {
+        try {
+          state.env = JSON.parse(window.AndroidBridge.getEnv() || '{}');
+          $('env').textContent = (state.env.app || '壳') + ' ' + (state.env.version || '') +
+            '（' + (state.env.builtAt || '') + ' @ ' + (state.env.commit || '') + '）';
+        } catch (e) { $('env').textContent = 'getEnv 解析失败'; }
+      } else {
+        $('env').textContent = '在桥里，但没暴露 getEnv';
+      }
+      return refreshStatus();
+    }).catch(function (e) {
+      state.bridge = false;
+      $('bridge-state').innerHTML = '<span class="warn">不可用</span>（' + e.message + '）';
+      $('env').textContent = '普通浏览器';
+      log('桥不可用：' + e.message + '（页面定时器接管采样）', 'warn');
+      return null;
+    }).then(function () { render(); renderVer(); renderClock(); });
+  }
+  function refreshStatus() {
+    if (!state.bridge) return Promise.resolve();
+    return invoke('location.status', {}, 6000).then(function (s) {
+      state.svc = s;
+      var lp = s.lastPoint || {};
+      $('svc').textContent = (s.fineLocation ? '' : '缺前台权限 · ') +
+        '点数 ' + (s.points || 0) + ' · rev ' + (s.rev || 0) +
+        ' · 壳的实际间隔 ' + fmtMs(s.intervalCurrentMs) +
+        (s.diag ? '（取证压成每秒，策略/间隔不生效）' : '') +
+        (s.wakeLock ? ' · 唤醒锁开' : ' · 无唤醒锁') +
+        (s.batteryOptimized ? ' · 电池未加白' : ' · 电池已加白');
+      $('svc-tracking').innerHTML = s.tracking
+        ? '<span class="pill on">记录中</span> 起于 ' + fmtTime(s.startedAt)
+        : '<span class="pill off">未记录</span>';
+      $('svc-lastfix').textContent = lp.ts ? fmtTime(lp.ts) + '（' + fmtAgo(lp.ts) + '）' +
+        ' ±' + Math.round(lp.accuracy || 0) + 'm' + (s.provider ? ' · ' + s.provider : '') : '—';
+      $('perm').textContent = '前台 ' + (s.fineLocation ? '有' : '无') + ' · 后台 ' + (s.backgroundLocation ? '有' : '无');
+      $('hb-native').textContent = lp.ts ? fmtTime(lp.ts) + '（' + fmtAgo(lp.ts) + '）' : '—';
+      $('pt-native').textContent = (s.points || 0) + ' / ' + (s.rev || 0);
+      renderDiag(s.diag);
+      // 前台也查停摆：服务在跑、但很久没有新定位 → 信号断了
+      var stall = $('bg-stall');
+      if (s.tracking && lp.ts) {
+        var ageS = Math.max(0, Math.round((Date.now() - lp.ts) / 1000));
+        var tolS = Math.max(15, Math.round((state.cfg.intervalMaxMs * 1.25) / 1000)) + 10;
+        stall.innerHTML = ageS > tolS * 2 ? '<span class="err">停摆 ' + ageS + ' 秒</span>'
+          : ageS > tolS ? '<span class="warn">偏慢 ' + ageS + ' 秒</span>'
+            : '<span class="ok">正常 · ' + ageS + ' 秒前有取点</span>';
+      } else if (s.tracking) {
+        stall.innerHTML = '<span class="warn">还没取到点</span>';
+      } else {
+        stall.textContent = '—';
+      }
+      render();
+    }).catch(function (e) { log('状态查询失败：' + e.message, 'warn'); });
+  }
+  function pushConfig(why) {
+    writeCfg();
+    if (!state.bridge) { armPageTimer(); log('没壳：配置只写存档，页面定时器按它采样', 'warn'); return Promise.resolve(); }
+    var payload = Object.assign({}, state.cfg);
+    payload.diag = !!(state.svc && state.svc.diag);
+    return invoke('location.setConfig', payload, 8000).then(function (r) {
+      log('已推配置（' + why + '）：enabled=' + payload.enabled + ' threshold=' + state.cfg.thresholdM +
+        ' strategy=' + state.cfg.strategy + ' diag=' + payload.diag + ' → tracking=' + !!r.tracking +
+        (r.keptForDiag ? '（取证开着，壳拒绝停）' : ''), r.keptForDiag ? 'warn' : 'ok');
+      if (payload.diag) {
+        log('取证模式开着：壳把间隔固定成每秒一次，策略和基准/封顶这一版不会生效——想看退避，先把「取证模式」关掉', 'warn');
+      }
+      return refreshStatus();
+    }).catch(function (e) { log('推配置失败：' + e.message, 'err'); });
+  }
+  function pullNative(quiet) {
+    if (!state.bridge) { if (!quiet) log('没壳，拉不了原生历史', 'warn'); return Promise.resolve(); }
+    var since = state.nativeCur;
+    return invoke('location.getHistory', { since: since }, 10000).then(function (r) {
+      var list = Array.isArray(r.points) ? r.points : [];
+      var added = 0, merged = 0, maxTs = since;
+      list.forEach(function (o) {
+        if (!o || !(o.ts > since)) return;
+        var g = wgs84ToGcj02(o.lat, o.lng);
+        if (appendPoint({ ts: o.ts, lat: g.lat, lng: g.lng, accuracy: o.accuracy || 0, src: 'native' })) added++; else merged++;
+        if (o.ts > maxTs) maxTs = o.ts;
+      });
+      writeCursor(maxTs);
+      if (added || merged || !quiet) {
+        log('拉原生历史：' + list.length + ' 条 → 新点 ' + added + ' / 合并 ' + merged + '，游标 ' + fmtTime(maxTs), 'ok');
+      }
+      render();
+    }).catch(function (e) { log('拉原生历史失败：' + e.message, 'err'); });
+  }
+
+  // ---- 地图 ----
+  var map = null, layers = null;
+  function initMap() {
+    if (typeof L === 'undefined') { $('map').textContent = 'leaflet 没加载起来（检查 ./leaflet.js）'; return; }
+    map = L.map('map', { zoomControl: true }).setView([39.909, 116.397], 11);
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+      { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图' }).addTo(map);
+    layers = L.layerGroup().addTo(map);
+    log('地图就绪（高德底图）');
+  }
+  function drawMap() {
+    if (!map || !layers) return;
+    layers.clearLayers();
+    var pts = state.points;
+    if (!pts.length) return;
+    var line = [];
+    pts.forEach(function (p, i) {
+      var ll = [p.lat, p.lng];
+      line.push(ll);
+      var isLast = i === pts.length - 1;
+      L.circleMarker(ll, {
+        radius: isLast ? 7 : 4, weight: isLast ? 2 : 1,
+        color: isLast ? '#dc2626' : (p.src === 'native' ? '#d97706' : '#1d4ed8'),
+        fillColor: p.src === 'native' ? '#f59e0b' : '#3b82f6', fillOpacity: isLast ? .95 : .7
+      }).bindPopup(fmtTime(p.ts) + '<br>' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) +
+        '<br>±' + Math.round(p.accuracy || 0) + 'm · ' + (p.src === 'native' ? '原生' : '页面'))
+        .addTo(layers);
+    });
+    if (line.length > 1) L.polyline(line, { color: '#e0708f', weight: 3, opacity: .8 }).addTo(layers);
+  }
+  function centerLast() {
+    if (!map || !state.points.length) return;
+    var p = state.points[state.points.length - 1];
+    map.setView([p.lat, p.lng], Math.max(map.getZoom(), 16));
+  }
+  function fitAll() {
+    if (!map || !state.points.length) return;
+    if (state.points.length === 1) { centerLast(); return; }
+    map.fitBounds(state.points.map(function (p) { return [p.lat, p.lng]; }), { padding: [24, 24] });
+  }
+
+  // ---- 渲染 ----
+  // 壳每推一个点、每次状态刷新都会走一遍 render()。如果无条件把存档写回表单，
+  // 用户刚选的下拉/刚敲的数字会在下一秒被打回旧值（就是「选了同点退避，一秒后自己变回定时」，
+  // 因为旧版只有按「应用并推给壳」才落存档）。
+  // 所以：改哪一项都当场落存档并推给壳；焦点还在哪个输入上就跳过哪个；值相同不重复赋值。
+  function setVal(id, v) {
+    var el = $(id);
+    if (!el || el === document.activeElement) return;
+    if (String(el.value) === String(v)) return;
+    el.value = v;
+  }
+  function render() {
+    var en = $('cfg-enabled');
+    if (en && en !== document.activeElement) en.checked = !!state.cfg.enabled;
+    setVal('cfg-threshold', state.cfg.thresholdM);
+    setVal('cfg-strategy', state.cfg.strategy);
+    setVal('cfg-base', state.cfg.intervalBaseMs);
+    setVal('cfg-max', state.cfg.intervalMaxMs);
+    $('cfg-hint').textContent = state.bridge
+      ? '壳在采样：' + (state.cfg.strategy === 'backoff' ? '同点连续 n 次后等 2^n 个基准，封顶 ' + state.cfg.intervalMaxMs + 'ms' : '每 ' + state.cfg.intervalBaseMs + 'ms 一次') +
+        '；阈值 ' + state.cfg.thresholdM + ' 米内合并成同一个点。' +
+        (state.svc && state.svc.diag ? '取证模式开着时壳被压成每秒一次，这里的策略和间隔暂时不起作用。' : '')
+      : '没壳：本页定时器采样（' + (state.cfg.strategy === 'backoff' ? '同点退避' : '定时') + '）。';
+    $('pt-count').textContent = String(state.points.length) + '（rev ' + state.rev + '）';
+    $('pt-cursor').textContent = state.nativeCur ? fmtTime(state.nativeCur) + '（' + state.nativeCur + '）' : '0';
+    var last = state.points[state.points.length - 1];
+    $('pt-last').textContent = last ? fmtTime(last.ts) + ' ' + last.lat.toFixed(6) + ', ' + last.lng.toFixed(6) +
+      ' ±' + Math.round(last.accuracy || 0) + 'm · ' + (last.src === 'native' ? '原生' : '页面') : '—';
+    var ul = $('pt-list');
+    ul.innerHTML = '';
+    state.points.slice(-50).reverse().forEach(function (p) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="t">' + fmtTime(p.ts) + '</span><span class="c">' +
+        p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + ' ±' + Math.round(p.accuracy || 0) + 'm</span>' +
+        '<span class="src ' + (p.src === 'native' ? 'native' : 'page') + '">' + (p.src === 'native' ? '原生' : '页面') + '</span>';
+      ul.appendChild(li);
+    });
+    drawMap();
+    renderBg();
+  }
+
+  // ---- 事件 ----
+  $('btn-ping').addEventListener('click', function () { state.bridge = false; probe(); });
+  // 表单 -> 存档：改哪项都立刻生效，不用非按「应用并推给壳」
+  function readForm() {
+    var num = function (el, d) { var v = Number($(el).value); return isFinite(v) ? v : d; };
+    state.cfg.thresholdM = Math.max(0, num('cfg-threshold', 5));
+    state.cfg.strategy = $('cfg-strategy').value === 'fixed' ? 'fixed' : 'backoff';
+    state.cfg.intervalBaseMs = Math.max(200, num('cfg-base', BASE_MS));
+    state.cfg.intervalMaxMs = Math.max(state.cfg.intervalBaseMs, num('cfg-max', MAX_MS));
+  }
+  $('btn-apply').addEventListener('click', function () {
+    readForm();
+    pushConfig('手动应用');
+  });
+  $('cfg-enabled').addEventListener('change', function () {
+    state.cfg.enabled = $('cfg-enabled').checked;
+    pushConfig('开关');
+  });
+  $('cfg-strategy').addEventListener('change', function () {
+    state.cfg.strategy = $('cfg-strategy').value === 'fixed' ? 'fixed' : 'backoff';
+    pushConfig('策略');
+  });
+  ['cfg-threshold', 'cfg-base', 'cfg-max'].forEach(function (id) {
+    $(id).addEventListener('change', function () {
+      readForm();
+      pushConfig('改参数');
+      render();
+    });
+  });
+  $('btn-punch').addEventListener('click', function () {
+    if (!navigator.geolocation) { log('本环境没有 geolocation', 'err'); return; }
+    log('手动打点：取当前位置…');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var g = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+      var added = appendPoint({ ts: Date.now(), lat: g.lat, lng: g.lng, accuracy: pos.coords.accuracy || 0, src: 'page' });
+      log('手动打点：' + (added ? '新点' : '并入上一点（' + state.cfg.thresholdM + 'm 内）'), added ? 'ok' : 'warn');
+      centerLast(); render();
+    }, function (err) {
+      log('手动打点失败：' + (err && err.message ? err.message : err) + '（壳里要授权限）', 'err');
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  });
+  $('btn-fit').addEventListener('click', fitAll);
+  $('btn-recenter').addEventListener('click', centerLast);
+  $('btn-pull').addEventListener('click', pullNative);
+  $('btn-clear-native').addEventListener('click', function () {
+    if (!state.bridge) return;
+    invoke('location.clearHistory', {}, 8000).then(function () {
+      writeCursor(0); log('已清空原生历史', 'ok'); refreshStatus();
+    }).catch(function (e) { log('清空失败：' + e.message, 'err'); });
+  });
+  $('btn-clear-page').addEventListener('click', function () {
+    state.points = []; state.rev = 0; render(); log('已清空本页点（存档游标不动）');
+  });
+  $('btn-perm').addEventListener('click', function () {
+    invoke('location.requestPermissions', {}, 60000).then(function (r) {
+      log('权限结果：前台 ' + !!r.fine + ' / 后台 ' + !!r.background, r.fine ? 'ok' : 'warn');
+      refreshStatus();
+    }).catch(function (e) { log('请求权限失败：' + e.message, 'err'); });
+  });
+  $('btn-perm-bg').addEventListener('click', function () {
+    invoke('location.requestPermissions', { background: true }, 60000).then(function (r) {
+      log('权限结果：前台 ' + !!r.fine + ' / 后台 ' + !!r.background + (r.note ? '（' + r.note + '）' : ''), 'ok');
+      refreshStatus();
+    }).catch(function (e) { log('请求后台定位失败：' + e.message, 'err'); });
+  });
+  $('btn-battery').addEventListener('click', function () {
+    invoke('location.batteryOptimization', {}, 6000).then(function (r) {
+      if (r.ignoring) { log('已经在电池优化白名单里', 'ok'); return; }
+      return invoke('location.requestBatteryExemption', {}, 10000).then(function () {
+        log('已打开系统弹窗/设置页：允许后台不限电后再回来看看', 'warn');
+        setTimeout(function () { refreshStatus(); }, 3000);
+      });
+    }).catch(function (e) { log('电池优化处理失败：' + e.message, 'err'); });
+  });
+  onBridgeEvent('location.point', function (d) {
+    if (!d || !(d.ts > 0)) return;
+    var g = wgs84ToGcj02(d.lat, d.lng);
+    var added = appendPoint({ ts: d.ts, lat: g.lat, lng: g.lng, accuracy: d.accuracy || 0, src: 'native' });
+    if (d.ts > state.nativeCur) writeCursor(d.ts);
+    log('原生推点：' + fmtTime(d.ts) + ' ' + (added ? '新点' : '并入上一点'), added ? 'ok' : '');
+    render();
+  });
+  onBridgeEvent('location.state', function (d) {
+    log('原生服务状态：' + JSON.stringify(d), '');
+    refreshStatus();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      // 这一刻页面还能跑：记起点 + 原生计数基线，回来后才有账可对
+      state.bg.hiddenAt = Date.now();
+      markAlive();
+      snapshotBase();
+      log('页面退到后台（' + fmtTime(state.bg.hiddenAt) + '）：定时器会被冻住，壳里的服务继续');
+      renderBg();
+      return;
+    }
+    var start = state.bg.hiddenAt || Number(localStorage.getItem(ALIVE_KEY) || 0) || 0;
+    var note = state.bg.hiddenAt ? '' : '起点用最后一次心跳估算';
+    state.bg.hiddenAt = 0;
+    log('页面回到前台：补拉原生历史，并对后台这段时间做判定');
+    pullNative()
+      .then(function () { return refreshStatus(); })
+      .then(function () { return auditBackground(start, Date.now(), note); })
+      .then(function () {
+        if (state.svc && state.svc.diag) { pullJournal(0, '回前台：读账本，看这段壳到底跳没跳'); }
+      });
+  });
+
+  // 页面心跳：每秒一跳。退到后台被冻住就停跳——和「原生心跳」对比着看。
+  // 同时把心跳时刻落盘：页面若在后台被系统回收，重开时靠它补出后台起点。
+  setInterval(function () {
+    if (document.hidden) return;
+    state.hbCount++; state.hbAt = Date.now();
+    markAlive();
+    $('hb-page').textContent = '第 ' + state.hbCount + ' 跳 · ' + fmtTime(state.hbAt);
+    renderClock();
+    tickAuto();
+  }, 1000);
+  setInterval(function () { if (!document.hidden) refreshStatus(); }, 10000);
+
+  // ---- 自动刷新开关：间隔存本地，重载与否也存本地 ----
+  $('ar-every').addEventListener('change', function () {
+    var cfg = readAr();
+    cfg.everyS = Number($('ar-every').value) || 0;
+    saveAr(cfg);
+    state.ar.nextAt = 0;
+    log('自动刷新间隔改为 ' + (cfg.everyS ? cfg.everyS + ' 秒' : '关') +
+      (cfg.everyS && cfg.reload ? '（到点整页重载）' : ''));
+    if (cfg.everyS) autoTick();
+  });
+  $('ar-reload').addEventListener('change', function () {
+    var cfg = readAr();
+    cfg.reload = $('ar-reload').checked;
+    saveAr(cfg);
+    log('到点整页重载：' + (cfg.reload ? '开' : '关') +
+      (cfg.reload ? '（后台判定与配置都存在本地，重载不丢证据）' : ''));
+  });
+  $('btn-ver').addEventListener('click', function () { autoTick(); log('手动刷新一次版本与状态'); });
+
+  // ---- 休眠分析开关与拉账本 ----
+  $('dg-on').addEventListener('change', function () { setDiag($('dg-on').checked); });
+  $('dg-pull').addEventListener('click', function () { pullJournal(0); });
+  $('dg-clear').addEventListener('click', function () {
+    invoke('location.clearJournal', {}, 8000).then(function (r) {
+      log('账本已清空' + (r.cleared ? '' : '（失败）'), r.cleared ? 'ok' : 'warn');
+      pullJournal(0);
+    }).catch(function (e) { log('清空账本失败：' + e.message, 'err'); });
+  });
+
+  // ---- 启动 ----
+  initMap();
+  render();
+  renderBg();
+  renderAr();
+  renderClock();
+  $('dg-verdict').textContent = state.bridge ? '—' : '不在壳里';
+  checkServed();
+  markAlive();
+  log('定位磨合台启动（' + PAGE_VER + '）；存档配置：' + JSON.stringify(state.cfg));
+  probe().then(function () {
+    if (state.bridge) {
+      return pushConfig('页面启动接管').then(function () { return pullNative(); });
+    }
+    armPageTimer();
+  }).then(function () {
+    resumeAudit();
+    if (state.svc && state.svc.diag) { pullJournal(0, '启动：先读一份账本，看上次后台停没停拍'); }
+  });
+})();
+</script>
+</body>
+</html>

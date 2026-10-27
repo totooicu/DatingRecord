@@ -1,21 +1,21 @@
 {
-  "version": "2026-10-27T01:19:00.986Z",
+  "version": "2026-10-27T01:36:36.782Z",
   "release": "1.1.1",
   "proto": 1,
   "shellMin": "1.0.0",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "2b606627dda7b8c8",
-      "link": "/assets/diff-BvsjFdvd.js"
+      "version": "f68d944f7d5a9edd",
+      "link": "/assets/diff-DuvlRveO.js"
     },
     {
       "version": "b37a8672f3e3bb55",
       "link": "/assets/index-B3-dL3p6.css"
     },
     {
-      "version": "52d945b61dc67325",
-      "link": "/assets/index-DC34IMc1.js"
+      "version": "732647a47006d87a",
+      "link": "/assets/index-q4R9C_2A.js"
     },
     {
       "version": "8be885f0a6a49903",
@@ -46,8 +46,20 @@
       "link": "/icon.svg"
     },
     {
-      "version": "3c2434d15015654c",
+      "version": "f90bcdf21b58194b",
       "link": "/index.html"
+    },
+    {
+      "version": "58a45dfe572d5130",
+      "link": "/location-lab/index.html"
+    },
+    {
+      "version": "a783710282418482",
+      "link": "/location-lab/leaflet.css"
+    },
+    {
+      "version": "db49d009c841f5ca",
+      "link": "/location-lab/leaflet.js"
     },
     {
       "version": "a0eca1b0a556139a",
