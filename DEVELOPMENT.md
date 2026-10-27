@@ -585,6 +585,10 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 2026-10-26 连同 `pairing.ts`（版本配对卡、版本条的壳那半）一起删了：注入标记只说明壳的适配
 脚本跑过，壳把定位整条删掉之后它照样是「已注入」，页面会永远误判成「壳里有原生服务」。
 
+**取证与后台判读（0.3.x-tune 起）**：壳多了一组诊断动作——`location.setDiag{on}` 把采样压成每秒一次并逐拍写 `files/bg_journal.jsonl`，`location.journal{since,tail}` 把账本回给页面，`location.clearJournal` 清空。行种 `tick|skip|fix|fail|screen|start|stop|taskRemoved|destroy|probe|wake`，其中 `probe` 是空档解剖（墙钟 / `elapsedRealtime` / `uptimeMillis` 三个时钟各走了多久 + 当时的 Doze、省电、GPS 开关、唤醒锁），`wake` 是 60 秒一次的闹钟对照。判读口径全部写在磨合台页（`public/location-lab/`，线上 <https://totooicu.github.io/DatingRecord/location-lab/>，网页 main 已带，gh-pages 的 `assets/location-lab/` 那份手工页仍在）的「休眠分析」卡里：`gapUp ≈ gapWall` 是进程被冻、`gapUp` 少一大截是整机深睡、空档前有 `stop` 行是被停、一拍不缺却没有 `fix` 是醒着取不到点。网页侧封装在 `locationNative.ts`：`nativeSetDiag` / `fetchNativeJournal` / `clearNativeJournal`。
+
+三条容易踩的实测结论：**① 取证开着时 `strategy` / 间隔全被钉在 1 秒**（壳里 `nextInterval()` 第一条分支），要看退避必须先关取证；**② 覆盖率不等于活着**——取证节拍是「等上一发落定 + 1 秒」，熄屏下每发等满 1.8 秒看门狗就把平均节拍拉到 2 秒多，秒位填不满但不是漏拍；**③ 三件套齐了也可能被冻**，国产 ROM 的「允许后台行为」不放行时前台服务 + 唤醒锁 + 电池加白照样停摆（放行前 15%、放行后 98%）。
+
 **界面**：壳里运行时面板阈值行下方一行小字「记录由安卓壳的原生服务接管…」，服务页那行的备注是「由壳的原生服务记录，退到后台也继续」。
 
 **回归**：`node tools/e2e/location-native-e2e.mjs [url]`（N1–N5）。用 `addInitScript` 装假壳（注入标记 + `location.*` + `location.point`，原生点与运行态放 `sessionStorage` 以撑过刷新）：N1 开始打点推 `enabled=true/thresholdM=5` 且页面 GPS 一次没取；N2 事件点落进文件并按 GCJ-02 显示；N3 远处新增、原地重复只刷新时间；N4 刷新后接管（问 `status`、拉 `getHistory` 补挂起期间的点、再刷新不重放）；N5 改阈值与停止都同步给壳。

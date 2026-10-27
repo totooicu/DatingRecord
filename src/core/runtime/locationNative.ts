@@ -15,6 +15,12 @@
 //   · 原生点坐标是 LocationManager 的 WGS-84，页面里记的是 GCJ-02（高德），
 //     所以合并前必须换算，换算放在 locationAuto.ts 里做。
 //
+// 实测两条，改这块之前先知道（见壳仓库 docs/LOCATION_BACKGROUND.md 第八、九节）：
+//   · `location.status` 除 tracking/points/rev/lastFixAt 外还回 `intervalCurrentMs`
+//     （壳此刻实际用的间隔，退避是否真在走就看它）、`ticks`、`diag`、`journalBytes`；
+//   · 前台服务 + 唤醒锁 + 电池加白 三件套齐了也可能被整段冻住——国产 ROM 的
+//     「后台行为」不放行时照样停摆，放行后同一台机 tick 覆盖率从 15% 回到 98%。
+//
 // 这里只做协议与本地存档，不含业务判断。
 
 import { invoke, onBridgeEvent, type BridgeResult } from '../compat/bridge';
@@ -140,6 +146,99 @@ export async function fetchNativeHistory(timeoutMs = 8000): Promise<unknown[]> {
 /** 原生每记一个点推一次；返回取消订阅 */
 export function onNativePoint(cb: (point: unknown) => void): () => void {
   return onBridgeEvent('location.point', cb);
+}
+
+/**
+ * 取证模式（0.3.1-tune 起，壳侧 docs/LOCATION_BACKGROUND.md）：壳把采样强制压成
+ * 每秒一次并把每一拍写进 files/bg_journal.jsonl，用来回答「后台这一秒到底发生了什么」。
+ *
+ * 三条必须知道的副作用：
+ *   · 开着它 `strategy` / `intervalBaseMs` / `intervalMaxMs` 都不生效——间隔被钉在 1s，
+ *     退避不会长（`nextInterval()` 第一条分支就是 diag）；
+ *   · 开着它壳拒绝停：页面推 `enabled:false` 会被顶回 `enabled:true`，回包带
+ *     `keptForDiag=true`（否则账本当场断流，看着跟睡着一样）；
+ *   · `location.setConfig` 不带 `diag` 时壳沿用现状，不会把正在进行的取证静默关掉。
+ */
+export function nativeSetDiag(on: boolean, timeoutMs = 12000): Promise<BridgeResult> {
+  return invoke('location.setDiag', { on }, timeoutMs);
+}
+
+/** 账本一行（ kinds：tick|skip|fix|fail|screen|provider|start|stop|taskRemoved|destroy|diag|probe|wake ） */
+export interface NativeJournalLine {
+  /** 落笔时刻（墙钟 ms） */
+  t: number;
+  k: string;
+  /** 行号 */
+  n?: number;
+  /** 当时的 provider */
+  p?: string;
+  /** 唤醒锁是否在手上 */
+  wl?: boolean;
+  f?: number;
+  x?: number;
+  pts?: number;
+  diag?: boolean;
+  /** skip/fail 的原因：pending-fix | timeout | wakelock-lost | requestSingleUpdate | wake-resume-blocked */
+  why?: string;
+  waitMs?: number;
+  /** start/stop 是谁按的：page | system-restart | … */
+  enabled?: boolean;
+  /** 屏幕事件名（android.intent.action.SCREEN_OFF 等） */
+  what?: string;
+  lat?: number;
+  lng?: number;
+  acc?: number;
+  /** probe 行：三个时钟各走了多久（判「整机深睡」还是「进程被冻」） */
+  gapWall?: number;
+  gapUp?: number;
+  gapEl?: number;
+  idle?: boolean;
+  light?: boolean;
+  saver?: boolean;
+  gpsOn?: boolean;
+  netOn?: boolean;
+  interactive?: boolean;
+  opt?: boolean;
+  bat?: number;
+  plugged?: boolean;
+  /** wake 行：闹钟比预定晚了多少 ms */
+  late?: number;
+}
+
+export interface NativeJournal {
+  lines: NativeJournalLine[];
+  /** 账本总行数 / 字节数（tail 裁过之后仍能报全量） */
+  total: number;
+  bytes: number;
+  /** 壳自启动以来的累计 tick 计数 */
+  ticks: number;
+  diag: boolean;
+  tracking: boolean;
+}
+
+/**
+ * 读壳的逐秒账本。`since` 只要比它新的行；`tail` 最多回多少行。
+ * 判读口径见 public/location-lab 的「休眠分析」：先看有没有 2.5 秒以上的空档，
+ * 再看空档两头有没有 stop 行，最后用 probe / wake 分清「整机深睡」「进程被冻」「线程没被调度」。
+ */
+export async function fetchNativeJournal(
+  opts: { since?: number; tail?: number } = {},
+  timeoutMs = 20000,
+): Promise<NativeJournal> {
+  const r = await invoke('location.journal', { since: opts.since ?? 0, tail: opts.tail ?? 20000 }, timeoutMs);
+  const raw = Array.isArray(r.lines) ? r.lines : [];
+  return {
+    lines: raw as NativeJournalLine[],
+    total: Number(r.total) || raw.length,
+    bytes: Number(r.bytes) || 0,
+    ticks: Number(r.ticks) || 0,
+    diag: r.diag === true,
+    tracking: r.tracking === true,
+  };
+}
+
+export function clearNativeJournal(timeoutMs = 8000): Promise<BridgeResult> {
+  return invoke('location.clearJournal', {}, timeoutMs);
 }
 
 export function readCursor(): number {
