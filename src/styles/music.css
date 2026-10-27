@@ -163,7 +163,7 @@
 .music-btn svg {
   width: 20px;
   height: 20px;
-}</
+}
 .music-btn:active { transform: scale(0.94); }
 .music-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .music-btn-play {
