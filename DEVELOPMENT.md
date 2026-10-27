@@ -818,6 +818,13 @@ interface SqlDriver {
   文件页「＋ 添加映射文件」可填 https / ftp / `file://` / 手机路径，支持测试连接、获取文件名、
   按链接 hash 生成引用名（`link-…`）、按下载内容 hash（`sha-…`）；
   「保存为映射」只落元数据，「保存为实体文件」走正常上传（判重、内容寻址都不另起一套）。
+  **自定义 scheme（App 深链）也收**：`qqmusic://i.qq.com/v8/playsong.html?songmid=…`、`weixin://…`、
+  `spotify:track:…` 这类只能交给手机上的 App 打开，所以 `normalizeLink()` 原样保留、只挡
+  `javascript:` / `vbscript:`（`BLOCKED_SCHEMES`）；`isAppLink()` 判出后，面板把「测试连接 / hash 实体文件 /
+  保存为实体文件」置灰并说明原因（`probeLink()` / `downloadLink()` 也直接给一句人话，不靠 fetch 报「连接失败」）。
+  文件行把这类标成「应用深链 · qqmusic:」。正文引用同样要能点开，所以 `renderMarkdown` 的
+  `ALLOWED_URI_REGEXP` 改成「任意 `scheme:`，但负向前瞻排除 javascript / vbscript / data（`data:image/` 除外）」——
+  只按原白名单放行会把 `href="qqmusic://…"` 整个抹成 `<a>`。
   下载走流式读取（`downloadLink({signal,onProgress})`）：大文件显示「已下载 x / y」，随时可点
   「取消下载」或关弹窗掐断（连读带算 hash 都能停在半路），取消不落任何数据。
   渲染时 `urlForFile()` 直接返回 `source_url`，正文引用格式与实体文件完全一致。

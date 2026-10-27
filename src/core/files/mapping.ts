@@ -12,40 +12,73 @@
 import { insertMappedFile, listFiles, nameSlots, type StoredFile } from '../repo/files';
 import { extFor, linkStem, pickStoredId, sha256Text } from './naming';
 
-/** 只允许这些协议存进库：拒绝 javascript: / vbscript: 这类会被浏览器执行的东西 */
-const SAFE_SCHEMES = ['http:', 'https:', 'ftp:', 'ftps:', 'file:', 'content:', 'data:', 'blob:'];
+/** 浏览器自己能打开、能探测能下载的协议 */
+const WEB_SCHEMES = ['http:', 'https:', 'ftp:', 'ftps:', 'file:', 'content:', 'data:', 'blob:'];
+
+/** 会被浏览器当脚本执行的协议：任何情况下都不收 */
+const BLOCKED_SCHEMES = ['javascript:', 'vbscript:'];
+
+/** 取链接的协议（小写、带冒号）；不是 `scheme:` 开头就返回空串 */
+export function schemeOf(raw: string): string {
+  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(raw.trim());
+  return m ? `${m[1].toLowerCase()}:` : '';
+}
+
+/**
+ * App 深链：`qqmusic://…`、`weixin://…`、`spotify:track:…` 这类。
+ *
+ * 它们只能交给手机上的 App 打开，浏览器既 fetch 不了也下载不了，
+ * 所以库里只保存链接（映射文件），点开时原样交给 `<a href>`。
+ */
+export function isAppLink(raw: string): boolean {
+  const s = schemeOf(raw);
+  return !!s && !WEB_SCHEMES.includes(s) && !BLOCKED_SCHEMES.includes(s);
+}
+
+/** 会被浏览器当脚本执行的协议：面板上直接判死，不等到保存才报错 */
+export function isScriptLink(raw: string): boolean {
+  return BLOCKED_SCHEMES.includes(schemeOf(raw));
+}
 
 /**
  * 把用户填的内容规整成能存进库的链接。
  *
  * 手机文件路径常常写成 `/storage/emulated/0/...`，没有 scheme → 补 file://；
  * 纯域名 → 补 https://。规整只做这一层，不做可用性判断（那是测试连接的事）。
+ *
+ * 自定义 scheme 原样保留：App 深链是合法链接，只是浏览器打不开——
+ * 真正危险的是 `javascript:` / `vbscript:` 这种会被当脚本执行的协议，直接拒绝。
  */
 export function normalizeLink(raw: string): string {
   const s = raw.trim();
   if (!s) throw new Error('链接不能为空');
   if (s.startsWith('/')) return `file://${s}`;
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) {
-    let scheme = '';
+  const scheme = schemeOf(s);
+  if (scheme) {
+    if (BLOCKED_SCHEMES.includes(scheme)) throw new Error(`不支持的协议：${scheme}（会被浏览器当脚本执行）`);
     try {
-      scheme = new URL(s).protocol.toLowerCase();
+      new URL(s);
     } catch {
       throw new Error('链接格式不正确');
     }
-    if (!SAFE_SCHEMES.includes(scheme)) throw new Error(`不支持的协议：${scheme}`);
     return s;
   }
   // 没有协议：当成域名/相对地址补 https
   return `https://${s}`;
 }
 
-/** 从链接里猜文件名：取路径最后一段（去掉 query / hash） */
+/**
+ * 从链接里猜文件名：取路径最后一段（去掉 query / hash）。
+ * App 深链常常没有路径（`qqmusic://i.qq.com/` 或 `spotify:track:xxx`），
+ * 这时退到域名 / 协议名，总比空着要用户手写强。
+ */
 export function fileNameFromLink(url: string): string {
   try {
     const u = new URL(url);
     const seg = u.pathname.split('/').filter(Boolean).pop() ?? '';
     const name = decodeURIComponent(seg);
-    return name;
+    if (name) return name;
+    return u.host || `${u.protocol.replace(':', '')} 链接`;
   } catch {
     return '';
   }
@@ -136,6 +169,18 @@ function describeError(e: unknown, reason?: unknown): string {
  */
 export async function probeLink(url: string, timeoutMs = 15000): Promise<LinkProbe> {
   const target = normalizeLink(url);
+  // App 深链没有 HTTP 响应：直说能怎么用，别让 fetch 报一句「连接失败」
+  if (isAppLink(target)) {
+    return {
+      ok: false,
+      status: 0,
+      mime: '',
+      size: 0,
+      fileName: fileNameFromLink(target),
+      finalUrl: target,
+      error: `应用链接（${schemeOf(target)}）只能交给手机上的 App 打开，探测不了；直接「保存为映射」即可`,
+    };
+  }
   const t = withTimeout(timeoutMs);
   try {
     let res = await fetch(target, { method: 'HEAD', signal: t.signal });
@@ -186,6 +231,7 @@ export interface DownloadOptions {
  */
 export async function downloadLink(url: string, opts: DownloadOptions = {}): Promise<DownloadedLink> {
   const target = normalizeLink(url);
+  if (isAppLink(target)) throw new Error(`应用链接（${schemeOf(target)}）不能下载，只能保存为映射`);
   const ctl = new AbortController();
   const timeout = setTimeout(() => ctl.abort('timeout'), opts.timeoutMs ?? 60000);
   const onCancel = () => ctl.abort('cancelled');

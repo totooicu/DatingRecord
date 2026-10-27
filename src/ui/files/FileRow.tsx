@@ -4,6 +4,7 @@
 //   最后一行 大小 · 时间 · 引用数
 import { Fragment, useState } from 'react';
 import { countRefs, collectionsUsingFile, isMappingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
+import { isAppLink, schemeOf } from '../../core/files';
 import { isInPlaylist as isInMusic } from '../../core/music/playlist';
 import { deleteHint } from './deleteHint';
 import { HashBadge } from './HashBadge';
@@ -254,7 +255,8 @@ export function FileRow({
           <span>·</span>
           {isMappingFile(file) ? (
             <span title={file.sourceUrl}>
-              链接文件{file.size > 0 ? ` · 远端 ${fmtSize(file.size)}` : ''}
+              {isAppLink(file.sourceUrl) ? `应用深链 · ${schemeOf(file.sourceUrl)}` : '链接文件'}
+              {file.size > 0 ? ` · 远端 ${fmtSize(file.size)}` : ''}
             </span>
           ) : (
             <span>{fmtSize(file.size)}</span>

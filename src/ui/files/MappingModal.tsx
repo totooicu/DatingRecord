@@ -12,10 +12,13 @@ import {
   downloadLink,
   fileNameFromLink,
   guessMime,
+  isAppLink,
+  isScriptLink,
   linkStoredId,
   normalizeLink,
   probeLink,
   saveAsMapping,
+  schemeOf,
   sha256Hex,
   type LinkProbe,
 } from '../../core/files';
@@ -163,10 +166,11 @@ export function MappingModal({
         size: entity?.size ?? probe?.size ?? 0,
         sha256: entity?.sha256 ?? '',
       });
+      const extra = isAppLink(url) ? '，点开时交给手机上的 App' : '';
       if (res.reused) {
         onSaved(`这个链接已经在文件库里：「${res.file.name}」，直接复用`);
       } else {
-        onSaved(`已保存映射文件「${res.file.name}」（只存链接，不占空间）`);
+        onSaved(`已保存映射文件「${res.file.name}」（只存链接，不占空间${extra}）`);
       }
       onClose();
     });
@@ -182,7 +186,12 @@ export function MappingModal({
       onClose();
     });
 
-  const canAct = !!url.trim() && !busy;
+  // javascript: / vbscript: 会被浏览器当脚本执行，任何入口都不收
+  const scriptLink = isScriptLink(url);
+  const canAct = !!url.trim() && !busy && !scriptLink;
+  // App 深链（qqmusic://…）：浏览器 fetch 不到也下载不了，只能存成映射交给手机上的 App
+  const appLink = isAppLink(url);
+  const appScheme = schemeOf(url);
 
   return (
     <Modal
@@ -203,19 +212,20 @@ export function MappingModal({
           <button className="btn" onClick={() => void saveMapping()} disabled={!canAct}>
             {busy === 'saveMap' ? '保存中…' : '保存为映射'}
           </button>
-          <button className="btn btn-primary" onClick={() => void saveEntity()} disabled={!canAct}>
+          <button className="btn btn-primary" onClick={() => void saveEntity()} disabled={!canAct || appLink}>
             {busy === 'saveEntity' ? '下载中…' : '保存为实体文件'}
           </button>
         </>
       }
     >
       <p className="muted small">
-        库存链接、不存内容：适合网盘、图床、局域网目录里的素材。正文引用与普通附件一致（file:引用名）。
+        库存链接、不存内容：适合网盘、图床、局域网目录里的素材，也支持 App 深链（qqmusic://、weixin:// 等，
+        点开时交给手机上的 App）。正文引用与普通附件一致（file:引用名）。
       </p>
-      <Field label="链接" hint="https / ftp / file:// 或手机路径">
+      <Field label="链接" hint="https / ftp / file://、手机路径，或 App 深链（qqmusic://…）">
         <input
           className="input"
-          placeholder="https://… 或 /storage/emulated/0/…"
+          placeholder="https://…、/storage/emulated/0/… 或 qqmusic://…"
           value={url}
           onChange={(e) => {
             setUrl(e.target.value);
@@ -234,8 +244,16 @@ export function MappingModal({
         />
       </Field>
 
+      {scriptLink && <p className="warn-line">不支持的协议（{appScheme}）：会被浏览器当脚本执行，不能保存</p>}
+      {appLink && (
+        <p className="muted small">
+          应用链接（{appScheme}）：只能「保存为映射」，点开时交给手机上的 App（如 QQ 音乐、微信）；
+          浏览器既探测不了也下载不了，所以测试连接与实体文件两项不可用。
+        </p>
+      )}
+
       <div className="mapping-actions">
-        <button className="btn btn-sm" onClick={() => void testLink()} disabled={!canAct}>
+        <button className="btn btn-sm" onClick={() => void testLink()} disabled={!canAct || appLink}>
           {busy === 'test' ? '测试中…' : '测试连接'}
         </button>
         <button className="btn btn-sm" onClick={() => void fetchName()} disabled={!canAct}>
@@ -244,7 +262,7 @@ export function MappingModal({
         <button className="btn btn-sm" onClick={() => void hashLink()} disabled={!canAct}>
           {busy === 'link' ? '计算中…' : 'hash 链接名'}
         </button>
-        <button className="btn btn-sm" onClick={() => void hashEntity()} disabled={!canAct}>
+        <button className="btn btn-sm" onClick={() => void hashEntity()} disabled={!canAct || appLink}>
           {busy === 'entity' ? '下载中…' : 'hash 实体文件'}
         </button>
       </div>

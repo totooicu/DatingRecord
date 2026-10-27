@@ -101,9 +101,11 @@ const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
   ],
   ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target', 'rel', 'loading', 'colspan', 'rowspan'],
-  // 只放行这些协议：blob: 给库内文件，data:image/ 给内联图，mailto: 给邮箱。
-  // ftp/file/content 是映射文件（只存链接的附件）可能用的协议——注意绝不放行 javascript:。
-  ALLOWED_URI_REGEXP: /^(?:https?:|ftp:|ftps:|file:|content:|blob:|data:image\/|mailto:|#)/i,
+  // 放行：常见 Web 协议、blob: 给库内文件、data:image/ 给内联图、mailto: 给邮箱、# 给锚点，
+  // 以及任意**自定义 scheme**——映射文件可以把 App 深链（qqmusic://…、weixin://…）当附件存，
+  // 点开要交给手机上的 App。负向前瞻挡住 javascript: / vbscript: / data:（除 data:image/），
+  // 这几个才是会被浏览器执行的那种。
+  ALLOWED_URI_REGEXP: /^(?:data:image\/|#|(?!(?:javascript|vbscript|data):)[a-z][a-z0-9+.-]*:)/i,
   FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'input'],
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'style'],
 };
