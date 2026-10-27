@@ -178,7 +178,7 @@ await p.locator('.settings-hub-title', { hasText: '定位' }).first().click();
 await p.waitForTimeout(1500);
 await p.getByRole('tab', { name: '文件' }).click();
 await p.waitForTimeout(500);
-await p.locator('input[placeholder*="新文件名"]').fill('壳连续定位');
+await p.locator('input[aria-label="新定位文件名"]').fill('壳连续定位');
 await p.getByRole('button', { name: '新建', exact: true }).click();
 await p.waitForTimeout(1200);
 

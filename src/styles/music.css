@@ -455,6 +455,204 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* ---------- 回放：进度条 + 走带键 + 更多抽屉 ---------- */
+.loc-play-read {
+  margin-left: auto;
+  text-align: right;
+}
+.loc-play-read b {
+  font-weight: 700;
+  color: var(--text);
+}
+/*
+ * 进度条：轨道只有 6px，但整块触摸区有 26px 高——手机上按得中比好看更要紧。
+ * 左半边染成播放色靠 --loc-pct（组件按进度写进来），播放色本身用 --loc-play，
+ * 和地图上的播放头、高亮线同一个颜色，不在 CSS 里再抄一遍十六进制。
+ */
+.loc-scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.loc-scrub::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--loc-play, #7c4dff) 0 var(--loc-pct, 0%),
+    rgba(0, 0, 0, 0.14) var(--loc-pct, 0%) 100%
+  );
+}
+.loc-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 3px solid var(--loc-play, #7c4dff);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.loc-scrub::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.14);
+}
+.loc-scrub::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--loc-play, #7c4dff);
+}
+.loc-scrub::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border: 3px solid var(--loc-play, #7c4dff);
+  border-radius: 50%;
+  background: #fff;
+}
+.loc-scrub-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -2px 0 2px;
+}
+.loc-transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.loc-tp {
+  flex: 0 0 auto;
+  min-width: 34px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.loc-tp-play {
+  min-width: 44px;
+  border-color: transparent;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+.loc-tp-more {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.loc-tp-more.on {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+/* 档位胶囊：一行能塞六七个，比原来两个数字框省事 */
+.loc-chips button {
+  padding: 4px 7px;
+  font-size: 12px;
+}
+.loc-play-more {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+/* 地图上的播放头：白边圆点 + 一圈扩散环（环只靠动画，不动图标本身） */
+.loc-playhead {
+  position: relative;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--loc-play, #7c4dff);
+  box-shadow: 0 0 0 2px #fff, 0 1px 5px rgba(0, 0, 0, 0.4);
+}
+.loc-playhead::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border: 2px solid var(--loc-play, #7c4dff);
+  border-radius: 50%;
+  animation: loc-pulse 1.7s ease-out infinite;
+}
+@keyframes loc-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.55;
+  }
+  70% {
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+/* ---------- 选中点 ↔ 记录列表的来回 ---------- */
+.loc-selected {
+  border-color: color-mix(in srgb, #e53935 40%, var(--border));
+}
+.loc-sel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--panel));
+  font-size: 13px;
+}
+.loc-sel-bar b {
+  font-weight: 700;
+  color: var(--text);
+}
+.loc-sel-bar-txt {
+  flex: 1;
+}
+.loc-sel-bar-btn {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+/* 刚定位到的那一行闪一下，眼睛才跟得上滚动 */
+.loc-row-flash {
+  animation: loc-flash 1.6s ease-out 1;
+}
+@keyframes loc-flash {
+  0%,
+  25% {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.loc-more .music-add-btn {
+  display: block;
+  flex: 0 1 auto;
+  margin: 6px auto 0;
+  padding: 8px 14px;
+}
 .loc-select {
   width: auto;
   min-width: 96px;

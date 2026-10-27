@@ -275,7 +275,8 @@ export function applyOffset(
 }
 
 /** 两点间距离（米），haversine */
-function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+/** 两点间的大圆距离（米）。速度分档和回放的里程统计都从这里走，口径一致 */
+export function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371000;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;

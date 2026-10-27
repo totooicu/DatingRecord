@@ -241,7 +241,7 @@ check('默认停在地图', !(await p.locator('.loc-panel .loc-view').first().ge
 console.log('\nD2 新建 .drloc');
 await tab('文件').click();
 await p.waitForTimeout(400);
-await p.locator('input[placeholder*="新文件名"]').fill('E2E 空轨迹');
+await p.locator('input[aria-label="新定位文件名"]').fill('E2E 空轨迹');
 await p.getByRole('button', { name: '新建', exact: true }).click();
 await p.waitForTimeout(1200);
 check('新建后自动切到记录页', !(await p.locator('.loc-panel .loc-view').nth(1).getAttribute('hidden')));
@@ -525,7 +525,7 @@ await p.getByRole('button', { name: '导入 .drloc / 旧 CSV' }).click();
 await p.locator('input[accept*="drloc"]').setInputFiles(manyFile);
 await p.waitForTimeout(2200);
 check('记录页先渲染 300 条', (await p.locator('.loc-list .music-row').count()) === 300);
-const moreBtn = p.getByRole('button', { name: /显示更早的 300 个/ });
+const moreBtn = p.getByRole('button', { name: /再看早 300 个/ });
 check('出现「显示更早」入口', (await moreBtn.count()) === 1);
 await moreBtn.click();
 await p.waitForTimeout(1200);

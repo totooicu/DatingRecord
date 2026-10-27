@@ -14,7 +14,14 @@
 // 依赖：vite preview（默认 http://localhost:4173/）+ 浏览器定位用 Playwright context 级 mock。
 // 用法：node tools/e2e/location-feature-e2e.mjs [url]
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+import fs from 'node:fs';
+
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
 
 const APP = process.argv[2] || 'http://localhost:4173/';
 
@@ -64,11 +71,11 @@ const toTab = async (p, name) => {
   await p.getByRole('tab', { name }).click();
   await sleep(p, 250);
 };
-// 在「文件」页用给定名字新建（空名 → 默认「定位记录」）
+// 在「文件」页用给定名字新建（undefined → 直接用预填的示例名）
 const createNamed = async (p, name) => {
   await toTab(p, '文件');
   if (name !== undefined) {
-    const inp = p.locator('input[placeholder="新文件名（默认 定位记录）"]');
+    const inp = p.locator('input[aria-label="新定位文件名"]');
     await inp.click();
     await inp.fill(name);
   }
@@ -78,7 +85,10 @@ const createNamed = async (p, name) => {
 
 let browser;
 try {
-  browser = await chromium.launch();
+  browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
+    args: ['--no-sandbox'],
+  });
 
   // ============================================================
   // 流程 1：文件选择 + 手动打点 + 我的位置 + 阈值 + 坐标系 + 坏 key
@@ -137,21 +147,20 @@ try {
   check('A：无文件时「记录位置」按钮不可见（门控）', (await p.getByRole('button', { name: '记录位置' }).count()) === 0);
   check('A：无文件时「自动打点」按钮不可见（门控）', (await p.getByRole('button', { name: '▶ 自动打点' }).count()) === 0);
 
-  // A2：默认名新建（空名 → 默认「定位记录」）
+  // A2：未改示例名直接新建 → 文件名含「 定位记录.drloc」（日期前缀如 10-27）
   await createNamed(p, undefined);
-  check('A2：空名新建 → 默认名「定位记录.drloc」', (await p.getByText('定位记录.drloc').count()) >= 1);
+  check('A2：未改示例名直接新建 → 文件名含「 定位记录.drloc」', (await p.getByText(/ 定位记录\.drloc/).count()) >= 1);
   check('A2：列表显示空提示', (await p.getByText('打点会出现在地图上。').count()) >= 1);
   check('A2：新建后出现「记录位置」「自动打点」按钮', (await p.getByRole('button', { name: '记录位置' }).count()) === 1);
   check('A2：初始 0 个点', (await p.getByText('0 个点').count()) >= 1);
 
-  // A3：切换文件后自定义名输入（验证受控输入框 wiring：输入被接受、点新建能选上文件）
-  // 注：新建的 .drloc 内容为空，按内容哈希算 stored_id 时两个空文件会顺延重名；
-  //     落地文件名可能仍是之前那个——这是内容去重设计（同 hash 不重复占空间），不是 bug。
-  //     这里只验证「自定义名输入框能正常接收输入」且「点新建后能选上文件」。
+  // A3：先断言输入框已预填示例名，再 fill 自定义名，验证受控输入框 wiring
   await toTab(p, '文件');
-  const nameInput = p.locator('input[placeholder="新文件名（默认 定位记录）"]');
+  const nameInput = p.locator('input[aria-label="新定位文件名"]');
+  const prefilled = await nameInput.inputValue();
+  check('A3：输入框已预填当天示例名', /^\d{2}-\d{2} 定位记录$/.test(prefilled), `val=${prefilled}`);
   await nameInput.click();
-  await nameInput.pressSequentially('行程', { delay: 20 });
+  await nameInput.fill('行程');
   const nv = await nameInput.inputValue();
   check('A3：自定义名输入框接受输入', nv === '行程', `val=${nv}`);
   await p.getByRole('button', { name: '新建', exact: true }).click();

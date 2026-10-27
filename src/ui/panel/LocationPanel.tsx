@@ -10,6 +10,7 @@
 // 离开本页照样打点（服务语义），本页只是订阅式视图 + 地图渲染。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { FilePickInput } from '../common';
@@ -20,6 +21,7 @@ import { createLocation, importLocationText, readLocation } from '../../core/loc
 import {
   applyOffset,
   effectiveOffsetAt,
+  metersBetween,
   metersFromOffset,
   offsetFromMeters,
   refLatOf,
@@ -89,6 +91,34 @@ const CURRENT_SIZE = 10;
 /** 回放：走过的轨迹高亮 + 播放头。和选中红、当前蓝都拉开距离 */
 const COLOR_PLAY = '#7C4DFF';
 
+/**
+ * 回放的速度档位，做成一排可点的胶囊而不是数字框：
+ * 按时间 = 一秒真实时间推进多少秒记录（1× 就是原速）；按点 = 一秒走几个点。
+ * 数字框留在「更多」里，档位没覆盖到的自定义值还能填。
+ */
+const RATE_TIME = [1, 5, 30, 60, 300, 900];
+const RATE_DOT = [1, 2, 5, 10, 30];
+/** 步进档位：按时间 = 秒/步，按点 = 点/步 */
+const STEP_TIME = [1, 5, 10, 30, 60];
+const STEP_DOT = [1, 5, 20];
+
+/** 里程读数：不到 1 公里就报米，别写成 0.0 km */
+function fmtMeters(m: number): string {
+  if (!Number.isFinite(m) || m <= 0) return '0 m';
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${(m / 1000).toFixed(m >= 10000 ? 0 : 1)} km`;
+}
+
+/**
+ * 新建定位文件的示例名：日期打底，用户在这个基础上改成「这次要记的事」。
+ * 只当默认值用——用户一旦自己动过输入框（nameTouched），就不再被它覆盖。
+ */
+function exampleLocationName(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} 定位记录`;
+}
+
 /** 当前主题色：每次重画时现读，换主题不用重建地图 */
 function themeAccent(): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
@@ -150,12 +180,16 @@ function dotIcon(color: string, size = CURRENT_SIZE): L.DivIcon {
   });
 }
 
-/** 回放播放头：比记录点大一圈、带白边，压在轨迹上也能一眼找到 */
+/**
+ * 回放播放头：白边圆点 + 一圈扩散的脉冲环。
+ * 图标只在第一次建的时候换，之后每帧只 setLatLng —— 如果每次移动都 setIcon，
+ * 环的动画会从头重启，看着就是一闪一闪的卡顿而不是平稳地跟着走。
+ */
 function playIcon(): L.DivIcon {
-  const size = 14;
+  const size = 16;
   return L.divIcon({
     className: '',
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${COLOR_PLAY};box-sizing:border-box;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.35)"></div>`,
+    html: `<div class="loc-playhead" style="--loc-play:${COLOR_PLAY}"></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -208,8 +242,13 @@ export function LocationPanel() {
   const [tab, setTab] = useState<TabKey>('map');
   const [note, setNote] = useState('');
   const [picking, setPicking] = useState(false);
-  const [newName, setNewName] = useState('');
+  /** 新建文件名：给一个带日期的示例名当底子，用户改完就是这次的记录（见 exampleLocationName） */
+  const [newName, setNewName] = useState(exampleLocationName);
+  /** 用户动过输入框就别再拿示例名覆盖他写的东西 */
+  const [nameTouched, setNameTouched] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  /** 记录列表里刚定位到哪个点：闪一下，让眼睛跟得上 */
+  const [flashIdx, setFlashIdx] = useState<number | null>(null);
   /** 位置修正是「三选一」的填法，输入框含义随模式变化 */
   const [offsetMode, setOffsetMode] = useState<OffsetMode>('m');
   /** 修正范围：整份文件（锚点=第 1 个点）/ 从选中点起（写一段分段修正） */
@@ -237,10 +276,16 @@ export function LocationPanel() {
   const [playIdx, setPlayIdx] = useState(0);
   /** 是否已经开始回放过：只有开始后才画高亮和播放头，避免一进地图就多一个紫点 */
   const [playActive, setPlayActive] = useState(false);
+  /** 单位 / 顺序 / 步长这些一年调一次的东西收进抽屉，主界面只留进度和播放 */
+  const [playMore, setPlayMore] = useState(false);
 
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  /** 记录列表：地图选中一个点后要靠它把那一行滚进视野 */
+  const listRef = useRef<HTMLUListElement | null>(null);
+  /** 列表刚为某个点撑大窗口时置位：撑完必须把它滚进视野，否则等于没定位 */
+  const wantScrollRef = useRef(false);
   /** 轨迹图层（线 + 历史点）；蓝点单独一层，避免每秒定位重画整条轨迹 */
   const trackRef = useRef<L.LayerGroup | null>(null);
   const pointMarkers = useRef<L.CircleMarker[]>([]);
@@ -429,6 +474,27 @@ export function LocationPanel() {
     setPlayIdx(idx);
   };
 
+  /**
+   * 拖进度条 / 跳到首尾：一律先暂停，再定位到某个点序号。
+   * 游标按当前模式换算，所以拖完接着按播放是从这一头继续走，不会弹回起点。
+   */
+  const seekPlay = (idx: number) => {
+    if (nPts < 2) return;
+    stopPlayback();
+    const i = Math.max(0, Math.min(nPts - 1, Math.round(idx)));
+    cursorRef.current = playMode === 'time' ? (timeline[i] ?? tFirst) : i;
+    playIdxRef.current = i;
+    setPlayIdx(i);
+    setPlayActive(true);
+  };
+
+  /** « / »：按当前播放顺序取「首」「尾」，逆序时两头对调，别按完还停在原地 */
+  const jumpPlay = (to: 'start' | 'end') => {
+    const last = Math.max(0, nPts - 1);
+    const fwd = to === 'start';
+    seekPlay(playOrder === 'fwd' ? (fwd ? 0 : last) : fwd ? last : 0);
+  };
+
   // 换文件 / 离开地图页：停止回放，别在后台空转
   useEffect(() => {
     stopPlayback();
@@ -476,6 +542,75 @@ export function LocationPanel() {
     return out;
     // offset / rows 都会变，但只切片最近 N 条，成本是 O(N) 而不是 O(总点数)
   }, [rows, offset.lat, offset.lng, segments, listLimit]);
+
+  /**
+   * 每个点的累计里程（米），回放时「已走多少」直接查这张表。
+   * 用的是修正后的坐标——和地图上画的那条线同一份数据，别一个偏一个不偏。
+   */
+  const cumMeters = useMemo(() => {
+    const pts = applyOffset(rows, offset, segments);
+    const out: number[] = new Array(pts.length);
+    let acc = 0;
+    for (let i = 0; i < pts.length; i += 1) {
+      if (i > 0) acc += metersBetween(pts[i - 1], pts[i]);
+      out[i] = acc;
+    }
+    return out;
+  }, [rows, offset.lat, offset.lng, segments]);
+
+  /** 列表只渲染最近 listLimit 条：要露出第 idx 条，就得把窗口撑到够得着它 */
+  const limitForIdx = (idx: number) => {
+    const need = rows.length - idx;
+    return Math.max(listLimit, Math.ceil(need / 300) * 300);
+  };
+
+  /**
+   * 把某个点在列表里露出来：窗口不够就先撑大、标一下要高亮，滚动交给下面的 effect
+   * ——撑大窗口之后那一行要等 React 渲染出来才找得到。
+   */
+  const locateInList = (idx: number) => {
+    setListLimit((n) => Math.max(n, limitForIdx(idx)));
+    setFlashIdx(idx);
+  };
+
+  /** 地图上选中点之后的「在记录里定位」：切到记录页 + 露出来。 */
+  const revealInList = (idx: number) => {
+    setTab('record');
+    locateInList(idx);
+  };
+
+  // 选中点变了 / 列表窗口刚撑大：把那一行滚进视野。找不到就先跳过，等下一次渲染再试
+  useEffect(() => {
+    if (tab !== 'record' || selectedIdx === null) return;
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${selectedIdx}"]`);
+    if (!el) {
+      const need = limitForIdx(selectedIdx);
+      if (need > listLimit) {
+        setListLimit(need);
+        wantScrollRef.current = true; // 为它撑过窗，撑完就得滚过去
+      }
+      return;
+    }
+    // 只有「点了定位」或「刚为它撑过窗」才动滚动条：用户自己在列表里点的行别抢
+    if (wantScrollRef.current || flashIdx === selectedIdx) {
+      wantScrollRef.current = false;
+      // 不用 smooth：几千行的列表滚到那一行要一两秒，高亮 1.6 秒就灭了，等于白闪
+      el.scrollIntoView({ block: 'center' });
+    }
+    // listLimit / rows.length 是这条 effect 的实际驱动量：滚动位置只在列表变化时有意义
+  }, [tab, selectedIdx, listLimit, rows.length, flashIdx]);
+
+  // 高亮闪一下就收，别一直挂着像个 bug
+  useEffect(() => {
+    if (flashIdx === null) return;
+    const t = setTimeout(() => setFlashIdx(null), 1600);
+    return () => clearTimeout(t);
+  }, [flashIdx]);
+
+  // 进「文件」页时，没动过输入框就把示例名刷成当天（隔天再进来能跟着换日期）
+  useEffect(() => {
+    if (tab === 'file' && !nameTouched) setNewName(exampleLocationName());
+  }, [tab, nameTouched]);
 
   const saveText =
     la.saving === 'saving'
@@ -723,8 +858,14 @@ export function LocationPanel() {
       const slice = pts.slice(0, i + 1).map((p) => [p.lat, p.lng] as [number, number]);
       if (playLineRef.current) playLineRef.current.setLatLngs(slice);
       else
-        // 比轨迹宽一圈、半透明：黄点会盖在上面，看到的是「走过的一段染了色」
-        playLineRef.current = L.polyline(slice, { color: COLOR_PLAY, weight: LINE_WEIGHT * 2.5, opacity: 0.7 }).addTo(layer);
+        // 比轨迹宽一圈、半透明：白芯点会盖在上面，看到的是「走过的那一段染了色」
+        playLineRef.current = L.polyline(slice, {
+          color: COLOR_PLAY,
+          weight: LINE_WEIGHT * 2.5,
+          opacity: 0.75,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(layer);
     } else if (playLineRef.current) {
       playLineRef.current.setLatLngs([]);
     }
@@ -740,6 +881,16 @@ export function LocationPanel() {
   const playStep = playMode === 'time' ? stepTime : stepDot;
   const setPlayRate = (v: number) => (playMode === 'time' ? setRateTime(v) : setRateDot(v));
   const setPlayStep = (v: number) => (playMode === 'time' ? setStepTime(v) : setStepDot(v));
+
+  /** 档位读数：按时间说「几倍速」，按点说「一秒走几个点」 */
+  const rateLabel = (v: number) => (playMode === 'time' ? `${v}×` : `${v} 点/s`);
+  const stepLabel = (v: number) => (playMode === 'time' ? (v >= 60 ? `${v / 60} 分` : `${v} 秒`) : `${v} 点`);
+  const rateOptions = playMode === 'time' ? RATE_TIME : RATE_DOT;
+  const stepOptions = playMode === 'time' ? STEP_TIME : STEP_DOT;
+  /** 进度条的读数：已走里程、全程里程、百分比（百分比用来把滑条左半边染成播放色） */
+  const walkedM = cumMeters[playIdxClamped] ?? 0;
+  const totalM = cumMeters.length > 0 ? cumMeters[cumMeters.length - 1] : 0;
+  const playPct = nPts > 1 ? (playIdxClamped / (nPts - 1)) * 100 : 0;
 
   const selectPoint = (idx: number) => {
     setSelectedIdx(idx);
@@ -762,10 +913,12 @@ export function LocationPanel() {
 
   const createNew = async () => {
     try {
-      const f = await createLocation({ name: newName.trim() || '定位记录' });
+      const f = await createLocation({ name: newName.trim() || exampleLocationName() });
       const doc = await readLocation(f);
       openLocationFile(f.id, f.name, doc);
-      setNewName('');
+      // 建完把输入框换回当天的示例名：连着建第二个文件时不用重打日期
+      setNewName(exampleLocationName());
+      setNameTouched(false);
       setTab('record');
       bump();
       toast(`已创建「${f.name}」`);
@@ -983,103 +1136,152 @@ export function LocationPanel() {
         </div>
         <div ref={containerRef} className="map-leaflet loc-map" />
 
-        {/* 回放：轨迹按时间或按点重新走一遍，自动播放 + 步进共用同一个播放头 */}
+        {/*
+         * 回放：一条进度条 + 一排走带键，单位/顺序/步长收进「更多」。
+         * 之前是三行按钮加两个数字框，找个位置只能一步一步按；现在拖条就能到任意一段。
+         * 键帽符号只用 « ‹ ▶ › » 这类文本字形（▶ 还补了 U+FE0E）：⏮ 在安卓上会被
+         * 当成 emoji 渲成橙色方块，跟卡片其它控件不是一个体系。
+         */}
         {nPts > 1 && (
           <div className="loc-card loc-play">
             <div className="loc-card-head">
               <strong>回放</strong>
-              <span className="muted small">
-                {playActive
-                  ? `${clockOf(playClock)} · 第 ${playIdxClamped + 1}/${nPts} 点`
-                  : `共 ${nPts} 点 · ${clockOf(tFirst)} → ${clockOf(tLast)}`}
+              <span className="muted small loc-play-read">
+                {playActive ? (
+                  <>
+                    第 <b>{playIdxClamped + 1}</b> / {nPts} 点 · {clockOf(playClock)}
+                  </>
+                ) : (
+                  <>
+                    共 {nPts} 点 · {clockOf(tFirst)} → {clockOf(tLast)}
+                  </>
+                )}
               </span>
+              {playActive && (
+                <button className="loc-play-reset" onClick={resetPlay} title="回到起点并清除回放高亮">
+                  清除
+                </button>
+              )}
             </div>
 
-            <div className="loc-play-row">
-              <span className="muted small">单位</span>
-              <div className="loc-seg" role="group" aria-label="回放单位">
-                <button
-                  className={playMode === 'time' ? 'on' : undefined}
-                  onClick={() => switchPlayMode('time')}
-                  aria-pressed={playMode === 'time'}
-                >
-                  时间
-                </button>
-                <button
-                  className={playMode === 'dot' ? 'on' : undefined}
-                  onClick={() => switchPlayMode('dot')}
-                  aria-pressed={playMode === 'dot'}
-                >
-                  点
-                </button>
+            <input
+              className="loc-scrub"
+              type="range"
+              min={0}
+              max={nPts - 1}
+              step={1}
+              value={playIdxClamped}
+              onChange={(e) => seekPlay(Number(e.target.value))}
+              onPointerDown={stopPlayback}
+              aria-label="回放进度：拖动直接看到那一段"
+              style={{ '--loc-pct': `${playPct.toFixed(1)}%`, '--loc-play': COLOR_PLAY } as CSSProperties}
+            />
+            <div className="loc-scrub-meta">
+              <span className="muted small">{clockOf(tFirst)}</span>
+              <span className="muted small">
+                {playActive ? `已走 ${fmtMeters(walkedM)} / ${fmtMeters(totalM)}` : `全程 ${fmtMeters(totalM)}`}
+              </span>
+              <span className="muted small">{clockOf(tLast)}</span>
+            </div>
+
+            <div className="loc-transport">
+              <button className="loc-tp" onClick={() => jumpPlay('start')} title="回到本方向的第一个点" aria-label="回到开头">
+                «
+              </button>
+              <button className="loc-tp" onClick={() => stepPlay(-1)} title={`后退 ${stepLabel(playStep)}`} aria-label="后退一步">
+                ‹
+              </button>
+              <button className="loc-tp loc-tp-play" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
+                {playing ? '❚❚' : '▶\uFE0E'}
+              </button>
+              <button className="loc-tp" onClick={() => stepPlay(1)} title={`前进 ${stepLabel(playStep)}`} aria-label="前进一步">
+                ›
+              </button>
+              <button className="loc-tp" onClick={() => jumpPlay('end')} title="跳到本方向的最后一个点" aria-label="跳到末尾">
+                »
+              </button>
+              <div className="loc-seg loc-chips" role="group" aria-label="播放速度">
+                {rateOptions.map((v) => (
+                  <button
+                    key={v}
+                    className={playRate === v ? 'on' : undefined}
+                    onClick={() => setPlayRate(v)}
+                    aria-pressed={playRate === v}
+                    title={playMode === 'time' ? `1 秒真实时间走 ${v} 秒记录` : `每秒走 ${v} 个点`}
+                  >
+                    {rateLabel(v)}
+                  </button>
+                ))}
               </div>
-              <span className="muted small">顺序</span>
-              <div className="loc-seg" role="group" aria-label="播放顺序">
-                <button
-                  className={playOrder === 'fwd' ? 'on' : undefined}
-                  onClick={() => switchPlayOrder('fwd')}
-                  aria-pressed={playOrder === 'fwd'}
-                >
-                  顺序
-                </button>
-                <button
-                  className={playOrder === 'rev' ? 'on' : undefined}
-                  onClick={() => switchPlayOrder('rev')}
-                  aria-pressed={playOrder === 'rev'}
-                >
-                  逆序
-                </button>
+              <button
+                className={playMore ? 'loc-tp loc-tp-more on' : 'loc-tp loc-tp-more'}
+                onClick={() => setPlayMore((o) => !o)}
+                aria-expanded={playMore}
+                title="单位 / 顺序 / 步长"
+              >
+                更多
+              </button>
+            </div>
+
+            {playMore && (
+              <div className="loc-play-more">
+                <div className="loc-play-row">
+                  <span className="muted small">单位</span>
+                  <div className="loc-seg" role="group" aria-label="回放单位">
+                    <button className={playMode === 'time' ? 'on' : undefined} onClick={() => switchPlayMode('time')} aria-pressed={playMode === 'time'}>
+                      时间
+                    </button>
+                    <button className={playMode === 'dot' ? 'on' : undefined} onClick={() => switchPlayMode('dot')} aria-pressed={playMode === 'dot'}>
+                      点
+                    </button>
+                  </div>
+                  <span className="muted small">顺序</span>
+                  <div className="loc-seg" role="group" aria-label="播放顺序">
+                    <button className={playOrder === 'fwd' ? 'on' : undefined} onClick={() => switchPlayOrder('fwd')} aria-pressed={playOrder === 'fwd'}>
+                      顺序
+                    </button>
+                    <button className={playOrder === 'rev' ? 'on' : undefined} onClick={() => switchPlayOrder('rev')} aria-pressed={playOrder === 'rev'}>
+                      逆序
+                    </button>
+                  </div>
+                </div>
+                <div className="loc-play-row">
+                  <span className="muted small">步长</span>
+                  <div className="loc-seg loc-chips" role="group" aria-label="步进大小">
+                    {stepOptions.map((v) => (
+                      <button
+                        key={v}
+                        className={playStep === v ? 'on' : undefined}
+                        onClick={() => setPlayStep(v)}
+                        aria-pressed={playStep === v}
+                        title={playMode === 'time' ? `每步推进 ${v} 秒记录` : `每步 ${v} 个点`}
+                      >
+                        {stepLabel(v)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="loc-play-row">
+                  <label className="muted small">
+                    自定义速度
+                    <input
+                      className="loc-num"
+                      type="number"
+                      min={0}
+                      step={playMode === 'time' ? 1 : 0.5}
+                      value={playRate}
+                      onChange={(e) => setPlayRate(Number(e.target.value) || 0)}
+                      aria-label={playMode === 'time' ? '每秒推进多少秒记录' : '每秒走多少个点'}
+                    />
+                    {playMode === 'time' ? '秒/秒' : '点/秒'}
+                  </label>
+                </div>
+                <p className="muted small loc-play-hint">
+                  按时间：1 秒真实时间推进 N 秒记录（中间没有点的空档会停在原地等）；按点：每秒走 N 个点。
+                  进度条两端固定是第 1 点和最后一点，逆序只改播放方向。
+                </p>
               </div>
-              <button className="loc-play-reset" onClick={resetPlay} title="回到起点并清除回放高亮">
-                复位
-              </button>
-            </div>
-
-            <div className="loc-play-row">
-              <button className={playing ? 'music-add-btn' : 'music-add-btn primary'} onClick={togglePlay}>
-                {playing ? '⏹ 停止' : '▶ 播放'}
-              </button>
-              <label className="muted small">
-                速度
-                <input
-                  className="loc-num"
-                  type="number"
-                  min={0}
-                  step={playMode === 'time' ? 1 : 0.5}
-                  value={playRate}
-                  onChange={(e) => setPlayRate(Number(e.target.value) || 0)}
-                  aria-label={playMode === 'time' ? '每秒推进多少秒记录' : '每秒走多少个点'}
-                />
-                {playMode === 'time' ? '秒/秒' : '点/秒'}
-              </label>
-            </div>
-
-            <div className="loc-play-row">
-              <button className="music-add-btn" onClick={() => stepPlay(-1)}>
-                ‹ 后退
-              </button>
-              <button className="music-add-btn" onClick={() => stepPlay(1)}>
-                前进 ›
-              </button>
-              <label className="muted small">
-                步长
-                <input
-                  className="loc-num"
-                  type="number"
-                  min={playMode === 'time' ? 0 : 1}
-                  step={1}
-                  value={playStep}
-                  onChange={(e) => setPlayStep(Number(e.target.value) || 0)}
-                  aria-label={playMode === 'time' ? '每步前进多少秒记录' : '每步前进多少个点'}
-                />
-                {playMode === 'time' ? '秒/步' : '点/步'}
-              </label>
-            </div>
-
-            <p className="muted small loc-play-hint">
-              按时间：1 秒真实时间推进 N 秒记录（中间没有点的空档会停在原地等）；
-              按点：每秒走 N 个点。前进/后退沿所选顺序方向走 N 个单位。
-            </p>
+            )}
           </div>
         )}
 
@@ -1088,24 +1290,33 @@ export function LocationPanel() {
           <button className="music-add-btn" onClick={() => setTab('record')}>去记录</button>
         </div>
         {selected ? (
-          <div className="loc-card">
+          <div className="loc-card loc-selected">
             <div className="loc-card-head">
               <strong>选中的点</strong>
-              <span className="muted small">{fmtTime(selected.ts)}</span>
+              <span className="muted small">
+                第 {selectedIdx! + 1} / {rows.length} 个 · {fmtTime(selected.ts)}
+              </span>
             </div>
             <div className="loc-coord">{selected.lat.toFixed(6)}, {selected.lng.toFixed(6)}</div>
             <div className="muted small">
               {selected.accuracy ? `±${Math.round(selected.accuracy)}m` : '精度未知'}
+              {` · 这一头到这里 ${fmtMeters(cumMeters[selectedIdx!] ?? 0)}`}
               {selected.note ? ` · ${selected.note}` : ''}
             </div>
-            {fileId && rows.length > 1 && (
-              <button className="music-add-btn" onClick={() => { setOffsetScope('seg'); setTab('file'); }}>
-                从这点起修正
+            <div className="loc-row">
+              {/* 列表只渲染最近 300 条，光切过去常常还不够：这一条把窗口撑到够得着它并滚到中间 */}
+              <button className="music-add-btn" onClick={() => revealInList(selectedIdx!)}>
+                在记录里定位
               </button>
-            )}
+              {fileId && rows.length > 1 && (
+                <button className="music-add-btn" onClick={() => { setOffsetScope('seg'); setTab('file'); }}>
+                  从这点起修正
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <p className="muted small">点地图上的黄点可查看坐标；红点表示当前选中。</p>
+          <p className="muted small">点地图上的白芯小点可看坐标，选中的那个会变成红心；选中后能直接「在记录里定位」。</p>
         )}
       </div>
 
@@ -1195,7 +1406,26 @@ export function LocationPanel() {
               </p>
             )}
 
-            <ul className="music-list loc-list">
+            {selectedIdx !== null && (
+              <div className="loc-sel-bar">
+                <span className="loc-sel-bar-txt">
+                  已选中第 <b>{selectedIdx + 1}</b> 个点
+                  {selRow ? ` · ${fmtTime(selRow.ts)}` : ''}
+                </span>
+                <button
+                  type="button"
+                  className="loc-sel-bar-btn"
+                  onClick={() => locateInList(selectedIdx)}
+                >
+                  跳到它
+                </button>
+                <button type="button" className="loc-sel-bar-btn" onClick={() => setTab('map')}>
+                  看地图
+                </button>
+              </div>
+            )}
+
+            <ul className="music-list loc-list" ref={listRef}>
               {rows.length === 0 && <li className="muted small">打点会出现在地图上。</li>}
               {shownRows.map(({ p: r, idx }) => {
                 const isSel = idx === selectedIdx;
@@ -1203,7 +1433,8 @@ export function LocationPanel() {
                 return (
                   <li
                     key={`${r.ts}-${idx}`}
-                    className={`music-row${isSel ? ' on' : ''}`}
+                    data-idx={idx}
+                    className={`music-row${isSel ? ' on' : ''}${idx === flashIdx ? ' loc-row-flash' : ''}`}
                     onClick={() => selectPoint(idx)}
                   >
                     <span className="music-row-idx">{idx + 1}</span>
@@ -1229,12 +1460,15 @@ export function LocationPanel() {
               })}
               {rows.length > listLimit && (
                 <li className="loc-more">
+                  <span className="muted small">
+                    列表只渲染最近 {listLimit} 个（共 {rows.length} 个）
+                  </span>
                   <button
                     type="button"
                     className="music-add-btn"
                     onClick={() => setListLimit((n) => n + 300)}
                   >
-                    显示更早的 300 个（还有 {rows.length - listLimit} 个）
+                    再看早 300 个（还有 {rows.length - listLimit} 个）
                   </button>
                 </li>
               )}
@@ -1274,11 +1508,18 @@ export function LocationPanel() {
               <input
                 className="music-name-input"
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="新文件名（默认 定位记录）"
+                onChange={(e) => {
+                  setNewName(e.target.value);
+                  setNameTouched(true);
+                }}
+                placeholder="例如：10-27 通勤、周末爬山"
+                aria-label="新定位文件名"
               />
               <button className="music-add-btn primary" onClick={createNew}>新建</button>
             </div>
+            <p className="muted small">
+              已经按日期填了个例子，改成这次要记的事就行；不改动它，每次进来都会跟着换当天日期。
+            </p>
             <div className="music-add">
               <button className="music-add-btn" onClick={() => setPicking(true)}>选已有定位文件</button>
               <button className="music-add-btn" onClick={() => importRef.current?.click()}>导入 .drloc / 旧 CSV</button>

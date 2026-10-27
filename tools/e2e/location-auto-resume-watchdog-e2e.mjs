@@ -177,7 +177,7 @@ if (await p.getByText('载入示例数据看看效果').count()) {
 await toLocation();
 await p.getByRole('tab', { name: '文件' }).click();
 await p.waitForTimeout(400);
-await p.locator('input[placeholder*="新文件名"]').fill('看门狗回归');
+await p.locator('input[aria-label="新定位文件名"]').fill('看门狗回归');
 await p.getByRole('button', { name: '新建', exact: true }).click();
 await p.waitForTimeout(1200);
 check('新建后激活的是本文件', (await p.locator('.loc-card-head', { hasText: '看门狗回归' }).first().innerText()).includes('看门狗回归'));

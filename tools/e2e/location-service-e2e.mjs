@@ -72,7 +72,7 @@ check('L2：定位面板打开 + leaflet 挂上', (await p.locator('.leaflet-con
 
 await p.getByRole('tab', { name: '文件' }).click();
 await p.waitForTimeout(500);
-await p.locator('input[placeholder*="新文件名"]').fill('后台打点');
+await p.locator('input[aria-label="新定位文件名"]').fill('后台打点');
 await p.getByRole('button', { name: '新建', exact: true }).click();
 await p.waitForTimeout(1200);
 check('L2：新建后回到「记录」页且已选中文件', (await p.locator('.loc-card-head', { hasText: '后台打点' }).count()) >= 1);
