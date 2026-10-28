@@ -7,7 +7,7 @@ try {
   await page.goto(process.argv[2] || 'http://localhost:5174/');
   const results = await page.evaluate(async () => {
     const { segmentSpeeds, metersBetween } = await import('/src/core/location/format.ts');
-    const { speedLines, speedColors, speedBucket } = await import('/src/ui/panel/locationPaint.ts');
+    const { speedLines, speedColors, speedBucket, maxTrackSpeed } = await import('/src/ui/panel/locationPaint.ts');
     const p = (lng, seconds) => ({ lat: 0, lng, ts: new Date(Date.UTC(2026, 0, 1) + seconds * 1000).toISOString() });
     const points = [p(0, 0), p(0.001, 100), p(0, 130), p(0.002, 200)];
     const original = JSON.stringify(points);
@@ -15,7 +15,8 @@ try {
     const near = (a, b) => Math.abs(a - b) < 1e-9;
     const expected = (metersBetween(points[0], points[1]) + metersBetween(points[1], points[2])) / 130 * 3.6;
     const lines = speedLines(points, '#cc3366');
-    const color = speedColors('#cc3366').ramp[speedBucket(expected)];
+    const max = maxTrackSpeed(speeds);
+    const color = speedColors('#cc3366').ramp[speedBucket(expected, max)];
     return {
       empty: segmentSpeeds([]).length === 0,
       single: segmentSpeeds([points[0]]).length === 0,
@@ -27,6 +28,12 @@ try {
       reversed: segmentSpeeds([p(0, 0), p(1, 3), p(2, 2)])[1] === null,
       invalid: segmentSpeeds([points[0], { ...points[1], ts: 'bad' }, points[2]])[1] === null,
       color: lines.some(l => l.color === color && l.parts.some(part => part.some((v, i) => i > 0 && part[i - 1][1] === 0.001 && v[1] === 0))),
+      highest: max === Math.max(...speeds) && speedBucket(max, max) === 5,
+      highRange: speedBucket(120, 120) === 5 && speedBucket(30, 120) === 1,
+      lowRange: speedBucket(2, 2) === 5,
+      noValid: maxTrackSpeed([null, NaN]) === null,
+      zeroRange: maxTrackSpeed([0, null]) === 0 && speedBucket(0, 0) === 0,
+      darkest: lines.some(l => l.color === speedColors('#cc3366').ramp[5]),
       unchanged: JSON.stringify(points) === original,
     };
   });

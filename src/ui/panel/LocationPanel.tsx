@@ -48,7 +48,7 @@ import {
   useLocationAuto,
 } from '../../core/runtime/locationAuto';
 import type { SampleStrategy } from '../../core/runtime/locationNative';
-import { SPEED_EDGES, speedColors, speedLines } from './locationPaint';
+import { maxTrackSpeed, speedColors, speedLines } from './locationPaint';
 
 type TabKey = 'map' | 'record' | 'file' | 'help';
 
@@ -1093,6 +1093,11 @@ export function LocationPanel() {
 
   // 图例里的速度条：和地图上同一条色阶，换主题时一起变
   const speedRamp = speedColors(themeAccent()).ramp;
+  const trackSpeedInfo = useMemo(() => {
+    const speeds = segmentSpeeds(applyOffset(rows, offset, segments));
+    return { speeds, max: maxTrackSpeed(speeds) };
+  }, [la.rev, offset.lat, offset.lng, fileId, segments]);
+  const currentSpeed = trackSpeedInfo.speeds[playActive ? playIdxClamped - 1 : trackSpeedInfo.speeds.length - 1] ?? null;
 
   return (
     <div className="loc-panel">
@@ -1124,10 +1129,13 @@ export function LocationPanel() {
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_SELECTED }} />选中</span>
           <span
             className="loc-legend-item"
-            title={`线条按相邻两点速度上色，慢 → 快，分界 ${SPEED_EDGES.join(' / ')} km/h`}
+            title="按两段平均速度上色，浅色为 0，最深色对应当前轨迹最高速度；静止轨迹使用最浅色"
           >
             <i className="loc-speedbar" style={{ background: `linear-gradient(90deg, ${speedRamp.join(', ')})` }} />
-            速度
+            <span className="loc-max-speed">最高速度（最深色）：{trackSpeedInfo.max === null ? '未知' : fmtSpeed(trackSpeedInfo.max)}</span>
+          </span>
+          <span className="loc-legend-item loc-current-speed">
+            当前速度：{currentSpeed === null ? '未知' : fmtSpeed(currentSpeed)}
           </span>
           {playActive && (
             <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_PLAY }} />回放</span>

@@ -10,17 +10,19 @@
 import { segmentSpeeds } from '../../core/location/format';
 import { tintHex } from '../theme';
 
-/** 速度分档上界（km/h）：慢走 / 步行 / 跑步 / 骑行 / 开车 */
-export const SPEED_EDGES = [1, 3, 6, 12, 25];
+/** 0 到当前轨迹最高速度等分六档；另有 -1 表示速度未知。 */
+export const SPEED_BUCKETS = 6;
 
-/** 档数 = 分界数 + 1（最后一档是「更快」）；另有 -1 表示速度未知 */
-export const SPEED_BUCKETS = SPEED_EDGES.length + 1;
+export function maxTrackSpeed(speeds: (number | null)[]): number | null {
+  return speeds.reduce<number | null>((max, speed) =>
+    speed === null || !Number.isFinite(speed) ? max : Math.max(max ?? 0, speed), null);
+}
 
 /** 落到第几档；速度未知（时间没前进 / 时间解析不出来）给 -1 */
-export function speedBucket(kmh: number | null): number {
-  if (kmh === null || !Number.isFinite(kmh)) return -1;
-  for (let i = 0; i < SPEED_EDGES.length; i += 1) if (kmh <= SPEED_EDGES[i]) return i;
-  return SPEED_EDGES.length;
+export function speedBucket(kmh: number | null, maxSpeed: number | null): number {
+  if (kmh === null || !Number.isFinite(kmh) || maxSpeed === null) return -1;
+  if (maxSpeed <= 0) return 0;
+  return Math.min(SPEED_BUCKETS - 1, Math.floor(Math.max(0, kmh) / maxSpeed * SPEED_BUCKETS));
 }
 
 /** 速度色阶（慢 → 快）：主题色从浅到深；「未知」用低饱和中性色，不占色阶位置 */
@@ -51,9 +53,10 @@ export function speedLines(pts: { lat: number; lng: number; ts: string }[], acce
   const groups = new Map<number, SpeedLine>();
   const chainTail = new Map<number, [number, number][]>();
   const speeds = segmentSpeeds(pts);
+  const maxSpeed = maxTrackSpeed(speeds);
 
   for (let i = 0; i < speeds.length; i += 1) {
-    const bucket = speedBucket(speeds[i]);
+    const bucket = speedBucket(speeds[i], maxSpeed);
     const a: [number, number] = [pts[i].lat, pts[i].lng];
     const b: [number, number] = [pts[i + 1].lat, pts[i + 1].lng];
     let group = groups.get(bucket);
