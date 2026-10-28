@@ -7,6 +7,7 @@ import type { StoredFile } from '../../core/repo/files';
 import { FilesSection } from './FilesSection';
 import type { PreviewKind } from '../preview';
 import { MigrateSection } from './MigrateSection';
+import { CompactNamesSection } from './CompactNamesSection';
 import { SMALL_LIMIT_OPTIONS, getSmallLimit, setSmallLimit } from '../filePrefs';
 import { fmtSize } from './fileFormat';
 
@@ -66,6 +67,7 @@ export function FilesPanel({
   return (
     <div className="files-panel">
       <FilesSection onPick={onPick} pickedIds={pickedIds} />
+      <CompactNamesSection />
       <SmallLimitRow />
       <details className="files-advanced">
         <summary>数据迁移（内容寻址）</summary>
