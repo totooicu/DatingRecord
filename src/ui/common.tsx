@@ -69,13 +69,39 @@ export function Modal({
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/**
+ * 表单字段。默认字段名在上、控件在下（长内容、多控件的字段用这种）。
+ * inline = 一行就能填完的短控件（时间、评分、花费、下拉），字段名与控件同行；
+ * 窄屏放不下时整块控件换到下一行，控件内部再自己换行。
+ */
+export function Field({
+  label,
+  hint,
+  children,
+  inline,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+  inline?: boolean;
+}) {
+  const head = (
+    <span className="field-label">
+      {label}
+      {hint && <em>{hint}</em>}
+    </span>
+  );
+  if (inline) {
+    return (
+      <label className="field field-inline">
+        {head}
+        <span className="field-control">{children}</span>
+      </label>
+    );
+  }
   return (
     <label className="field">
-      <span className="field-label">
-        {label}
-        {hint && <em>{hint}</em>}
-      </span>
+      {head}
       {children}
     </label>
   );

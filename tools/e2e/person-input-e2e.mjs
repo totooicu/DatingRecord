@@ -81,6 +81,14 @@ try {
   await tags.getByRole('button', { name: '已有标签', exact: true }).click();
   assert.equal(await tags.getByRole('button', { name: '已有标签', exact: true }).count(), 0);
   assert((await tags.innerText()).includes('已有标签'));
+  // 人物页：短控件与属性名同行（长文本也保持名在左、控件在右的网格行）
+  assert(await page.evaluate(() => [...document.querySelectorAll('#input-test .attr-row')].every((row) => {
+    const l = row.querySelector('.attr-label').getBoundingClientRect();
+    const c = row.querySelector('input, textarea, select, .stars, .chip-group');
+    if (!c) return true;
+    const r = c.getBoundingClientRect();
+    return r.top < l.bottom && r.bottom > l.top;
+  })));
   for (const width of [390, 820, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

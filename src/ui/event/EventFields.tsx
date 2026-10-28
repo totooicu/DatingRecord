@@ -59,7 +59,7 @@ export function EventFields({
           placeholder="例如：第一次一起看电影"
         />
       </Field>
-      <Field label="类型">
+      <Field label="类型" inline>
         <select value={d.kind} onChange={(e) => patch({ kind: e.target.value })}>
           {EVENT_KINDS.map((k) => (
             <option key={k.value} value={k.value}>
@@ -71,7 +71,7 @@ export function EventFields({
 
       {/* 呈现形态与「类型」是两件事：类型是这场事是什么（约会/吃饭），
           形态是它怎么显示（正文/聊天）。一场约会同样可以贴一段聊天记录。 */}
-      <Field label="呈现形态">
+      <Field label="呈现形态" inline>
         <select
           value={d.viewMode}
           onChange={(e) => patch({ viewMode: e.target.value as 'doc' | 'chat' })}
@@ -81,7 +81,7 @@ export function EventFields({
         </select>
       </Field>
 
-      <Field label="时间类型">
+      <Field label="时间类型" inline>
         <select value={d.timeKind} onChange={(e) => patch({ timeKind: e.target.value as TimeKind })}>
           {TIME_KINDS.map((t) => (
             <option key={t.value} value={t.value}>
@@ -90,7 +90,7 @@ export function EventFields({
           ))}
         </select>
       </Field>
-      <Field label="精度">
+      <Field label="精度" inline>
         <select
           value={d.precision}
           onChange={(e) => patch({ precision: (e.target.value as Precision) || 'minute' })}
@@ -104,21 +104,21 @@ export function EventFields({
       </Field>
 
       {d.timeKind !== 'unknown' && (
-        <Field label="开始">
+        <Field label="开始" inline>
           <input aria-label="开始时间" aria-invalid={!!timeErrors.start} placeholder="YYYY-MM-DD HH:mm" value={d.start} onChange={(e) => patch({ start: e.target.value })} />
           <button type="button" className="btn btn-sm" onClick={() => patch({ start: timeText(new Date().toISOString()) })}>获取当前时间</button>
           {timeErrors.start && <span role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{timeErrors.start}</span>}
         </Field>
       )}
       {(d.timeKind === 'interval' || d.timeKind === 'ongoing') && (
-        <Field label="结束">
+        <Field label="结束" inline>
           <input aria-label="结束时间" aria-invalid={!!timeErrors.end} placeholder="YYYY-MM-DD HH:mm" value={d.end} onChange={(e) => patch({ end: e.target.value })} />
           <button type="button" className="btn btn-sm" onClick={() => patch({ end: timeText(new Date().toISOString()) })}>获取当前时间</button>
           {timeErrors.end && <span role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{timeErrors.end}</span>}
         </Field>
       )}
       {d.timeKind === 'fuzzy' && (
-        <Field label="时间原文" hint="例如：去年夏天">
+        <Field label="时间原文" hint="例如：去年夏天" inline>
           <input
             value={d.raw}
             onChange={(e) => patch({ raw: e.target.value })}
@@ -127,7 +127,7 @@ export function EventFields({
         </Field>
       )}
 
-      <Field label="地点">
+      <Field label="地点" inline>
         <input aria-label="地点文本" value={d.placeName} placeholder="输入地点或地址，也可地图选点" onChange={(e) => patch({ placeName: e.target.value })} />
         <button type="button" className="btn btn-sm" onClick={() => setPlaceOpen(true)}>地图选点</button>
         {d.placeGeo && <span className="small">纬度 {d.placeGeo.lat.toFixed(6)}，经度 {d.placeGeo.lng.toFixed(6)}
@@ -135,20 +135,20 @@ export function EventFields({
         </span>}
         {placeOpen && <PlacePicker value={d.placeGeo ?? null} onClose={() => setPlaceOpen(false)} onSave={(placeGeo) => { patch({ placeGeo }); setPlaceOpen(false); }} />}
       </Field>
-      <Field label="评分">
+      <Field label="评分" inline>
         <Stars
           value={typeof d.rating === 'number' ? d.rating : 0}
           onChange={(v) => patch({ rating: v ?? '' })}
         />
       </Field>
-      <Field label="花费">
+      <Field label="花费" inline>
         <input
           type="number"
           value={d.cost}
           onChange={(e) => patch({ cost: e.target.value === '' ? '' : Number(e.target.value) })}
         />
       </Field>
-      <Field label="心情">
+      <Field label="心情" inline>
         <ExistingTextInput source="mood"
           value={d.mood}
           onChange={(mood) => patch({ mood })}
@@ -200,7 +200,7 @@ export function EventFields({
           candidates={candidates}
         />
       </div>
-      <Field label="亲密度增减">
+      <Field label="亲密度增减" inline>
         <input
           type="number"
           value={d.intimacyDelta}

@@ -70,6 +70,28 @@ try {
   assert.equal(await page.evaluate(async () => (await import('/src/core/repo/events/index.ts')).listEvents()[0].metrics.rating), undefined);
   await stars.getByRole('button', { name: '4 星' }).click();
   assert.equal(await page.locator('.star.star-on').count(), 4);
+  // 短控件与字段名同行；长内容字段仍然名在上、控件在下
+  await page.getByLabel('时间类型').selectOption('interval');
+  const inlineRows = await page.evaluate(() => {
+    const fieldOf = (labelText) =>
+      [...document.querySelectorAll('.field')].find((f) => f.querySelector('.field-label')?.textContent.startsWith(labelText));
+    const sameRow = (labelText) => {
+      const field = fieldOf(labelText);
+      if (!field) return `missing:${labelText}`;
+      const control = field.querySelector('input, select, .stars');
+      const l = field.querySelector('.field-label').getBoundingClientRect();
+      const c = control.getBoundingClientRect();
+      return field.classList.contains('field-inline') && c.top < l.bottom && c.bottom > l.top;
+    };
+    const short = ['类型', '呈现形态', '时间类型', '精度', '开始', '结束', '地点', '评分', '花费', '心情', '亲密度增减'].map((t) => `${t}=${sameRow(t)}`);
+    const title = fieldOf('标题');
+    const stacked = title.querySelector('input').getBoundingClientRect().top >=
+      title.querySelector('.field-label').getBoundingClientRect().bottom - 1;
+    return { short, stacked, longInsideInline: !!document.querySelector('.field-inline .md-editor, .field-inline textarea') };
+  });
+  assert.deepEqual(inlineRows.short.filter((s) => !s.endsWith('=true')), []);
+  assert.equal(inlineRows.stacked, true);
+  assert.equal(inlineRows.longInsideInline, false);
   for (const width of [390, 820, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

@@ -11,7 +11,7 @@ export function ExistingTextInput({ value, onChange, source, attributeKey, disab
     setOptions(disabledChoices ? [] : existingInputChoices(source, attributeKey));
     setFocused(true);
   };
-  return <span style={{ display: 'block', width: '100%', minWidth: 0 }} onBlur={e => {
+  return <span className="existing-input" onBlur={e => {
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
   }}>
     {multiline ? <textarea rows={3} value={value} onFocus={onFocus} onChange={e => onChange(e.target.value)} /> :

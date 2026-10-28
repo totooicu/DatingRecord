@@ -40,8 +40,8 @@
 | `e2e/upload-collision-e2e.mjs` | 上传冲突弹窗回归（U1–U12、V1–V5、W1–W2）：用 IndexedDB 直接删键造出「元数据在、二进制没了」的坏记录 → 重传同内容文件应弹窗标「二进制缺失」；**覆盖**补回二进制且不换 `stored_id`、不加记录；勾「后续同样处理」后本批剩余冲突不再弹窗、复用不额外写 blob；**取消上传**这条直接跳过不落库 | 需要 preview 服务：`node tools/e2e/upload-collision-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/dup-hash-e2e.mjs` | 重复 hash 管理面板回归（S1–S2、A1–A4、B1–B4、C1–C5、D1–D3、E1–E2）：传两个同内容大文件（第二个选「都不一样」）造出一组重复 → 折叠标题报组数、展开才列分组、默认保留引用最少的旧那条；「在列表里搜」把整串 sha256 填进搜索框且只剩这一组；合并走 MergeModal 后源记录消失、待处理清零；标记为不同内容后整组归入「已确认」，取消标记又回到待处理 | 需要 preview 服务：`node tools/e2e/dup-hash-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/location-speed-smooth-e2e.mjs` | 两段窗口速度、首段、异常时间、折返路程与染色回归 | `node tools/e2e/location-speed-smooth-e2e.mjs [url]`；默认 localhost:5174，须 Vite dev 服务（不能用 preview），依赖全局 Playwright 和 Chromium，不写用户数据 |
-| `e2e/person-input-e2e.mjs` | 人名连续增删、中间修改、IME、属性粘贴不移位、已有内容选择与隐私过滤 | `node tools/e2e/person-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；独立浏览器测试数据 |
-| `e2e/event-input-e2e.mjs` | 时间严格校验与获取当前时间、地图选点与文本并存、取消与往返保存、星级评分与清空、三视口 | `node tools/e2e/event-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；地图瓦片需要网络 |
+| `e2e/person-input-e2e.mjs` | 人名连续增删、中间修改、IME、属性粘贴不移位、已有内容选择与隐私过滤、属性名与控件同行 | `node tools/e2e/person-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；独立浏览器测试数据 |
+| `e2e/event-input-e2e.mjs` | 时间严格校验与获取当前时间、地图选点与文本并存、取消与往返保存、星级评分与清空、短控件同行与长字段竖排、三视口 | `node tools/e2e/event-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；地图瓦片需要网络 |
 
 ## src/core/tools/
 
