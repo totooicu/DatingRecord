@@ -11,6 +11,10 @@ try {
     const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
     const repo = await import('/src/core/repo/persons/index.ts');
     const { PersonHead } = await import('/src/ui/persons/PersonHead.tsx');
+    const { PersonAttrs } = await import('/src/ui/persons/PersonAttrs.tsx');
+    for (const key of ['test_a', 'test_b', 'test_c']) repo.upsertDef({ key, label: key, type: 'text', group: '测试' });
+    const defs = repo.listDefs().filter(d => d.key.startsWith('test_'));
+    window.testDefs = defs.map(d => d.key);
     const { useVersion } = await import('/src/store.ts');
     const person = repo.createPerson({ displayName: 'ABCDE' });
     window.testPersonId = person.id;
@@ -20,7 +24,9 @@ try {
     document.body.append(host);
     function Test() {
       useVersion();
-      return React.createElement(PersonHead, { person: repo.getPerson(person.id), onNewEvent() {} });
+      return React.createElement(React.Fragment, null,
+        React.createElement(PersonHead, { person: repo.getPerson(person.id), onNewEvent() {} }),
+        React.createElement(PersonAttrs, { person: repo.getPerson(person.id), defs }));
     }
     ReactDOM.createRoot(host).render(React.createElement(Test));
   });
@@ -46,6 +52,17 @@ try {
   assert.equal(await saved(), 'AXYBC');
   await input.press('Tab');
   assert.equal(await saved(), '中文姓名');
+  const attr = page.locator('#input-test .attr-row').last().locator('input').first();
+  await attr.focus();
+  const label = await attr.evaluate(el => el.closest('.attr-row').querySelector('.attr-label').textContent);
+  const before = await attr.boundingBox();
+  await page.keyboard.insertText('粘贴的资料');
+  const active = page.locator('#input-test input:focus');
+  assert.equal(await active.inputValue(), '粘贴的资料');
+  assert.equal(await active.evaluate(el => el.closest('.attr-row').querySelector('.attr-label').textContent), label);
+  assert.equal((await active.boundingBox()).y, before.y);
+  await page.keyboard.insertText('继续修改');
+  assert.equal(await active.inputValue(), '粘贴的资料继续修改');
   await page.reload();
-  console.log('PASS name deletion, middle insertion, commit, blank rejection and IME guard');
+  console.log('PASS name editing, IME guard and paste field position');
 } finally { await browser.close(); }
