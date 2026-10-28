@@ -165,7 +165,11 @@ await p.waitForTimeout(600);
 check('导入后出现回放卡', (await card().count()) === 1);
 const latestSpeedText = await p.locator('.loc-current-speed').innerText();
 const maxSpeedText = await p.locator('.loc-max-speed').innerText();
-check('显示最新段速度与轨迹最大速度', /当前速度：.*km\/h/.test(latestSpeedText) && /最高速度（最深色）：.*km\/h/.test(maxSpeedText));
+check('显示最新段速度与轨迹最大速度', /当前速度：.*km\/h/.test(latestSpeedText) && /最高速度（红色）：.*km\/h/.test(maxSpeedText));
+check('图例从蓝到红', await p.locator('.loc-speedbar').evaluate(el => {
+  const bg = el.style.background;
+  return bg.indexOf('37, 99, 235') >= 0 && bg.indexOf('239, 68, 68') > bg.indexOf('37, 99, 235');
+}));
 for (const width of [390, 820, 1440]) {
   await p.setViewportSize({ width, height: 900 });
   check(`速度图例 ${width}px 不横向溢出`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));

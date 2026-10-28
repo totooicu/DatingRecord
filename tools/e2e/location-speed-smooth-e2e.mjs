@@ -14,9 +14,9 @@ try {
     const speeds = segmentSpeeds(points);
     const near = (a, b) => Math.abs(a - b) < 1e-9;
     const expected = (metersBetween(points[0], points[1]) + metersBetween(points[1], points[2])) / 130 * 3.6;
-    const lines = speedLines(points, '#cc3366');
+    const lines = speedLines(points);
     const max = maxTrackSpeed(speeds);
-    const color = speedColors('#cc3366').ramp[speedBucket(expected, max)];
+    const color = speedColors().ramp[speedBucket(expected, max)];
     return {
       empty: segmentSpeeds([]).length === 0,
       single: segmentSpeeds([points[0]]).length === 0,
@@ -33,7 +33,10 @@ try {
       lowRange: speedBucket(2, 2) === 5,
       noValid: maxTrackSpeed([null, NaN]) === null,
       zeroRange: maxTrackSpeed([0, null]) === 0 && speedBucket(0, 0) === 0,
-      darkest: lines.some(l => l.color === speedColors('#cc3366').ramp[5]),
+      fastestRed: lines.some(l => l.color === '#ef4444'),
+      rainbow: speedColors().ramp.join(',') === '#2563eb,#06b6d4,#22c55e,#eab308,#f97316,#ef4444',
+      stationaryBlue: speedLines([p(0, 0), p(0, 1)])[0].color === '#2563eb',
+      unknownGray: speedLines([p(0, 0), p(1, 0)])[0].color === '#8b929a',
       unchanged: JSON.stringify(points) === original,
     };
   });

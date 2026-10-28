@@ -119,12 +119,6 @@ function exampleLocationName(): string {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} 定位记录`;
 }
 
-/** 当前主题色：每次重画时现读，换主题不用重建地图 */
-function themeAccent(): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-  return v || '#d9536b';
-}
-
 /**
  * 记录点样式：
  *   选中 —— 放大两倍、白边红芯；
@@ -752,7 +746,7 @@ export function LocationPanel() {
     let lines: ReturnType<typeof speedLines> = [];
     if (pts.length > 1) {
       // 按相邻两点的速度分档染色：同档且首尾相接的段合并，最多 7 条 polyline
-      lines = speedLines(pts, themeAccent());
+      lines = speedLines(pts);
       for (const line of lines) {
         L.polyline(line.parts, {
           color: line.color,
@@ -1091,8 +1085,8 @@ export function LocationPanel() {
     toast('高德 key 已保存');
   };
 
-  // 图例里的速度条：和地图上同一条色阶，换主题时一起变
-  const speedRamp = speedColors(themeAccent()).ramp;
+  // 图例与地图共用固定彩虹色阶。
+  const speedRamp = speedColors().ramp;
   const trackSpeedInfo = useMemo(() => {
     const speeds = segmentSpeeds(applyOffset(rows, offset, segments));
     return { speeds, max: maxTrackSpeed(speeds) };
@@ -1129,10 +1123,10 @@ export function LocationPanel() {
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_SELECTED }} />选中</span>
           <span
             className="loc-legend-item"
-            title="按两段平均速度上色，浅色为 0，最深色对应当前轨迹最高速度；静止轨迹使用最浅色"
+            title="两段平均速度：蓝 → 青 → 绿 → 黄 → 橙 → 红，红色对应轨迹最高速度；静止为蓝色，未知为灰色"
           >
             <i className="loc-speedbar" style={{ background: `linear-gradient(90deg, ${speedRamp.join(', ')})` }} />
-            <span className="loc-max-speed">最高速度（最深色）：{trackSpeedInfo.max === null ? '未知' : fmtSpeed(trackSpeedInfo.max)}</span>
+            <span className="loc-max-speed">最高速度（红色）：{trackSpeedInfo.max === null ? '未知' : fmtSpeed(trackSpeedInfo.max)}</span>
           </span>
           <span className="loc-legend-item loc-current-speed">
             当前速度：{currentSpeed === null ? '未知' : fmtSpeed(currentSpeed)}
