@@ -73,7 +73,7 @@ export function EventForm({
   const draftSig = isNew ? `${JSON.stringify(d)}|${priv}` : '';
   useEffect(() => {
     if (!isNew || !draftsEnabled()) return;
-    const empty = !d.title.trim() && !d.content.trim() && !d.placeName.trim() && d.tags.length === 0;
+    const empty = !d.title.trim() && !d.content.trim() && !d.placeName.trim() && !d.placeGeo && d.tags.length === 0;
     if (empty) {
       clearDraft(DRAFT_KEY);
       return;

@@ -37,5 +37,28 @@ try {
   await page.getByRole('button', { name: '保存', exact: true }).click();
   const count = await page.evaluate(async () => (await import('/src/core/repo/events/index.ts')).listEvents().length);
   assert.equal(count, 1);
-  console.log('PASS strict time parser, invalid date, range checks, current-time button and save');
+  await page.getByLabel('地点文本').fill('手填地址');
+  await page.getByRole('button', { name: '地图选点', exact: true }).click();
+  await page.locator('.place-map').click({ position: { x: 150, y: 120 } });
+  await page.getByRole('button', { name: '确认选点', exact: true }).click();
+  assert.equal(await page.getByLabel('地点文本').inputValue(), '手填地址');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  const place = await page.evaluate(async () => {
+    const repo = await import('/src/core/repo/events/index.ts');
+    const { initialDraft, draftToPayload } = await import('/src/ui/event/draft.ts');
+    const event = repo.listEvents()[0];
+    const draft = initialDraft(event, undefined, undefined, []);
+    return { saved: event.place, again: draftToPayload(draft).place };
+  });
+  assert.equal(place.saved.name, '手填地址');
+  assert.equal(typeof place.saved.geo.lat, 'number');
+  assert.deepEqual(JSON.parse(JSON.stringify(place.again)), place.saved);
+  await page.getByRole('button', { name: '地图选点', exact: true }).click();
+  await page.getByRole('button', { name: '取消选点', exact: true }).click();
+  assert.equal(await page.getByLabel('地点文本').inputValue(), '手填地址');
+  for (const width of [390, 820, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  }
+  console.log('PASS time and place input: text, map selection, cancellation, roundtrip and layouts');
 } finally { await browser.close(); }

@@ -42,6 +42,8 @@ export function EventView({
   add('时间', formatTime(event.time));
   add('类型', kindLabel);
   add('地点', event.place.name);
+  add('地址', event.place.address);
+  if (event.place.geo) add('坐标', `${event.place.geo.lat.toFixed(6)}, ${event.place.geo.lng.toFixed(6)}`);
   add('评分', event.metrics.rating ? '★'.repeat(event.metrics.rating) : null);
   add(
     '花费',

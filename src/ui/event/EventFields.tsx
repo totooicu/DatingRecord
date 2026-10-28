@@ -6,6 +6,8 @@ import type { Collection, RelatedEvent } from '../../core/types';
 import type { Precision, TimeKind } from '../../core/time';
 import { RelatedField } from './RelatedField';
 import type { EventDraft } from './draft';
+import { useState } from 'react';
+import { PlacePicker } from './PlacePicker';
 import { timeText } from './timeText';
 
 const TIME_KINDS: { value: TimeKind; label: string }[] = [
@@ -42,6 +44,7 @@ export function EventFields({
   eventId?: string;
   candidates: { id: string; title: string; startTs: number | null; relatedEvents?: RelatedEvent[] }[];
 }) {
+  const [placeOpen, setPlaceOpen] = useState(false);
   const toggle = (list: string[], id: string) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
@@ -123,7 +126,12 @@ export function EventFields({
       )}
 
       <Field label="地点">
-        <input value={d.placeName} onChange={(e) => patch({ placeName: e.target.value })} />
+        <input aria-label="地点文本" value={d.placeName} placeholder="输入地点或地址，也可地图选点" onChange={(e) => patch({ placeName: e.target.value })} />
+        <button type="button" className="btn btn-sm" onClick={() => setPlaceOpen(true)}>地图选点</button>
+        {d.placeGeo && <span className="small">纬度 {d.placeGeo.lat.toFixed(6)}，经度 {d.placeGeo.lng.toFixed(6)}
+          <button type="button" className="btn btn-sm" onClick={() => patch({ placeGeo: null })}>清除坐标</button>
+        </span>}
+        {placeOpen && <PlacePicker value={d.placeGeo ?? null} onClose={() => setPlaceOpen(false)} onSave={(placeGeo) => { patch({ placeGeo }); setPlaceOpen(false); }} />}
       </Field>
       <Field label="评分">
         <select

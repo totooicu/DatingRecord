@@ -12,6 +12,8 @@ export interface EventDraft {
   precision: Precision;
   raw: string;
   placeName: string;
+  placeAddress?: string;
+  placeGeo?: DREvent['place']['geo'];
   content: string;
   tags: string[];
   rating: number | '';
@@ -40,6 +42,8 @@ export function initialDraft(
     precision: event?.time.precision ?? 'minute',
     raw: event?.time.raw ?? '',
     placeName: event?.place.name ?? '',
+    placeAddress: event?.place.address,
+    placeGeo: event?.place.geo,
     content: event?.content ?? '',
     tags: event?.tags ?? [],
     rating: event?.metrics.rating ?? '',
@@ -58,7 +62,7 @@ export interface EventPayload {
   title: string;
   kind: string;
   time: TimeSpec;
-  place: { name?: string };
+  place: DREvent['place'];
   participants: Participant[];
   content: string;
   tags: string[];
@@ -98,7 +102,7 @@ export function draftToPayload(d: EventDraft): EventPayload {
       precision: d.precision,
       raw: d.timeKind === 'fuzzy' ? d.raw : undefined,
     },
-    place: { name: d.placeName || undefined },
+    place: { name: d.placeName || undefined, address: d.placeAddress, geo: d.placeGeo },
     participants: d.participantIds.map((id) => ({ personId: id, role: 'primary' as const })),
     content: d.content,
     tags: d.tags,
