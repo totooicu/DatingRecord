@@ -6,6 +6,7 @@ import type { Collection, RelatedEvent } from '../../core/types';
 import type { Precision, TimeKind } from '../../core/time';
 import { RelatedField } from './RelatedField';
 import type { EventDraft } from './draft';
+import { timeText } from './timeText';
 
 const TIME_KINDS: { value: TimeKind; label: string }[] = [
   { value: 'instant', label: '时刻' },
@@ -25,6 +26,7 @@ const PRECISIONS: { value: Precision; label: string }[] = [
 
 export function EventFields({
   d,
+  timeErrors = {},
   patch,
   persons,
   flat,
@@ -32,6 +34,7 @@ export function EventFields({
   candidates,
 }: {
   d: EventDraft;
+  timeErrors?: Partial<Record<'start' | 'end', string>>;
   patch: (p: Partial<EventDraft>) => void;
   persons: { id: string; displayName: string }[];
   flat: { c: Collection; depth: number }[];
@@ -97,12 +100,16 @@ export function EventFields({
 
       {d.timeKind !== 'unknown' && (
         <Field label="开始">
-          <input type="datetime-local" value={d.start} onChange={(e) => patch({ start: e.target.value })} />
+          <input aria-label="开始时间" aria-invalid={!!timeErrors.start} placeholder="YYYY-MM-DD HH:mm" value={d.start} onChange={(e) => patch({ start: e.target.value })} />
+          <button type="button" className="btn btn-sm" onClick={() => patch({ start: timeText(new Date().toISOString()) })}>获取当前时间</button>
+          {timeErrors.start && <span role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{timeErrors.start}</span>}
         </Field>
       )}
       {(d.timeKind === 'interval' || d.timeKind === 'ongoing') && (
         <Field label="结束">
-          <input type="datetime-local" value={d.end} onChange={(e) => patch({ end: e.target.value })} />
+          <input aria-label="结束时间" aria-invalid={!!timeErrors.end} placeholder="YYYY-MM-DD HH:mm" value={d.end} onChange={(e) => patch({ end: e.target.value })} />
+          <button type="button" className="btn btn-sm" onClick={() => patch({ end: timeText(new Date().toISOString()) })}>获取当前时间</button>
+          {timeErrors.end && <span role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{timeErrors.end}</span>}
         </Field>
       )}
       {d.timeKind === 'fuzzy' && (
