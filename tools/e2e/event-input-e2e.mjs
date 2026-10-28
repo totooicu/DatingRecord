@@ -56,9 +56,23 @@ try {
   await page.getByRole('button', { name: '地图选点', exact: true }).click();
   await page.getByRole('button', { name: '取消选点', exact: true }).click();
   assert.equal(await page.getByLabel('地点文本').inputValue(), '手填地址');
+  // 评分复用人物页「好感度」的星级控件：点第 3 星记 3 分，再点同一星清空
+  const stars = page.locator('.stars');
+  assert.equal(await stars.count(), 1);
+  assert.equal(await page.locator('.star.star-on').count(), 0);
+  await stars.getByRole('button', { name: '3 星' }).click();
+  assert.equal(await page.locator('.star.star-on').count(), 3);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  assert.equal(await page.evaluate(async () => (await import('/src/core/repo/events/index.ts')).listEvents()[0].metrics.rating), 3);
+  await stars.getByRole('button', { name: '3 星' }).click();
+  assert.equal(await page.locator('.star.star-on').count(), 0);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  assert.equal(await page.evaluate(async () => (await import('/src/core/repo/events/index.ts')).listEvents()[0].metrics.rating), undefined);
+  await stars.getByRole('button', { name: '4 星' }).click();
+  assert.equal(await page.locator('.star.star-on').count(), 4);
   for (const width of [390, 820, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   }
-  console.log('PASS time and place input: text, map selection, cancellation, roundtrip and layouts');
+  console.log('PASS time, place and rating input: text, map selection, cancellation, roundtrip, stars and layouts');
 } finally { await browser.close(); }

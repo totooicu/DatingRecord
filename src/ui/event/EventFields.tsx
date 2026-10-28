@@ -5,6 +5,7 @@ import { MarkdownEditor } from '../markdown';
 import type { Collection, RelatedEvent } from '../../core/types';
 import type { Precision, TimeKind } from '../../core/time';
 import { RelatedField } from './RelatedField';
+import { Stars } from '../attr';
 import type { EventDraft } from './draft';
 import { useState } from 'react';
 import { PlacePicker } from './PlacePicker';
@@ -135,17 +136,10 @@ export function EventFields({
         {placeOpen && <PlacePicker value={d.placeGeo ?? null} onClose={() => setPlaceOpen(false)} onSave={(placeGeo) => { patch({ placeGeo }); setPlaceOpen(false); }} />}
       </Field>
       <Field label="评分">
-        <select
-          value={d.rating}
-          onChange={(e) => patch({ rating: e.target.value === '' ? '' : Number(e.target.value) })}
-        >
-          <option value="">未评分</option>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={n}>
-              {'★'.repeat(n)}
-            </option>
-          ))}
-        </select>
+        <Stars
+          value={typeof d.rating === 'number' ? d.rating : 0}
+          onChange={(v) => patch({ rating: v ?? '' })}
+        />
       </Field>
       <Field label="花费">
         <input

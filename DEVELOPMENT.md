@@ -813,6 +813,10 @@ interface SqlDriver {
 ### F-E04 度量录入（metrics）— P0
 
 - 评分（1-5）、花费（金额+币种）、心情、亲密度增减；
+- **2026-10-28 UI 更新**：事件评分不再用下拉框，改复用人物属性「好感度」那套星级控件
+  （`src/ui/attr/basic.tsx` 的 `Stars`，`.stars` / `.star` / `.star-on`）。两处同一交互：
+  点亮到第 n 星，再点同一星清空为未评分（落库时 `metrics.rating` 缺省）。
+  回归见 `tools/e2e/event-input-e2e.mjs`。
 - **边界**：币种默认 CNY；金额为 0 或空不报错。
 - 验收：这些字段可被筛选，并聚合到人物/集合统计。
 
