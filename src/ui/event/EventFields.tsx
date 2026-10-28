@@ -8,6 +8,7 @@ import { RelatedField } from './RelatedField';
 import type { EventDraft } from './draft';
 import { useState } from 'react';
 import { PlacePicker } from './PlacePicker';
+import { ExistingTextInput } from '../ExistingTextInput';
 import { timeText } from './timeText';
 
 const TIME_KINDS: { value: TimeKind; label: string }[] = [
@@ -154,9 +155,9 @@ export function EventFields({
         />
       </Field>
       <Field label="心情">
-        <input
+        <ExistingTextInput source="mood"
           value={d.mood}
-          onChange={(e) => patch({ mood: e.target.value })}
+          onChange={(mood) => patch({ mood })}
           placeholder="开心 / 平淡 / 低落"
         />
       </Field>

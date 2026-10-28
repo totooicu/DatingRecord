@@ -17,6 +17,14 @@ try {
     window.testDefs = defs.map(d => d.key);
     const { useVersion } = await import('/src/store.ts');
     const person = repo.createPerson({ displayName: 'ABCDE' });
+    const source = repo.createPerson({ displayName: '候选来源', tags: ['已有标签'] });
+    repo.setAttribute(source.id, 'test_a', '火锅');
+    const secret = repo.createPerson({ displayName: '私密', tags: ['秘密标签'] });
+    repo.setAttribute(secret.id, 'test_a', '秘密爱好');
+    repo.setPersonPrivate(secret.id, true);
+    const { existingInputChoices } = await import('/src/core/repo/inputChoices.ts');
+    if (existingInputChoices('attribute', 'test_a').includes('秘密爱好')) throw new Error('private leak');
+    if (existingInputChoices('tags').includes('秘密标签')) throw new Error('private tag leak');
     window.testPersonId = person.id;
     const host = document.createElement('div');
     host.id = 'input-test';
@@ -63,6 +71,20 @@ try {
   assert.equal((await active.boundingBox()).y, before.y);
   await page.keyboard.insertText('继续修改');
   assert.equal(await active.inputValue(), '粘贴的资料继续修改');
+  await active.press('Tab');
+  const firstAttr = page.locator('#input-test .attr-row').filter({ hasText: 'test_a' });
+  await firstAttr.locator('input').focus();
+  await firstAttr.getByRole('button', { name: '火锅', exact: true }).click();
+  assert.equal(await firstAttr.locator('input').inputValue(), '火锅');
+  const tags = page.locator('#input-test .detail-head .tag-input');
+  await tags.locator('input').focus();
+  await tags.getByRole('button', { name: '已有标签', exact: true }).click();
+  assert.equal(await tags.getByRole('button', { name: '已有标签', exact: true }).count(), 0);
+  assert((await tags.innerText()).includes('已有标签'));
+  for (const width of [390, 820, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  }
   await page.reload();
-  console.log('PASS name editing, IME guard and paste field position');
+  console.log('PASS name, paste position, existing attribute/tag selection, privacy and layouts');
 } finally { await browser.close(); }

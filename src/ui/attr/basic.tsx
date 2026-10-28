@@ -97,9 +97,10 @@ export function RatingField({ def, value, onChange }: FieldProps) {
   );
 }
 
-export function TagField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+export function TagField({ value, onChange, choices }: { value: unknown; onChange: (v: unknown) => void; choices?: () => string[] }) {
   return (
     <TagInput
+      choices={choices}
       value={Array.isArray(value) ? (value as string[]) : []}
       onChange={(v) => onChange(v.length ? v : null)}
     />

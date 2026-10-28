@@ -1,6 +1,8 @@
 // 按属性类型分发到对应控件
 import type { Person } from '../../core/types';
 import { listPersons } from '../../core/repo/persons';
+import { existingInputChoices } from '../../core/repo/inputChoices';
+import { ExistingTextInput } from '../ExistingTextInput';
 import {
   BoolField,
   ColorField,
@@ -8,7 +10,6 @@ import {
   DateTimeField,
   EnumField,
   EnumMultiField,
-  LongText,
   NumberField,
   RatingField,
   RelationField,
@@ -32,7 +33,7 @@ export function AttributeField({
 
   switch (def.type) {
     case 'longtext':
-      return <LongText value={str} onChange={onChange} />;
+      return <ExistingTextInput source="attribute" attributeKey={def.key} disabledChoices={!!def.sensitive} multiline value={str} onChange={onChange} />;
     case 'number':
     case 'money':
       return <NumberField {...props} />;
@@ -49,7 +50,7 @@ export function AttributeField({
     case 'rating':
       return <RatingField {...props} />;
     case 'tag':
-      return <TagField value={value} onChange={onChange} />;
+      return <TagField value={value} onChange={onChange} choices={() => def.sensitive ? [] : existingInputChoices('attribute', def.key)} />;
     case 'phone':
       return <TextField value={str} onChange={onChange} type="tel" />;
     case 'email':
@@ -67,6 +68,6 @@ export function AttributeField({
     case 'json':
       return <JsonField value={value} onChange={onChange} />;
     default:
-      return <TextField value={str} onChange={onChange} />;
+      return <ExistingTextInput source="attribute" attributeKey={def.key} disabledChoices={!!def.sensitive} value={str} onChange={(v) => onChange(v || null)} />;
   }
 }
