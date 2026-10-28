@@ -212,6 +212,56 @@
   font-size: 11px;
 }
 
+/* 冲突弹窗：选中态、缺失态、覆盖确认、记住选择 */
+.col-card-sel {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.col-card-broken {
+  border-style: dashed;
+  border-color: var(--danger);
+}
+
+.col-badge-warn {
+  background: var(--danger);
+}
+
+.col-hint {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 170, 60, 0.12);
+  font-size: 13px;
+}
+
+.col-confirm {
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+
+.col-confirm .row-actions {
+  justify-content: flex-end;
+  margin: 6px 0 0;
+}
+
+.col-rest {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.col-rest input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+}
+
 /* ---------- 迁移面板 ---------- */
 
 .files-advanced {

@@ -431,7 +431,7 @@ export function MusicPanel() {
       )}
 
       {ask && <CollisionModal prompt={ask.prompt} uploading={ask.preview}
-        onDecide={(p) => ask.step(p)} onCancel={ask.cancel} />}
+        onDecide={(c) => ask.step(c)} onCancel={ask.cancel} />}
     </div>
   );
 }

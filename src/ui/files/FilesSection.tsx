@@ -266,7 +266,7 @@ export function FilesSection({
         <CollisionModal
           prompt={ask.prompt}
           uploading={ask.preview}
-          onDecide={(pick) => ask.step(pick)}
+          onDecide={(choice) => ask.step(choice)}
           onCancel={ask.cancel}
         />
       )}

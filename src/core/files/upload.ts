@@ -8,13 +8,17 @@
 //      · ≤ 阈值 → 逐字节比较，全等就静默复用，不等就顺延序号并标记 hash_shared。
 //      · > 阈值 → 交给用户判断（弹窗），因为逐字节比一个大文件可能卡住主线程。
 //   4. 复用 = 不新增记录、不写新二进制，直接把已有文件的引用名返回给调用方。
+//   5. 弹窗里除了「复用」和「都不一样」，还可以「覆盖」：用新内容替换选中那条的二进制，
+//      记录 id 与引用名都不变 —— 正文里已有的引用照旧可用。用于旧记录内容坏了/丢了。
 
 import { getBlob } from '../db/blob';
 import { extFor, hashStem, pickStoredId, sameBytes, sha256Hex } from './naming';
 import {
   filesByHash,
+  getFile,
   insertFileRaw,
   nameSlots,
+  overwriteFileContent,
   type StoredFile,
 } from '../repo/files';
 
@@ -30,10 +34,21 @@ export interface CollisionPrompt {
   sizeDiffers: StoredFile[];
 }
 
+/** 弹窗里可选的三种处置 */
+export type CollisionAction = 'reuse' | 'create' | 'overwrite';
+
+/** 用户对一次冲突的裁决 */
+export interface CollisionDecision {
+  action: CollisionAction;
+  /** reuse / overwrite 指向哪条已有记录；create 为 null */
+  target: StoredFile | null;
+}
+
 export type UploadOutcome =
   | { kind: 'created'; file: StoredFile; /** 顺延过序号时的完整引用名，用于提示 */ renamed?: string }
   | { kind: 'reused'; file: StoredFile }
-  | { kind: 'ask'; prompt: CollisionPrompt; resolve: (pick: StoredFile | null) => Promise<UploadOutcome> };
+  | { kind: 'overwritten'; file: StoredFile; /** 被覆盖掉的那条（同一行，内容是旧的） */ over: StoredFile }
+  | { kind: 'ask'; prompt: CollisionPrompt; resolve: (d: CollisionDecision) => Promise<UploadOutcome> };
 
 export interface UploadOptions {
   /** 小文件阈值（字节），超过就弹窗问用户 */
@@ -41,10 +56,10 @@ export interface UploadOptions {
 }
 
 /**
- * 主流程。返回 created / reused / ask 三种结果之一。
+ * 主流程。返回 created / reused / overwritten / ask 四种结果之一。
  *
- * ask 里带着 resolve：UI 把弹窗结果传回 resolve（选中即「确认相同」，
- * null 即「都不一样」），它会继续把该做的事做完并给出最终 outcome。
+ * ask 里带着 resolve：UI 把弹窗结果传回来，它再执行对应动作并给出最终 outcome。
+ * target 缺省时按第一个候选处理（批量「后续同样处理」就是这个语义）。
  */
 export async function uploadFile(file: File, opts: UploadOptions): Promise<UploadOutcome> {
   const sha = await sha256Hex(file);
@@ -75,8 +90,15 @@ export async function uploadFile(file: File, opts: UploadOptions): Promise<Uploa
     candidates: sameSize,
     sizeDiffers: sameHash.filter((f) => f.size !== file.size),
   };
-  const resolve = async (pick: StoredFile | null): Promise<UploadOutcome> =>
-    pick ? { kind: 'reused', file: pick } : createFresh(file, sha, stem, ext, true);
+  const resolve = async (d: CollisionDecision): Promise<UploadOutcome> => {
+    const target = d.target ?? sameSize[0];
+    if (d.action === 'reuse') return { kind: 'reused', file: target };
+    if (d.action === 'overwrite') {
+      await overwriteFileContent(target.id, file);
+      return { kind: 'overwritten', file: getFile(target.id) ?? target, over: target };
+    }
+    return createFresh(file, sha, stem, ext, true);
+  };
   return { kind: 'ask', prompt, resolve };
 }
 
@@ -86,8 +108,8 @@ export async function uploadFile(file: File, opts: UploadOptions): Promise<Uploa
  */
 export async function uploadFileQuiet(file: File, smallLimit: number): Promise<StoredFile> {
   let out = await uploadFile(file, { smallLimit });
-  if (out.kind === 'ask') out = await out.resolve(null);
-  // resolve(null) 必然落在 created（内部只走 createFresh），断言给它收窄
+  if (out.kind === 'ask') out = await out.resolve({ action: 'create', target: null });
+  // resolve({action:'create'}) 必然落在 created（内部只走 createFresh），断言给它收窄
   if (out.kind === 'ask') throw new Error('上传结果异常');
   return out.file;
 }

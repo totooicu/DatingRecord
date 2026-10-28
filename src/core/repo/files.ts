@@ -458,4 +458,4 @@ export function fileNames(ids: string[]): Record<string, string> {
   return out;
 }
 
-export { delBlob, clearBlobs } from '../db/blob';
+export { delBlob, clearBlobs, getBlob } from '../db/blob';
