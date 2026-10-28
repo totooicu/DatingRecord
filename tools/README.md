@@ -39,6 +39,7 @@
 | `e2e/shell-back-e2e.mjs` | 壳里系统返回键（`ui.backPressed`）回归（B1–B6）：详情→列表、弹窗只关弹窗、设置子页→父级→目录→`ui.finish`、日历某天→回日历、新建事件全屏编辑先退全屏再关弹窗、列表根上只 `ui.finish`；假壳照抄 3 秒兜底并计数，全程必须为 0（页面每次都按时回执 `ui.goBack` / `ui.finish`） | 需要 preview 服务：`node tools/e2e/shell-back-e2e.mjs http://localhost:4173/`。壳用 `addInitScript` 装假实现（注入标记 + ui.* 应答 + `__pressBack()`）；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/upload-collision-e2e.mjs` | 上传冲突弹窗回归（U1–U12、V1–V5、W1–W2）：用 IndexedDB 直接删键造出「元数据在、二进制没了」的坏记录 → 重传同内容文件应弹窗标「二进制缺失」；**覆盖**补回二进制且不换 `stored_id`、不加记录；勾「后续同样处理」后本批剩余冲突不再弹窗、复用不额外写 blob；**取消上传**这条直接跳过不落库 | 需要 preview 服务：`node tools/e2e/upload-collision-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/dup-hash-e2e.mjs` | 重复 hash 管理面板回归（S1–S2、A1–A4、B1–B4、C1–C5、D1–D3、E1–E2）：传两个同内容大文件（第二个选「都不一样」）造出一组重复 → 折叠标题报组数、展开才列分组、默认保留引用最少的旧那条；「在列表里搜」把整串 sha256 填进搜索框且只剩这一组；合并走 MergeModal 后源记录消失、待处理清零；标记为不同内容后整组归入「已确认」，取消标记又回到待处理 | 需要 preview 服务：`node tools/e2e/dup-hash-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/location-speed-smooth-e2e.mjs` | 两段窗口速度、首段、异常时间、折返路程与染色回归 | `node tools/e2e/location-speed-smooth-e2e.mjs [url]`；默认 localhost:5174，须 Vite dev 服务（不能用 preview），依赖全局 Playwright 和 Chromium，不写用户数据 |
 
 ## src/core/tools/
 

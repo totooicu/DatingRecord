@@ -287,7 +287,8 @@ export function metersBetween(a: { lat: number; lng: number }, b: { lat: number;
 }
 
 /**
- * 相邻两点之间的速度（km/h），长度 = 点数 - 1。
+ * 每段显示速度（km/h），长度 = 点数 - 1。
+ * BC 使用 (|AB| + |BC|) / (tC - tA)，首段使用单段速度；窗口内时间须严格递增。
  *
  * 时间不前进（同一秒连点两下、旧 CSV 的日期串解析不出来）时给 null——
  * 硬写成 0 km/h 会把「不知道」画成「站着不动」，速度色阶上就分不清了。
@@ -298,12 +299,16 @@ export function segmentSpeeds(points: { lat: number; lng: number; ts: string }[]
   for (let i = 0; i < points.length - 1; i += 1) {
     const a = points[i];
     const b = points[i + 1];
-    const dt = (Date.parse(b.ts) - Date.parse(a.ts)) / 1000;
-    if (!Number.isFinite(dt) || dt <= 0) {
+    const previous = points[Math.max(0, i - 1)];
+    const currentDt = Date.parse(b.ts) - Date.parse(a.ts);
+    const previousDt = i > 0 ? Date.parse(a.ts) - Date.parse(previous.ts) : currentDt;
+    const dt = (Date.parse(b.ts) - Date.parse(previous.ts)) / 1000;
+    if (!Number.isFinite(dt) || !Number.isFinite(currentDt) || !Number.isFinite(previousDt) || currentDt <= 0 || previousDt <= 0 || dt <= 0) {
       out.push(null);
       continue;
     }
-    out.push((metersBetween(a, b) / dt) * 3.6);
+    const distance = metersBetween(a, b) + (i > 0 ? metersBetween(previous, a) : 0);
+    out.push((distance / dt) * 3.6);
   }
   return out;
 }
