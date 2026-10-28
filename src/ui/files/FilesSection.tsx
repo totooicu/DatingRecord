@@ -23,6 +23,7 @@ import { FileBatchBar } from './FileBatchBar';
 import { FileFilters } from './FileFilters';
 import { FileRefsModal } from './FileRefsModal';
 import { MappingModal } from './MappingModal';
+import { DupHashSection } from './DupHashSection';
 import { FileRow } from './FileRow';
 import { useThumbs } from './useThumbs';
 import { useUploader } from './useUploader';
@@ -79,6 +80,32 @@ export function FilesSection({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
   const [mappingOpen, setMappingOpen] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
+
+  // 折叠标题上的组数，口径与面板里的「待处理」一致：
+  // 同一个 hash 下挂着 ≥2 条，且至少有一条没被标记成「不同内容」
+  // （标了的那条已经退出判重候选，没标的还在会不断弹窗，所以仍算待处理）。
+  // 纯内存统计，不查库 —— 收起时不该为面板的开销买单。
+  const dupGroups = useMemo(() => {
+    const seen = new Map<string, { total: number; plain: number }>();
+    for (const f of files) {
+      if (!f.sha256 || f.sourceUrl) continue;
+      const g = seen.get(f.sha256) ?? { total: 0, plain: 0 };
+      g.total++;
+      if (!f.hashShared) g.plain++;
+      seen.set(f.sha256, g);
+    }
+    let n = 0;
+    for (const g of seen.values()) if (g.total > 1 && g.plain > 0) n++;
+    return n;
+  }, [files]);
+
+  /** 从重复 hash 面板跳过来：把这个 hash 变成当前搜索词，列表只剩这一组 */
+  const searchByHash = (sha: string) => {
+    setFilter((f) => ({ ...f, q: sha }));
+    setDupOpen(false);
+    setTip('已把这组的 hash 填进搜索框，列表只剩这几条；清空搜索框就回到全部');
+  };
 
   const visible = useMemo(
     () => applyFilter(files, filter, sort, refCounts),
@@ -187,6 +214,20 @@ export function FilesSection({
               onDelete={() => void removeSelected()}
             />
           )}
+
+          {/*
+            重复 hash 管理：折叠着放，展开才挂载面板。
+            auditFiles() 要按 hash 分组并逐条数引用，文件多的库不是白给的开销，
+            收起时只做一个 Map 计数（不查库），展开才真跑。
+          */}
+          <details
+            className="files-advanced dup-entry"
+            open={dupOpen}
+            onToggle={(e) => setDupOpen(e.currentTarget.open)}
+          >
+            <summary>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</summary>
+            {dupOpen && <DupHashSection onSearchHash={searchByHash} onDone={setTip} />}
+          </details>
         </>
       )}
 

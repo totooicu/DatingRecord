@@ -175,6 +175,23 @@ export function setFileHash(id: string, sha256: string): void {
   });
 }
 
+/**
+ * 批量标记 / 取消「同 hash 但内容确实不同」（hash_shared）。
+ *
+ * 标记后这些行退出判重候选（filesByHash 只取 hash_shared=0），
+ * 以后再传同样的文件不会再被当成重复；重复 hash 管理面板也把它们归到「已确认」一栏。
+ * 一个事务里改完整组：半组标记、半组没标记会让「是不是同一份」这件事说不清。
+ */
+export function setHashShared(ids: string[], shared: boolean): void {
+  if (ids.length === 0) return;
+  transact(() => {
+    for (const id of ids) {
+      run('UPDATE attachments SET hash_shared = ? WHERE id = ?', [shared ? 1 : 0, id]);
+      appendOplog('attachment', id, 'update', { hashShared: shared });
+    }
+  });
+}
+
 /** 同 hash 且未标记碰撞的行（判重的候选集合） */
 export function filesByHash(sha256: string): StoredFile[] {
   if (!sha256) return [];

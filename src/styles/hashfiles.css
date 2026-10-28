@@ -372,3 +372,105 @@
   gap: 8px;
   margin: 0 0 8px;
 }
+
+/* ---------- 重复 hash 管理 ---------- */
+
+/* 组卡：手机上信息一行行排，宽屏靠 max-width 收着不铺满 */
+.dup {
+  margin-top: 8px;
+}
+
+.dup-group {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.dup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* hash 是等宽内容，允许按字符断行，否则手机上会把整块撑出横向滚动 */
+.dup-hash {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dup-hash code {
+  font-family: var(--mono, ui-monospace, monospace);
+  word-break: break-all;
+}
+
+.dup-files {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.dup-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px dashed var(--border);
+}
+
+.dup-file-on {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  border-radius: 6px;
+}
+
+.dup-pick {
+  flex: none;
+  display: flex;
+  padding-top: 2px;
+}
+
+.dup-pick input {
+  width: 16px;
+  height: 16px;
+}
+
+.dup-name {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.dup-tag {
+  font-style: normal;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+
+.dup-tag-mark {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.dup-warn {
+  margin: 6px 0 0;
+  color: var(--danger);
+}
+
+.dup-marked {
+  margin-top: 10px;
+}
+
+.dup-marked > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}

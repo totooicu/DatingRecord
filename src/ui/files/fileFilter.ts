@@ -63,6 +63,21 @@ function kb(value: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/**
+ * 搜索词命中哪些字段：实际名、引用名（`sha-…` / `link-…`）、sha256 全文。
+ *
+ * 三个都要：用户手里的线索可能是文件名（截图时随手起的）、文件页上那行引用名，
+ * 或者从别处复制来的完整 hash（排查「这两张图是不是同一份」时最常干这个）。
+ * hash 一律十六进制、大小写无关，所以统一转小写再比。
+ */
+function hitQuery(file: StoredFile, q: string): boolean {
+  return (
+    file.name.toLowerCase().includes(q) ||
+    file.storedId.toLowerCase().includes(q) ||
+    file.sha256.toLowerCase().includes(q)
+  );
+}
+
 export function applyFilter(
   files: StoredFile[],
   f: FileFilter,
@@ -74,7 +89,7 @@ export function applyFilter(
   const max = kb(f.maxKB);
 
   const out = files.filter((file) => {
-    if (q && !file.name.toLowerCase().includes(q)) return false;
+    if (q && !hitQuery(file, q)) return false;
 
     if (f.types.length && !f.types.includes(kindOf(file.name, file.mime))) return false;
 
