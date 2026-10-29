@@ -271,6 +271,7 @@ export function FilesSection({
       </div>
       {!compact && <div hidden={tab !== 'maintenance'}>
         {maintenanceVisited && <>
+          <p className="muted small">单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改；正文里的显示名保留插入时的样子。</p>
           <section className="files-advanced dup-entry">
             <h4>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</h4>
             <DupHashSection onSearchHash={searchByHash} onDone={setTip} />

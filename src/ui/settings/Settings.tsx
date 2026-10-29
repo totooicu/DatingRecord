@@ -96,10 +96,7 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
         {active === 'archive' && <ArchiveSection />}
 
         {active === 'files' && (
-          <Section
-            title="文件"
-            desc="单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改；正文里的显示名保留插入时的样子。"
-          >
+          <Section title="文件">
             <FilesPanel />
           </Section>
         )}

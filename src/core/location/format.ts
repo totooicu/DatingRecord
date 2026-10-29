@@ -85,22 +85,6 @@ export function locationFileName(name: string): string {
   return `${cleanLocationName(name)}${LOCATION_FILE_EXT}`;
 }
 
-/** 同名的 .drloc 已存在时顺延成「名字 (2)」 */
-export function uniqueLocationName(name: string, files: { name: string }[]): string {
-  const base = cleanLocationName(name);
-  const used = new Set(
-    files
-      .filter((f) => (f.name || '').toLowerCase().endsWith(LOCATION_FILE_EXT))
-      .map((f) => locationNameOf(f).toLowerCase()),
-  );
-  if (!used.has(base.toLowerCase())) return base;
-  for (let i = 2; i < 1000; i += 1) {
-    const candidate = `${base} (${i})`;
-    if (!used.has(candidate.toLowerCase())) return candidate;
-  }
-  return `${base} (${Date.now().toString(36)})`;
-}
-
 export function emptyLocationDoc(name: string, offset?: Partial<LocationOffset>): LocationDoc {
   const now = new Date().toISOString();
   return {

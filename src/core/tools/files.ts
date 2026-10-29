@@ -2,7 +2,7 @@
 
 import type { ToolDef } from './types';
 import { listFiles, getFile, deleteFile, renameFile, setFilePrivate, countRefs, personsUsingFile, eventsReferencingFile, collectionsUsingFile, urlForFile } from '../repo/files';
-import { fileNameDuplicates, resolveFileNameDuplicates } from '../repo/files';
+import { fileNameDuplicates, resolveFileNameDuplicates, takeFileName } from '../repo/files';
 import { probeLink, saveAsMapping, transferRefsInEvents } from '../files';
 
 function brief(f: ReturnType<typeof listFiles>[number]): Record<string, unknown> {
@@ -99,14 +99,16 @@ export const FILE_TOOLS: ToolDef[] = [
     name: 'file.rename',
     group: 'file',
     title: '重命名附件',
-    desc: '只改显示名，正文引用不受影响；trim 后区分大小写，重名拒绝并返回建议名称',
+    desc: '只改显示名，正文引用不受影响；trim 后区分大小写，重名拒绝并返回建议名称；occupy=true 时占用该名称，原同名文件自动编号',
     mutating: true,
     params: [
       { name: 'id', type: 'string', desc: '附件 id', required: true },
       { name: 'name', type: 'string', desc: '新名称', required: true },
+      { name: 'occupy', type: 'boolean', desc: 'true = 占用此名，原同名文件自动编号（只动名字，不动内容与引用）' },
     ],
     run: (a) => {
-      renameFile(a.id as string, a.name as string);
+      if (a.occupy === true) takeFileName(a.id as string, a.name as string);
+      else renameFile(a.id as string, a.name as string);
       return getFile(a.id as string);
     },
   },

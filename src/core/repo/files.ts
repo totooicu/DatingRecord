@@ -411,6 +411,33 @@ export function renameFile(id: string, name: string): void {
   });
 }
 
+/**
+ * 占用某个显示名：先把当前同名的行自动编号，再把本行改成该名称。
+ * 只动 name，不动 id / stored_id / 二进制，因此内容与既有引用都不受影响。
+ * 占名判断走全库（隐私文件也算），否则隐藏文件会被悄悄覆盖名字。
+ */
+export function takeFileName(id: string, name: string): { id: string; name: string }[] {
+  if (!getFile(id)) throw new Error('文件不存在');
+  const n = name.trim();
+  if (!n) throw new Error('文件名不能为空');
+  const moved: { id: string; name: string }[] = [];
+  transact(() => {
+    // 先记下同名行，再把名字给本行：这样给旧行找编号位时「目标名」已被占，
+    // 不会把旧行编号成同一个名字（两个 secret.txt 就是这么来的）。
+    const holders = queryAll<{ id: string; name: string }>('SELECT id, name FROM attachments')
+      .filter((f) => f.id !== id && f.name.trim() === n);
+    run('UPDATE attachments SET name = ? WHERE id = ?', [n, id]);
+    appendOplog('attachment', id, 'update', { name: n });
+    for (const h of holders) {
+      const next = availableFileName(h.name, h.id);
+      run('UPDATE attachments SET name = ? WHERE id = ?', [next, h.id]);
+      appendOplog('attachment', h.id, 'update', { name: next });
+      moved.push({ id: h.id, name: next });
+    }
+  });
+  return moved;
+}
+
 export function fileNameDuplicates(): { name: string; files: StoredFile[] }[] {
   const groups = new Map<string, StoredFile[]>();
   for (const f of listFiles().sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))) {

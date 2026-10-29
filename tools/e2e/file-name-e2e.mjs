@@ -49,6 +49,17 @@ try {
     try { r.renameFile(c.id, 'same.JPG'); } catch (e) { suggestion = e.suggestion; }
     check(suggestion === 'same_3.JPG', 'rename conflict suggestion');
     check(r.getFile(c.id).name === c.name && await (await getBlob(c.id)).text() === before, 'rejected rename unchanged');
+    const shield = await add('secret.txt');
+    const shieldText = await (await getBlob(shield.id)).text();
+    r.setFilePrivate(shield.id, true);
+    const seeker = await add('mine.txt');
+    let hiddenErr;
+    try { r.renameFile(seeker.id, 'secret.txt'); } catch (e) { hiddenErr = e; }
+    check(hiddenErr && hiddenErr.suggestion === 'secret_2.txt', 'hidden holder still blocks the name');
+    const moved = r.takeFileName(seeker.id, 'secret.txt');
+    check(moved.length === 1 && moved[0].id === shield.id, 'occupy renumbers the hidden holder');
+    check(r.getFile(seeker.id).name === 'secret.txt' && r.getFile(shield.id).name === 'secret_2.txt', 'occupy applied');
+    check(await (await getBlob(shield.id)).text() === shieldText, 'occupy leaves hidden content untouched');
     const lib = { persons: [], attachments: [
       { id: a.id, name: 'overwritten.txt', data: await blobToBase64(new Blob(['WRONG'])) },
       { id: 'import-name-test', name: 'same.JPG', storedId: 'import-ref', data: await blobToBase64(new Blob(['import bytes'])) },
@@ -90,20 +101,59 @@ try {
     await createLocation({ name: 'trip' });
     check((await createLocation({ name: 'trip' })).name === 'trip_2.drloc', 'location common naming');
     setPrivacyMode(false);
+    // 存量重复一对，第三个文件来占名：两个占用者都要编号，且编号互不撞车
+    const twinA = await add('twins.bin');
+    const twinB = await add('spare.bin');
+    db.transact(() => db.run('UPDATE attachments SET name = ? WHERE id = ?', ['twins.bin', twinB.id]));
+    const twinC = await add('taker.bin');
+    const twinMoved = r.takeFileName(twinC.id, 'twins.bin');
+    check(twinMoved.length === 2, 'occupy renumbers every legacy holder');
+    const twinNames = [twinA.id, twinB.id, twinC.id].map((id) => r.getFile(id).name);
+    check(new Set(twinNames).size === 3 && twinNames[2] === 'twins.bin', 'occupy leaves no duplicates');
+    check(!r.fileNameDuplicates().some((g) => g.name === 'twins.bin'), 'name now unique in visible scan');
     const ui = await add('ui-rename.txt');
+    const held = await add('claimed.txt');
+    const other = await add('other.txt');
     const { bump } = await import('/src/store.ts');
     bump();
-    return { ui: ui.name, legacy1: legacy1.id, legacy2: legacy2.id };
+    return { ui: ui.name, legacy1: legacy1.id, legacy2: legacy2.id, held: held.id, heldStored: held.storedId, heldText: await (await getBlob(held.id)).text() };
   });
   await p.locator('.tabbar-item', { hasText: '设置' }).click();
   await p.locator('.settings-nav-title', { hasText: /^文件$/ }).click();
+  assert.equal(await p.getByText('单层文件库（不分子文件夹）', { exact: false }).count(), 0);
   const row = p.locator('.file-item').filter({ has: p.getByRole('button', { name: result.ui, exact: true }) });
   await row.getByRole('button', { name: '改名', exact: true }).click();
   await p.getByRole('textbox', { name: '文件名' }).fill('same.JPG');
   await p.getByRole('textbox', { name: '文件名' }).press('Enter');
   await p.getByRole('alert').waitFor();
+  for (const label of ['使用建议名称', '占用此名', '放弃改名']) assert(await p.getByRole('button', { name: label, exact: true }).isVisible());
   await p.getByRole('button', { name: '使用建议名称' }).click();
   await p.getByRole('button', { name: 'same_7.JPG', exact: true }).waitFor();
+  const otherRow = p.locator('.file-item').filter({ has: p.getByRole('button', { name: 'other.txt', exact: true }) });
+  await otherRow.getByRole('button', { name: '改名', exact: true }).click();
+  await p.getByRole('textbox', { name: '文件名' }).fill('claimed.txt');
+  await p.getByRole('textbox', { name: '文件名' }).press('Enter');
+  await p.getByRole('button', { name: '放弃改名' }).click();
+  assert.equal(await p.getByRole('textbox', { name: '文件名' }).count(), 0);
+  await p.getByRole('button', { name: 'other.txt', exact: true }).waitFor();
+  await otherRow.getByRole('button', { name: '改名', exact: true }).click();
+  await p.getByRole('textbox', { name: '文件名' }).fill('claimed.txt');
+  await p.getByRole('textbox', { name: '文件名' }).press('Enter');
+  await p.getByRole('button', { name: '占用此名' }).click();
+  await p.getByRole('button', { name: 'claimed.txt', exact: true }).waitFor();
+  await p.getByRole('button', { name: 'claimed_2.txt', exact: true }).waitFor();
+  assert.equal(await p.getByRole('button', { name: 'other.txt', exact: true }).count(), 0);
+  const taken = await p.evaluate(async (r) => {
+    const files = await import('/src/core/repo/files.ts');
+    const { getBlob } = await import('/src/core/db/blob.ts');
+    const f = files.getFile(r.held);
+    return { name: f.name, storedId: f.storedId, text: f ? await (await getBlob(f.id)).text() : '' };
+  }, result);
+  assert.equal(taken.storedId, result.heldStored);
+  assert.equal(taken.text, result.heldText);
+  assert.equal(taken.name, 'claimed_2.txt');
+  await p.getByRole('tab', { name: /^整理/ }).click();
+  assert(await p.getByText('单层文件库（不分子文件夹）', { exact: false }).isVisible());
   await p.evaluate(async ({ legacy1, legacy2 }) => {
     const db = await import('/src/core/db/index.ts');
     db.transact(() => db.run('UPDATE attachments SET name = ? WHERE id IN (?, ?)', ['legacy.txt', legacy1, legacy2]));
@@ -120,5 +170,5 @@ try {
   await p.getByRole('button', { name: '编号整理', exact: true }).click();
   await p.getByText('已编号 1 个文件', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
-  console.log('PASS: naming, case, concurrent inserts, privacy, mapping, import idempotency/blob safety, sync, legacy cleanup, playlist/location, tools, rename suggestion and three viewports');
+  console.log('PASS: naming, case, concurrent inserts, privacy, mapping, import idempotency/blob safety, sync, occupy name, legacy cleanup, playlist/location, tools, rename three exits and three viewports');
 } finally { await browser.close(); }

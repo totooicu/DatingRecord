@@ -434,7 +434,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | `core/location/locationFile.ts` | 文件库 CRUD：`listLocations/createLocation/readLocation/writeLocation/importLocationText/deleteLocation`；选中态存 localStorage `dr.locationFileId` |
 | `core/runtime/locationAuto.ts` | 自动打点服务单例：原始点、offset、当前 GPS 蓝点、`rev` 结构版本都在这里；`saveChain` 串行落盘，偏移编辑与自动打点不会互相覆盖；手动 `punch` 返回新点下标，`removePoint` 按序删点 |
 | `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact`，位置修正支持度数 / 距离 / 目标三种填法；记录页逐点删除，一次只渲染最近 300 条 |
-| `ui/preview/LocationPreview.tsx` | 文件库 `.drloc` 只读预览：可滚动点位表（100 点分页）、上一点/下一点/滑块跳转、偏移后的 Leaflet 速度彩虹地图；原始文件不改写。回归 `tools/e2e/location-preview-e2e.mjs`，数据仍由 `location.get` 向 AI/CLI 提供 |
+| `ui/preview/LocationPreview.tsx` | 文件库 `.drloc` 只读预览：可滚动点位表（100 点分页）、上一点/下一点/滑块跳转、「播放点位 / 暂停播放」逐点动画（200ms 一步，末点自动停，拖滑块即暂停）、偏移后的 Leaflet 速度彩虹地图；原始文件不改写。回归 `tools/e2e/location-preview-e2e.mjs`，数据仍由 `location.get` 向 AI/CLI 提供 |
 | `core/tools/locations.ts` | `location.*` 八个工具（list/get/create/save/add/remove/import/delete），CLI / AI 与 UI 共用实现 |
 
 **地图约定（速度着色）**：线宽 4px，颜色不再是一个常量——每段采用两段窗口速度（`segmentSpeeds()`：BC = (haversine AB + haversine BC) ÷ (tC − tA)，首段仍用单段距离 ÷ 时间差；窗口内任一相邻时间不前进或无效给 `null`，原始点不变；回归 `tools/e2e/location-speed-smooth-e2e.mjs`），按 0 到当前轨迹有效最高速度等分六档（另加「速度未知」档），最高速度对应红色，不再固定 25 km/h 上限；全静止用蓝色，无有效速度显示「未知」。地图图例显示当前速度（默认最新段，回放时为游标所在段）及全轨迹最高速度，回放不改变色阶上限；档位颜色固定为**蓝 → 青 → 绿 → 黄 → 橙 → 红**（慢 → 快），不随主题改变，图例与轨迹共用 `speedColors()`；「速度未知」用灰色，免得把「不知道」画成「站着不动」。点的规矩：**最新那个点直径 = 线宽 4px**（白芯 + 深色描边，和主题色色阶明显区分），**历史点直径 = 线宽一半 2px**（淡墨色，只交代采样位置）；选中点放大到 8px 染红。当前位置仍是蓝点，只来自本次定位，不写进文件，只有打点才追加。
@@ -830,9 +830,9 @@ interface SqlDriver {
 
 ### F-E05 正文与附件 — P0
 
-**2026-10-29 显示名唯一规则**：`name` 去除首尾空白后完整、区分大小写比较，扩展名保留大小写。上传、新建、映射、导入和同步的新附件共用 `core/files/displayNames.ts`，冲突从 `_2` 编号，已编号名称继续递增；空名称回退「未命名」。全库占名检查包含隐私文件，不用受过滤的 `listFiles()`。主动改名冲突拒绝写入，并提示可接受的建议名；不因同名覆盖或合并内容。导入按已有 id 跳过元数据和 blob，保证重复导入幂等；`counts.renamedAttachments` 反馈自动命名数量。
+**2026-10-29 显示名唯一规则**：`name` 去除首尾空白后完整、区分大小写比较，扩展名保留大小写。上传、新建、映射、导入和同步的新附件共用 `core/files/displayNames.ts`，冲突从 `_2` 编号，已编号名称继续递增；空名称回退「未命名」。全库占名检查包含隐私文件，不用受过滤的 `listFiles()`。主动改名冲突时**三个出口**：「使用建议名称」（本文件拿编号名）、「占用此名」（本文件拿走该名称，原同名文件——含隐私文件——自动编号）、「放弃改名」（保持原名）；`takeFileName()` 只动 `name`，不改 id / stored_id / 二进制，因此内容与既有引用都不受影响。新文件一律自动编号，不存在覆盖内容的路径。导入按已有 id 跳过元数据和 blob，保证重复导入幂等；`counts.renamedAttachments` 反馈自动命名数量。
 
-存量同名不自动修改、不加 UNIQUE 约束：文件→整理→同名文件整理提供可见分组扫描、确认编号、跳去选择合并。编号保留组内最早文件名称，只改其余 `name`，不改 id、stored_id、二进制或 Markdown 名称快照；过期分组拒绝执行。附件目前硬删除，删除后不再占名；快照整库恢复保留历史原貌，可再扫描整理。AI/CLI：`file.nameDuplicates`（只读）、`file.resolveNameDuplicates`（mutating，传扫描分组 name/ids）；`file.rename` 共用拒绝规则。回归：`tools/e2e/file-name-e2e.mjs`（dev 服务；并发/大小写/隐私/映射/导入/同步/歌单/定位/内容引用保持/三视口）。
+文件页拆成两页后，「单层文件库（不分子文件夹）…」这段介绍只出现在**整理**页（`Settings.tsx` 的 `desc` 已移除）。整理页新增同名分组扫描、确认编号和跳去选择合并；编号保留组内最早文件名称，只改其余 `name`，过期分组拒绝执行。附件目前硬删除，删除后不再占名；快照整库恢复保留历史原貌，可再扫描整理。AI/CLI：`file.nameDuplicates`（只读）、`file.resolveNameDuplicates`（mutating，传扫描分组 name/ids）、`file.rename`（`occupy` 参数 = 占用此名）。`.drloc` 只读预览新增「播放点位 / 暂停播放」：每 200ms 前进一点，末点自动停，滑块与列表键盘操作互不干扰，原始文件照旧不写。回归：`tools/e2e/file-name-e2e.mjs`（并发/大小写/隐私占名/占用此名/导入/同步/歌单/定位/内容引用保持/三视口）、`tools/e2e/location-preview-e2e.mjs`（播放推进、暂停、末点自动停）。
 
 **2026-10-29 文件分页**：沿用定位页切页杆，分「文件 / 整理」。整理页常驻显示重复 hash 管理、文件健康扫描、hash 紧密编号、判重阈值与内容寻址迁移；首次访问才挂载，往返保留扫描结果和筛选。按 hash 搜索自动回文件页。紧凑选择器不显示切页杆。回归：`dup-hash-e2e`、`file-health-e2e`（含三视口和切页保留）、`compact-hash-e2e`。
 
