@@ -223,11 +223,13 @@
   padding: 6px 16px 8px;
 }
 
-/* 说明压成小字一行，别用正文字号占两行 */
-.settings-panes[data-sub='files'] .card > p.muted {
-  margin: 0 0 8px;
-  font-size: 12px;
-  line-height: 1.45;
+/* 「整理」页里每个功能块：小标题和说明都收紧，块与块之间只留一道分隔线的高度 */
+.settings-panes[data-sub='files'] .files-advanced h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.settings-panes[data-sub='files'] .files-advanced > p.muted {
+  margin: 0 0 6px;
 }
 
 /* 上传 / 添加映射 / 计数：贴着说明走 */
@@ -269,6 +271,11 @@
 /* 页尾两个功能件：判重阈值、数据迁移 */
 .settings-panes[data-sub='files'] .file-pref {
   margin-top: 8px;
+}
+/* 字段名和提示挤在一行会把「判重阈值」断成两截：这一页让提示换到名字下面 */
+.settings-panes[data-sub='files'] .file-pref .field-label {
+  flex-direction: column;
+  gap: 0;
 }
 .settings-panes[data-sub='files'] .files-advanced {
   margin-top: 8px;
