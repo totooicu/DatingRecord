@@ -33,10 +33,26 @@ try {
   await page.getByLabel('定位点跳转').fill('249');
   assert.equal(await page.locator('.location-preview-list li').count(), 50);
   assert(await page.getByRole('button', { name: '下一点', exact: true }).isDisabled());
+  const playBtn = () => page.getByRole('button', { name: '播放点位', exact: true });
+  const pauseBtn = () => page.getByRole('button', { name: '暂停播放', exact: true });
+  await playBtn().click();
+  await page.waitForFunction(() => Number(document.querySelector('.location-preview-map').dataset.selected) > 1, null, { timeout: 5000 });
+  assert.equal(await pauseBtn().count(), 1);
+  assert(await playBtn().count() === 0);
+  await pauseBtn().click();
+  const paused = await page.locator('.location-preview-map').getAttribute('data-selected');
+  await page.waitForTimeout(600);
+  assert.equal(await page.locator('.location-preview-map').getAttribute('data-selected'), paused);
+  assert(await playBtn().count() === 1);
+  await page.getByLabel('定位点跳转').fill('247');
+  await playBtn().click();
+  await page.waitForFunction(() => Number(document.querySelector('.location-preview-map').dataset.selected) === 249, null, { timeout: 5000 });
+  assert.equal(await playBtn().count(), 1);
+  assert.equal(await page.locator('.location-preview-map').getAttribute('data-selected'), '249');
   assert(await page.evaluate(async () => {
     const { getBlob } = await import('/src/core/repo/files.ts');
     return await (await getBlob(window.testPreview.id)).text() === window.testPreview.content;
   }));
   assert.deepEqual(errors, []);
-  console.log('PASS preview scroll, map, navigation, paging, read-only and three viewports');
+  console.log('PASS preview scroll, map, navigation, paging, point playback, read-only and three viewports');
 } finally { await browser.close(); }

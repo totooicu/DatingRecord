@@ -25,6 +25,7 @@ export function LocationPreview({ file }: { file: StoredFile }) {
 function LocationContents({ doc }: { doc: LocationDoc }) {
   const points = useMemo(() => applyOffset(doc.points, doc.offset, doc.offsets), [doc]);
   const [selected, setSelected] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -60,6 +61,13 @@ function LocationContents({ doc }: { doc: LocationDoc }) {
     }
   }, [index, points]);
   const move = (delta: number) => setSelected(Math.max(0, Math.min(points.length - 1, index + delta)));
+  // 播放：每 200ms 前进一点，走到末点自动停。游标一变，列表滚动与地图标记由上面那个 effect 接手。
+  useEffect(() => {
+    if (!playing) return;
+    if (index >= points.length - 1) { setPlaying(false); return; }
+    const t = setTimeout(() => setSelected(index + 1), 200);
+    return () => clearTimeout(t);
+  }, [playing, index, points.length]);
   return <div className="location-preview">
     <div><strong>{doc.name}</strong><div className="muted small">{points.length} 个点 · 偏移 Δ{doc.offset.lat.toFixed(6)}, Δ{doc.offset.lng.toFixed(6)} · 分段修正 {doc.offsets.length} 段</div></div>
     <div ref={host} className="location-preview-map" aria-label="定位地图预览" data-point-count={points.length} data-selected={index} />
@@ -69,7 +77,11 @@ function LocationContents({ doc }: { doc: LocationDoc }) {
         <button className="btn btn-sm" disabled={index === 0} onClick={() => move(-1)}>上一点</button>
         <span role="status">第 {index + 1} / 共 {points.length} 点</span>
         <button className="btn btn-sm" disabled={index === points.length - 1} onClick={() => move(1)}>下一点</button>
-        <input type="range" aria-label="定位点跳转" min={0} max={points.length - 1} value={index} onChange={e => setSelected(Number(e.target.value))} />
+        <input type="range" aria-label="定位点跳转" min={0} max={points.length - 1} value={index} onChange={e => { setPlaying(false); setSelected(Number(e.target.value)); }} />
+        <button className="btn btn-sm" aria-pressed={playing} disabled={points.length < 2}
+          onClick={() => { if (playing) setPlaying(false); else { if (index >= points.length - 1) setSelected(0); setPlaying(true); } }}>
+          {playing ? '暂停播放' : '播放点位'}
+        </button>
       </div>
       <ul ref={list} className="playlist-preview-list location-preview-list" tabIndex={0} aria-label="定位点清单"
         onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); move(e.key === 'ArrowLeft' ? -1 : 1); } }}>
