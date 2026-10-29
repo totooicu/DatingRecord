@@ -154,6 +154,7 @@ try {
   assert.equal(taken.name, 'claimed_2.txt');
   await p.getByRole('tab', { name: /^整理/ }).click();
   assert(await p.getByText('单层文件库（不分子文件夹）', { exact: false }).isVisible());
+  assert(await p.getByRole('heading', { name: '同名文件整理', exact: true }).isVisible());
   await p.evaluate(async ({ legacy1, legacy2 }) => {
     const db = await import('/src/core/db/index.ts');
     db.transact(() => db.run('UPDATE attachments SET name = ? WHERE id IN (?, ?)', ['legacy.txt', legacy1, legacy2]));
