@@ -42,6 +42,7 @@
 | `e2e/location-speed-smooth-e2e.mjs` | 两段窗口速度、首段、异常时间、折返路程与染色回归 | `node tools/e2e/location-speed-smooth-e2e.mjs [url]`；默认 localhost:5174，须 Vite dev 服务（不能用 preview），依赖全局 Playwright 和 Chromium，不写用户数据 |
 | `e2e/person-input-e2e.mjs` | 人名连续增删、中间修改、IME、属性粘贴不移位、已有内容选择与隐私过滤、属性名与控件同行 | `node tools/e2e/person-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；独立浏览器测试数据 |
 | `e2e/event-input-e2e.mjs` | 时间严格校验与获取当前时间、地图选点与文本并存、取消与往返保存、星级评分与清空、短控件同行与长字段竖排、三视口 | `node tools/e2e/event-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；地图瓦片需要网络 |
+| `e2e/location-preview-e2e.mjs` | 定位预览滚动、地图、翻点分页、只读与三视口 | `node tools/e2e/location-preview-e2e.mjs [url]`；默认 localhost:5174，需 Vite dev、全局 Playwright 和 Chromium |
 
 ## src/core/tools/
 

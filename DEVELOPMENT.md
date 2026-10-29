@@ -434,7 +434,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | `core/location/locationFile.ts` | 文件库 CRUD：`listLocations/createLocation/readLocation/writeLocation/importLocationText/deleteLocation`；选中态存 localStorage `dr.locationFileId` |
 | `core/runtime/locationAuto.ts` | 自动打点服务单例：原始点、offset、当前 GPS 蓝点、`rev` 结构版本都在这里；`saveChain` 串行落盘，偏移编辑与自动打点不会互相覆盖；手动 `punch` 返回新点下标，`removePoint` 按序删点 |
 | `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact`，位置修正支持度数 / 距离 / 目标三种填法；记录页逐点删除，一次只渲染最近 300 条 |
-| `ui/preview/LocationPreview.tsx` | 文件库点开 `.drloc` 的预览：点位表 + 偏移说明 |
+| `ui/preview/LocationPreview.tsx` | 文件库 `.drloc` 只读预览：可滚动点位表（100 点分页）、上一点/下一点/滑块跳转、偏移后的 Leaflet 速度彩虹地图；原始文件不改写。回归 `tools/e2e/location-preview-e2e.mjs`，数据仍由 `location.get` 向 AI/CLI 提供 |
 | `core/tools/locations.ts` | `location.*` 八个工具（list/get/create/save/add/remove/import/delete），CLI / AI 与 UI 共用实现 |
 
 **地图约定（速度着色）**：线宽 4px，颜色不再是一个常量——每段采用两段窗口速度（`segmentSpeeds()`：BC = (haversine AB + haversine BC) ÷ (tC − tA)，首段仍用单段距离 ÷ 时间差；窗口内任一相邻时间不前进或无效给 `null`，原始点不变；回归 `tools/e2e/location-speed-smooth-e2e.mjs`），按 0 到当前轨迹有效最高速度等分六档（另加「速度未知」档），最高速度对应红色，不再固定 25 km/h 上限；全静止用蓝色，无有效速度显示「未知」。地图图例显示当前速度（默认最新段，回放时为游标所在段）及全轨迹最高速度，回放不改变色阶上限；档位颜色固定为**蓝 → 青 → 绿 → 黄 → 橙 → 红**（慢 → 快），不随主题改变，图例与轨迹共用 `speedColors()`；「速度未知」用灰色，免得把「不知道」画成「站着不动」。点的规矩：**最新那个点直径 = 线宽 4px**（白芯 + 深色描边，和主题色色阶明显区分），**历史点直径 = 线宽一半 2px**（淡墨色，只交代采样位置）；选中点放大到 8px 染红。当前位置仍是蓝点，只来自本次定位，不写进文件，只有打点才追加。

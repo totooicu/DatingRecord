@@ -358,10 +358,36 @@
 /* ---------- 歌单预览 ---------- */
 .playlist-preview {
   width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
+.playlist-preview > * { flex-shrink: 0; }
+.location-preview {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.location-preview > * { flex-shrink: 0; }
+.location-preview-map { height: clamp(150px, 27dvh, 300px); }
+.location-preview-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.location-preview .location-preview-list {
+  position: relative;
+  flex: 1 0 120px;
+  min-height: 120px;
+  max-height: 40dvh;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+.location-preview-list button { width: 100%; text-align: left; border: 0; background: transparent; color: inherit; overflow-wrap: anywhere; }
+.location-preview-list li[aria-current=true] { background: var(--border); }
 
 .playlist-preview-head {
   display: flex;
