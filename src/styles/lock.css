@@ -126,6 +126,8 @@
 }
 
 .undo-text {
+  /* 撤销提示里会带文件名，同样要允许收缩，否则会把整条提示条顶宽 */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

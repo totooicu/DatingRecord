@@ -48,6 +48,11 @@
 .modal-head h3 {
   margin: 0;
   font-size: 15px;
+  /* 弹窗标题常塞文件名/事件名（「谁在用「xxx.jpg」」「图片 · xxx.jpg」）。
+     flex 子项默认 min-width:auto，连续无空格的长名会把整层弹窗顶宽、顶出屏幕；
+     min-width:0 允许收缩，overflow-wrap 让长名能换行、完整显示而不是撑破布局。 */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .modal-foot {

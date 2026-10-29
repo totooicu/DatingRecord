@@ -11,6 +11,8 @@
 }
 
 .modal-media .modal-head h3 {
+  /* 单行省略号要真的生效，flex 子项必须允许收缩，否则长文件名仍会把弹窗顶宽 */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
