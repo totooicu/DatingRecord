@@ -238,7 +238,9 @@ bash scripts/git-remote.sh <仓库URL>             # 配置远程（一次性）
 
 - `0.x.x` 阶段：任何 API 可随意调整；`0.1.0` = MVP 可用。
 - `1.0.0` = 数据格式稳定，承诺向后兼容（导入旧库必须可用）。
-- 每次 tag 时在 `CHANGELOG.md` 补一条，格式：`## [v0.2.0] - 2026-10-20` + 新增/修复列表。
+- 每次 tag 时在 `CHANGELOG.md` 补一条，格式：`## [v1.2.0] - 2026-10-29` + 新增/优化/修复/兼容性列表。
+- 本项目自 v1.0.0 起按 `RELEASE.md` 发版：改 `package.json` 的 `version` → 双门禁 → 合 main 触发
+  部署 → 打 tag；网页与壳的同号约定、`proto` / `shellMin` 与回滚规则以 `RELEASE.md` 为准。
 
 ## 1.7 工具留存与说明
 
