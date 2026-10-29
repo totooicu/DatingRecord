@@ -830,6 +830,10 @@ interface SqlDriver {
 
 ### F-E05 正文与附件 — P0
 
+**2026-10-29 显示名唯一规则**：`name` 去除首尾空白后完整、区分大小写比较，扩展名保留大小写。上传、新建、映射、导入和同步的新附件共用 `core/files/displayNames.ts`，冲突从 `_2` 编号，已编号名称继续递增；空名称回退「未命名」。全库占名检查包含隐私文件，不用受过滤的 `listFiles()`。主动改名冲突拒绝写入，并提示可接受的建议名；不因同名覆盖或合并内容。导入按已有 id 跳过元数据和 blob，保证重复导入幂等；`counts.renamedAttachments` 反馈自动命名数量。
+
+存量同名不自动修改、不加 UNIQUE 约束：文件→整理→同名文件整理提供可见分组扫描、确认编号、跳去选择合并。编号保留组内最早文件名称，只改其余 `name`，不改 id、stored_id、二进制或 Markdown 名称快照；过期分组拒绝执行。附件目前硬删除，删除后不再占名；快照整库恢复保留历史原貌，可再扫描整理。AI/CLI：`file.nameDuplicates`（只读）、`file.resolveNameDuplicates`（mutating，传扫描分组 name/ids）；`file.rename` 共用拒绝规则。回归：`tools/e2e/file-name-e2e.mjs`（dev 服务；并发/大小写/隐私/映射/导入/同步/歌单/定位/内容引用保持/三视口）。
+
 **2026-10-29 文件分页**：沿用定位页切页杆，分「文件 / 整理」。整理页常驻显示重复 hash 管理、文件健康扫描、hash 紧密编号、判重阈值与内容寻址迁移；首次访问才挂载，往返保留扫描结果和筛选。按 hash 搜索自动回文件页。紧凑选择器不显示切页杆。回归：`dup-hash-e2e`、`file-health-e2e`（含三视口和切页保留）、`compact-hash-e2e`。
 
 - 正文：Markdown，支持图片内联；

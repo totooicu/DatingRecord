@@ -17,7 +17,7 @@ function SmallLimitRow() {
     <div className="file-pref">
       <label className="field-label" htmlFor="small-limit">
         判重阈值
-        <em>不超过此大小的同名文件逐字节比对，超过则弹窗让你判断</em>
+        <em>不超过此大小的同 hash 文件逐字节比对，超过则弹窗让你判断</em>
       </label>
       <select
         id="small-limit"

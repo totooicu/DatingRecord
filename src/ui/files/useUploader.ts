@@ -76,6 +76,9 @@ export function useUploader(onNote: (text: string) => void) {
           } else if (outcome.kind === 'created' && outcome.renamed) {
             notes.push(`「${f.name}」被存成 ${outcome.renamed}`);
           }
+          if (outcome.kind === 'created' && outcome.file.name !== f.name.trim()) {
+            notes.push(`「${f.name}」已自动命名为「${outcome.file.name}」`);
+          }
           if (outcome.kind !== 'ask' && outcome.file) {
             done.push(outcome.file);
           }

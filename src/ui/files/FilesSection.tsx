@@ -24,6 +24,7 @@ import { FileFilters } from './FileFilters';
 import { FileRefsModal } from './FileRefsModal';
 import { MappingModal } from './MappingModal';
 import { DupHashSection } from './DupHashSection';
+import { DupNameSection } from './DupNameSection';
 import { FileHealthSection } from './FileHealthSection';
 import { FileRow } from './FileRow';
 import { useThumbs } from './useThumbs';
@@ -274,6 +275,7 @@ export function FilesSection({
             <h4>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</h4>
             <DupHashSection onSearchHash={searchByHash} onDone={setTip} />
           </section>
+          <DupNameSection onMerge={(ids) => setMerge({ target: ids[0], sources: ids.slice(1) })} />
           <FileHealthSection files={files} />
           {maintenance}
         </>}

@@ -33,7 +33,6 @@ import {
   parseLocationDoc,
   parseLocationText,
   serializeLocationDoc,
-  uniqueLocationName,
   type LocationDoc,
   type LocationOffset,
   type LocationPoint,
@@ -106,10 +105,9 @@ async function insertLocationFile(doc: LocationDoc): Promise<StoredFile> {
   const sha = await sha256Text(text);
   const stem = sha ? hashStem(sha) : `loc-${Date.now().toString(36)}`;
   const storedId = pickStoredId(stem, LOCATION_FILE_EXT, nameSlots());
-  const name = uniqueLocationName(doc.name, listFiles());
   return insertFileRaw({
     file: blob,
-    name: locationFileName(name),
+    name: locationFileName(doc.name),
     storedId,
     sha256: sha,
   });

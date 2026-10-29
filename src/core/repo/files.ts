@@ -16,6 +16,7 @@ import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
 import { FILE_REF_PREFIX } from '../markdown';
 import { sha256Hex } from '../files/naming';
+import { availableFileName, assertFileNameAvailable } from '../files/displayNames';
 import { isInPlaylist as isInMusicPlaylist } from '../music/playlist';
 
 export interface StoredFile {
@@ -102,6 +103,7 @@ export async function insertFileRaw(input: RawFileInput): Promise<StoredFile> {
   const mime = input.file.type || 'application/octet-stream';
   const now = input.createdAt ?? new Date().toISOString();
   await putBlob(id, input.file);
+  input = { ...input, name: availableFileName(input.name) };
   transact(() => {
     run(
       `INSERT INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared)
@@ -125,6 +127,7 @@ export interface MappedFileInput {
 }
 
 export function insertMappedFile(input: MappedFileInput): StoredFile {
+  input = { ...input, name: availableFileName(input.name) };
   const id = newId('f');
   const now = new Date().toISOString();
   transact(() => {
@@ -400,12 +403,41 @@ export function setFilePrivate(id: string, on: boolean): void {
  * 想让旧引用也换成新名字，得在文件页里手动合并 / 转移。
  */
 export function renameFile(id: string, name: string): void {
-  const n = name.trim();
-  if (!n) return;
+  if (!getFile(id)) throw new Error('文件不存在');
+  const n = assertFileNameAvailable(name, id);
   transact(() => {
     run('UPDATE attachments SET name = ? WHERE id = ?', [n, id]);
     appendOplog('attachment', id, 'update', { name: n });
   });
+}
+
+export function fileNameDuplicates(): { name: string; files: StoredFile[] }[] {
+  const groups = new Map<string, StoredFile[]>();
+  for (const f of listFiles().sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))) {
+    const name = f.name.trim();
+    const group = groups.get(name) ?? [];
+    group.push(f);
+    groups.set(name, group);
+  }
+  return [...groups].filter(([, files]) => files.length > 1).map(([name, files]) => ({ name, files }));
+}
+
+/** 仅处理确认时仍可见且仍属于该同名组的文件，不触碰内容和引用。 */
+export function resolveFileNameDuplicates(name: string, ids: string[]): { id: string; name: string }[] {
+  const group = fileNameDuplicates().find((g) => g.name === name);
+  if (!group || group.files.length !== ids.length || group.files.some((f) => !ids.includes(f.id))) {
+    throw new Error('同名分组已变化，请重新扫描');
+  }
+  const changes: { id: string; name: string }[] = [];
+  transact(() => {
+    for (const f of group.files.slice(1)) {
+      const next = availableFileName(f.name, f.id);
+      run('UPDATE attachments SET name = ? WHERE id = ?', [next, f.id]);
+      appendOplog('attachment', f.id, 'update', { name: next });
+      changes.push({ id: f.id, name: next });
+    }
+  });
+  return changes;
 }
 
 /** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录每秒追加写，不记 undo。 */

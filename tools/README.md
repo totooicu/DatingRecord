@@ -15,6 +15,10 @@
 
 ## tools/
 
+同名文件能力：`file.nameDuplicates` 扫描可见同名组；`file.resolveNameDuplicates` 确认编号（mutating，需传分组 name 和全部 ids）；`file.rename` 冲突时拒绝并返回建议名，UI 与 AI/CLI 共用核心规则。
+
+回归 `node tools/e2e/file-name-e2e.mjs [dev-url]`：默认 `http://localhost:5174/`，必须 Vite dev（动态导入源码），依赖 Playwright 和 Chromium；使用独立浏览器测试库，覆盖自动命名、并发、隐私占名、导入幂等、同步、存量整理、内容/引用保持和三视口改名建议。
+
 | 目录 | 作用 | 说明 |
 |---|---|---|
 | `nutstore-proxy/` | 坚果云 WebDAV 反向代理，绕开它不返回 CORS 头的问题 | 见该目录的 `README.md` |

@@ -2,6 +2,7 @@
 
 import type { ToolDef } from './types';
 import { listFiles, getFile, deleteFile, renameFile, setFilePrivate, countRefs, personsUsingFile, eventsReferencingFile, collectionsUsingFile, urlForFile } from '../repo/files';
+import { fileNameDuplicates, resolveFileNameDuplicates } from '../repo/files';
 import { probeLink, saveAsMapping, transferRefsInEvents } from '../files';
 
 function brief(f: ReturnType<typeof listFiles>[number]): Record<string, unknown> {
@@ -18,6 +19,24 @@ function brief(f: ReturnType<typeof listFiles>[number]): Record<string, unknown>
 }
 
 export const FILE_TOOLS: ToolDef[] = [
+  {
+    name: 'file.nameDuplicates', group: 'file', title: '扫描同名文件',
+    desc: '扫描可见的存量同名组；trim 后区分大小写，不自动修改',
+    mutating: false, params: [], run: () => fileNameDuplicates(),
+  },
+  {
+    name: 'file.resolveNameDuplicates', group: 'file', title: '同名文件编号整理',
+    desc: '确认后给一组存量同名文件编号，保留最早文件名称；不改内容或引用，仅处理当前可见文件，分组过期拒绝执行',
+    mutating: true,
+    params: [
+      { name: 'name', type: 'string', desc: '扫描返回的分组名称', required: true },
+      { name: 'ids', type: 'array', desc: '扫描返回的该组全部文件 id', required: true },
+    ],
+    run: (a) => {
+      if (typeof a.name !== 'string' || !Array.isArray(a.ids) || !a.ids.every((id) => typeof id === 'string')) throw new Error('需要分组名称和文件 id 数组');
+      return resolveFileNameDuplicates(a.name, a.ids as string[]);
+    },
+  },
   {
     name: 'file.list',
     group: 'file',
@@ -80,7 +99,7 @@ export const FILE_TOOLS: ToolDef[] = [
     name: 'file.rename',
     group: 'file',
     title: '重命名附件',
-    desc: '只改显示名，正文里的引用（file:<storedId>）不受影响',
+    desc: '只改显示名，正文引用不受影响；trim 后区分大小写，重名拒绝并返回建议名称',
     mutating: true,
     params: [
       { name: 'id', type: 'string', desc: '附件 id', required: true },
