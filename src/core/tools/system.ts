@@ -12,6 +12,8 @@ import { globalStats } from '../repo/events';
 import { listPersons } from '../repo/persons';
 import { dbSizeBytes } from '../io/maintenance';
 import { getTree } from '../repo/collections';
+import { currentChannel } from '../sync/nativeHttp';
+import { isConfigured, loadSettings } from '../sync/settings';
 
 /** 只放行单条只读语句 */
 function assertReadOnly(sql: string): string {
@@ -142,6 +144,31 @@ export const SYSTEM_TOOLS: ToolDef[] = [
         dbBytes: dbSizeBytes(),
         collections: tree ? walk(tree) : [],
         persons: listPersons({ includeArchived: true }).map((p) => `${p.displayName} [${p.id}]${p.status === 'archived' ? '（归档）' : ''}`),
+      };
+    },
+  },
+  {
+    name: 'system.syncChannel',
+    group: 'system',
+    title: '坚果云同步通道',
+    desc:
+      '看坚果云备份这次会走哪条传输通道：shellNet = 安卓壳代发 HTTP（桥的 net.*，不受浏览器跨域限制，直连坚果云即可）；' +
+      'browserFetch = 浏览器自己发（坚果云 WebDAV 不返回跨域头，只有填了自建反向代理才通）。' +
+      '同步报「连不上 / 跨域」时先调它定位原因，再决定是装壳还是配反代。只探测、不传数据、不含密码。',
+    mutating: false,
+    params: [],
+    run: async () => {
+      const ch = await currentChannel();
+      const s = loadSettings();
+      return {
+        channel: ch.native ? 'shellNet' : 'browserFetch',
+        shellVersion: ch.version || null,
+        base: s.base,
+        folder: s.folder,
+        configured: isConfigured(s),
+        hint: ch.native
+          ? '请求由壳代发，PROPFIND / MKCOL 都发得出去，不需要反向代理'
+          : '浏览器直连要求服务端返回跨域头；坚果云不返回，所以要么装带网络代理的壳，要么在设置里填反向代理地址',
       };
     },
   },

@@ -21,7 +21,7 @@
 
 | 目录 | 作用 | 说明 |
 |---|---|---|
-| `nutstore-proxy/` | 坚果云 WebDAV 反向代理，绕开它不返回 CORS 头的问题 | 见该目录的 `README.md` |
+| `nutstore-proxy/` | 坚果云 WebDAV 反向代理，绕开它不返回 CORS 头的问题 | 见该目录的 `README.md`。**给浏览器用的人准备的**：装了带网络代理（桥 `net.*`）的安卓壳就直连 `dav.jianguoyun.com`，不必部署反代 |
 | `e2e/wasm-cache-check.mjs` | 验证数据库引擎只下一次：连开三次页面，统计 `sql-wasm.wasm` 的网络响应次数 | 先 `npm run build` + `npx vite preview --port 4173`，再 `node tools/e2e/wasm-cache-check.mjs [url]`；正常结果 = 1 次。依赖全局 playwright |
 | `e2e/fake-ai-flow.mjs` | 假 OpenAI 服务，喂一条「建 P1/Es1/E1 → 改 E1 → 删 E2、归档 P2 → 改 Es1 → 建 E3 → 删 E3 → 改 P3」的操作流 | `node tools/e2e/fake-ai-flow.mjs`（PORT 可改）。配合下面的 e2e 脚本，不需要真密钥 |
 | `e2e/snap-flow-e2e.mjs` | 端到端跑上面那条操作流：暂存态核对 新增/修改/删除 分组 → 点「执行这轮改动」→ 落地后拒绝修改组单项（该项从分组消失）→ 点开新增组对象跳真实详情页 → 按返回键原路回成果 → 事件跳转后点设置仍能回成果 | 需要 dev/preview 服务 + 上面的假服务：`FAKE=http://localhost:8791/v1 node tools/e2e/snap-flow-e2e.mjs [url]`。控制台的 error/warning 会连同源码位置一起打印 |
@@ -49,6 +49,7 @@
 | `e2e/location-preview-e2e.mjs` | 定位预览滚动、地图、翻点分页、只读与三视口 | `node tools/e2e/location-preview-e2e.mjs [url]`；默认 localhost:5174，需 Vite dev、全局 Playwright 和 Chromium |
 | `e2e/file-health-e2e.mjs` | 文件丢失/解码检测、整理页五块功能、切页保留与三视口 | `node tools/e2e/file-health-e2e.mjs [url]`，默认 :4173；全局 Playwright 和 Chromium |
 | `e2e/compact-hash-e2e.mjs` | 整理页紧密编号、引用迁移、过期计划和回滚 | `node tools/e2e/compact-hash-e2e.mjs [url]`，默认 :5174；须 Vite dev、全局 Playwright 和 Chromium |
+| `e2e/nutstore-bridge-e2e.mjs` | 坚果云同步的两条传输通道回归（B1–B12 + U1/U2）：有壳时 MKCOL/PROPFIND/PUT/GET 全部交给桥的 `net.*`（页面 `window.fetch` 必须 0 次）、`net.capabilities` 一次页面加载只问一次、64KB 二进制过 base64 逐字节相同、207 multistatus 能被 `list()` 解析、401 仍报「应用密码」、壳的网络错误原样上抛不许套成跨域提示、整轮 `syncNow` 跑通（第一轮 upload 第二轮 noop）；无壳时退回浏览器 fetch（反代可用、真坚果云那种不给跨域头的报出「装壳 / 配反代」两条出路）；`system.syncChannel` 两边结论一致且不含密码；设置页顶上的「传输通道」一行在 390 / 820 / 1440 三档宽度都显示正确 | `node tools/e2e/nutstore-bridge-e2e.mjs [url]`，默认 :5174；须 Vite dev（要动态 import 源码模块），全局 Playwright 和 Chromium。假坚果云与假壳都写在这一个文件里：HTTP 服务起在本进程临时端口，`/cors` 给跨域头（模拟反代）、`/nocors` 不给（模拟真实坚果云）；假壳用 `addInitScript` 装，接 `net.*` 后用**原始 fetch** 代发，所以「走没走桥」是可证的。壳那侧真正的 HTTP 实现（非标准动词、chunked、超时、TLS）在壳仓库 `tools/net-http-test/` 覆盖，两边不重复 |
 
 ## src/core/tools/
 

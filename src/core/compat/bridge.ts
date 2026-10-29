@@ -122,6 +122,31 @@ export function fromBase64(b64: string): string {
   }
 }
 
+/**
+ * 字节 → base64（无换行）。
+ *
+ * 二进制要穿过 JSON 就只能 base64：壳的 net.request 收发分片都靠它。
+ * 这里按视图遍历，`subarray` 出来的偏移才不会串位。
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  // 分块转字符串：一次 String.fromCharCode(*大数组) 在手机上可能爆栈
+  const step = 8192;
+  for (let i = 0; i < bytes.length; i += step) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(bin);
+}
+
+/** base64 → 字节；壳给的空串返回零长度，不返回 null */
+export function base64ToBytes(b64: string): Uint8Array {
+  if (!b64) return new Uint8Array(0);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 /** 引擎信息：判断「现在跑在什么内核里」用，不做能力开关 */
 export interface EngineInfo {
   ua: string;

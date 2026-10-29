@@ -1134,7 +1134,8 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 | `core/sync/chunk.ts` | `CHUNK_SIZE = 64KB`、`hashChunks`、`digestOf`（整库摘要） |
 | `core/sync/manifest.ts` | 远端清单结构 + `knownHashes` / `missingChunks` |
 | `core/sync/snapshot.ts` | 快照生成 + **稳定序列化** |
-| `core/sync/webdav.ts` | MKCOL / PROPFIND / PUT / GET / DELETE + Basic 认证 |
+| `core/sync/webdav.ts` | MKCOL / PROPFIND / PUT / GET / DELETE + Basic 认证；两条传输通道的选择点（见 F-S01c） |
+| `core/sync/nativeHttp.ts` | 壳的网络代理客户端：`net.capabilities` 探测（一次页面加载内缓存）+ `net.request` 收发 |
 | `core/sync/mergeRows.ts` | 远端快照 → 本地（按 hlc 合并，与 `importLibrary` 同一套规则） |
 | `core/sync/engine.ts` | 三方比对 + 只传变化分片 |
 
@@ -1164,8 +1165,8 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 - 附件二进制**不进**日常同步（`kind: 'lite'`）。它天生内容寻址、不会变，塞进来只会让首次同步
   推几十 MB，后续每次本地白算哈希。
 - 远端快照只留最近 10 份，`pruneSnapshots()` 按文件名排序淘汰。
-- **坚果云不返回 CORS 头**，网页直连必被浏览器拦。所以 `DavConfig.base` 可配置，
-  测试时用本地转发代理（`proxy.mjs`）绕过。
+- **坚果云不返回 CORS 头**，浏览器直连必被拦。两条出路：走壳的网络代理（F-S01c，装了壳就是这条路，用户不用部署任何东西），
+  或把 `DavConfig.base` 填成自建反代（F-S01b）；测试时也用本地转发代理（`proxy.mjs`）绕过。
 
 #### F-S01b 跨域代理（tools/nutstore-proxy）
 
@@ -1186,6 +1187,41 @@ AI 服务商能连，是因为它们**主动返回** `Access-Control-Allow-Origi
 
 **回归**：`t-sync.mjs`（拦截 `dav.jianguoyun.com`，内存里跑真 WebDAV）20 项；
 `t-sync-real.mjs`（真坚果云 + 转发代理）6 项；`t-sync-secret.mjs` 验证密钥不进云端。
+
+#### F-S01c 传输通道：优先让壳代发 HTTP（桥的 `net.*`）
+
+反代要用户自己部署一个服务，普通人做不到；而跨域这件事**客户端代码根本绕不过去**——
+不是 fetch 的用法问题，是浏览器在发请求前就把非标准动词（PROPFIND / MKCOL）的预检拦死了。
+唯一不需要用户额外部署的东西是**已经装在他手机上的壳**：壳跑在系统网络栈上，不受同源策略约束。
+
+于是分工定成这样，业务逻辑一行都不搬到壳里：
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 通道客户端 | `core/sync/nativeHttp.ts` | 只搬数据：探能力、把一次 HTTP 变成一次 `net.request`（base64 收发） |
+| 传输选择 | `core/sync/webdav.ts` | `request()` 一次调用里决定走壳还是走 fetch；两条通道共用同一套状态码翻译 |
+| 同步逻辑 | `core/sync/engine.ts` | **不感知通道**——只看 `DavResponse` 的 status / text / bytes |
+
+规矩：
+
+1. **能力靠探测，不靠猜环境**：`net.capabilities` 发一次 action 看有没有人回，并要求它明确支持
+   `PROPFIND` + `MKCOL`；不读 UA、不看注入标记（同 §1.14 的桥纪律）。探测结果**一次页面加载内缓存**——
+   一次同步要发几十条请求，每条都问一遍壳会白等几十次超时。
+2. **错误语义分工**：壳返回的错误串（超时、TLS、地址不合法）在壳里就已经写成给用户看的话，
+   网页**原样上抛**，不再翻译；只有浏览器 fetch 自己的死路才补那句「装壳 / 配反代」两条出路。
+   网络问题却让用户去配反代，是最坏的提示。
+3. **二进制过桥用视图**：`bytesToBase64` 按 `subarray` 逐段编码，偏移不会错；只有交给 `fetch` 前
+   才复制成独立 `ArrayBuffer`（`fetchBody`）。
+4. **上限在壳侧硬挡**：请求体 12 MB、响应体 32 MB、超时 120 s；网页多等 5 秒，让壳先超时，
+   错误串才有意义。分片只有 64 KB，离上限很远。
+5. **3xx 不自动跟随**：`Location` 原样回给页面，要不要跟由业务判断。
+
+桥契约（参数名、上限、`ok:false` 的含义）写在**壳仓库** `docs/ADAPTATION_GUIDE.md` §4.5；
+`net.*` 是纯新增命名空间，`proto` 保持 1，老壳收不到就是自动退回浏览器路径。
+诊断入口：`system.syncChannel`（AI / CLI / 页面三处同一条结论），设置页顶部也常驻一行「传输通道」。
+
+**回归**：网页侧 `tools/e2e/nutstore-bridge-e2e.mjs`（B1–B12 + U1/U2）；壳侧 `tools/net-http-test/`（假坚果云 + 25 项断言 + `--live` 打真 dav.jianguoyun.com）。
+两边不重叠：网页侧证明「请求确实交给桥了」，壳侧证明「非标准动词、chunked、无 Content-Length、超限、TLS 与超时确实发得出去、报得清楚」。
 
 ### F-AI01 AI 模型别名 — P1
 

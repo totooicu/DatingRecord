@@ -149,3 +149,11 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 | 2026-10-25 | v1.0.0 | v1.0.0 | 1 | 第一个正式版（壳指向根路径，属浮动版，已被 v1.0.1 取代） |
 
 发新版就在表里加一行，**别改历史行**——这张表是「谁的手机该配哪个网页」的唯一答案。
+
+### 待发行（还没发，别当历史记录读）
+
+- **桥新增 `net.*`（网络代理，2026-10-29）**：纯新增命名空间，`proto` 保持 1，老壳收不到就自动退回浏览器路径，
+  所以 `SHELL_MIN` 不必升。网页侧的双通道（壳代发优先、浏览器直连兜底）已合 `main`；
+  壳侧 `NetHttp.java` / `NetBridge.java` 在 `feat/net-bridge` 上，**只有桌面自测跑绿，APK 门禁还没跑**。
+  发法：壳 `./gradlew :app:assembleRelease --no-daemon` 过门禁 → 合壳的 `main` → `versionName` 与网页同号、`versionCode` +1 → 打 tag、分发 APK。
+  在这之前，「壳里直连坚果云、不用配反向代理」这句话还不能对用户说。

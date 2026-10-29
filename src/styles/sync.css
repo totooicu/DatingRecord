@@ -1,5 +1,22 @@
 /* 坚果云备份：设置页里的同步卡片 */
 
+/* 传输通道提示：用户最先要看的是「谁在替我发请求」，所以放在最上面。
+   颜色全走变量——这一行在夜间模式也要读得清，不像 .sync-ok 那样写死浅色底。 */
+.sync-channel {
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--side);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.sync-channel-native {
+  color: var(--text);
+}
+
 .sync-advanced {
   margin: 4px 0 10px;
   padding: 8px 10px;

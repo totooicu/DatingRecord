@@ -3,10 +3,17 @@
 // 为什么是 WebDAV：坚果云没有公开的对象存储 SDK，WebDAV 是它唯一稳定的
 // 文件级接口，支持 MKCOL/PROPFIND/PUT/GET/DELETE，够做内容寻址分片。
 //
-// 两个必须知道的点：
-// 1. 认证只有 HTTP Basic：用户名是坚果云注册邮箱，密码是「应用密码」（不是登录密码）。
-// 2. 坚果云的 WebDAV 不返回 CORS 头，浏览器直连会被拦。
-//    所以 `base` 允许改成自建反代地址；直连时保持默认的 dav.jianguoyun.com。
+// 认证只有 HTTP Basic：用户名是坚果云注册邮箱，密码是「应用密码」（不是登录密码）。
+//
+// **两条传输通道**（同一套动词，差别只在请求怎么发出去）：
+//   1. 壳代理 net.*：壳在系统网络栈上发请求，不受 CORS 约束——坚果云不返回跨域头，
+//      这条路才是能用的一条，PROPFIND/MKCOL 这些非标准动词也只有原生发得出去。
+//   2. 浏览器直连 fetch：只有在服务端自己返回跨域头时才通，所以留了「服务地址」
+//      可以填自建反代。没装壳的人在浏览器里仍能用反代同步。
+// 通道由第一次使用时探测 `net.capabilities` 决定（发一次 action 试，不读环境猜），
+// 探测结果一次页面加载内缓存，不会每个请求都问一遍壳。
+
+import { nativeRequest, nativeSupported } from './nativeHttp';
 
 export const DEFAULT_DAV_BASE = 'https://dav.jianguoyun.com/dav';
 
@@ -29,6 +36,17 @@ export class DavError extends Error {
   }
 }
 
+/** 传输层返回的最小响应形状：浏览器 Response 与壳的 net.request 应答都能套进来 */
+export interface DavResponse {
+  status: number;
+  ok: boolean;
+  text(): Promise<string>;
+  bytes(): Promise<Uint8Array>;
+}
+
+/** 请求体：文本或二进制；不给即无请求体 */
+type DavBody = Uint8Array | string | null | undefined;
+
 function base64Utf8(text: string): string {
   // 中文账号/密码要先转 UTF-8 字节再 base64——btoa 直接喂非 ASCII 会抛
   let bin = '';
@@ -46,36 +64,75 @@ export function davUrl(c: DavConfig, path = ''): string {
   return `${c.base.replace(/\/+$/, '')}/${segs.join('/')}`;
 }
 
+function wrapFetch(res: Response): DavResponse {
+  return {
+    status: res.status,
+    ok: res.ok,
+    text: () => res.text(),
+    bytes: async () => new Uint8Array(await res.arrayBuffer()),
+  };
+}
+
+/**
+ * 交给 fetch 的请求体：文本原样，二进制先复制成独立的 ArrayBuffer。
+ * subarray 出来的视图底层 buffer 更大，直接给 fetch 会带上错位的偏移。
+ */
+function fetchBody(body: DavBody): BodyInit | null {
+  if (body == null || body === '') return null;
+  if (typeof body === 'string') return body;
+  return (body.slice() as Uint8Array).buffer as ArrayBuffer;
+}
+
+/** 一次请求：优先走壳的 net.*，没有壳再退回浏览器 fetch。 */
 async function request(
   c: DavConfig,
   method: string,
   path: string,
-  body?: BodyInit | null,
+  body?: DavBody,
   headers: Record<string, string> = {},
-): Promise<Response> {
+): Promise<DavResponse> {
+  const url = davUrl(c, path);
+  const auth = { Authorization: authHeader(c), ...headers };
+  // 分片只有 64KB，但一次同步要连着发几十条；手机上 30s 比默认 15s 稳
+  const timeoutMs = 30_000;
+
+  if (await nativeSupported()) {
+    const res = await nativeRequest({ method, url, headers: auth, body: body ?? null, timeoutMs });
+    return {
+      status: res.status,
+      ok: res.status >= 200 && res.status < 300,
+      text: async () => new TextDecoder().decode(res.body),
+      bytes: async () => res.body,
+    };
+  }
+
   let res: Response;
   try {
-    res = await fetch(davUrl(c, path), {
-      method,
-      headers: { Authorization: authHeader(c), ...headers },
-      body: body ?? null,
-    });
+    res = await fetch(url, { method, headers: auth, body: fetchBody(body) });
   } catch {
     // fetch 只在网络层失败时抛 TypeError（DNS / 断网 / 被跨域拦），401 不会走到这里。
     // 注意：硅基流动等 AI 服务商主动返回 CORS 头所以浏览器放行；坚果云 WebDAV 默认不返回，
-    // 浏览器在发送前就拦截，表现为同一个 TypeError。详见设置里「高级 → 服务地址」。
+    // 浏览器在发送前就拦截，表现为同一个 TypeError。
     throw new DavError(
-      '连不上坚果云：网络不通，或浏览器拦了跨域请求（坚果云 WebDAV 默认不返回 CORS 头）。可在「高级 → 服务地址」填一个转发到 dav.jianguoyun.com 的反向代理。',
+      '连不上坚果云：网络不通，或浏览器拦了跨域请求（坚果云 WebDAV 不返回 CORS 头，非标准的 PROPFIND / MKCOL 更是发不出去）。'
+        + '两条出路：装带网络代理的壳（壳里直连 dav.jianguoyun.com，无需反代），或在「高级 → 服务地址」填一个转发到它的反向代理。',
       0,
     );
   }
+  return wrapFetch(res);
+}
+
+/** 状态码到用户可见错误的统一翻译，两条通道共用 */
+function assertUsable(res: DavResponse, what: string): void {
   if (res.status === 401 || res.status === 403) {
     throw new DavError('账号或应用密码不对（密码要用坚果云「应用密码」，不是登录密码）', res.status);
   }
   if (res.status === 507) {
     throw new DavError('坚果云空间不足', 507);
   }
-  return res;
+  if (!res.ok) {
+    throw new DavError(`${what}失败（${res.status}）`, res.status);
+  }
 }
 
 /** 建目录；已存在时坚果云返回 405，视为成功 */
@@ -96,33 +153,33 @@ export async function ensureDir(c: DavConfig, path: string): Promise<void> {
 }
 
 export async function putText(c: DavConfig, path: string, text: string): Promise<void> {
-  const res = await request(c, 'PUT', path, new Blob([text], { type: 'application/json;charset=utf-8' }), {
+  const res = await request(c, 'PUT', path, text, {
     'Content-Type': 'application/json;charset=utf-8',
   });
-  if (!res.ok) throw new DavError(`上传失败（${res.status}）`, res.status);
+  assertUsable(res, '上传');
 }
 
 export async function putBinary(c: DavConfig, path: string, bytes: Uint8Array): Promise<void> {
-  // 复制到独立 ArrayBuffer：subarray 的底层 buffer 更大，直接交给 Blob 会带上错位的偏移
-  const res = await request(c, 'PUT', path, new Blob([bytes.slice()], { type: 'application/octet-stream' }), {
+  // 传视图即可：浏览器路径由 fetchBody 复制成独立 ArrayBuffer，走桥的路径按视图逐段编码，不会串位
+  const res = await request(c, 'PUT', path, bytes, {
     'Content-Type': 'application/octet-stream',
   });
-  if (!res.ok) throw new DavError(`上传分片失败（${res.status}）`, res.status);
+  assertUsable(res, '上传分片');
 }
 
 /** 读文本；不存在返回 null（首次同步的常态，不该当异常） */
 export async function getText(c: DavConfig, path: string): Promise<string | null> {
   const res = await request(c, 'GET', path);
   if (res.status === 404) return null;
-  if (!res.ok) throw new DavError(`读取失败（${res.status}）`, res.status);
+  assertUsable(res, '读取');
   return res.text();
 }
 
 export async function getBinary(c: DavConfig, path: string): Promise<Uint8Array | null> {
   const res = await request(c, 'GET', path);
   if (res.status === 404) return null;
-  if (!res.ok) throw new DavError(`读取分片失败（${res.status}）`, res.status);
-  return new Uint8Array(await res.arrayBuffer());
+  assertUsable(res, '读取分片');
+  return res.bytes();
 }
 
 export async function remove(c: DavConfig, path: string): Promise<void> {
@@ -149,7 +206,7 @@ export async function list(c: DavConfig, path = ''): Promise<DavEntry[]> {
     'Content-Type': 'application/xml;charset=utf-8',
   });
   if (res.status === 404) return [];
-  if (!res.ok) throw new DavError(`列目录失败（${res.status}）`, res.status);
+  assertUsable(res, '列目录');
 
   const xml = await res.text();
   const out: DavEntry[] = [];

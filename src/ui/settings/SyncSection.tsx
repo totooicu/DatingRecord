@@ -1,11 +1,13 @@
-// 坚果云备份：账号配置 + 立即同步 + 增量结果展示。
+// 坚果云备份：通道状态 + 账号配置 + 立即同步 + 增量结果展示。
 //
-// 这一页要说清两件事，否则用户会以为「同步 = 整库重传」：
+// 这一页要说清三件事，否则用户会以为「同步 = 整库重传」「报错就是账号问题」：
+//   · 请求是谁发出去的——壳代发（无跨域问题）还是浏览器直连（必须配反代）
 //   · 只传变化的分片（下面直接显示「上传 3 片 / 省下 27 片」）
 //   · 附件二进制不进日常同步（另走「一次完整上传」）
 import { useEffect, useState } from 'react';
 import { Section, fmtMeta } from './Section';
 import { bump } from '../../store';
+import { currentChannel, type DavChannel } from '../../core/sync/nativeHttp';
 import {
   DEFAULT_DAV_BASE,
   getSyncStatus,
@@ -34,9 +36,21 @@ export function SyncSection() {
   const [result, setResult] = useState<SyncResult | null>(null);
   const [status, setStatus] = useState(() => getSyncStatus());
   const [progress, setProgress] = useState('');
+  // null = 探测中（第一次调用 net.capabilities 要等壳回，最多 3 秒）
+  const [channel, setChannel] = useState<DavChannel | null>(null);
 
   useEffect(() => {
     setStatus(getSyncStatus());
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    currentChannel()
+      .then((c) => alive && setChannel(c))
+      .catch(() => alive && setChannel({ native: false, version: '' }));
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const patch = (p: Partial<NutstoreSettings>) => setS((old) => ({ ...old, ...p }));
@@ -88,6 +102,14 @@ export function SyncSection() {
       title="坚果云备份"
       desc="把库同步到坚果云的 WebDAV 目录。按内容分片上传，只传变化的那几片，不改动的内容不会重复占用上行带宽。"
     >
+      <p className={channel?.native ? 'sync-channel sync-channel-native' : 'sync-channel'}>
+        {channel === null
+          ? '传输通道：正在确认由谁发请求…'
+          : channel.native
+            ? `传输通道：由壳代发${channel.version ? `（壳 v${channel.version}）` : ''}，走系统网络栈，不受浏览器跨域限制，直连坚果云就行。`
+            : '传输通道：浏览器直连。坚果云 WebDAV 不返回跨域头，这条路默认发不出去——装带网络代理的壳，或在下面「高级：服务地址」填一个反向代理。'}
+      </p>
+
       <label className="field">
         <span className="field-label">坚果云账号（邮箱）</span>
         <input
@@ -125,8 +147,8 @@ export function SyncSection() {
           />
         </label>
         <p className="muted small">
-          默认直连 {DEFAULT_DAV_BASE}。坚果云不返回跨域许可，浏览器会拦下请求，
-          这时填一个转发到该地址的反向代理（例如 <code>https://你的反代/dav</code>）。
+          默认直连 {DEFAULT_DAV_BASE}。在带网络代理的壳里这就够了（请求由壳发，没有跨域问题）。
+          只有用浏览器同步时才需要换成转发到该地址的反向代理（例如 <code>https://你的反代/dav</code>）——
           仓库 <code>tools/nutstore-proxy/</code> 里有 Cloudflare Worker 与本地 Node 两份现成脚本，几分钟就能部署。
         </p>
       </details>
