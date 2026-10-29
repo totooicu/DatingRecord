@@ -216,6 +216,65 @@
   border-radius: 0;
 }
 
+/* ---------- 文件页收紧 ----------
+ * head 已经写了「文件」，标题行去掉后剩下的都是功能件本身，
+ * 一屏能多看见几行文件比留白值钱。只在这一页收，不动别的页面的同一套控件。 */
+.settings-panes[data-sub='files'] .settings-body .card {
+  padding: 6px 16px 8px;
+}
+
+/* 说明压成小字一行，别用正文字号占两行 */
+.settings-panes[data-sub='files'] .card > p.muted {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* 上传 / 添加映射 / 计数：贴着说明走 */
+.settings-panes[data-sub='files'] .row-actions {
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+/* 搜索条与筛选条 */
+.settings-panes[data-sub='files'] .file-tools {
+  gap: 6px;
+  margin: 0 0 6px;
+}
+/* 只减高度不动字号：iOS 上字号小于 16px 聚焦会放大整页 */
+.settings-panes[data-sub='files'] .file-search {
+  padding: 5px 10px;
+}
+.settings-panes[data-sub='files'] .file-filter-bar {
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.settings-panes[data-sub='files'] .file-filters,
+.settings-panes[data-sub='files'] .file-sorts {
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+}
+.settings-panes[data-sub='files'] .file-batch-bar {
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+}
+
+/* 列表紧跟筛选区 */
+.settings-panes[data-sub='files'] .file-list {
+  margin-top: 4px;
+}
+
+/* 页尾两个功能件：判重阈值、数据迁移 */
+.settings-panes[data-sub='files'] .file-pref {
+  margin-top: 8px;
+}
+.settings-panes[data-sub='files'] .files-advanced {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
 /* ---------- 搜索 / 排序 / 筛选 / 批量 ---------- */
 .file-tools {
   display: flex;

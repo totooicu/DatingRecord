@@ -5,15 +5,18 @@ export function Section({
   desc,
   children,
 }: {
-  title: string;
+  /** 子页标题可省：head 已经写了本页名字时，再来一行就是重复占位 */
+  title?: string;
   desc?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="card">
-      <div className="card-head">
-        <h4 className="card-title">{title}</h4>
-      </div>
+      {title && (
+        <div className="card-head">
+          <h4 className="card-title">{title}</h4>
+        </div>
+      )}
       {desc && <p className="muted">{desc}</p>}
       {children}
     </section>
