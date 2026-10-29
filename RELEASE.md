@@ -155,5 +155,7 @@ git branch -d feat/release-<版本> && git push origin --delete feat/release-<�
 - **桥新增 `net.*`（网络代理，2026-10-29）**：纯新增命名空间，`proto` 保持 1，老壳收不到就自动退回浏览器路径，
   所以 `SHELL_MIN` 不必升。网页侧的双通道（壳代发优先、浏览器直连兜底）已合 `main`；
   壳侧 `NetHttp.java` / `NetBridge.java` 在 `feat/net-bridge` 上，**只有桌面自测跑绿，APK 门禁还没跑**。
+  壳的 `feat/nutstore-page` 又加了一页 `assets/nutstore-test.html`（手机上逐项验坚果云：探测 / 401 / 207 /
+  建目录 / 中文读写 / 64KB 逐字节 / 列目录 / HEAD / 删除），桌面侧由 `tools/nutstore-page-test/run.mjs` 用假壳跑同一份页面。
   发法：壳 `./gradlew :app:assembleRelease --no-daemon` 过门禁 → 合壳的 `main` → `versionName` 与网页同号、`versionCode` +1 → 打 tag、分发 APK。
   在这之前，「壳里直连坚果云、不用配反向代理」这句话还不能对用户说。
