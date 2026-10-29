@@ -95,8 +95,8 @@ export function FileHealthSection({ files }: { files: StoredFile[] }) {
   };
   const visible = results.filter((r) => filter === 'all' || (filter === 'issues' ? r.status === 'missing' || r.status === 'failed' : r.status === filter));
   return (
-    <details className="files-advanced file-health">
-      <summary>扫描丢失 / 无法打开的文件</summary>
+    <section className="files-advanced file-health">
+      <h4>扫描丢失 / 无法打开的文件</h4>
       <p className="muted small">只读检查，不修改或删除文件。逐个检测图片解码、音视频首帧；不保证完整播放。映射链接和不支持的格式单列为无法验证。结果是扫描时的快照，修复后请重新扫描。</p>
       <div className="row-actions">
         <button className="btn btn-sm" disabled={busy} onClick={() => void scan()}>开始扫描</button>
@@ -117,6 +117,6 @@ export function FileHealthSection({ files }: { files: StoredFile[] }) {
         <p className="small">{labels[r.status]}：{r.reason}</p>
       </div>)}
       {!busy && results.length > 0 && !visible.length && <p className="muted">当前筛选下没有结果；请同时查看“无法验证”。</p>}
-    </details>
+    </section>
   );
 }

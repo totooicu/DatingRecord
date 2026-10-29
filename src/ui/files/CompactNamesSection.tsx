@@ -21,8 +21,8 @@ export function CompactNamesSection() {
       setPlan(null);
     }
   };
-  return <details className="files-advanced compact-names">
-    <summary>hash 紧密编号</summary>
+  return <section className="files-advanced compact-names">
+    <h4>hash 紧密编号</h4>
     <p className="muted small">同一 hash 引用名、同扩展名按原编号排序为 X、X_2、X_3…；不存在 X 时，最小编号提升为 X。只整理 sha- 引用名，不合并、不删除，不改变文件内容或 ID。</p>
     <p className="muted small">会同步修改库内正文、聊天、头像和图标等引用。外部已复制的旧链接无法同步，请先备份。歌单里的文件 ID 不变，仍可定位原文件。</p>
     <button className="btn btn-sm" onClick={preview}>预览紧密编号</button>
@@ -37,5 +37,5 @@ export function CompactNamesSection() {
       </div>}
     </>}
     {message && <p role="status">{message}</p>}
-  </details>;
+  </section>;
 }

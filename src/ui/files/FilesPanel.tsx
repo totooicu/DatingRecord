@@ -66,13 +66,14 @@ export function FilesPanel({
   }
   return (
     <div className="files-panel">
-      <FilesSection onPick={onPick} pickedIds={pickedIds} />
-      <CompactNamesSection />
-      <SmallLimitRow />
-      <details className="files-advanced">
-        <summary>数据迁移（内容寻址）</summary>
-        <MigrateSection />
-      </details>
+      <FilesSection onPick={onPick} pickedIds={pickedIds} maintenance={<>
+        <CompactNamesSection />
+        <SmallLimitRow />
+        <section className="files-advanced">
+          <h4>数据迁移（内容寻址）</h4>
+          <MigrateSection />
+        </section>
+      </>} />
     </div>
   );
 }

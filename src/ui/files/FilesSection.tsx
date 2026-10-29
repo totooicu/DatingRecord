@@ -5,7 +5,7 @@
 //
 // 正文引用存 file:<storedId>，方括号里另写一份文件名当展示名；
 // 定位只看 id，所以这里改名不会让既有引用失效（显示名保持插入时的样子）。
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   countTotalRefs,
   deleteFile,
@@ -43,7 +43,9 @@ export function FilesSection({
   onlyKinds,
   pickLabel,
   compact,
+  maintenance,
 }: {
+  maintenance?: ReactNode;
   onPick?: (f: StoredFile) => void;
   pickedIds?: Set<string>;
   /** 挑选模式只列这些类型（如音乐面板只列音频） */
@@ -81,7 +83,8 @@ export function FilesSection({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
   const [mappingOpen, setMappingOpen] = useState(false);
-  const [dupOpen, setDupOpen] = useState(false);
+  const [tab, setTab] = useState<'files' | 'maintenance'>('files');
+  const [maintenanceVisited, setMaintenanceVisited] = useState(false);
 
   // 折叠标题上的组数，口径与面板里的「待处理」一致：
   // 同一个 hash 下挂着 ≥2 条，且至少有一条没被标记成「不同内容」
@@ -104,7 +107,7 @@ export function FilesSection({
   /** 从重复 hash 面板跳过来：把这个 hash 变成当前搜索词，列表只剩这一组 */
   const searchByHash = (sha: string) => {
     setFilter((f) => ({ ...f, q: sha }));
-    setDupOpen(false);
+    setTab('files');
     setTip('已把这组的 hash 填进搜索框，列表只剩这几条；清空搜索框就回到全部');
   };
 
@@ -163,6 +166,11 @@ export function FilesSection({
 
   return (
     <div>
+      {!compact && <div className="aichat-tabs" role="tablist" aria-label="文件切页">
+        <button type="button" role="tab" aria-selected={tab === 'files'} className={`aichat-tab${tab === 'files' ? ' aichat-tab-on' : ''}`} onClick={() => setTab('files')}>文件</button>
+        <button type="button" role="tab" aria-selected={tab === 'maintenance'} className={`aichat-tab${tab === 'maintenance' ? ' aichat-tab-on' : ''}`} onClick={() => { setMaintenanceVisited(true); setTab('maintenance'); }}>整理{dupGroups > 0 && <span className="aichat-tab-n">{dupGroups}</span>}</button>
+      </div>}
+      <div hidden={!compact && tab !== 'files'}>
       {onPick && !compact && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
       {!compact && (
         <>
@@ -216,20 +224,7 @@ export function FilesSection({
             />
           )}
 
-          {/*
-            重复 hash 管理：折叠着放，展开才挂载面板。
-            auditFiles() 要按 hash 分组并逐条数引用，文件多的库不是白给的开销，
-            收起时只做一个 Map 计数（不查库），展开才真跑。
-          */}
-          <details
-            className="files-advanced dup-entry"
-            open={dupOpen}
-            onToggle={(e) => setDupOpen(e.currentTarget.open)}
-          >
-            <summary>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</summary>
-            {dupOpen && <DupHashSection onSearchHash={searchByHash} onDone={setTip} />}
-          </details>
-          <FileHealthSection files={files} />
+
         </>
       )}
 
@@ -272,6 +267,17 @@ export function FilesSection({
         </ul>
       )}
 
+      </div>
+      {!compact && <div hidden={tab !== 'maintenance'}>
+        {maintenanceVisited && <>
+          <section className="files-advanced dup-entry">
+            <h4>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</h4>
+            <DupHashSection onSearchHash={searchByHash} onDone={setTip} />
+          </section>
+          <FileHealthSection files={files} />
+          {maintenance}
+        </>}
+      </div>}
       {tip && <p className="muted small">{tip}</p>}
       {previewId && <PreviewModal file={files.find((f) => f.id === previewId)!} onClose={() => setPreviewId(null)} />}
       {refsFile && (

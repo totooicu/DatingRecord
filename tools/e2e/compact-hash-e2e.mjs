@@ -42,7 +42,7 @@ try {
   assert.equal(evidence.rolledBack, true);
   assert.equal(evidence.count, 6);
   const panel = p.locator('.compact-names');
-  await panel.locator('summary').click();
+  await p.getByRole('tab', { name: /^整理/ }).click();
   await panel.getByRole('button', { name: '预览紧密编号' }).click();
   assert.equal(await panel.locator('.dup-group').count(), 6);
   await panel.getByRole('button', { name: '确认紧密编号' }).click();

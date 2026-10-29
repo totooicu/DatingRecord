@@ -53,7 +53,8 @@ const big = (name, seed) => ({
   buffer: Buffer.from(Array.from({ length: 1_250_000 }, (_v, i) => (i * 37 + seed) % 249)),
 });
 
-const summary = p.locator('.dup-entry > summary');
+const summary = p.locator('.dup-entry > h4');
+const maintenance = p.getByRole('tab', { name: /^整理/ });
 const groups = p.locator('.dup-group');
 const rows = () => p.locator('.file-list .file-item').count();
 const searchBox = p.locator('.file-search');
@@ -86,16 +87,17 @@ await p.locator('.tabbar-item', { hasText: '设置' }).click();
 await p.waitForTimeout(600);
 await p.locator('.settings-nav-title', { hasText: /^文件$/ }).first().click();
 await p.waitForTimeout(800);
-check('S1 文件页有重复 hash 入口', (await summary.count()) === 1, `count=${await summary.count()}`);
-check('S2 收起时不挂载面板', (await groups.count()) === 0);
+check('S1 文件页有整理入口', (await maintenance.count()) === 1);
+check('S2 首次切页前不挂载面板', (await groups.count()) === 0);
 
 // 1. 造一组重复：第二条选「都不一样」，于是同一 hash 挂了两条记录
 await upload(big('dup.bin', 1));
 await upload(big('dup2.bin', 1), '都不一样，作为新文件');
+await maintenance.click();
 check('A1 标题报出待处理组数', /重复 hash 管理 · 1 组待处理/.test(await summary.innerText()), await summary.innerText());
 
-// 2. 展开面板
-await summary.click();
+// 2. 整理页常驻面板
+await maintenance.click();
 await p.waitForTimeout(600);
 check('A2 展开后才列出分组', (await groups.count()) === 1, `groups=${await groups.count()}`);
 const card = groups.first();
@@ -113,13 +115,13 @@ await p.waitForTimeout(800);
 const q = await searchBox.inputValue();
 check('B1 hash 已填进搜索框', /^[0-9a-f]{64}$/.test(q), `value=${q.slice(0, 20)}…`);
 check('B2 列表只剩这一组的两条', (await rows()) === 2, `rows=${await rows()}`);
-check('B3 面板自动收起', (await groups.count()) === 0);
+check('B3 返回文件页且整理状态保留', !(await p.locator('.dup-entry').isVisible()));
 await searchBox.fill('');
 await p.waitForTimeout(600);
 check('B4 清空搜索回到全部', (await rows()) === rowAll, `${rowAll} → ${await rows()}`);
 
 // 4. 合并：其余那条的引用改指目标，源记录与二进制删掉
-await summary.click();
+await maintenance.click();
 await p.waitForTimeout(600);
 await groups.first().getByRole('button', { name: /^合并其余/ }).click();
 await p.waitForSelector('text=合并文件', { timeout: 15000 });
@@ -139,8 +141,10 @@ check('C4 面板说没有待处理了', /没有待处理的同 hash 文件/.test
 check('C5 标题不再报待处理组数', !/组待处理/.test(await summary.innerText()), await summary.innerText());
 
 // 5. 标记为不同内容：整组退出判重，可取消
+await p.getByRole('tab', { name: '文件', exact: true }).click();
 await upload(big('pair.bin', 5));
 await upload(big('pair2.bin', 5), '都不一样，作为新文件');
+await maintenance.click();
 await p.waitForTimeout(800);
 const marked = p.locator('.dup-marked');
 await groups.first().getByRole('button', { name: '标记为不同内容' }).click();
@@ -156,9 +160,9 @@ await marked.locator('.dup-group').first().getByRole('button', { name: '在列�
 await p.waitForTimeout(800);
 check('E1 已确认的组也能按 hash 搜', (await rows()) === 2, `rows=${await rows()}`);
 await searchBox.fill('');
-await summary.click();
+await maintenance.click();
 await p.waitForTimeout(600);
-await marked.locator('summary').click();
+if (!(await marked.getAttribute('open') !== null)) await marked.locator('summary').click();
 await p.waitForTimeout(400);
 await marked.locator('.dup-group').first().getByRole('button', { name: '取消标记，重新当重复' }).click();
 await p.waitForTimeout(1000);

@@ -36,7 +36,7 @@ try {
   const count = await snapshot();
   const rows = await p.locator('.file-item').count();
   const panel = p.locator('.file-health');
-  await panel.locator('summary').click();
+  await p.getByRole('tab', { name: /^整理/ }).click();
   await panel.getByRole('button', { name: '开始扫描' }).click();
   await panel.getByRole('button', { name: '开始扫描' }).waitFor();
   await p.waitForFunction(() => !document.querySelector('.file-health button').disabled, null, { timeout: 120000 });
@@ -51,6 +51,17 @@ try {
   assert.match(await panel.innerText(), /unsupported.bin/);
   assert.equal(await snapshot(), count);
   assert.equal(await p.locator('.file-item').count(), rows);
+  for (const width of [390, 820, 1440]) {
+    await p.setViewportSize({ width, height: 900 });
+    assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await p.getByRole('tab', { name: '文件', exact: true }).click();
+    assert.equal(await panel.isVisible(), false);
+    await p.getByRole('tab', { name: /^整理/ }).click();
+    assert.equal(await panel.locator('select').inputValue(), 'unknown');
+    for (const title of ['重复 hash 管理', '扫描丢失 / 无法打开的文件', 'hash 紧密编号', '数据迁移（内容寻址）'])
+      assert(await p.getByRole('heading', { name: title, exact: true }).isVisible());
+    assert(await p.getByLabel('判重阈值', { exact: false }).isVisible());
+  }
   assert.deepEqual(errors, []);
   console.log('PASS: missing content, decode failure, unsupported format, hash/size, filtering and read-only scan');
 } finally { await browser.close(); }

@@ -43,6 +43,8 @@
 | `e2e/person-input-e2e.mjs` | 人名连续增删、中间修改、IME、属性粘贴不移位、已有内容选择与隐私过滤、属性名与控件同行 | `node tools/e2e/person-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；独立浏览器测试数据 |
 | `e2e/event-input-e2e.mjs` | 时间严格校验与获取当前时间、地图选点与文本并存、取消与往返保存、星级评分与清空、短控件同行与长字段竖排、三视口 | `node tools/e2e/event-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；地图瓦片需要网络 |
 | `e2e/location-preview-e2e.mjs` | 定位预览滚动、地图、翻点分页、只读与三视口 | `node tools/e2e/location-preview-e2e.mjs [url]`；默认 localhost:5174，需 Vite dev、全局 Playwright 和 Chromium |
+| `e2e/file-health-e2e.mjs` | 文件丢失/解码检测、整理页五块功能、切页保留与三视口 | `node tools/e2e/file-health-e2e.mjs [url]`，默认 :4173；全局 Playwright 和 Chromium |
+| `e2e/compact-hash-e2e.mjs` | 整理页紧密编号、引用迁移、过期计划和回滚 | `node tools/e2e/compact-hash-e2e.mjs [url]`，默认 :5174；须 Vite dev、全局 Playwright 和 Chromium |
 
 ## src/core/tools/
 
