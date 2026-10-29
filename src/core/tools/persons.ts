@@ -2,6 +2,7 @@
 // 不在这里重写任何业务逻辑，只做「参数收拢 + 结果裁剪」。
 
 import type { ToolDef } from './types';
+import { existingInputChoices } from '../repo/inputChoices';
 import {
   listPersons,
   listArchivedPersons,
@@ -35,6 +36,16 @@ function brief(p: Person & { stats?: unknown }): Record<string, unknown> {
 }
 
 export const PERSON_TOOLS: ToolDef[] = [
+  {
+    name: 'person.inputChoices', group: 'person', title: '已有内容候选',
+    desc: '从现有公开记录收集属性、标签或心情候选，按使用次数排序，不含私密记录和敏感属性',
+    mutating: false,
+    params: [
+      { name: 'source', type: 'string', required: true, enum: ['tags', 'mood', 'attribute'], desc: '候选来源' },
+      { name: 'key', type: 'string', required: false, desc: 'attribute 来源的属性键' },
+    ],
+    run: (a) => existingInputChoices(a.source as 'tags' | 'mood' | 'attribute', a.key as string | undefined).slice(0, 20),
+  },
   {
     name: 'person.list',
     group: 'person',

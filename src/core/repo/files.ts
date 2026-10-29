@@ -16,6 +16,7 @@ import { putBlob, delBlob, objectUrlFor, forgetUrl } from '../db/blob';
 import { newId } from '../id';
 import { FILE_REF_PREFIX } from '../markdown';
 import { sha256Hex } from '../files/naming';
+import { availableFileName, assertFileNameAvailable } from '../files/displayNames';
 import { isInPlaylist as isInMusicPlaylist } from '../music/playlist';
 
 export interface StoredFile {
@@ -102,6 +103,7 @@ export async function insertFileRaw(input: RawFileInput): Promise<StoredFile> {
   const mime = input.file.type || 'application/octet-stream';
   const now = input.createdAt ?? new Date().toISOString();
   await putBlob(id, input.file);
+  input = { ...input, name: availableFileName(input.name) };
   transact(() => {
     run(
       `INSERT INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared)
@@ -125,6 +127,7 @@ export interface MappedFileInput {
 }
 
 export function insertMappedFile(input: MappedFileInput): StoredFile {
+  input = { ...input, name: availableFileName(input.name) };
   const id = newId('f');
   const now = new Date().toISOString();
   transact(() => {
@@ -172,6 +175,23 @@ export function setFileHash(id: string, sha256: string): void {
   transact(() => {
     run('UPDATE attachments SET sha256 = ? WHERE id = ?', [sha256, id]);
     appendOplog('attachment', id, 'update', { sha256 });
+  });
+}
+
+/**
+ * 批量标记 / 取消「同 hash 但内容确实不同」（hash_shared）。
+ *
+ * 标记后这些行退出判重候选（filesByHash 只取 hash_shared=0），
+ * 以后再传同样的文件不会再被当成重复；重复 hash 管理面板也把它们归到「已确认」一栏。
+ * 一个事务里改完整组：半组标记、半组没标记会让「是不是同一份」这件事说不清。
+ */
+export function setHashShared(ids: string[], shared: boolean): void {
+  if (ids.length === 0) return;
+  transact(() => {
+    for (const id of ids) {
+      run('UPDATE attachments SET hash_shared = ? WHERE id = ?', [shared ? 1 : 0, id]);
+      appendOplog('attachment', id, 'update', { hashShared: shared });
+    }
   });
 }
 
@@ -383,12 +403,68 @@ export function setFilePrivate(id: string, on: boolean): void {
  * 想让旧引用也换成新名字，得在文件页里手动合并 / 转移。
  */
 export function renameFile(id: string, name: string): void {
-  const n = name.trim();
-  if (!n) return;
+  if (!getFile(id)) throw new Error('文件不存在');
+  const n = assertFileNameAvailable(name, id);
   transact(() => {
     run('UPDATE attachments SET name = ? WHERE id = ?', [n, id]);
     appendOplog('attachment', id, 'update', { name: n });
   });
+}
+
+/**
+ * 占用某个显示名：先把当前同名的行自动编号，再把本行改成该名称。
+ * 只动 name，不动 id / stored_id / 二进制，因此内容与既有引用都不受影响。
+ * 占名判断走全库（隐私文件也算），否则隐藏文件会被悄悄覆盖名字。
+ */
+export function takeFileName(id: string, name: string): { id: string; name: string }[] {
+  if (!getFile(id)) throw new Error('文件不存在');
+  const n = name.trim();
+  if (!n) throw new Error('文件名不能为空');
+  const moved: { id: string; name: string }[] = [];
+  transact(() => {
+    // 先记下同名行，再把名字给本行：这样给旧行找编号位时「目标名」已被占，
+    // 不会把旧行编号成同一个名字（两个 secret.txt 就是这么来的）。
+    const holders = queryAll<{ id: string; name: string }>('SELECT id, name FROM attachments')
+      .filter((f) => f.id !== id && f.name.trim() === n);
+    run('UPDATE attachments SET name = ? WHERE id = ?', [n, id]);
+    appendOplog('attachment', id, 'update', { name: n });
+    for (const h of holders) {
+      const next = availableFileName(h.name, h.id);
+      run('UPDATE attachments SET name = ? WHERE id = ?', [next, h.id]);
+      appendOplog('attachment', h.id, 'update', { name: next });
+      moved.push({ id: h.id, name: next });
+    }
+  });
+  return moved;
+}
+
+export function fileNameDuplicates(): { name: string; files: StoredFile[] }[] {
+  const groups = new Map<string, StoredFile[]>();
+  for (const f of listFiles().sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))) {
+    const name = f.name.trim();
+    const group = groups.get(name) ?? [];
+    group.push(f);
+    groups.set(name, group);
+  }
+  return [...groups].filter(([, files]) => files.length > 1).map(([name, files]) => ({ name, files }));
+}
+
+/** 仅处理确认时仍可见且仍属于该同名组的文件，不触碰内容和引用。 */
+export function resolveFileNameDuplicates(name: string, ids: string[]): { id: string; name: string }[] {
+  const group = fileNameDuplicates().find((g) => g.name === name);
+  if (!group || group.files.length !== ids.length || group.files.some((f) => !ids.includes(f.id))) {
+    throw new Error('同名分组已变化，请重新扫描');
+  }
+  const changes: { id: string; name: string }[] = [];
+  transact(() => {
+    for (const f of group.files.slice(1)) {
+      const next = availableFileName(f.name, f.id);
+      run('UPDATE attachments SET name = ? WHERE id = ?', [next, f.id]);
+      appendOplog('attachment', f.id, 'update', { name: next });
+      changes.push({ id: f.id, name: next });
+    }
+  });
+  return changes;
 }
 
 /** 覆盖文件内容（改 blob + size），不改名不换 id。定位记录每秒追加写，不记 undo。 */
@@ -458,4 +534,4 @@ export function fileNames(ids: string[]): Record<string, string> {
   return out;
 }
 
-export { delBlob, clearBlobs } from '../db/blob';
+export { delBlob, clearBlobs, getBlob } from '../db/blob';

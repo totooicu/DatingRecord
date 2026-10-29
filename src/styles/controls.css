@@ -163,6 +163,56 @@
   font-size: 11px;
 }
 
+/* ---------- 短控件：字段名与控件同行 ---------- */
+/* 一行填得完的（时间、评分、花费、下拉）不再各占两行。
+   窄屏放不下时整块控件换到第二行，控件内部再自己换行。 */
+.field-inline {
+  flex-direction: row;
+  /* 顶端对齐 + 字段名补一点上边距：控件换行（错误提示、坐标回显）时
+     字段名仍贴着第一行控件，不会飘到整块的中间 */
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.field-inline > .field-label {
+  flex: 0 0 auto;
+  min-width: 72px;
+  flex-wrap: wrap;
+  padding-top: 5px;
+}
+
+.field-inline > .field-control {
+  flex: 1 1 180px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-inline > .field-control > input,
+.field-inline > .field-control > select,
+.field-inline > .field-control > .existing-input {
+  flex: 1 1 140px;
+  width: auto;
+  min-width: 0;
+}
+
+/* 提示文字与错误信息不抢控件的位置，单独占一行 */
+.field-inline > .field-control > [role='alert'],
+.field-inline > .field-control > .small {
+  flex: 1 0 100%;
+}
+
+.existing-input {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
 .filter-body {
   padding: 0 14px 14px;
   display: flex;

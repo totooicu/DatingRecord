@@ -7,6 +7,7 @@ import type { StoredFile } from '../../core/repo/files';
 import { FilesSection } from './FilesSection';
 import type { PreviewKind } from '../preview';
 import { MigrateSection } from './MigrateSection';
+import { CompactNamesSection } from './CompactNamesSection';
 import { SMALL_LIMIT_OPTIONS, getSmallLimit, setSmallLimit } from '../filePrefs';
 import { fmtSize } from './fileFormat';
 
@@ -16,7 +17,7 @@ function SmallLimitRow() {
     <div className="file-pref">
       <label className="field-label" htmlFor="small-limit">
         判重阈值
-        <em>不超过此大小的同名文件逐字节比对，超过则弹窗让你判断</em>
+        <em>不超过此大小的同 hash 文件逐字节比对，超过则弹窗让你判断</em>
       </label>
       <select
         id="small-limit"
@@ -65,12 +66,14 @@ export function FilesPanel({
   }
   return (
     <div className="files-panel">
-      <FilesSection onPick={onPick} pickedIds={pickedIds} />
-      <SmallLimitRow />
-      <details className="files-advanced">
-        <summary>数据迁移（内容寻址）</summary>
-        <MigrateSection />
-      </details>
+      <FilesSection onPick={onPick} pickedIds={pickedIds} maintenance={<>
+        <CompactNamesSection />
+        <SmallLimitRow />
+        <section className="files-advanced">
+          <h4>数据迁移（内容寻址）</h4>
+          <MigrateSection />
+        </section>
+      </>} />
     </div>
   );
 }

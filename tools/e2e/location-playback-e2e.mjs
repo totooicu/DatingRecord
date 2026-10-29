@@ -163,6 +163,18 @@ await tab('地图').click();
 await p.waitForTimeout(600);
 
 check('导入后出现回放卡', (await card().count()) === 1);
+const latestSpeedText = await p.locator('.loc-current-speed').innerText();
+const maxSpeedText = await p.locator('.loc-max-speed').innerText();
+check('显示最新段速度与轨迹最大速度', /当前速度：.*km\/h/.test(latestSpeedText) && /最高速度（红色）：.*km\/h/.test(maxSpeedText));
+check('图例从蓝到红', await p.locator('.loc-speedbar').evaluate(el => {
+  const bg = el.style.background;
+  return bg.indexOf('37, 99, 235') >= 0 && bg.indexOf('239, 68, 68') > bg.indexOf('37, 99, 235');
+}));
+for (const width of [390, 820, 1440]) {
+  await p.setViewportSize({ width, height: 900 });
+  check(`速度图例 ${width}px 不横向溢出`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+}
+await p.setViewportSize({ width: 390, height: 900 });
 // 默认单位/顺序在「更多」抽屉里
 await openMore();
 check('默认单位是「时间」', (await card().locator('[role="group"][aria-label="回放单位"] button[aria-pressed="true"]').innerText()).trim() === '时间');
@@ -199,6 +211,8 @@ check('后退一次退 5 个点', (await pos()) === Math.max(1, beforeStep), `${
 // 连续后退直到夹住
 for (let i = 0; i < 20; i += 1) await tpBtn('后退一步').click();
 check('越界夹在第一个点', (await pos()) === 1, String(await pos()));
+check('回放首点没有上一段速度', (await p.locator('.loc-current-speed').innerText()).includes('未知'));
+check('回放不改变全轨迹最高速度', (await p.locator('.loc-max-speed').innerText()) === maxSpeedText);
 
 console.log('\nP4 逆序');
 await moreSegBtn('播放顺序', '逆序');

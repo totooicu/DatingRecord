@@ -1,5 +1,5 @@
 // 详情头：头像 + 改名 + 标签 + 归档按钮
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   updatePerson,
   listPersons,
@@ -26,6 +26,16 @@ export function PersonHead({
   // 不额外展开一块文案，头部布局在确认前后保持不变。
   const [confirming, setConfirming] = useState(false);
   const [iconOpen, setIconOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState(person.displayName);
+  useEffect(() => setNameDraft(person.displayName), [person.id, person.displayName]);
+  const saveName = () => {
+    const name = nameDraft.trim();
+    if (!name) { setNameDraft(person.displayName); return; }
+    setNameDraft(name);
+    if (name === person.displayName) return;
+    updatePerson(person.id, { displayName: name });
+    bump();
+  };
 
   const archive = () => {
     deletePerson(person.id);
@@ -50,9 +60,16 @@ export function PersonHead({
         <div className="detail-head-main">
           <input
             className="title-input"
-            value={person.displayName}
-            onChange={(e) => updatePerson(person.id, { displayName: e.target.value })}
-            onBlur={() => bump()}
+            aria-label="人物姓名"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
           />
           <TagInput
             value={person.tags}

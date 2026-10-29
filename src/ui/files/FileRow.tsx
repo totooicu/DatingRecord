@@ -2,8 +2,9 @@
 //   第一行 类型 + 预览/改名/引用/删除（缩略图也是预览入口）
 //   第二行起 文件名：单独成行，长名字按需换行，绝不截断
 //   最后一行 大小 · 时间 · 引用数
-import { Fragment, useState } from 'react';
-import { countRefs, collectionsUsingFile, isMappingFile, personsUsingFile, renameFile, setFilePrivate } from '../../core/repo/files';
+import { Fragment, useRef, useState } from 'react';
+import { countRefs, collectionsUsingFile, isMappingFile, personsUsingFile, renameFile, setFilePrivate, takeFileName } from '../../core/repo/files';
+import { FileNameConflict } from '../../core/files/displayNames';
 import { isAppLink, schemeOf } from '../../core/files';
 import { isInPlaylist as isInMusic } from '../../core/music/playlist';
 import { deleteHint } from './deleteHint';
@@ -72,6 +73,8 @@ export function FileRow({
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [draft, setDraft] = useState(file.name);
+  const [renameError, setRenameError] = useState('');
+  const [suggestion, setSuggestion] = useState('');
   const refs = countRefs(file);
   const avatars = personsUsingFile(file);
   const icons = collectionsUsingFile(file);
@@ -92,17 +95,41 @@ export function FileRow({
     else onPreview(file);
   };
 
-  /** 回车/失焦保存，Esc 放弃；空名视为放弃（文件总得有个名字） */
-  const commit = () => {
-    const n = draft.trim();
-    if (n && n !== file.name) {
-      renameFile(file.id, n);
-      // 只改元数据里的名字；正文引用靠 id 定位，不重写（方括号里保留旧名字）
-      bump();
-    } else {
-      setDraft(file.name);
-    }
+  /**
+   * 「这轮改名已处理完」闸门：点按钮或回车让输入框卸载时，浏览器还会补一次 focusout，
+   * 不挡住就会拿旧草稿再改一次名（冲突路径上尤其会把已经成功的编辑重新打开）。
+   * 重新进入编辑时复位。
+   */
+  const settled = useRef(false);
+  const finish = () => {
+    settled.current = true;
+    setRenameError('');
+    setSuggestion('');
     setEditing(false);
+  };
+
+  /** 改名：冲突默认拒绝；occupy = 占用此名，原同名文件自动编号（只动名字，不动内容与引用） */
+  const commit = (value = draft, occupy = false) => {
+    const n = value.trim();
+    try {
+      if (n && n !== file.name) {
+        if (occupy) takeFileName(file.id, n);
+        else renameFile(file.id, n);
+        bump();
+      } else {
+        setDraft(file.name);
+      }
+      finish();
+    } catch (e) {
+      setRenameError(e instanceof Error ? e.message : String(e));
+      setSuggestion(e instanceof FileNameConflict ? e.suggestion : '');
+    }
+  };
+
+  /** 放弃这次改名：回到原名，退出编辑 */
+  const cancel = () => {
+    setDraft(file.name);
+    finish();
   };
 
   return (
@@ -157,6 +184,9 @@ export function FileRow({
                 label="改名"
                 onClick={() => {
                   setDraft(file.name);
+                  settled.current = false;
+                  setRenameError('');
+                  setSuggestion('');
                   setEditing(true);
                 }}
               >
@@ -226,20 +256,30 @@ export function FileRow({
         </div>
 
         {editing && !batch ? (
+          <div onBlur={(e) => { if (settled.current) return; if (!e.currentTarget.contains(e.relatedTarget)) commit(); }}>
           <input
             className="file-rename"
+            aria-label="文件名"
             autoFocus
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
+            onChange={(e) => { setDraft(e.target.value); setRenameError(''); setSuggestion(''); }}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
               if (e.key === 'Enter') commit();
-              if (e.key === 'Escape') {
-                setDraft(file.name);
-                setEditing(false);
-              }
+              if (e.key === 'Escape') cancel();
             }}
           />
+          {renameError && <p className="small" role="alert">{renameError}</p>}
+          {suggestion && <>
+            <p className="small muted">「占用此名」把这个名字给当前文件，原同名文件自动编号，内容与引用都不动。</p>
+            <div className="row-actions">
+              <button type="button" className="btn btn-sm" onClick={() => commit(suggestion)}>使用建议名称</button>
+              <button type="button" className="btn btn-sm" onClick={() => commit(draft, true)}>占用此名</button>
+              <button type="button" className="btn btn-sm" onClick={cancel}>放弃改名</button>
+            </div>
+          </>}
+          {!suggestion && renameError && <button type="button" className="btn btn-sm" onClick={cancel}>放弃改名</button>}
+          </div>
         ) : (
           <button
             className="file-name"

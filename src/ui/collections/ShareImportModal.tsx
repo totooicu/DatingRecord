@@ -85,7 +85,7 @@ export function ShareImportModal({ onClose }: { onClose: () => void }) {
       setResult(
         `已导入：事件 ${r.counts.events}、事件集 ${r.counts.collections}、` +
           `成员 ${r.counts.members}、人物 ${r.counts.persons}、消息 ${r.counts.messages ?? 0}、` +
-          `附件 ${r.counts.attachments ?? 0}；跳过 ${r.skipped}（本地已有更新版本）`,
+          `附件 ${r.counts.attachments ?? 0}（自动命名 ${r.counts.renamedAttachments ?? 0} 个）；跳过 ${r.skipped}（本地已有或更新版本）`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

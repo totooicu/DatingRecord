@@ -28,7 +28,13 @@ export function MergeModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const preview = useMemo<MergePreview | null>(() => previewMerge(targetId, sourceIds), [v, targetId, sourceIds]);
+  const [selectedTarget, setSelectedTarget] = useState(targetId);
+  const candidates = useMemo(() => [...new Set([targetId, ...sourceIds])], [targetId, sourceIds]);
+  const selectedSources = useMemo(() => candidates.filter((id) => id !== selectedTarget), [candidates, selectedTarget]);
+  const preview = useMemo<MergePreview | null>(
+    () => previewMerge(selectedTarget, selectedSources),
+    [v, selectedTarget, selectedSources],
+  );
 
   const idsKey = [targetId, ...sourceIds].join(',');
   useEffect(() => {
@@ -50,9 +56,9 @@ export function MergeModal({
     setBusy(true);
     setErr(null);
     try {
-      await commitMerge(targetId, sourceIds);
+      await commitMerge(selectedTarget, selectedSources);
       bump();
-      onDone?.(`已合并 ${sourceIds.length} 个文件，引用已全部指向目标`);
+      onDone?.(`已合并 ${selectedSources.length} 个文件，引用已全部指向目标`);
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : '合并失败');
@@ -90,27 +96,36 @@ export function MergeModal({
         事件正文和人物头像都会自动改指到目标，不需要手工编辑。
       </p>
 
+      <p className="muted small">点击文件卡片切换要保留的目标，其他文件将合并到它。</p>
       <div className="col-grid">
-        <div className="col-card col-card-target">
-          {thumbs[preview.target.id] ? (
-            <img className="col-thumb" src={thumbs[preview.target.id]} alt="" />
-          ) : (
-            <span className="col-thumb col-thumb-icon">目标</span>
-          )}
-          <span className="col-name">{preview.target.name}</span>
-          <span className="muted small">{fmtSize(preview.target.size)}</span>
-        </div>
-        {preview.sources.map((s) => (
-          <div key={s.id} className="col-card">
-            {thumbs[s.id] ? (
-              <img className="col-thumb" src={thumbs[s.id]} alt="" />
-            ) : (
-              <span className="col-thumb col-thumb-icon">{s.mime.split('/')[0]}</span>
-            )}
-            <span className="col-name">{s.name}</span>
-            <span className="muted small">{fmtSize(s.size)}</span>
-          </div>
-        ))}
+        {candidates.map((id) => {
+          const f = [preview.target, ...preview.sources].find((file) => file.id === id);
+          if (!f) return null;
+          const selected = id === selectedTarget;
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`col-card${selected ? ' col-card-target' : ''}`}
+              aria-label={`保留 ${f.name}`}
+              aria-pressed={selected}
+              disabled={busy}
+              onClick={() => {
+                setSelectedTarget(id);
+                setErr(null);
+              }}
+            >
+              {thumbs[id] ? (
+                <img className="col-thumb" src={thumbs[id]} alt="" />
+              ) : (
+                <span className="col-thumb col-thumb-icon">{f.mime.split('/')[0]}</span>
+              )}
+              <span className="col-name">{f.name}</span>
+              <span className="muted small">{fmtSize(f.size)}</span>
+              {selected && <span className="col-badge">保留这个</span>}
+            </button>
+          );
+        })}
       </div>
 
       <ul className="mig-plan">

@@ -11,6 +11,7 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
   const [adding, setAdding] = useState(false);
   const [applying, setApplying] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<{ personId: string; keys: string[] } | null>(null);
 
   const groups = Array.from(new Set(defs.map((d) => d.group)));
   const usedKeys = Object.keys(person.attrs);
@@ -24,8 +25,9 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
    * 字典顺序，看起来和以前一样。
    */
   const rankOf = (key: string) => {
-    const i = usedKeys.indexOf(key);
-    return i === -1 ? usedKeys.length + defs.findIndex((d) => d.key === key) : i;
+    const keys = editingOrder?.personId === person.id ? editingOrder.keys : usedKeys;
+    const i = keys.indexOf(key);
+    return i === -1 ? keys.length + defs.findIndex((d) => d.key === key) : i;
   };
   const sortByAttrs = (list: AttributeDef[]) => [...list].sort((a, b) => rankOf(a.key) - rankOf(b.key));
 
@@ -50,7 +52,12 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
           <h4 className="card-title">{g || '未分组'}</h4>
           <div className="attr-grid">
             {sortByAttrs(defs.filter((d) => d.group === g)).map((d) => (
-                <div key={d.key} className="attr-row">
+                <div key={d.key} className="attr-row"
+                  onFocusCapture={() => setEditingOrder((order) => order?.personId === person.id ? order : { personId: person.id, keys: [...usedKeys] })}
+                  onBlurCapture={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEditingOrder(null);
+                  }}
+                >
                   <span className="attr-label">
                     {d.label}
                     {d.sensitive && <em className="badge">敏感</em>}

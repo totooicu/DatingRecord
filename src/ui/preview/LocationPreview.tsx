@@ -1,71 +1,101 @@
-// 定位文件预览：把 .drloc 解析成点位清单。
-//
-// 只读；打点 / 改偏移在「设置 → 功能面板 → 定位」里做。
-// 展示的是「原始坐标 + 文件偏移 + 分段修正」后的落图坐标，和地图上看到的一致。
-
-import { useEffect, useState } from 'react';
+// 只读预览：原始点只用于计算，地图与列表统一显示偏移后的坐标。
+import { useEffect, useMemo, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import type { StoredFile } from '../../core/repo/files';
 import { readLocation } from '../../core/location/locationFile';
 import { applyOffset, type LocationDoc } from '../../core/location/format';
-
-function fmtTime(ts: string): string {
-  const d = new Date(ts);
-  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
-}
+import { speedColors, speedLines } from '../panel/locationPaint';
 
 export function LocationPreview({ file }: { file: StoredFile }) {
   const [doc, setDoc] = useState<LocationDoc | null>(null);
   const [error, setError] = useState('');
-
   useEffect(() => {
     let alive = true;
-    readLocation(file)
-      .then((d) => {
-        if (alive) setDoc(d);
-      })
-      .catch((e: unknown) => {
-        if (alive) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      alive = false;
-    };
+    setDoc(null); setError('');
+    readLocation(file).then(d => { if (alive) setDoc(d); })
+      .catch((e: unknown) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { alive = false; };
   }, [file]);
+  if (error) return <p className="pv-error" role="alert">{error}</p>;
+  if (!doc) return <p className="pv-loading">读取定位数据中…</p>;
+  return <LocationContents key={file.id} doc={doc} />;
+}
 
-  if (error) return <p className="muted">{error}</p>;
-  if (!doc) return <p className="muted small">读取定位数据中…</p>;
-
-  const points = applyOffset(doc.points, doc.offset, doc.offsets);
-  const segCount = doc.offsets.length;
-
-  return (
-    <div className="playlist-preview">
-      <div className="playlist-preview-head">
-        <div>
-          <div className="playlist-preview-name">{doc.name}</div>
-          <div className="muted small">
-            {points.length} 个点
-            {doc.offset.lat !== 0 || doc.offset.lng !== 0
-              ? ` · 偏移 Δ${doc.offset.lat.toFixed(6)}, Δ${doc.offset.lng.toFixed(6)}`
-              : ''}
-            {segCount > 0 ? ` · 分段修正 ${segCount} 段` : ''}
-          </div>
-        </div>
+function LocationContents({ doc }: { doc: LocationDoc }) {
+  const points = useMemo(() => applyOffset(doc.points, doc.offset, doc.offsets), [doc]);
+  const [selected, setSelected] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const map = useRef<L.Map | null>(null);
+  const marker = useRef<L.CircleMarker | null>(null);
+  const index = Math.min(selected, Math.max(0, points.length - 1));
+  const pageStart = Math.floor(index / 100) * 100;
+  useEffect(() => {
+    const m = L.map(host.current!, { preferCanvas: true, scrollWheelZoom: false }).setView([31.2304, 121.4737], 10);
+    map.current = m;
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '高德地图',
+    }).addTo(m);
+    for (const line of speedLines(points)) L.polyline(line.parts, { color: line.color, weight: 4 }).addTo(m);
+    if (points.length) {
+      m.fitBounds(L.latLngBounds(points.map(p => [p.lat, p.lng] as [number, number])), { padding: [20, 20], maxZoom: 17 });
+      marker.current = L.circleMarker([points[0].lat, points[0].lng], { radius: 5, color: '#ef4444', fillOpacity: 1 }).addTo(m);
+    }
+    const resize = new ResizeObserver(() => m.invalidateSize());
+    resize.observe(host.current!);
+    return () => { resize.disconnect(); marker.current = null; map.current = null; m.remove(); };
+  }, [points]);
+  useEffect(() => {
+    const p = points[index];
+    if (p && map.current && marker.current) {
+      marker.current.setLatLng([p.lat, p.lng]);
+      if (!map.current.getBounds().contains([p.lat, p.lng])) map.current.panTo([p.lat, p.lng], { animate: false });
+    }
+    const row = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (row && list.current) {
+      const top = row.offsetTop - list.current.offsetTop;
+      if (top < list.current.scrollTop || top + row.offsetHeight > list.current.scrollTop + list.current.clientHeight)
+        list.current.scrollTop = top;
+    }
+  }, [index, points]);
+  const move = (delta: number) => setSelected(Math.max(0, Math.min(points.length - 1, index + delta)));
+  // 播放：每 200ms 前进一点，走到末点自动停。游标一变，列表滚动与地图标记由上面那个 effect 接手。
+  useEffect(() => {
+    if (!playing) return;
+    if (index >= points.length - 1) { setPlaying(false); return; }
+    const t = setTimeout(() => setSelected(index + 1), 200);
+    return () => clearTimeout(t);
+  }, [playing, index, points.length]);
+  return <div className="location-preview">
+    <div><strong>{doc.name}</strong><div className="muted small">{points.length} 个点 · 偏移 Δ{doc.offset.lat.toFixed(6)}, Δ{doc.offset.lng.toFixed(6)} · 分段修正 {doc.offsets.length} 段</div></div>
+    <div ref={host} className="location-preview-map" aria-label="定位地图预览" data-point-count={points.length} data-selected={index} />
+    <div className="small">速度：慢 <i className="loc-speedbar" style={{ background: `linear-gradient(90deg, ${speedColors().ramp.join(',')})` }} /> 快（红色为本轨迹最高速度，未知为灰色）</div>
+    {points.length ? <>
+      <div className="location-preview-nav">
+        <button className="btn btn-sm" disabled={index === 0} onClick={() => move(-1)}>上一点</button>
+        <span role="status">第 {index + 1} / 共 {points.length} 点</span>
+        <button className="btn btn-sm" disabled={index === points.length - 1} onClick={() => move(1)}>下一点</button>
+        <input type="range" aria-label="定位点跳转" min={0} max={points.length - 1} value={index} onChange={e => { setPlaying(false); setSelected(Number(e.target.value)); }} />
+        <button className="btn btn-sm" aria-pressed={playing} disabled={points.length < 2}
+          onClick={() => { if (playing) setPlaying(false); else { if (index >= points.length - 1) setSelected(0); setPlaying(true); } }}>
+          {playing ? '暂停播放' : '播放点位'}
+        </button>
       </div>
-
-      {points.length === 0 && <p className="muted small">这个定位文件还没有点。</p>}
-
-      <ul className="playlist-preview-list">
-        {points.map((p, i) => (
-          <li key={`${p.ts}-${i}`}>
-            <span className="playlist-preview-idx">{i + 1}</span>
-            <span className="playlist-preview-title">
-              {fmtTime(p.ts)} · {p.lat.toFixed(6)}, {p.lng.toFixed(6)}
-              {p.note ? ` · ${p.note}` : ''}
-            </span>
-            <span className="muted small">{p.accuracy ? `±${Math.round(p.accuracy)}m` : ''}</span>
-          </li>
-        ))}
+      <ul ref={list} className="playlist-preview-list location-preview-list" tabIndex={0} aria-label="定位点清单"
+        onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); move(e.key === 'ArrowLeft' ? -1 : 1); } }}>
+        {points.slice(pageStart, pageStart + 100).map((p, n) => <li key={pageStart + n} aria-current={pageStart + n === index}>
+          <button type="button" onClick={() => setSelected(pageStart + n)}>
+            {pageStart + n + 1}. {new Date(p.ts).toLocaleString()} · {p.lat.toFixed(6)}, {p.lng.toFixed(6)}{p.note ? ` · ${p.note}` : ''}{p.accuracy ? ` · ±${Math.round(p.accuracy)}m` : ''}
+          </button>
+        </li>)}
       </ul>
-    </div>
-  );
+      <div className="location-preview-nav">
+        <button className="btn btn-sm" disabled={pageStart === 0} onClick={() => setSelected(Math.max(0, pageStart - 100))}>上一页点位</button>
+        <span className="small">{pageStart + 1}–{Math.min(pageStart + 100, points.length)}</span>
+        <button className="btn btn-sm" disabled={pageStart + 100 >= points.length} onClick={() => setSelected(pageStart + 100)}>下一页点位</button>
+      </div>
+    </> : <p className="muted">这个定位文件还没有点。</p>}
+  </div>;
 }

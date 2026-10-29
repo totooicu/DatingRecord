@@ -35,7 +35,6 @@ import {
   playlistNameOf,
   serializePlaylistDoc,
   trackRefOf,
-  uniquePlaylistName,
   type PlaylistDoc,
 } from './format';
 
@@ -108,10 +107,9 @@ async function insertPlaylistFile(doc: PlaylistDoc): Promise<StoredFile> {
   const sha = await sha256Text(text);
   const stem = sha ? hashStem(sha) : `pl-${Date.now().toString(36)}`;
   const storedId = pickStoredId(stem, PLAYLIST_FILE_EXT, nameSlots());
-  const name = uniquePlaylistName(doc.name, listFiles());
   return insertFileRaw({
     file: blob,
-    name: playlistFileName(name),
+    name: playlistFileName(doc.name),
     storedId,
     sha256: sha,
   });
@@ -126,7 +124,7 @@ export interface CreatePlaylistInput {
   doc?: PlaylistDoc;
 }
 
-/** 新建歌单文件。返回落库后的附件（名字可能因重名带了 (2)）。 */
+/** 新建歌单文件。返回落库后的附件（同名时显示名按 _2 顺延）。 */
 export async function createPlaylist(input: CreatePlaylistInput): Promise<StoredFile> {
   const base =
     input.doc ??
@@ -169,9 +167,9 @@ export async function writePlaylist(id: string, doc: PlaylistDoc): Promise<Store
     name: cleanPlaylistName(doc.name || playlistNameOf(f)),
     updatedAt: new Date().toISOString(),
   };
-  await overwriteFileContent(id, playlistBlob(next));
   const want = playlistFileName(next.name);
   if (f.name !== want) renameFile(id, want);
+  await overwriteFileContent(id, playlistBlob(next));
   return getFile(id)!;
 }
 

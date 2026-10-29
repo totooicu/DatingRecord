@@ -15,6 +15,10 @@
 
 ## tools/
 
+同名文件能力：`file.nameDuplicates` 扫描可见同名组；`file.resolveNameDuplicates` 确认编号（mutating，需传分组 name 和全部 ids）；`file.rename` 冲突时拒绝并返回建议名，加 `occupy=true` 则占用此名、原同名文件（含隐私文件）自动编号。UI 上对应「使用建议名称 / 占用此名 / 放弃改名」三个出口，三者都只动 `name`，不改 id、stored_id 与二进制。
+
+回归 `node tools/e2e/file-name-e2e.mjs [dev-url]`：默认 `http://localhost:5174/`，必须 Vite dev（动态导入源码），依赖 Playwright 和 Chromium；使用独立浏览器测试库，覆盖自动命名、并发、大小写与扩展名、隐私占名、占用此名（含存量一对重复 + 第三个来占）、映射、导入幂等、同步、存量整理、内容/引用保持和三视口改名出口。
+
 | 目录 | 作用 | 说明 |
 |---|---|---|
 | `nutstore-proxy/` | 坚果云 WebDAV 反向代理，绕开它不返回 CORS 头的问题 | 见该目录的 `README.md` |
@@ -37,6 +41,14 @@
 | `e2e/compat-test-e2e.mjs` | 软件适配测试页回归（K1–K11）：功能体验入口与 10 张测试卡、引擎信息自动填、应用依赖自检（WebAssembly / IndexedDB / Blob 必须 ✓）、浏览器里原生桥判未连接、离开再回来汇总仍在、功能面板不含高精度定位；K7 用 `addInitScript` 装假壳跑通「请求 → 响应 → 事件」（扫描出设备、连接后出 GATT、私有文件写入回显路径）；K8/K9 覆盖麦克风失败路径（每档约束结果 + 设备/权限 + 怎么办）与成功路径（另起一个带 `--use-fake-device-for-media-stream` 的浏览器，授权成功、音量条出现）；K10 mock Permissions API 报 denied（不调 getUserMedia、给「怎么恢复」、汇总 ✗）；K11 断言授权后 AudioContext 为 running（防音量条恒 0） | 需要 preview 服务：`node tools/e2e/compat-test-e2e.mjs http://localhost:4173/`。截图写到 `/tmp/compat-shots/`；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/build-time-refresh-e2e.mjs` | 人物主页「最新版本 · …」双击刷新回归（R1–R4）：构建时间与 title 里的双击提示都在；单击不刷新（计数 `framenavigated` 为 0）；双击真的重新加载（文档级标记被清、boot 重走一遍）；刷新后仍停在人物主页 | 需要 preview 服务：`node tools/e2e/build-time-refresh-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
 | `e2e/shell-back-e2e.mjs` | 壳里系统返回键（`ui.backPressed`）回归（B1–B6）：详情→列表、弹窗只关弹窗、设置子页→父级→目录→`ui.finish`、日历某天→回日历、新建事件全屏编辑先退全屏再关弹窗、列表根上只 `ui.finish`；假壳照抄 3 秒兜底并计数，全程必须为 0（页面每次都按时回执 `ui.goBack` / `ui.finish`） | 需要 preview 服务：`node tools/e2e/shell-back-e2e.mjs http://localhost:4173/`。壳用 `addInitScript` 装假实现（注入标记 + ui.* 应答 + `__pressBack()`）；依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/upload-collision-e2e.mjs` | 上传冲突弹窗回归（U1–U12、V1–V5、W1–W2）：用 IndexedDB 直接删键造出「元数据在、二进制没了」的坏记录 → 重传同内容文件应弹窗标「二进制缺失」；**覆盖**补回二进制且不换 `stored_id`、不加记录；勾「后续同样处理」后本批剩余冲突不再弹窗、复用不额外写 blob；**取消上传**这条直接跳过不落库 | 需要 preview 服务：`node tools/e2e/upload-collision-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/dup-hash-e2e.mjs` | 重复 hash 管理面板回归（S1–S2、A1–A4、B1–B4、C1–C5、D1–D3、E1–E2）：传两个同内容大文件（第二个选「都不一样」）造出一组重复 → 折叠标题报组数、展开才列分组、默认保留引用最少的旧那条；「在列表里搜」把整串 sha256 填进搜索框且只剩这一组；合并走 MergeModal 后源记录消失、待处理清零；标记为不同内容后整组归入「已确认」，取消标记又回到待处理 | 需要 preview 服务：`node tools/e2e/dup-hash-e2e.mjs http://localhost:4173/`。依赖全局 playwright（缺浏览器时退回 `/usr/bin/chromium`） |
+| `e2e/location-speed-smooth-e2e.mjs` | 两段窗口速度、首段、异常时间、折返路程与染色回归 | `node tools/e2e/location-speed-smooth-e2e.mjs [url]`；默认 localhost:5174，须 Vite dev 服务（不能用 preview），依赖全局 Playwright 和 Chromium，不写用户数据 |
+| `e2e/person-input-e2e.mjs` | 人名连续增删、中间修改、IME、属性粘贴不移位、已有内容选择与隐私过滤、属性名与控件同行 | `node tools/e2e/person-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；独立浏览器测试数据 |
+| `e2e/event-input-e2e.mjs` | 时间严格校验与获取当前时间、地图选点与文本并存、取消与往返保存、星级评分与清空、短控件同行与长字段竖排、三视口 | `node tools/e2e/event-input-e2e.mjs [url]`，默认 localhost:5174；需 Vite dev、全局 Playwright、Chromium；地图瓦片需要网络 |
+| `e2e/location-preview-e2e.mjs` | 定位预览滚动、地图、翻点分页、只读与三视口 | `node tools/e2e/location-preview-e2e.mjs [url]`；默认 localhost:5174，需 Vite dev、全局 Playwright 和 Chromium |
+| `e2e/file-health-e2e.mjs` | 文件丢失/解码检测、整理页五块功能、切页保留与三视口 | `node tools/e2e/file-health-e2e.mjs [url]`，默认 :4173；全局 Playwright 和 Chromium |
+| `e2e/compact-hash-e2e.mjs` | 整理页紧密编号、引用迁移、过期计划和回滚 | `node tools/e2e/compact-hash-e2e.mjs [url]`，默认 :5174；须 Vite dev、全局 Playwright 和 Chromium |
 
 ## src/core/tools/
 

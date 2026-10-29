@@ -2,6 +2,7 @@ import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'rea
 import { pushBackLayer } from './back';
 import { APP_VERSION, BUILD_TIME, fmtTime } from '../core/buildInfo';
 import { shellEnv } from '../core/compat/bridge';
+import { existingInputChoices } from '../core/repo/inputChoices';
 
 /** 当前打开的弹窗数量：用来在弹窗打开时隐藏 FAB / TabBar，避免浮层压在内容上 */
 let openModals = 0;
@@ -68,13 +69,39 @@ export function Modal({
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/**
+ * 表单字段。默认字段名在上、控件在下（长内容、多控件的字段用这种）。
+ * inline = 一行就能填完的短控件（时间、评分、花费、下拉），字段名与控件同行；
+ * 窄屏放不下时整块控件换到下一行，控件内部再自己换行。
+ */
+export function Field({
+  label,
+  hint,
+  children,
+  inline,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+  inline?: boolean;
+}) {
+  const head = (
+    <span className="field-label">
+      {label}
+      {hint && <em>{hint}</em>}
+    </span>
+  );
+  if (inline) {
+    return (
+      <label className="field field-inline">
+        {head}
+        <span className="field-control">{children}</span>
+      </label>
+    );
+  }
   return (
     <label className="field">
-      <span className="field-label">
-        {label}
-        {hint && <em>{hint}</em>}
-      </span>
+      {head}
       {children}
     </label>
   );
@@ -282,8 +309,10 @@ export function VersionStrip() {
 }
 
 /** 标签输入：回车或逗号分隔添加 */
-export function TagInput({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
+export function TagInput({ value, onChange, placeholder, choices }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string; choices?: () => string[] }) {
   const [draft, setDraft] = useState('');
+  const [options, setOptions] = useState<string[]>([]);
+  const [focused, setFocused] = useState(false);
   const add = (text: string) => {
     const t = text.trim();
     if (!t) return;
@@ -291,7 +320,9 @@ export function TagInput({ value, onChange, placeholder }: { value: string[]; on
     setDraft('');
   };
   return (
-    <div className="tag-input">
+    <div className="tag-input" onBlur={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { add(draft); setFocused(false); }
+    }}>
       {value.map((t) => (
         <span key={t} className="chip">
           {t}
@@ -303,8 +334,10 @@ export function TagInput({ value, onChange, placeholder }: { value: string[]; on
       <input
         value={draft}
         placeholder={placeholder ?? '输入后回车'}
+        onFocus={() => { setOptions(choices ? choices() : existingInputChoices('tags')); setFocused(true); }}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
           if (e.key === 'Enter' || e.key === ',') {
             e.preventDefault();
             add(draft);
@@ -312,8 +345,11 @@ export function TagInput({ value, onChange, placeholder }: { value: string[]; on
             onChange(value.slice(0, -1));
           }
         }}
-        onBlur={() => add(draft)}
       />
+      {focused && <span className="chip-group" aria-label="已有标签候选" style={{ flexBasis: '100%' }}>
+        {options.filter(t => !value.includes(t) && t.toLowerCase().includes(draft.toLowerCase())).slice(0, 20).map(t =>
+          <button type="button" className="chip" key={t} onPointerDown={e => e.preventDefault()} onClick={() => add(t)}>{t}</button>)}
+      </span>}
     </div>
   );
 }

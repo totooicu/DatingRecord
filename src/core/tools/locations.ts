@@ -252,13 +252,13 @@ export const LOCATION_TOOLS: ToolDef[] = [
     ],
     run: async (a) => {
       const { f, doc } = await load(a.id);
-      if (a.name !== undefined) renameFile(f.id, locationFileName(String(a.name)));
       const points = pointsOf(a.points) ?? doc.points;
       const next = {
         ...doc,
         offset: resolveOffset(a, points) ?? doc.offset,
         points,
       };
+      if (a.name !== undefined) renameFile(f.id, locationFileName(String(a.name)));
       await writeLocation(f.id, next);
       const fresh = getFile(f.id);
       if (!fresh) throw new Error('定位文件在保存过程中被删除');

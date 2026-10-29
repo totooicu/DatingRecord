@@ -12,6 +12,7 @@ import {
   resumeUndo,
 } from '../db';
 import { newId } from '../id';
+import { availableFileName } from '../files/displayNames';
 import { hlcCompare, hlcNow, hlcReceive } from '../time';
 import { putBlob, base64ToBlob } from '../db/blob';
 import { normalizeCollectionTree } from '../repo/collections';
@@ -209,13 +210,19 @@ export async function importLibrary(
       ok ? counts.aiModels++ : skipped++;
     }
     for (const a of lib.attachments ?? []) {
+      if (queryOne('SELECT id FROM attachments WHERE id = ?', [a.id])) {
+        skipped++;
+        continue;
+      }
+      const name = availableFileName(a.name ?? '');
+      if (name !== (a.name ?? '').trim()) counts.renamedAttachments = (counts.renamedAttachments ?? 0) + 1;
       run('INSERT OR IGNORE INTO attachments (id, stored_id, sha256, mime, name, data, size, taken_at, created_at, hash_shared, is_private, source_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [
         a.id,
         // 老备份没有 storedId：用 id 顶上，语义等同「老的引用名」
         a.storedId || a.id,
         a.sha256 ?? '',
         a.mime ?? '',
-        a.name ?? '',
+        name,
         // data 只作为交换格式存在，运行期二进制在 IndexedDB，库里留空
         '',
         a.size ?? 0,

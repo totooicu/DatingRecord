@@ -17,7 +17,7 @@ import { showToast } from '../toast';
 import { EventFields } from './EventFields';
 import { EventView } from './EventView';
 import { ChatView } from './ChatView';
-import { draftToPayload, initialDraft, type EventDraft } from './draft';
+import { draftToPayload, initialDraft, validateDraftTime, type EventDraft } from './draft';
 
 /** 新建事件的草稿：只覆盖「还没保存」的表单，编辑已有事件不掺和 */
 const DRAFT_KEY = 'event-new';
@@ -73,7 +73,7 @@ export function EventForm({
   const draftSig = isNew ? `${JSON.stringify(d)}|${priv}` : '';
   useEffect(() => {
     if (!isNew || !draftsEnabled()) return;
-    const empty = !d.title.trim() && !d.content.trim() && !d.placeName.trim() && d.tags.length === 0;
+    const empty = !d.title.trim() && !d.content.trim() && !d.placeName.trim() && !d.placeGeo && d.tags.length === 0;
     if (empty) {
       clearDraft(DRAFT_KEY);
       return;
@@ -90,7 +90,10 @@ export function EventForm({
     setDraftRestored(false);
   };
 
+  const [timeChecked, setTimeChecked] = useState(false);
   const save = () => {
+    setTimeChecked(true);
+    if (Object.keys(validateDraftTime(d)).length) return;
     const payload = draftToPayload(d);
     let savedId: string;
     if (ev) {
@@ -198,6 +201,7 @@ export function EventForm({
           </div>
           <EventFields
             d={d}
+            timeErrors={timeChecked ? validateDraftTime(d) : {}}
             patch={patch}
             persons={persons}
             flat={flat}

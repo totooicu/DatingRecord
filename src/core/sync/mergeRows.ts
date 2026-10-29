@@ -5,6 +5,7 @@
 // 而不是复制两份「谁更新」的判断——两份判断迟早会有一份出错。
 import { queryOne, run, getDeviceId } from '../db';
 import { newId } from '../id';
+import { availableFileName } from '../files/displayNames';
 import { hlcReceive, hlcCompare, hlcNow } from '../time';
 import type { LibraryFile } from '../types';
 import { defToRow, personToRow, eventToRow, collectionToRow, templateToRow, aiModelToRow, messageToRow } from '../io/mappers';
@@ -156,7 +157,7 @@ export function mergeRows(lib: LibraryFile, counts: MergeCounts = emptyCounts())
         a.storedId || a.id,
         a.sha256 ?? '',
         a.mime ?? '',
-        a.name ?? '',
+        availableFileName(a.name ?? ''),
         // 运行期二进制在 IndexedDB，库里留空
         '',
         a.size ?? 0,

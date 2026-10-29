@@ -5,7 +5,7 @@
 //
 // 正文引用存 file:<storedId>，方括号里另写一份文件名当展示名；
 // 定位只看 id，所以这里改名不会让既有引用失效（显示名保持插入时的样子）。
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   countTotalRefs,
   deleteFile,
@@ -23,6 +23,9 @@ import { FileBatchBar } from './FileBatchBar';
 import { FileFilters } from './FileFilters';
 import { FileRefsModal } from './FileRefsModal';
 import { MappingModal } from './MappingModal';
+import { DupHashSection } from './DupHashSection';
+import { DupNameSection } from './DupNameSection';
+import { FileHealthSection } from './FileHealthSection';
 import { FileRow } from './FileRow';
 import { useThumbs } from './useThumbs';
 import { useUploader } from './useUploader';
@@ -41,7 +44,9 @@ export function FilesSection({
   onlyKinds,
   pickLabel,
   compact,
+  maintenance,
 }: {
+  maintenance?: ReactNode;
   onPick?: (f: StoredFile) => void;
   pickedIds?: Set<string>;
   /** 挑选模式只列这些类型（如音乐面板只列音频） */
@@ -79,6 +84,33 @@ export function FilesSection({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [merge, setMerge] = useState<{ target: string; sources: string[] } | null>(null);
   const [mappingOpen, setMappingOpen] = useState(false);
+  const [tab, setTab] = useState<'files' | 'maintenance'>('files');
+  const [maintenanceVisited, setMaintenanceVisited] = useState(false);
+
+  // 折叠标题上的组数，口径与面板里的「待处理」一致：
+  // 同一个 hash 下挂着 ≥2 条，且至少有一条没被标记成「不同内容」
+  // （标了的那条已经退出判重候选，没标的还在会不断弹窗，所以仍算待处理）。
+  // 纯内存统计，不查库 —— 收起时不该为面板的开销买单。
+  const dupGroups = useMemo(() => {
+    const seen = new Map<string, { total: number; plain: number }>();
+    for (const f of files) {
+      if (!f.sha256 || f.sourceUrl) continue;
+      const g = seen.get(f.sha256) ?? { total: 0, plain: 0 };
+      g.total++;
+      if (!f.hashShared) g.plain++;
+      seen.set(f.sha256, g);
+    }
+    let n = 0;
+    for (const g of seen.values()) if (g.total > 1 && g.plain > 0) n++;
+    return n;
+  }, [files]);
+
+  /** 从重复 hash 面板跳过来：把这个 hash 变成当前搜索词，列表只剩这一组 */
+  const searchByHash = (sha: string) => {
+    setFilter((f) => ({ ...f, q: sha }));
+    setTab('files');
+    setTip('已把这组的 hash 填进搜索框，列表只剩这几条；清空搜索框就回到全部');
+  };
 
   const visible = useMemo(
     () => applyFilter(files, filter, sort, refCounts),
@@ -135,6 +167,11 @@ export function FilesSection({
 
   return (
     <div>
+      {!compact && <div className="aichat-tabs" role="tablist" aria-label="文件切页">
+        <button type="button" role="tab" aria-selected={tab === 'files'} className={`aichat-tab${tab === 'files' ? ' aichat-tab-on' : ''}`} onClick={() => setTab('files')}>文件</button>
+        <button type="button" role="tab" aria-selected={tab === 'maintenance'} className={`aichat-tab${tab === 'maintenance' ? ' aichat-tab-on' : ''}`} onClick={() => { setMaintenanceVisited(true); setTab('maintenance'); }}>整理{dupGroups > 0 && <span className="aichat-tab-n">{dupGroups}</span>}</button>
+      </div>}
+      <div hidden={!compact && tab !== 'files'}>
       {onPick && !compact && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
       {!compact && (
         <>
@@ -187,6 +224,8 @@ export function FilesSection({
               onDelete={() => void removeSelected()}
             />
           )}
+
+
         </>
       )}
 
@@ -229,6 +268,19 @@ export function FilesSection({
         </ul>
       )}
 
+      </div>
+      {!compact && <div hidden={tab !== 'maintenance'}>
+        {maintenanceVisited && <>
+          <p className="muted small">单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改；正文里的显示名保留插入时的样子。</p>
+          <section className="files-advanced dup-entry">
+            <h4>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</h4>
+            <DupHashSection onSearchHash={searchByHash} onDone={setTip} />
+          </section>
+          <DupNameSection onMerge={(ids) => setMerge({ target: ids[0], sources: ids.slice(1) })} />
+          <FileHealthSection files={files} />
+          {maintenance}
+        </>}
+      </div>}
       {tip && <p className="muted small">{tip}</p>}
       {previewId && <PreviewModal file={files.find((f) => f.id === previewId)!} onClose={() => setPreviewId(null)} />}
       {refsFile && (
@@ -266,7 +318,7 @@ export function FilesSection({
         <CollisionModal
           prompt={ask.prompt}
           uploading={ask.preview}
-          onDecide={(pick) => ask.step(pick)}
+          onDecide={(choice) => ask.step(choice)}
           onCancel={ask.cancel}
         />
       )}

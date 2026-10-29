@@ -17,7 +17,14 @@ export {
   sha256Hex,
   stemOf,
 } from './naming';
-export { uploadFile, uploadFileQuiet, type CollisionPrompt, type UploadOutcome } from './upload';
+export {
+  uploadFile,
+  uploadFileQuiet,
+  type CollisionAction,
+  type CollisionDecision,
+  type CollisionPrompt,
+  type UploadOutcome,
+} from './upload';
 export { auditFiles, hashMissingFiles, type AuditResult, type HashGroup } from './audit';
 export {
   normalizeLink,

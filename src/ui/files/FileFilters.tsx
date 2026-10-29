@@ -81,8 +81,9 @@ export function FileFilters({
           className="file-search"
           value={filter.q}
           onChange={(e) => onChange({ q: e.target.value })}
-          placeholder="搜索文件名…"
-          aria-label="搜索文件名"
+          placeholder="搜索文件名 / 引用名 / hash…"
+          aria-label="搜索文件名、引用名或 hash"
+          title="也能粘 sha256 或引用名片段（sha-…）来搜，大小写无关"
         />
       </div>
 

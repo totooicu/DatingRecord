@@ -5,7 +5,12 @@ import { MarkdownEditor } from '../markdown';
 import type { Collection, RelatedEvent } from '../../core/types';
 import type { Precision, TimeKind } from '../../core/time';
 import { RelatedField } from './RelatedField';
+import { Stars } from '../attr';
 import type { EventDraft } from './draft';
+import { useState } from 'react';
+import { PlacePicker } from './PlacePicker';
+import { ExistingTextInput } from '../ExistingTextInput';
+import { timeText } from './timeText';
 
 const TIME_KINDS: { value: TimeKind; label: string }[] = [
   { value: 'instant', label: '时刻' },
@@ -25,6 +30,7 @@ const PRECISIONS: { value: Precision; label: string }[] = [
 
 export function EventFields({
   d,
+  timeErrors = {},
   patch,
   persons,
   flat,
@@ -32,6 +38,7 @@ export function EventFields({
   candidates,
 }: {
   d: EventDraft;
+  timeErrors?: Partial<Record<'start' | 'end', string>>;
   patch: (p: Partial<EventDraft>) => void;
   persons: { id: string; displayName: string }[];
   flat: { c: Collection; depth: number }[];
@@ -39,6 +46,7 @@ export function EventFields({
   eventId?: string;
   candidates: { id: string; title: string; startTs: number | null; relatedEvents?: RelatedEvent[] }[];
 }) {
+  const [placeOpen, setPlaceOpen] = useState(false);
   const toggle = (list: string[], id: string) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
@@ -51,7 +59,7 @@ export function EventFields({
           placeholder="例如：第一次一起看电影"
         />
       </Field>
-      <Field label="类型">
+      <Field label="类型" inline>
         <select value={d.kind} onChange={(e) => patch({ kind: e.target.value })}>
           {EVENT_KINDS.map((k) => (
             <option key={k.value} value={k.value}>
@@ -63,7 +71,7 @@ export function EventFields({
 
       {/* 呈现形态与「类型」是两件事：类型是这场事是什么（约会/吃饭），
           形态是它怎么显示（正文/聊天）。一场约会同样可以贴一段聊天记录。 */}
-      <Field label="呈现形态">
+      <Field label="呈现形态" inline>
         <select
           value={d.viewMode}
           onChange={(e) => patch({ viewMode: e.target.value as 'doc' | 'chat' })}
@@ -73,7 +81,7 @@ export function EventFields({
         </select>
       </Field>
 
-      <Field label="时间类型">
+      <Field label="时间类型" inline>
         <select value={d.timeKind} onChange={(e) => patch({ timeKind: e.target.value as TimeKind })}>
           {TIME_KINDS.map((t) => (
             <option key={t.value} value={t.value}>
@@ -82,7 +90,7 @@ export function EventFields({
           ))}
         </select>
       </Field>
-      <Field label="精度">
+      <Field label="精度" inline>
         <select
           value={d.precision}
           onChange={(e) => patch({ precision: (e.target.value as Precision) || 'minute' })}
@@ -96,17 +104,21 @@ export function EventFields({
       </Field>
 
       {d.timeKind !== 'unknown' && (
-        <Field label="开始">
-          <input type="datetime-local" value={d.start} onChange={(e) => patch({ start: e.target.value })} />
+        <Field label="开始" inline>
+          <input aria-label="开始时间" aria-invalid={!!timeErrors.start} placeholder="YYYY-MM-DD HH:mm" value={d.start} onChange={(e) => patch({ start: e.target.value })} />
+          <button type="button" className="btn btn-sm" onClick={() => patch({ start: timeText(new Date().toISOString()) })}>获取当前时间</button>
+          {timeErrors.start && <span role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{timeErrors.start}</span>}
         </Field>
       )}
       {(d.timeKind === 'interval' || d.timeKind === 'ongoing') && (
-        <Field label="结束">
-          <input type="datetime-local" value={d.end} onChange={(e) => patch({ end: e.target.value })} />
+        <Field label="结束" inline>
+          <input aria-label="结束时间" aria-invalid={!!timeErrors.end} placeholder="YYYY-MM-DD HH:mm" value={d.end} onChange={(e) => patch({ end: e.target.value })} />
+          <button type="button" className="btn btn-sm" onClick={() => patch({ end: timeText(new Date().toISOString()) })}>获取当前时间</button>
+          {timeErrors.end && <span role="alert" style={{ color: 'var(--danger, #b91c1c)' }}>{timeErrors.end}</span>}
         </Field>
       )}
       {d.timeKind === 'fuzzy' && (
-        <Field label="时间原文" hint="例如：去年夏天">
+        <Field label="时间原文" hint="例如：去年夏天" inline>
           <input
             value={d.raw}
             onChange={(e) => patch({ raw: e.target.value })}
@@ -115,33 +127,31 @@ export function EventFields({
         </Field>
       )}
 
-      <Field label="地点">
-        <input value={d.placeName} onChange={(e) => patch({ placeName: e.target.value })} />
+      <Field label="地点" inline>
+        <input aria-label="地点文本" value={d.placeName} placeholder="输入地点或地址，也可地图选点" onChange={(e) => patch({ placeName: e.target.value })} />
+        <button type="button" className="btn btn-sm" onClick={() => setPlaceOpen(true)}>地图选点</button>
+        {d.placeGeo && <span className="small">纬度 {d.placeGeo.lat.toFixed(6)}，经度 {d.placeGeo.lng.toFixed(6)}
+          <button type="button" className="btn btn-sm" onClick={() => patch({ placeGeo: null })}>清除坐标</button>
+        </span>}
+        {placeOpen && <PlacePicker value={d.placeGeo ?? null} onClose={() => setPlaceOpen(false)} onSave={(placeGeo) => { patch({ placeGeo }); setPlaceOpen(false); }} />}
       </Field>
-      <Field label="评分">
-        <select
-          value={d.rating}
-          onChange={(e) => patch({ rating: e.target.value === '' ? '' : Number(e.target.value) })}
-        >
-          <option value="">未评分</option>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={n}>
-              {'★'.repeat(n)}
-            </option>
-          ))}
-        </select>
+      <Field label="评分" inline>
+        <Stars
+          value={typeof d.rating === 'number' ? d.rating : 0}
+          onChange={(v) => patch({ rating: v ?? '' })}
+        />
       </Field>
-      <Field label="花费">
+      <Field label="花费" inline>
         <input
           type="number"
           value={d.cost}
           onChange={(e) => patch({ cost: e.target.value === '' ? '' : Number(e.target.value) })}
         />
       </Field>
-      <Field label="心情">
-        <input
+      <Field label="心情" inline>
+        <ExistingTextInput source="mood"
           value={d.mood}
-          onChange={(e) => patch({ mood: e.target.value })}
+          onChange={(mood) => patch({ mood })}
           placeholder="开心 / 平淡 / 低落"
         />
       </Field>
@@ -190,7 +200,7 @@ export function EventFields({
           candidates={candidates}
         />
       </div>
-      <Field label="亲密度增减">
+      <Field label="亲密度增减" inline>
         <input
           type="number"
           value={d.intimacyDelta}

@@ -78,16 +78,32 @@ export function BoolField({ value, onChange }: { value: unknown; onChange: (v: u
   );
 }
 
-export function RatingField({ def, value, onChange }: FieldProps) {
-  const max = def.max ?? 5;
-  const cur = typeof value === 'number' ? value : 0;
+/**
+ * 星级打分控件：人物属性「好感度」和事件表单「评分」共用同一套。
+ * 点当前那一档等于清空（回到未评分），所以 onChange 可能收到 null。
+ */
+export function Stars({
+  value,
+  onChange,
+  max = 5,
+  label = '评分',
+}: {
+  value: number;
+  onChange: (v: number | null) => void;
+  max?: number;
+  label?: string;
+}) {
+  const cur = Number.isFinite(value) ? value : 0;
   return (
-    <span className="stars">
+    <span className="stars" role="group" aria-label={label}>
       {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
         <button
           key={n}
           type="button"
           className={n <= cur ? 'star star-on' : 'star'}
+          aria-label={`${n} 星`}
+          aria-pressed={n <= cur}
+          title={n === cur ? '取消评分' : `${n} 星`}
           onClick={() => onChange(n === cur ? null : n)}
         >
           ★
@@ -97,9 +113,21 @@ export function RatingField({ def, value, onChange }: FieldProps) {
   );
 }
 
-export function TagField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+export function RatingField({ def, value, onChange }: FieldProps) {
+  return (
+    <Stars
+      max={def.max ?? 5}
+      label={def.label}
+      value={typeof value === 'number' ? value : 0}
+      onChange={onChange}
+    />
+  );
+}
+
+export function TagField({ value, onChange, choices }: { value: unknown; onChange: (v: unknown) => void; choices?: () => string[] }) {
   return (
     <TagInput
+      choices={choices}
       value={Array.isArray(value) ? (value as string[]) : []}
       onChange={(v) => onChange(v.length ? v : null)}
     />
