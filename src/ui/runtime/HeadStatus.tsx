@@ -36,9 +36,20 @@ function LocationGlyph() {
     </svg>
   );
 }
+/** 云 + 上下箭头：坚果云自动同步在跑的样子 */
+function SyncGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M7 16.5a3.6 3.6 0 0 1-.3-7.2 5 5 0 0 1 9.5-1.3A3.8 3.8 0 0 1 17.6 16" />
+      <path d="M12 12v6.5" />
+      <path d="M9.6 14.6 12 12.2l2.4 2.4" />
+    </svg>
+  );
+}
 /** 不同服务用不同的图标：运行时一眼能分清是哪个服务在跑，而不是都长得像音乐 */
 function serviceGlyph(kind: string) {
   if (kind === 'location') return <LocationGlyph />;
+  if (kind === 'sync') return <SyncGlyph />;
   return <MusicGlyph />;
 }
 

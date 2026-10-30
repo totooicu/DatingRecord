@@ -9,6 +9,7 @@
 //   attachments         附件二进制：内容寻址切片，单独一套云端往返
 //   engine              三方比对 + 只传变化分片 + 调度附件往返
 //   settings            凭据落库（键前缀 nutstore.，不进备份）
+//   auto                自动同步服务：开软件自启动 + 定时 + 有变化就补一趟
 export * from './sha256';
 export * from './chunk';
 export * from './manifest';
@@ -18,3 +19,4 @@ export * from './mergeRows';
 export * from './attachments';
 export * from './engine';
 export * from './settings';
+export * from './auto';

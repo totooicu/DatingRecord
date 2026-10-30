@@ -23,6 +23,9 @@ import {
   noteUndoStep,
   suspendUndo,
   resumeUndo,
+  syncWrite,
+  currentWrites,
+  markSynced,
 } from '../db';
 import { hlcReceive } from '../time';
 import { ensureClosure } from '../repo/collections';
@@ -114,6 +117,27 @@ async function downloadSnapshot(c: dav.DavConfig, m: Manifest): Promise<string> 
 }
 
 /**
+ * 同一时刻只许一趟同步。
+ *
+ * 手动点「立即同步」和自动服务撞上时，两边都在读同一份 baseline、又都要写 manifest
+ * 与 baseline —— 后写完的把先写完的说法覆盖掉，云端清单和两边设备的 baseline
+ * 就对不上了。这里排队而不是并发，也不把别人的结果直接回给你：
+ * 「强制完整上传」不能因为撞上一次自动同步就被吞掉。
+ */
+let inFlight: Promise<SyncResult> | null = null;
+
+/**
+ * 最近一趟同步在拍快照那一刻取到的写入序号。
+ * 只有同一时刻一趟在跑（见上面的排队），所以一个变量就够，不用随结果传。
+ */
+let syncPoint = 0;
+
+/** 现在有没有正在跑的同步（自动服务靠它决定这一拍跳过） */
+export function isSyncing(): boolean {
+  return inFlight !== null;
+}
+
+/**
  * 执行一次同步。
  * @param opts.full 忽略「本机没改过」的短路，强制上传一份（换机建档用）
  * @param opts.attachments 顺带把附件二进制传上去 / 补回来（设置页那个开关，这里默认关）
@@ -121,6 +145,32 @@ async function downloadSnapshot(c: dav.DavConfig, m: Manifest): Promise<string> 
 export async function syncNow(
   c: dav.DavConfig,
   opts: { full?: boolean; attachments?: boolean; onProgress?: (msg: string) => void } = {},
+): Promise<SyncResult> {
+  while (inFlight) {
+    const prev = inFlight;
+    try {
+      await prev;
+    } catch {
+      /* 上一趟的失败归它的调用方，这里只管等它结束 */
+    }
+  }
+  const p = runSync(c, opts)
+    .then((r) => {
+      // 成功了才把「本机有没有欠着」对齐到快照那一刻：传输途中用户又写的那笔仍然算欠，
+      // 下一拍接着传；失败就一笔都不对齐，改动触发会自己重试这一趟（退避后）。
+      markSynced(syncPoint);
+      return r;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  inFlight = p;
+  return p;
+}
+
+async function runSync(
+  c: dav.DavConfig,
+  opts: { full?: boolean; attachments?: boolean; onProgress?: (msg: string) => void },
 ): Promise<SyncResult> {
   const report = opts.onProgress ?? (() => {});
   const now = new Date().toISOString();
@@ -141,6 +191,11 @@ export async function syncNow(
 
   report('生成本地快照…');
   const text = await snapshotText();
+  // 拍下「对齐点」：此刻之前的本机写入都进了这份快照，之后写的才算还欠着。
+  // 同步自己往库里补的（合并进来的行、补算的指纹、baseline、last_at）由 syncWrite
+  // 排除在计数之外——不分开的话，收尾那笔 setMeta 会把自动同步再触发一遍，
+  // 自动同步自己喂自己，一趟接一趟打坚果云。真正的对齐在 syncNow 成功之后做。
+  syncPoint = currentWrites();
   const bytes = bytesOf(text);
   const metas = hashChunks(bytes);
   const digest = digestOf(metas, bytes.length);
@@ -253,20 +308,25 @@ async function applyRemote(remoteText: string, result: SyncResult): Promise<void
   for (const e of lib.events ?? []) hlcReceive(e.hlc ?? '');
   for (const col of lib.collections ?? []) hlcReceive(col.hlc ?? '');
 
-  noteUndoStep('同步云端数据');
-  suspendUndo();
-  try {
-    result.merged = transact(() => mergeRows(lib, emptyCounts()));
-  } finally {
-    resumeUndo();
-  }
-  ensureClosure();
+  // 合并云端行、闭包补算、撤销记录都是这趟同步自己写的，不计入「本机还有东西没传」
+  syncWrite(() => {
+    noteUndoStep('同步云端数据');
+    suspendUndo();
+    try {
+      result.merged = transact(() => mergeRows(lib, emptyCounts()));
+    } finally {
+      resumeUndo();
+    }
+    ensureClosure();
+  });
   await persist();
 }
 
 function finish(digest: string, at: string): void {
-  setMeta(META_BASE, digest);
-  setMeta(META_LAST, at);
+  syncWrite(() => {
+    setMeta(META_BASE, digest);
+    setMeta(META_LAST, at);
+  });
 }
 
 async function pruneSnapshots(c: dav.DavConfig): Promise<void> {

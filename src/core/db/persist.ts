@@ -52,6 +52,7 @@ function notifyPersisted(bytes: Uint8Array): void {
 }
 
 export function markDirty(): void {
+  noteUserWrite();
   dirty = true;
   if (saveTimer !== null) return;
   // 不用 window.setTimeout：CLI 里没有 window，而 Node 的全局 setTimeout 两边通用
@@ -59,6 +60,72 @@ export function markDirty(): void {
     saveTimer = null;
     void persist();
   }, 500);
+}
+
+// ---------- 「本机有没有新东西要传」的判据 ----------
+//
+// 自动同步服务要知道两件事：有没有写过、最后一次写是什么时候。
+// 麻烦在于**同步引擎自己也写库**（把云端改动合并进来、写 baseline 和 last_at），
+// 这些写入不能算「本机有新东西」——否则自动同步自己喂自己，一趟接一趟打坚果云。
+// 所以记两个数：
+//   userWrites  业务写入次数（同步引擎自己写的那些不计）
+//   syncedWrites 最近一趟同步**拍快照那一刻**的 userWrites
+// 差值 > 0 就意味着「快照之后本机又写过」，该传了。对齐点取**拍快照那一刻**而不是
+// 这趟结束那一刻：传输途中用户可能又改了东西，那一笔必须仍然算没传，
+// 否则定时没开的话，这次编辑会一直躺到下一次写入为止。
+//
+// 计数点放在 markDirty 而不是 persist：persist 是 500ms 防抖后的物理写，
+// 一趟可能合并很多次逻辑写入，逻辑层面才符合「有变化」。
+
+let userWrites = 0;
+let syncedWrites = 0;
+let lastWriteAt = 0;
+/** > 0 表示当前这段写入是同步引擎自己干的，不计入 pending */
+let syncDepth = 0;
+
+/**
+ * 把同步引擎自己的写入包起来：里面的 markDirty 不会让本机显得「又有新东西」。
+ * fn 必须是同步的——await 期间 depth 已经减回去了，跨 await 的写入照样会被计入。
+ */
+export function syncWrite<T>(fn: () => T): T {
+  syncDepth += 1;
+  try {
+    return fn();
+  } finally {
+    syncDepth -= 1;
+  }
+}
+
+/** 此刻的写入序号：同步引擎在拍快照时取一个，成功后再拿它来对齐 */
+export function currentWrites(): number {
+  return userWrites;
+}
+
+/**
+ * 「序号 <= upTo 的写入都已经在云端了」。
+ *
+ * 只在同步**成功**时调用，且 upTo 必须是拍快照那一刻取的值：
+ * 传输途中用户又写的那一笔仍然算 pending，下一拍接着传；
+ * 失败就一次都不对齐，改动触发会自己重试这一趟。
+ */
+export function markSynced(upTo: number = userWrites): void {
+  syncedWrites = Math.min(Math.max(upTo, syncedWrites), userWrites);
+}
+
+/** 快照之后本机又写了多少次（0 = 和云端一致，不用再传） */
+export function pendingLocalWrites(): number {
+  return Math.max(0, userWrites - syncedWrites);
+}
+
+/** 最后一次业务写入的时间（毫秒时间戳）；从没写过返回 0 */
+export function lastUserWriteAt(): number {
+  return lastWriteAt;
+}
+
+function noteUserWrite(): void {
+  if (syncDepth > 0) return;
+  userWrites += 1;
+  lastWriteAt = Date.now();
 }
 
 /** 立即落盘（关闭页面、撤销换库、清空数据等场景用，避免 debounce 未触发导致丢数据） */

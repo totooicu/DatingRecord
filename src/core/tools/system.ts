@@ -13,8 +13,27 @@ import { listPersons } from '../repo/persons';
 import { dbSizeBytes } from '../io/maintenance';
 import { getTree } from '../repo/collections';
 import { currentChannel } from '../sync/nativeHttp';
-import { isConfigured, loadSettings } from '../sync/settings';
+import { EVERY_CHOICES, isConfigured, loadSettings, saveSettings } from '../sync/settings';
 import { humanSize, inspectAttachments } from '../sync/attachments';
+import { autoStatus, setAutoEnabled, startAutoSync, type AutoStatus } from '../sync/auto';
+
+/** 毫秒时间戳 → 本地时分秒；0（没发生过）返回 null，省得 AI 拿 1970 当时间算 */
+function clockText(ts: number): string | null {
+  if (!ts) return null;
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/** 把状态翻译成人（和模型）能照着做的一句话 */
+function autoHint(a: AutoStatus): string {
+  if (!a.configured) return '账号还没填齐，自动同步起不来：先填 user 和应用密码';
+  if (!a.enabled) return '总开关关着，不会自动传；要立刻传一次点设置页「立即同步」，或调 system.setAutoSync(enabled=true)';
+  if (!a.running) return '开关开着但服务没起来（多半是这次会话里刚填好账号）：重开软件或调 system.setAutoSync(enabled=true)';
+  if (a.lastError) return `上一趟失败：${a.lastError}${a.nextRetryAt > Date.now() ? '（退避中，到 ' + clockText(a.nextRetryAt) + ' 才再试）' : ''}`;
+  if (a.pendingWrites > 0) return `在跑；本机欠着 ${a.pendingWrites} 笔改动，安静一会儿自己就传了`;
+  return `在跑，本机与上次成功同步一致${a.lastOkAt ? '（上次成功 ' + clockText(a.lastOkAt) + ' · ' + (a.lastAction ?? '—') + '）' : ''}`;
+}
 
 /** 只放行单条只读语句 */
 function assertReadOnly(sql: string): string {
@@ -198,6 +217,98 @@ export const SYSTEM_TOOLS: ToolDef[] = [
             : inv.unnamed > 0
               ? `有 ${inv.unnamed} 条还没有内容指纹，同步时当场算出来，下一次才算「有名字」`
               : `本地 ${inv.haveBytes} 条字节齐备，已传过的一律跳过，只传新增的`,
+      };
+    },
+  },
+  {
+    name: 'system.syncAuto',
+    group: 'system',
+    title: '自动同步服务的状态',
+    desc:
+      '看坚果云自动同步（开软件自启动 + 定时 + 本机有改动就补一趟）现在到底是什么状况：' +
+      '总开关开没开、服务起没起、账号填没填、定时间隔与改动触发、本机还欠着几笔没传上去的写入、' +
+      '这一会话跑了几趟、上一趟是谁叫起来的、结果如何、有没有失败与退避到几点。' +
+      '只读本地设置与内存状态，不联网、不传数据、不含密码。' +
+      '想知道「为什么它没自己同步过去」「我刚改的东西传了没」先调这个，再决定要不要 setAutoSync。',
+    mutating: false,
+    params: [],
+    run: () => {
+      const a = autoStatus();
+      return {
+        enabled: a.enabled,
+        running: a.running,
+        configured: a.configured,
+        everyMin: a.everyMin,
+        onChanged: a.onChanged,
+        pendingWrites: a.pendingWrites,
+        passes: a.passes,
+        lastPassAt: clockText(a.lastPassAt),
+        lastOkAt: clockText(a.lastOkAt),
+        lastReason: a.lastReason,
+        lastAction: a.lastAction,
+        lastError: a.lastError,
+        retryingUntil: clockText(a.nextRetryAt),
+        nextAt: clockText(a.nextAt),
+        hint: autoHint(a),
+      };
+    },
+  },
+  {
+    name: 'system.setAutoSync',
+    group: 'system',
+    title: '开关自动同步服务 / 改节拍',
+    desc:
+      '改坚果云自动同步的设置并立刻生效，三个参数都可以单独给。' +
+      'enabled=true：存下开关 + 起服务，并且先补一趟「开软件同步」——所以这趟真的会联网上传下载；' +
+      'enabled=false：停掉定时器，本机改动就此欠着，只能手动「立即同步」。' +
+      'everyMin 只认 0/5/10/15/30/60（0 = 不定时，只在有改动后补），别的一律归成 0。' +
+      'onChanged 控制「本机写过东西、安静一会儿后自动补一趟」。' +
+      '改节拍不需要重启服务：服务每拍都重读设置。账号没填齐时 enabled=true 会起不来并在结果里说明原因。' +
+      '不会打断正在传输的那一趟。',
+    mutating: true,
+    params: [
+      { name: 'enabled', type: 'boolean', desc: '总开关：开软件自启动 + 自动同步', required: false },
+      {
+        name: 'everyMin',
+        type: 'number',
+        desc: '定时间隔（分钟），0 = 不定时',
+        required: false,
+        enum: EVERY_CHOICES.map(String),
+      },
+      { name: 'onChanged', type: 'boolean', desc: '本机有改动就补一趟', required: false },
+    ],
+    run: (a) => {
+      const cur = loadSettings();
+      const next = { ...cur };
+      let changed = false;
+      if (a.everyMin !== undefined) {
+        const n = Math.round(Number(a.everyMin));
+        if (!EVERY_CHOICES.includes(n as (typeof EVERY_CHOICES)[number])) {
+          throw new Error(`everyMin 只接受 ${EVERY_CHOICES.join('/')}，收到：${String(a.everyMin)}`);
+        }
+        next.everyMin = n;
+        changed = true;
+      }
+      if (a.onChanged !== undefined) {
+        next.onChanged = !!a.onChanged;
+        changed = true;
+      }
+      const on = a.enabled === undefined ? undefined : !!a.enabled;
+      if (on === undefined && !changed) throw new Error('至少给一个参数：enabled / everyMin / onChanged');
+      // 有总开关就认它那条路（内部会连节拍一起存），否则只存节拍
+      if (on !== undefined) setAutoEnabled(on, next);
+      else {
+        saveSettings(next);
+        if (next.auto) startAutoSync();
+      }
+      const st = autoStatus();
+      return {
+        enabled: st.enabled,
+        running: st.running,
+        everyMin: st.everyMin,
+        onChanged: st.onChanged,
+        configured: st.configured,
+        hint: autoHint(st),
       };
     },
   },

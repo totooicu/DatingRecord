@@ -23,7 +23,7 @@
 // 两百张照片就是六百 MB，手机直接杀进程——所以这里的队列只装 id、哈希和大小。
 //
 // 映射文件（source_url 非空）本地没有字节，既不传也不拉，全程跳过。
-import { persist, queryAll } from '../db';
+import { persist, queryAll, syncWrite } from '../db';
 import { getBlob, putBlob } from '../db/blob';
 import { setFileHash } from '../repo/files';
 import { Sha256 } from './sha256';
@@ -226,7 +226,8 @@ export async function syncAttachments(
       // 但对象名此刻已经是对的，不会传到错地方。
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const hash = sha256Hex(bytes);
-      setFileHash(row.id, hash);
+      // 补算出来的指纹是同步自己写的，不计入「本机还有东西没传」（见 db/persist.ts）
+      syncWrite(() => setFileHash(row.id, hash));
       r.hashed += 1;
       if (!remoteHas(index, hash, bytes.length) && /^[0-9a-f]{64}$/.test(hash)) {
         upload.set(hash, { hash, rowId: row.id, name: row.name, size: bytes.length });

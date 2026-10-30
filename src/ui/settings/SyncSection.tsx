@@ -10,16 +10,37 @@ import { bump } from '../../store';
 import { currentChannel, type DavChannel } from '../../core/sync/nativeHttp';
 import {
   DEFAULT_DAV_BASE,
+  EVERY_CHOICES,
+  autoStatus,
   getSyncStatus,
   isConfigured,
   loadSettings,
   saveSettings,
+  setAutoEnabled,
   syncNow,
   testConnection,
   toConfig,
+  type AutoStatus,
   type NutstoreSettings,
   type SyncResult,
 } from '../../core/sync';
+import { useServices } from '../../core/runtime/store';
+
+/** 自动同步那一行说人话：跑没跑起来、按什么节拍、上一趟什么结果，出问题时就看这句 */
+function autoLine(au: AutoStatus): string {
+  if (!au.configured) return '还没起来：先填账号和应用密码，再点「保存设置」。';
+  if (!au.running) return '已关闭：只有手动点「立即同步」才会传。';
+  const beat = au.everyMin > 0 ? `每 ${au.everyMin} 分钟` : '不定时';
+  const parts = [`运行中（${beat}${au.onChanged ? ' · 本机有改动就补一趟' : ''}）`];
+  parts.push(
+    au.lastOkAt
+      ? `上次自动成功 ${new Date(au.lastOkAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+      : '还没跑成过',
+  );
+  if (au.pendingWrites > 0) parts.push(`本机欠着 ${au.pendingWrites} 笔改动`);
+  if (au.lastError) parts.push(`上次失败：${au.lastError}`);
+  return parts.join(' · ');
+}
 
 const ACTION_TEXT: Record<SyncResult['action'], string> = {
   upload: '已上传本地改动',
@@ -36,6 +57,8 @@ export function SyncSection() {
   const [result, setResult] = useState<SyncResult | null>(null);
   const [status, setStatus] = useState(() => getSyncStatus());
   const [progress, setProgress] = useState('');
+  // 自动同步的状态由服务自己报（每跑一趟就改 detail），订阅服务表就跟着刷新
+  useServices();
   // null = 探测中（第一次调用 net.capabilities 要等壳回，最多 3 秒）
   const [channel, setChannel] = useState<DavChannel | null>(null);
 
@@ -54,6 +77,16 @@ export function SyncSection() {
   }, []);
 
   const patch = (p: Partial<NutstoreSettings>) => setS((old) => ({ ...old, ...p }));
+
+  /**
+   * 自动同步的节拍改了就当场落库：服务每一拍都重新读设置，
+   * 不点「保存设置」也生效——用户不会为了「改成每 15 分钟」再多点一下保存。
+   */
+  const patchSaved = (p: Partial<NutstoreSettings>) => {
+    const next = { ...s, ...p };
+    setS(next);
+    saveSettings(next);
+  };
 
   const doSave = () => {
     saveSettings(s);
@@ -167,9 +200,48 @@ export function SyncSection() {
       </details>
 
       <label className="checkbox">
-        <input type="checkbox" checked={s.auto} onChange={(e) => patch({ auto: e.target.checked })} />
-        打开应用时自动同步一次
+        <input
+          type="checkbox"
+          checked={s.auto}
+          disabled={busy !== ''}
+          onChange={(e) => {
+            // 走 setAutoEnabled：它把界面上刚填的账号一并存库再开关，
+            // 否则「填完账号直接勾自动同步」会勾不上（起不来），或者把刚填的东西冲掉
+            setAutoEnabled(e.target.checked, s);
+            setS(loadSettings());
+            setErr(null);
+          }}
+        />
+        自动同步：开软件自启动，启动时先把云端拉齐一次
       </label>
+      {s.auto && (
+        <>
+          <label className="field">
+            <span className="field-label">定时间隔</span>
+            <select
+              value={String(s.everyMin)}
+              disabled={busy !== ''}
+              onChange={(e) => patchSaved({ everyMin: Number(e.target.value) })}
+            >
+              {EVERY_CHOICES.map((m) => (
+                <option key={m} value={String(m)}>
+                  {m === 0 ? '不定时（只在有改动后补）' : `每 ${m} 分钟`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={s.onChanged}
+              disabled={busy !== ''}
+              onChange={(e) => patchSaved({ onChanged: e.target.checked })}
+            />
+            本机有改动就同步（写完安静一分钟再传，不是一敲字就传）
+          </label>
+          <p className="muted small sync-auto-state">{autoLine(autoStatus())}</p>
+        </>
+      )}
 
       <label className="checkbox">
         <input
