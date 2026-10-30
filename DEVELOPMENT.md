@@ -1262,7 +1262,7 @@ AI 服务商能连，是因为它们**主动返回** `Access-Control-Allow-Origi
 | `nutstore.att`（开关）默认开 | 只有明确存过 `'0'` 才算关；老库没这个键，默认要跟着「文件也要上传」走。它是设备各自的偏好，`buildLibrary` 的 `meta` 是固定几个字段，所以这个键本来就不会进快照 |
 
 诊断入口 `system.syncAttachments`（只读本地，不联网、不含密码）；
-回归 `tools/e2e/nutstore-attachments-e2e.mjs`（A1–A11，30 项断言，含「云端片被截断不写坏库」
+回归 `tools/e2e/nutstore-attachments-e2e.mjs`（A1–A11，37 项断言，含「云端片被截断不写坏库」
 与「补算的指纹刷新后还在」两条真会踩的坑）。
 
 ### F-AI01 AI 模型别名 — P1
