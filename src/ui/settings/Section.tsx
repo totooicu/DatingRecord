@@ -17,7 +17,7 @@ export function Section({
           <h4 className="card-title">{title}</h4>
         </div>
       )}
-      {desc && <p className="muted">{desc}</p>}
+      {desc && <p className="muted guide-only">{desc}</p>}
       {children}
     </section>
   );

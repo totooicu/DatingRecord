@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { applyTemplate, createPerson, listPersons, listTemplates } from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
 import { Avatar } from './Avatar';
 import { HeadStatus } from '../runtime/HeadStatus';
 import { PageHead, VersionStrip } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+
+const PAGE_SIZE = 50;
 
 export function PersonList({
   selectedId,
@@ -19,6 +23,12 @@ export function PersonList({
 }) {
   const v = useVersion();
   const persons = useMemo(() => listPersons({ keyword }), [v, keyword]);
+  // 搜索词一变，结果集就换了一批；留在深处的页码没意义，回到第一页
+  const paged = usePaged(persons, PAGE_SIZE);
+  useEffect(() => {
+    paged.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword]);
   const allPersons = useMemo(() => listPersons({ includeArchived: true }), [v]);
   const templates = useMemo(() => listTemplates(), [v]);
   const [creating, setCreating] = useState(false);
@@ -143,7 +153,7 @@ export function PersonList({
         )}
       </div>
       {persons.length === 0 && <div className="muted pad">暂无人物</div>}
-      {persons.map((p) => (
+      {paged.pageItems.map((p) => (
         <button
           key={p.id}
           className={p.id === selectedId ? 'list-item list-item-on' : 'list-item'}
@@ -162,6 +172,7 @@ export function PersonList({
           </span>
         </button>
       ))}
+      <Paginator paged={paged} onPage={paged.setPage} />
     </div>
   );
 }

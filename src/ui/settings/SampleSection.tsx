@@ -98,7 +98,7 @@ export function SampleSection() {
       <div className="sample-divider" />
 
       <h4 className="sample-sub">压测数据（按数量级造）</h4>
-      <p className="muted small">
+      <p className="muted small guide-only">
         选一个数量级，各项数量会自动跟着派生，也可以展开逐项改到想要的值。
         文本长度会随量级一起放大——人名、标题、正文、文件名都会变长，
         极端档位还会造出无空格的超长文件名，顺带试界面会不会被顶宽。

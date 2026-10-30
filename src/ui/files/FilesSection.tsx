@@ -5,7 +5,7 @@
 //
 // 正文引用存 file:<storedId>，方括号里另写一份文件名当展示名；
 // 定位只看 id，所以这里改名不会让既有引用失效（显示名保持插入时的样子）。
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   countTotalRefs,
   deleteFile,
@@ -37,6 +37,10 @@ import {
   type FileSort,
 } from './fileFilter';
 import { fmtSize } from './fileFormat';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+
+const PAGE_SIZE = 50;
 
 export function FilesSection({
   onPick,
@@ -116,6 +120,14 @@ export function FilesSection({
     () => applyFilter(files, filter, sort, refCounts),
     [files, filter, sort, refCounts],
   );
+  // 文件可能上千，整页 DOM 直接卡死；按页切片，只渲染当前这 50 条。
+  // 筛选/排序变化时结果集整体换血，留在深页没意义，回第一页。
+  const paged = usePaged(visible, PAGE_SIZE);
+  const filterKey = `${filter.q}|${filter.types.join(',')}|${filter.refs}|${sort.key}|${sort.dir}`;
+  useEffect(() => {
+    paged.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey]);
   const selectedVisible = visible.filter((f) => selected.has(f.id));
   const allSelected = visible.length > 0 && selectedVisible.length === visible.length;
 
@@ -172,7 +184,7 @@ export function FilesSection({
         <button type="button" role="tab" aria-selected={tab === 'maintenance'} className={`aichat-tab${tab === 'maintenance' ? ' aichat-tab-on' : ''}`} onClick={() => { setMaintenanceVisited(true); setTab('maintenance'); }}>整理{dupGroups > 0 && <span className="aichat-tab-n">{dupGroups}</span>}</button>
       </div>}
       <div hidden={!compact && tab !== 'files'}>
-      {onPick && !compact && <p className="muted small">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
+      {onPick && !compact && <p className="muted small guide-only">点文件名或「插入」把引用写进正文；缩略图和眼睛图标仍是预览。</p>}
       {!compact && (
         <>
           <div className="row-actions">
@@ -230,7 +242,7 @@ export function FilesSection({
       )}
 
       {compact && (
-        <p className="muted small">
+        <p className="muted small guide-only">
           {files.length ? `文件库里 ${files.length} 首音频` : '文件库里还没有音频'}
         </p>
       )}
@@ -247,31 +259,34 @@ export function FilesSection({
           </button>
         </div>
       ) : (
-        <ul className="file-list">
-          {visible.map((f) => (
-            <FileRow
-              key={f.id}
-              file={f}
-              thumb={thumbs[f.id]}
-              batch={batch}
-              selected={selected.has(f.id)}
-              onToggleSelect={toggleSelect}
-              onPreview={(x) => setPreviewId(x.id)}
-              onCopy={copyRef}
-              onDelete={remove}
-              onShowRefs={setRefsFile}
-              onPick={onPick}
+        <>
+          <ul className="file-list">
+            {paged.pageItems.map((f) => (
+              <FileRow
+                key={f.id}
+                file={f}
+                thumb={thumbs[f.id]}
+                batch={batch}
+                selected={selected.has(f.id)}
+                onToggleSelect={toggleSelect}
+                onPreview={(x) => setPreviewId(x.id)}
+                onCopy={copyRef}
+                onDelete={remove}
+                onShowRefs={setRefsFile}
+                onPick={onPick}
               pickDisabled={pickedIds?.has(f.id)}
               pickLabel={pickLabel}
             />
           ))}
-        </ul>
+          </ul>
+          <Paginator paged={paged} onPage={paged.setPage} />
+        </>
       )}
 
       </div>
       {!compact && <div hidden={tab !== 'maintenance'}>
         {maintenanceVisited && <>
-          <p className="muted small">单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改；正文里的显示名保留插入时的样子。</p>
+          <p className="muted small guide-only">单层文件库（不分子文件夹）。引用名是内容 hash，实际名随时可改；正文里的显示名保留插入时的样子。</p>
           <section className="files-advanced dup-entry">
             <h4>重复 hash 管理{dupGroups > 0 ? ` · ${dupGroups} 组待处理` : ''}</h4>
             <DupHashSection onSearchHash={searchByHash} onDone={setTip} />

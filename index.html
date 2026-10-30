@@ -20,6 +20,15 @@
             var app = JSON.parse(appRaw);
             if (app && app.mode === 'dark') document.documentElement.dataset.mode = 'dark';
           }
+          // 专注模式下，带 .guide-only 的说明文字要在首屏就藏掉，
+          // 否则进设置页才会「啪」一下消失，像坏了一样。
+          try {
+            var prefsRaw = localStorage.getItem('dr.prefs.v1');
+            if (prefsRaw) {
+              var prefs = JSON.parse(prefsRaw);
+              if (prefs && prefs.guide === 'focus') document.documentElement.dataset.guide = 'focus';
+            }
+          } catch (e) {}
           var raw = localStorage.getItem('dr.appearance.vars.v1');
           if (!raw) return;
           var vars = JSON.parse(raw);

@@ -15,12 +15,14 @@ import {
   resetAppearance,
   type Appearance,
 } from '../theme';
+import { getGuide, setGuide, type GuideMode } from '../prefs';
 
 export function AppearanceSection() {
   const [appearance, setAppearance] = useState<Appearance>(() => getAppearance());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [note, setNote] = useState('');
   const [isDefault, setIsDefault] = useState(() => isDefaultAppearance(getAppearance()));
+  const [guide, setGuideState] = useState<GuideMode>(() => getGuide());
 
   const commit = (patch: Partial<Appearance>) => {
     const res = applyAppearance({ ...appearance, ...patch });
@@ -44,6 +46,33 @@ export function AppearanceSection() {
 
   return (
     <div className="theme-page">
+      <Section title="界面模式" desc="陪伴模式保留每一步的小字说明；专注模式只留控件，去掉解释性文字，界面更清爽。">
+        <div className="theme-mode">
+          <button
+            type="button"
+            className={guide === 'companion' ? 'theme-mode-btn on' : 'theme-mode-btn'}
+            aria-pressed={guide === 'companion'}
+            onClick={() => {
+              setGuide('companion');
+              setGuideState('companion');
+            }}
+          >
+            陪伴模式
+          </button>
+          <button
+            type="button"
+            className={guide === 'focus' ? 'theme-mode-btn on' : 'theme-mode-btn'}
+            aria-pressed={guide === 'focus'}
+            onClick={() => {
+              setGuide('focus');
+              setGuideState('focus');
+            }}
+          >
+            专注模式
+          </button>
+        </div>
+      </Section>
+
       <Section title="外观模式" desc="深色模式的底色由主题色派生：选了湖蓝，夜景就偏蓝；选了朱砂，夜景就偏红。">
         <div className="theme-mode">
           <button
@@ -97,7 +126,7 @@ export function AppearanceSection() {
             <span className="theme-color-dot" style={{ background: appearance.accent }} />
             <span>{pickerOpen ? '收起调色板' : '自定义颜色'}</span>
           </button>
-          <span className="muted small">彩虹取色 · 历史色 · HEX / RGB 输入</span>
+          <span className="muted small guide-only">彩虹取色 · 历史色 · HEX / RGB 输入</span>
         </div>
 
         {pickerOpen && (
@@ -187,7 +216,7 @@ export function AppearanceSection() {
         <button type="button" className="btn btn-sm" disabled={isDefault} onClick={onReset}>
           恢复默认
         </button>
-        <span className="muted small">只影响这台设备，不写进备份。</span>
+        <span className="muted small guide-only">只影响这台设备，不写进备份。</span>
       </div>
     </div>
   );

@@ -64,3 +64,9 @@ textarea:focus {
 textarea {
   resize: vertical;
 }
+
+/* 专注模式：根元素 data-guide="focus" 时，带 guide-only 的说明文字一律隐藏。
+   用 !important 压下元素自身可能设置的 display（如 flex 容器），确保收得干净。 */
+[data-guide='focus'] .guide-only {
+  display: none !important;
+}
