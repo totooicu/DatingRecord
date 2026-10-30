@@ -46,42 +46,28 @@
     max-width: 760px;
   }
 
-  /* 宽屏回到单行表格式：时间 | 标题 | 人物 | 元信息 */
-  .event-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .event-time {
-    width: 92px;
-    flex-shrink: 0;
-  }
-  .event-title {
-    flex: 1;
-  }
-  .event-people {
-    display: inline;
-    flex-shrink: 0;
-  }
-  .event-meta {
-    flex-shrink: 0;
-  }
-
-  /* 宽屏 timeline 容器已有留白，头部去重 */
+  /* 宽屏 timeline 容器已有留白：工具条、月份条、事件行都不再重复左右内边距 */
   .timeline-head,
-  .month-label {
+  .month-label,
+  .event-item {
     padding-left: 0;
     padding-right: 0;
+  }
+  /* 宽屏时间栏放宽：10-25 / 09:00 上下两行也不挤 */
+  .event-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+    column-gap: 16px;
+    padding-top: 10px;
+    padding-bottom: 11px;
+  }
+  .event-title {
+    font-size: 14px;
   }
   .timeline {
     max-width: 960px;
     margin: 0 auto;
     padding-left: 22px;
     padding-right: 22px;
-  }
-
-  .btn-new-inline {
-    display: inline-block;
   }
 }
 
@@ -101,6 +87,11 @@
 
   .stack {
     flex-direction: row;
+  }
+
+  /* 宽屏没有吸顶的 head，月份条要贴到最顶（手机上是贴在 head 下面 44px） */
+  .month-label {
+    top: 0;
   }
 
   /* 关键：宽屏忽略页面栈状态，两栏同屏显示 */

@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { Modal } from '../common';
 import { downloadFile, openInTab, urlForFile } from '../../core/repo/files';
+import { showToast } from '../toast';
 import type { StoredFile } from '../../core/repo/files';
 import { kindLabel, kindOf } from './kind';
 import { AudioView, ImageView, VideoView } from './MediaView';
@@ -25,7 +26,13 @@ export function PreviewModal({ file, onClose }: { file: StoredFile; onClose: () 
 
   const saveAs = async () => {
     const url = await urlForFile(file.id);
-    if (url) downloadFile(url, file.name);
+    if (!url) return;
+    // 壳里存「下载」、浏览器里弹下载，失败要把原因说出来（以前是静默什么也没发生）
+    try {
+      await downloadFile(url, file.name, file.mime);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), 2600);
+    }
   };
 
   return (

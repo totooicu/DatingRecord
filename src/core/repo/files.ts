@@ -18,6 +18,7 @@ import { FILE_REF_PREFIX } from '../markdown';
 import { sha256Hex } from '../files/naming';
 import { availableFileName, assertFileNameAvailable } from '../files/displayNames';
 import { isInPlaylist as isInMusicPlaylist } from '../music/playlist';
+import { saveBytes } from '../io/save';
 
 export interface StoredFile {
   id: string;
@@ -504,19 +505,17 @@ export function fileRefSyntax(f: StoredFile): string {
 }
 
 /**
- * 触发下载，存成当前的文件名。
+ * 下载附件，存成当前的文件名。
  *
- * objectURL 本身没有文件名（浏览器会拿一串随机 uuid 当名字），
- * 所以必须用 <a download> 才能把名字带下去。
+ * 不能直接把 objectURL 丢给 <a download>：壳（WebView/GeckoView）里 blob:
+ * 没人接，点了毫无反应。所以先把 objectURL 读回字节，再交给 saveBytes
+ * 决定是「壳里写进手机下载目录」还是「浏览器里弹下载」。
  */
-export function downloadFile(url: string, name: string): void {
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+export async function downloadFile(url: string, name: string, mime = ''): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`读取文件失败：HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  await saveBytes(new Uint8Array(buf), name, mime || res.headers.get('content-type') || '');
 }
 
 /** 在新标签页打开（PDF、或用户想用浏览器自带能力看的时候） */

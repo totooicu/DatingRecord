@@ -4,6 +4,7 @@ import { queryAll, getDeviceId, getMeta, setMeta } from '../db';
 import { newId } from '../id';
 import { getBlob, blobToBase64 } from '../db/blob';
 import { SCHEMA_VERSION, type Attachment, type LibraryFile } from '../types';
+import { saveText } from './save';
 import {
   rowToDef,
   rowToPerson,
@@ -100,14 +101,8 @@ export async function exportToFile(opts: { includeAttachments?: boolean } = {}):
   const lib = await buildLibrary(opts);
   const text = JSON.stringify(lib, null, 2);
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `dating-record-${stamp}.drp.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return a.download;
+  const name = `dating-record-${stamp}.drp.json`;
+  // 走 saveText：壳里存进手机「下载」，浏览器里弹下载
+  await saveText(text, name, 'application/json;charset=utf-8');
+  return name;
 }

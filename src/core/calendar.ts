@@ -5,10 +5,11 @@
 //
 // 只放进「有事件」的格子：空日子留白，比给每个集合都撒一遍图标干净得多。
 
-import { listEvents } from './repo/events';
+import { queryAll } from './db';
 import { getCollection, descendantIdsOf } from './repo/collections';
-import { collectionsOfEvent } from './repo/collections/members';
-import type { CollectionIcon, DREvent } from './types';
+import { eventFromRow, safeParse, type EventRow } from './repo/events/rows';
+import { isPrivacyMode } from '../privacy';
+import type { Collection, CollectionIcon, DREvent, Participant } from './types';
 
 /** 'YYYY-MM-DD'，本地时区 */
 export type DayKey = string;
@@ -188,65 +189,202 @@ export function dayKeysBetween(from: DayKey, to: DayKey): DayKey[] {
 }
 
 /**
- * 把事件摊平成「日键 → 摘要」。
+ * 日历一次性派生出来的全部数据：日摘要、月计数、各月横条。
  *
- * 一条事件可能挂在多个集合里；同一天同一个集合只算一次图标。
- * 事件没挂集合时，用它的主集合（primaryCollectionId）兜底——否则
- * 手动建的集合还没来得及加成员，日历上就一片空白，看着像坏了。
- *
- * 区间事件**逐日展开**：1→3 号的事，1、2、3 每格都要有标记，
- * 否则中间日期看起来像「那天没事」。
+ * 旧实现里 collectDaySummaries / collectMonthCounts / collectSpanBars 各自
+ * 全表扫一遍事件，且每条事件都单独查一次集合归属与参与者；万级数据下就是
+ * ~10 万次 SQL，日历要几十秒。这里改成三条批量 SQL（事件行 / 集合归属 /
+ * 参与者）一次性取回，纯 JS 只遍历事件一遍，把 DB 访问降到个位数。
  */
-export function collectDaySummaries(
+export interface CalendarModel {
+  /** 日键 → 当天摘要（事件数、集合、单日事件标题） */
+  summaries: Map<DayKey, DaySummary>;
+  /** 'YYYY-MM' → 该月事件数（跨月事件在覆盖到的每个月各计一次） */
+  monthCounts: Map<string, number>;
+  /** 'YYYY-MM' → 该月横条（已分配行号） */
+  spanBarsByMonth: Map<string, SpanBar[]>;
+}
+
+export function computeCalendarModel(
   filter: CalendarFilter = EMPTY_CALENDAR_FILTER,
-): Map<DayKey, DaySummary> {
-  const out = new Map<DayKey, DaySummary>();
-  const { match } = makeMatcher(filter);
-  const cache = new Map<string, { name: string; icon: CollectionIcon | null } | null>();
-  const infoOf = (id: string) => {
-    if (!cache.has(id)) {
-      const c = getCollection(id);
-      cache.set(id, c ? { name: c.name, icon: c.icon } : null);
+): CalendarModel {
+  // 1) 批量取数：事件行 / 集合归属 / 参与者，各一条 SQL，绝不逐事件查库
+  const eventRows = queryAll<EventRow>(
+    `SELECT * FROM events WHERE deleted_at IS NULL
+     ${isPrivacyMode() ? 'AND is_private = 0' : ''}
+     ORDER BY COALESCE(start_ts, 9223372036854775807) DESC, created_at DESC`,
+    [],
+  );
+  const memRows = queryAll<{ collection_id: string; member_id: string }>(
+    `SELECT collection_id, member_id FROM collection_members
+     WHERE member_type = 'event' AND deleted_at IS NULL`,
+    [],
+  );
+  // 参与者只在「按人物筛选」时才需要，避免无谓地拉全表
+  const needPersons = filter.personIds.length > 0;
+  const partRows = needPersons
+    ? queryAll<{ event_id: string; person_id: string; role: string; note: string; per_person_json: string }>(
+        'SELECT event_id, person_id, role, note, per_person_json FROM event_participants',
+        [],
+      )
+    : [];
+
+  // 集合只解析一次，后续按 id 直接取
+  const colById = new Map<string, Collection>();
+  const resolveCol = (id: string): Collection | null => {
+    let c = colById.get(id);
+    if (!c) {
+      c = getCollection(id) ?? undefined;
+      if (c) colById.set(id, c);
     }
-    return cache.get(id) ?? null;
+    return c ?? null;
   };
 
-  for (const e of listEvents({})) {
+  // 事件 → 集合 id 列表（保持 membership 顺序，第一个即主图标来源）
+  const evCols = new Map<string, string[]>();
+  for (const r of memRows) {
+    let arr = evCols.get(r.member_id);
+    if (!arr) {
+      arr = [];
+      evCols.set(r.member_id, arr);
+    }
+    arr.push(r.collection_id);
+  }
+
+  // 事件 → 参与者
+  const evParts = new Map<string, Participant[]>();
+  if (needPersons) {
+    for (const r of partRows) {
+      let arr = evParts.get(r.event_id);
+      if (!arr) {
+        arr = [];
+        evParts.set(r.event_id, arr);
+      }
+      arr.push({
+        personId: r.person_id,
+        role: r.role as Participant['role'],
+        note: r.note || undefined,
+        perPerson: safeParse<Record<string, unknown>>(r.per_person_json, {}),
+      });
+    }
+  }
+
+  // 组装事件对象（只补上日历需要的字段；participants 由上面的批量结果注入）
+  const events: DREvent[] = eventRows.map((r) => eventFromRow(r, evParts.get(r.id) ?? []));
+
+  const matcher = makeMatcher(filter);
+  const summaries = new Map<DayKey, DaySummary>();
+  const monthCounts = new Map<string, number>();
+  const spanBarsByMonth = new Map<string, SpanBar[]>();
+  // 集合 id → {name, icon}，跨事件复用，避免反复 getCollection
+  const colInfo = new Map<string, { name: string; icon: CollectionIcon | null } | null>();
+  const infoOf = (id: string) => {
+    let i = colInfo.get(id);
+    if (!i) {
+      const c = resolveCol(id);
+      i = c ? { name: c.name, icon: c.icon } : null;
+      colInfo.set(id, i);
+    }
+    return i ?? null;
+  };
+
+  for (const e of events) {
     const startKey = dayKeyOfTs(e.startTs);
     if (!startKey) continue;
-
     // endTs 缺失 / 非法 / 早于 start → 退化为单日，避免负循环
     let endKey = dayKeyOfTs(e.endTs);
     if (!endKey || endKey < startKey) endKey = startKey;
 
-    // 集合信息与日期无关，先算好，逐日循环里直接复用
-    const ids = collectionsOfEvent(e.id).map((c) => c.id);
-    if (ids.length === 0 && e.primaryCollectionId) ids.push(e.primaryCollectionId);
+    const ids = evCols.get(e.id) ?? [];
+    const colIds = ids.length > 0 ? ids : e.primaryCollectionId ? [e.primaryCollectionId] : [];
     // 筛选在展开日期之前做：被过滤掉的事件既不计数也不出图标
-    if (!match(e, ids)) continue;
+    if (!matcher.match(e, colIds)) continue;
 
-    // 单日事件才进格子里的滚动文字；跨天事件已经有一条横跨多格的条，
-    // 再在每一天重复一遍标题只会让格子更乱
     const singleDay = startKey === endKey;
-    const firstId = ids[0] ?? e.primaryCollectionId;
-    const icon = singleDay && firstId ? (infoOf(firstId)?.icon ?? null) : null;
 
+    // 逐日展开：当天摘要（单日事件才放标题，跨天事件由横条表达）
     for (const key of dayKeysBetween(startKey, endKey)) {
-      let cell = out.get(key);
+      let cell = summaries.get(key);
       if (!cell) {
         cell = { count: 0, collections: [], events: [] };
-        out.set(key, cell);
+        summaries.set(key, cell);
       }
       cell.count += 1;
-      if (singleDay) cell.events.push({ id: e.id, title: e.title, icon });
-      for (const id of ids) {
+      if (singleDay) {
+        const firstId = colIds[0] ?? e.primaryCollectionId;
+        const icon = firstId ? (infoOf(firstId)?.icon ?? null) : null;
+        cell.events.push({ id: e.id, title: e.title, icon });
+      }
+      for (const id of colIds) {
         if (cell.collections.some((c) => c.id === id)) continue;
         const c = infoOf(id);
         if (c) cell.collections.push({ id, name: c.name, icon: c.icon });
       }
     }
+
+    // 按月展开：月计数 + 当月横条（裁剪到月内、分配行号留到全月扫完之后）
+    const [sy, sm] = startKey.split('-').map(Number);
+    const [ey, em] = endKey.split('-').map(Number);
+    const endIdx = ey * 12 + em - 1;
+    let y = sy;
+    let m = sm - 1;
+    for (let i = 0; i < 2400; i += 1) {
+      const idx = y * 12 + m;
+      if (idx > endIdx) break;
+      const mKey = `${y}-${pad2(m + 1)}`;
+      monthCounts.set(mKey, (monthCounts.get(mKey) ?? 0) + 1);
+
+      const monthStart = dayKeyOf(new Date(y, m, 1));
+      const monthEnd = dayKeyOf(new Date(y, m + 1, 0));
+      const first = colIds.length
+        ? resolveCol(colIds[0])
+        : e.primaryCollectionId
+          ? resolveCol(e.primaryCollectionId)
+          : null;
+      let arr = spanBarsByMonth.get(mKey);
+      if (!arr) {
+        arr = [];
+        spanBarsByMonth.set(mKey, arr);
+      }
+      arr.push({
+        eventId: e.id,
+        title: e.title,
+        startKey: startKey < monthStart ? monthStart : startKey,
+        endKey: endKey > monthEnd ? monthEnd : endKey,
+        clippedStart: startKey < monthStart,
+        clippedEnd: endKey > monthEnd,
+        icon: first?.icon ?? null,
+        toneSeed: first?.name ?? '',
+        lane: 0,
+      });
+
+      m += 1;
+      if (m === 12) {
+        m = 0;
+        y += 1;
+      }
+    }
   }
-  return out;
+
+  // 每个月的横条独立排序 + 贪心分配行号（与旧 collectSpanBars 同策略）
+  for (const arr of spanBarsByMonth.values()) {
+    arr.sort((a, b) =>
+      a.startKey === b.startKey ? (a.endKey > b.endKey ? -1 : 1) : a.startKey < b.startKey ? -1 : 1,
+    );
+    const laneEnds: DayKey[] = [];
+    for (const b of arr) {
+      let lane = laneEnds.findIndex((end) => end < b.startKey);
+      if (lane === -1) {
+        lane = laneEnds.length;
+        laneEnds.push(b.endKey);
+      } else {
+        laneEnds[lane] = b.endKey;
+      }
+      b.lane = lane;
+    }
+  }
+
+  return { summaries, monthCounts, spanBarsByMonth };
 }
 
 /**
@@ -271,116 +409,4 @@ export interface SpanBar {
   toneSeed: string;
   /** 第几行；同一行内的条互不重叠 */
   lane: number;
-}
-
-/**
- * 收集与指定月份相交的跨天事件，裁剪到月内并分配行号。
- *
- * 贪心策略：先按开始日排序，同一天开始的先排长的——
- * 长条可选的空白最少，先给它定行，后面的短条更容易塞进空隙。
- */
-export function collectSpanBars(
-  m: MonthRef,
-  filter: CalendarFilter = EMPTY_CALENDAR_FILTER,
-): SpanBar[] {
-  const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
-  const monthStart = dayKeyOf(new Date(m.year, m.month, 1));
-  const monthEnd = dayKeyOf(new Date(m.year, m.month, daysInMonth));
-  const bars: SpanBar[] = [];
-  const { match } = makeMatcher(filter);
-
-  for (const e of listEvents({})) {
-    const sKey = dayKeyOfTs(e.startTs);
-    if (!sKey) continue;
-    let eKey = dayKeyOfTs(e.endTs);
-    if (!eKey || eKey < sKey) eKey = sKey;
-    // 单日事件也走 SpanBar 框架（占一格），不再单独在格子里渲染
-    if (eKey < monthStart || sKey > monthEnd) continue; // 与本月不相交
-
-    const clippedStart = sKey < monthStart;
-    const clippedEnd = eKey > monthEnd;
-
-    // 图标与 DaySummary 同源：先看关联集合，没挂就用主集合兜底
-    let icon: CollectionIcon | null = null;
-    const cols = collectionsOfEvent(e.id);
-    const colIds = cols.map((c) => c.id);
-    if (!match(e, colIds)) continue;
-    const first = cols[0] ?? (e.primaryCollectionId ? getCollection(e.primaryCollectionId) : undefined);
-    icon = first?.icon ?? null;
-    // 没设图标时用集合名散列出默认配色；连集合都没有才退回主题色
-    const toneSeed = first?.name ?? '';
-
-    bars.push({
-      eventId: e.id,
-      title: e.title,
-      startKey: clippedStart ? monthStart : sKey,
-      endKey: clippedEnd ? monthEnd : eKey,
-      clippedStart,
-      clippedEnd,
-      icon,
-      toneSeed,
-      lane: 0,
-    });
-  }
-
-  bars.sort((a, b) =>
-    a.startKey === b.startKey ? (a.endKey > b.endKey ? -1 : 1) : a.startKey < b.startKey ? -1 : 1,
-  );
-
-  // laneEnds[i] = 第 i 行目前占用到的最后一天；早于本条的 startKey 才能共用一行
-  const laneEnds: DayKey[] = [];
-  for (const b of bars) {
-    let lane = laneEnds.findIndex((end) => end < b.startKey);
-    if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(b.endKey);
-    } else {
-      laneEnds[lane] = b.endKey;
-    }
-    b.lane = lane;
-  }
-  return bars;
-}
-
-/**
- * 每个月的事件数：键是 'YYYY-MM'。
- *
- * 跨月事件在它覆盖到的每个月各记一次——九月底到十月初的旅行，
- * 说「十月有 0 件事」显然不对。一次遍历最多展开约 200 年，
- * 防御导入数据里离谱的时间区间。
- */
-export function collectMonthCounts(
-  filter: CalendarFilter = EMPTY_CALENDAR_FILTER,
-): Map<string, number> {
-  const out = new Map<string, number>();
-  const { match } = makeMatcher(filter);
-
-  for (const e of listEvents({})) {
-    const sKey = dayKeyOfTs(e.startTs);
-    if (!sKey) continue;
-    let eKey = dayKeyOfTs(e.endTs);
-    if (!eKey || eKey < sKey) eKey = sKey;
-
-    const ids = collectionsOfEvent(e.id).map((c) => c.id);
-    if (ids.length === 0 && e.primaryCollectionId) ids.push(e.primaryCollectionId);
-    if (!match(e, ids)) continue;
-
-    const [sy, sm] = sKey.split('-').map(Number);
-    const [ey, em] = eKey.split('-').map(Number);
-    const endIdx = ey * 12 + em - 1;
-    let y = sy;
-    let m = sm - 1;
-    for (let i = 0; i < 2400; i += 1) {
-      const idx = y * 12 + m;
-      if (idx > endIdx) break;
-      const key = `${y}-${pad2(m + 1)}`;
-      out.set(key, (out.get(key) ?? 0) + 1);
-      m += 1;
-      if (m === 12) {
-        m = 0;
-        y += 1;
-      }
-    }
-  }
-  return out;
 }

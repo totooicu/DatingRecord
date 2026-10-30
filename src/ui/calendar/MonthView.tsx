@@ -25,9 +25,7 @@ import {
 } from 'react';
 import {
   buildMonthGrid,
-  collectDaySummaries,
-  collectMonthCounts,
-  collectSpanBars,
+  computeCalendarModel,
   dayKeyOf,
   monthKey,
   monthOf,
@@ -197,15 +195,18 @@ export function MonthView({
   /** 当前所在（或上次跳转到的）有事件日子，作为「上一日 / 下一日」的锚点 */
   const [focusedDay, setFocusedDay] = useState<DayKey>(() => savedView?.focusedDay ?? today);
 
-  const summaries = useMemo(() => collectDaySummaries(filter), [v, filter]);
+  // 一次性把日历要的全部派生数据算出来（日摘要 / 月计数 / 各月横条），
+  // 内部只全表扫一遍事件，避免旧实现里多次全扫 + 逐事件查库导致的几十秒卡顿。
+  const model = useMemo(() => computeCalendarModel(filter), [v, filter]);
+  const summaries = model.summaries;
   // 全部有事件的日子（全局、不限于当前窗口），按日键升序排好，供快速跳转
   const eventDays = useMemo(() => Array.from(summaries.keys()).sort(), [summaries]);
-  const monthCounts = useMemo(() => collectMonthCounts(filter), [v, filter]);
+  const monthCounts = model.monthCounts;
   const barsByMonth = useMemo(() => {
     const map = new Map<string, SpanBar[]>();
-    for (const m of months) map.set(monthKey(m), collectSpanBars(m, filter));
+    for (const m of months) map.set(monthKey(m), model.spanBarsByMonth.get(monthKey(m)) ?? []);
     return map;
-  }, [months, v, filter]);
+  }, [months, model]);
 
   const weeks = useMemo(() => buildWeeks(months, today), [months, today]);
 

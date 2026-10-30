@@ -1398,6 +1398,19 @@ dating-record-YYYYMMDDHHmm.drp.zip/
 **导出只产出 `.drp.zip`**；旧的 `.drp.json` 仍可导入，但界面不再提供 JSON 下载。
 边界：敏感字段**默认不导出**或按开关脱敏；导出前校验 JSON 可序列化；元数据在但二进制丢失的附件跳过，不阻断备份。
 
+**落盘通道（2026-10-30）**：导出/下载一律走 `core/io/save.ts` 的 `saveBytes/saveText`，
+不再各处自己造 `<a download>`：
+
+| 环境 | 路径 |
+|---|---|
+| 浏览器 | `<a download>` + objectURL（文件名靠 `download` 属性带下去） |
+| 壳（WebView） | 先 `file.capabilities`（1.2s 超时，正负都缓存），有人回就按 2MB 分片 `file.writePublic`（`encoding:'base64'` + 首片建文件、后续 `uri`+`append`），落到手机「下载」 |
+
+壳里 `<a download>` 是死路：`blob:` 没有任何人接，`DownloadManager` 也拿不到，
+用户看到的现象就是「点了导出，一点反应都没有」。所以有壳时**不许**回退到 `<a download>`
+（那是二次静默失败），写盘错误原样抛给页面显示。回归：`tools/e2e/export-bridge-e2e.mjs`
+（E1–E6，含 5MB 分片逐字节比对）。
+
 ### F-I02 `.drp` 导入 — P0
 
 - **两种载体都认**：`.drp.zip`（走 manifest 找附件）与旧的 `.drp.json`（附件 base64 内联），按 zip 魔数自动识别；

@@ -2,6 +2,7 @@
 // 浏览器放不了内容时，用大字号把扩展名亮出来，用户一眼知道手里是什么文件。
 import { useState } from 'react';
 import { downloadFile, openInTab } from '../../core/repo/files';
+import { showToast } from '../toast';
 import { extOf, openOptions, type OpenOption } from './kind';
 import { useBlobUrl } from './useBlobUrl';
 
@@ -22,8 +23,10 @@ export function ExtFallback({
   const run = (o: OpenOption) => {
     if (!url) return;
     setPicked(o);
-    if (o.how === 'download') downloadFile(url, name);
-    else openInTab(url);
+    if (o.how === 'download') {
+      // 同样走 saveBytes：壳里不会一点反应都没有，失败也能说出原因
+      void downloadFile(url, name, mime).catch((e) => showToast(e instanceof Error ? e.message : String(e), 2600));
+    } else openInTab(url);
   };
 
   const ext = extOf(name);

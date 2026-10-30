@@ -66,6 +66,7 @@ import { listModels, type AiModel } from '../../core/ai';
 import { bump } from '../../store';
 import { LabHead } from './LabEdgeSection';
 import { showToast } from '../toast';
+import { saveText } from '../../core/io/save';
 
 /** 主题变量实时读取：canvas 没法用 CSS var，只能取计算后的值；随外观改主题也跟着变 */
 function cssVar(name: string, fallback: string): string {
@@ -919,11 +920,10 @@ export function LabTrackSection() {
 
   const downloadCSV = useCallback(() => {
     if (!result) return;
-    const blob = new Blob([toCsv(result)], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'track_points.csv';
-    a.click();
+    // 壳里存进手机「下载」：<a download> 在 WebView 里是死的
+    void saveText(toCsv(result), 'track_points.csv', 'text/csv;charset=utf-8').catch((e) =>
+      showToast(e instanceof Error ? e.message : String(e), 2600),
+    );
   }, [result]);
 
   const onMove = useCallback(

@@ -19,6 +19,7 @@ import { zip, unzip, strToU8, strFromU8 } from 'fflate';
 import { getDeviceId, queryAll } from '../db';
 import { getBlob, blobToBase64, base64ToBlob } from '../db/blob';
 import { extractFileRefs } from '../markdown';
+import { saveBytes } from './save';
 import { getRoot, descendantIdsOf, getCollection, isSmart, listSmartEvents } from '../repo/collections';
 import { getEvent, listEvents } from '../repo/events';
 import { listMessages } from '../repo/chat';
@@ -434,24 +435,14 @@ function toBlob(bytes: Uint8Array, type: string): Blob {
   return new Blob([copy.buffer], { type });
 }
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 /** 生成并下载分享压缩包，返回文件名 */
 export async function exportShareArchive(sel: ShareSelection, opts: ShareOptions = {}): Promise<string> {
   const share = await buildShare(sel, opts);
   const bytes = await buildShareArchive(share);
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const name = `分享-${safeName(share.sourceName ?? '事件集')}-${stamp}.drshare.zip`;
-  downloadBlob(toBlob(bytes, 'application/zip'), name);
+  // 走 saveBytes：壳里存进手机「下载」，浏览器里弹下载
+  await saveBytes(bytes, name, 'application/zip');
   return name;
 }
 

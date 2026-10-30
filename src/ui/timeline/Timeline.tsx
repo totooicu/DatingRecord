@@ -10,6 +10,12 @@ import type { TimelineFilter } from './filter';
 import { MonthGroup, groupByMonth } from './EventGroup';
 import { TrashModal } from './TrashModal';
 
+/** 时间线单次最多先渲染多少条事件，剩下的靠「显示更多」逐批放出。
+ *
+ * 万级数据下一次性把全部事件渲染成 DOM 节点会卡好几秒。先画一屏，
+ * 剩下的等用户要看了再逐批补，避免整页假死。 */
+const PAGE = 300;
+
 export function Timeline({
   filter,
   keyword,
@@ -73,60 +79,68 @@ export function Timeline({
     if (target) setEditing(target);
     onOpened?.();
   }, [openId, seenOpenId, onOpened]);
-  const [creating, setCreating] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  // 渐进渲染：先画前 PAGE 条，剩下靠「显示更多」放出，避免万级数据整页假死
+  const [visible, setVisible] = useState(PAGE);
+  useEffect(() => { setVisible(PAGE); }, [filter, keyword]);
   const groups = useMemo(() => groupByMonth(events), [events]);
+  const visibleGroups = useMemo(() => {
+    let remaining = visible;
+    const out: [string, DREvent[]][] = [];
+    for (const [month, list] of groups) {
+      if (remaining <= 0) break;
+      const take = list.slice(0, remaining);
+      out.push([month, take]);
+      remaining -= take.length;
+    }
+    return out;
+  }, [groups, visible]);
 
   return (
     <div className="timeline">
+      {/* 页面标题在 head 上，这里只留一条工具条：多少条 + 几个文字动作。
+          不再重复一行「时间线」，也不再放「＋记一件事」——右下角 FAB 各处都在 */}
       <div className="timeline-head">
-        <h3>
-          时间线 <span className="muted">{events.length} 条</span>
-          {filter.dayLabel && <span className="tl-daychip">只看 {filter.dayLabel}</span>}
-        </h3>
-        <div>
+        <span className="tl-count">{events.length} 条</span>
+        {filter.dayLabel && (
+          <span className="tl-daychip">
+            只看 {filter.dayLabel}
+            <button className="tl-chip-x" onClick={() => onClearDay?.()} title="取消日期限制" aria-label="取消日期限制">
+              ×
+            </button>
+          </span>
+        )}
+        <div className="tl-acts">
           {filter.dayLabel && (
-            <button
-              className="btn btn-sm"
-              onClick={() => onBackToCalendar?.()}
-              title="回到日历里那一天"
-            >
+            <button className="tl-act" onClick={() => onBackToCalendar?.()} title="回到日历里那一天">
               回到日历
             </button>
           )}
-          {filter.dayLabel && (
-            <button className="btn btn-sm" onClick={() => onClearDay?.()}>
-              取消日期
-            </button>
-          )}
-          <button className="btn btn-sm" onClick={() => setTrashOpen(true)}>
+          <button className="tl-act" onClick={() => setTrashOpen(true)}>
             回收站
-          </button>
-          <button className="btn btn-primary btn-new-inline" onClick={() => setCreating(true)}>
-            ＋ 记一件事
           </button>
         </div>
       </div>
 
       {events.length === 0 && <Empty text="没有符合条件的事件" />}
 
-      {groups.map(([month, list]) => (
+      {visibleGroups.map(([month, list]) => (
         <MonthGroup key={month} month={month} events={list} nameOf={nameOf} onEdit={setEditing} />
       ))}
+
+      {events.length > visible && (
+        <div className="timeline-more">
+          <button className="btn" onClick={() => setVisible((v) => v + PAGE)}>
+            显示更多（还剩 {events.length - visible} 条）
+          </button>
+        </div>
+      )}
 
       {editing && (
         <EventForm
           event={editing}
           onClose={() => {
             setEditing(null);
-            bump();
-          }}
-        />
-      )}
-      {creating && (
-        <EventForm
-          onClose={() => {
-            setCreating(false);
             bump();
           }}
         />

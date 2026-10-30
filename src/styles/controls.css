@@ -1,16 +1,47 @@
-/* ---------- 时间线头 ---------- */
-/* 手机是满宽列表，头部需要左右留白；宽屏在 pane-solo 里已有容器留白 */
+/* ---------- 时间线工具条 ---------- */
+/* 标题由 head 承担，这里只是一行很轻的说明 + 几个文字动作，
+   不再用 h3 重复一遍「时间线」，也不跟筛选栏堆成一摞横条。 */
 .timeline-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 6px;
-  margin-bottom: 10px;
+  padding: 10px 14px 2px;
+  margin-bottom: 0;
 }
 
-.timeline-head h3 {
-  margin: 0;
+.tl-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-acts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tl-act {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.tl-act:hover {
+  background: color-mix(in srgb, var(--text) 6%, var(--panel));
+  color: var(--text);
+}
+
+/* 时间线「显示更多」：万级数据下渐进放出，居中、与列表同留白 */
+.timeline-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px 14px 28px;
 }
 
 /* ---------- 按钮 ---------- */
