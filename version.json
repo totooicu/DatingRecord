@@ -1,133 +1,133 @@
 {
-  "version": "2026-10-30T02:06:19.458Z",
+  "version": "2026-10-30T02:07:30.385Z",
   "release": "1.2.0",
   "proto": 1,
   "shellMin": "1.0.0",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "bd8d5a43582c33cc",
-      "link": "/assets/AiHubSection-DMFgshlM.js"
+      "version": "35c3c3771025dfff",
+      "link": "/assets/AiHubSection-CF_qgNd_.js"
     },
     {
-      "version": "845639f9822fefa5",
-      "link": "/assets/AiSection-dG9bC_te.js"
+      "version": "75802da41acb4edc",
+      "link": "/assets/AiSection-Ce2mQq30.js"
     },
     {
-      "version": "37683d849ed0ad3b",
-      "link": "/assets/AppearanceSection-xYToYzap.js"
+      "version": "d9cbcf8fe02f9312",
+      "link": "/assets/AppearanceSection-Co_UPb7c.js"
     },
     {
-      "version": "eb9128b53ade74b0",
-      "link": "/assets/archive-Bol7r_q-.js"
+      "version": "3141f8d8c4a0bf9b",
+      "link": "/assets/archive-B4EvoUl4.js"
     },
     {
-      "version": "ccb734bc237aa792",
-      "link": "/assets/ArchiveSection-BLslpWtx.js"
+      "version": "79a68c39a54f34f6",
+      "link": "/assets/ArchiveSection-DfLkVMl6.js"
     },
     {
-      "version": "7b0533b344b4d439",
-      "link": "/assets/BackupSection-DW_yQ1bm.js"
+      "version": "af194dcbba5fe7db",
+      "link": "/assets/BackupSection-BtSv3WFs.js"
     },
     {
-      "version": "595779008d52a789",
-      "link": "/assets/DataSection-Cizo3Mc0.js"
+      "version": "8c8dcba2e0435304",
+      "link": "/assets/DataSection-D0smLr26.js"
     },
     {
-      "version": "da95cd3e428e8237",
-      "link": "/assets/diff-D7_Qymrs.js"
+      "version": "ae705f4d22f9afcf",
+      "link": "/assets/diff-DrS9vhB7.js"
     },
     {
       "version": "7b1b9e0b40e7ffd7",
       "link": "/assets/format-Cb-sJqcX.js"
     },
     {
-      "version": "b32fa09f81c9f046",
-      "link": "/assets/import-Cc4mO9py.js"
+      "version": "db0404c20c0ca672",
+      "link": "/assets/import-BpPo1xgM.js"
+    },
+    {
+      "version": "600d46384f0b807e",
+      "link": "/assets/index-704vhqeb.js"
     },
     {
       "version": "11215015ed607253",
       "link": "/assets/index-BiAX8jkt.css"
     },
     {
-      "version": "00725f22d1c26d2e",
-      "link": "/assets/index-CMpBYp6F.js"
+      "version": "9144253e552ca237",
+      "link": "/assets/LabAiSection-JdtQX6qS.js"
     },
     {
-      "version": "6af5c5c23d22a713",
-      "link": "/assets/LabAiSection-kt-UmuD3.js"
+      "version": "d4e47d522ee39dd6",
+      "link": "/assets/LabCompatSection-BsE15PQl.js"
     },
     {
-      "version": "0deb0cfa09002050",
-      "link": "/assets/LabCompatSection-jIBMRrrI.js"
+      "version": "295fc853152f6e45",
+      "link": "/assets/LabDraftSection-C6tnq1Cf.js"
     },
     {
-      "version": "6f3fcc0859b04bb8",
-      "link": "/assets/LabDraftSection-DJZP4T1E.js"
+      "version": "99530f473adf64d2",
+      "link": "/assets/LabEdgeSection-BhFJxIJ4.js"
     },
     {
-      "version": "8a92db9bbe8ce58f",
-      "link": "/assets/LabEdgeSection-TGBJlz_o.js"
+      "version": "2a7dd6a33201f242",
+      "link": "/assets/LabExtractSection-yVT0fL-4.js"
     },
     {
-      "version": "c0922f44974cc9f2",
-      "link": "/assets/LabExtractSection-DtjdPn3B.js"
+      "version": "ca9cf6985c1bbb9f",
+      "link": "/assets/LabSection-ByMAFfjC.js"
     },
     {
-      "version": "8fa253ce13b6e88d",
-      "link": "/assets/LabSection-Hz-7zdrc.js"
+      "version": "26f466872c712704",
+      "link": "/assets/LabTrackSection-DQCzAU8V.js"
     },
     {
-      "version": "9ed5617ab57a2871",
-      "link": "/assets/LabTrackSection-DP3mfD8m.js"
+      "version": "a13f9e9bf76ca3dd",
+      "link": "/assets/LocationPanel-CmKInUiJ.js"
     },
     {
-      "version": "50781ab7b961c34b",
-      "link": "/assets/LocationPanel-7DwS3CbC.js"
+      "version": "e66c6d02d8f54880",
+      "link": "/assets/maintenance-AVaWVADc.js"
     },
     {
-      "version": "9813837a1af1e365",
-      "link": "/assets/maintenance-Bl5DWagx.js"
+      "version": "9f42c4b9b555be07",
+      "link": "/assets/merge-ClVnGTsG.js"
     },
     {
-      "version": "42874c5c43db7f61",
-      "link": "/assets/merge-C9kIcVgf.js"
+      "version": "e115061b8d791cf4",
+      "link": "/assets/PanelHubSection-BJXLwhMF.js"
     },
     {
-      "version": "25afe67189fbb27d",
-      "link": "/assets/PanelHubSection-DZOkWkQu.js"
+      "version": "87bff67114c4f58e",
+      "link": "/assets/PeopleSection-q6n63T5G.js"
     },
     {
-      "version": "6b33ffdeb93cd87b",
-      "link": "/assets/PeopleSection-4deOHiQ8.js"
+      "version": "78ce14404a3348c6",
+      "link": "/assets/RemoteSection-CUfzaarM.js"
     },
     {
-      "version": "c91311d6a1a3bcc0",
-      "link": "/assets/RemoteSection-Cs2XlsbV.js"
+      "version": "6a2fa0dcf46f7781",
+      "link": "/assets/SecuritySection-BP4C1Vl-.js"
     },
     {
-      "version": "ee4736b00d230aa3",
-      "link": "/assets/SecuritySection-DUaAdV7V.js"
+      "version": "47f20fa376b75db9",
+      "link": "/assets/settings-h0ooR8ox.js"
     },
     {
-      "version": "aae8dcbb6fe8d35a",
-      "link": "/assets/settings-V9VOi3KA.js"
+      "version": "5946832cc4037f65",
+      "link": "/assets/share-Djv_cILe.js"
     },
     {
-      "version": "cffddd89b6bc8a87",
-      "link": "/assets/share-e4P_UQLr.js"
+      "version": "e2fb94356b97e00d",
+      "link": "/assets/ShareSection-B-YT8mxi.js"
     },
     {
-      "version": "ac50f43d6a4b0a80",
-      "link": "/assets/ShareSection-qJfOwdgL.js"
+      "version": "4bcd0c37289dee7f",
+      "link": "/assets/ShareWizard-CSMh8JsO.js"
     },
     {
-      "version": "2d47f0e37168ba0d",
-      "link": "/assets/ShareWizard-CEem1Ndc.js"
-    },
-    {
-      "version": "5beca453258f16e6",
-      "link": "/assets/SyncSection-BHOLhvQC.js"
+      "version": "cbb4a71a58f8f7d6",
+      "link": "/assets/SyncSection-D_bM9Hm7.js"
     },
     {
       "version": "8be885f0a6a49903",
@@ -158,7 +158,7 @@
       "link": "/icon.svg"
     },
     {
-      "version": "a56358e588e3cb43",
+      "version": "e04e1b918b10d19a",
       "link": "/index.html"
     },
     {
