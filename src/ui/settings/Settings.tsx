@@ -2,22 +2,9 @@ import { lazy, Suspense } from 'react';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { HeadStatus } from '../runtime/HeadStatus';
+// 备份与分享入口是默认子页（DEFAULT_SETTINGS_KEY），首屏就要显示，保持静态引入；
+// 其余子页全部按需加载，见下面的 lazy 定义。
 import { BackupHubSection } from './BackupHubSection';
-import { BackupSection } from './BackupSection';
-import { SyncSection } from './SyncSection';
-import { ShareSection } from './ShareSection';
-import { RemoteSection } from './RemoteSection';
-import { AppearanceSection } from './AppearanceSection';
-import { SecuritySection } from './SecuritySection';
-import { PeopleSection } from './PeopleSection';
-import { DataSection } from './DataSection';
-import { AiHubSection } from './AiHubSection';
-import { AiSection } from './AiSection';
-import { PanelHubSection } from './PanelHubSection';
-import { MusicPanel } from '../panel/MusicPanel';
-import { LocationPanel } from '../panel/LocationPanel';
-import { FilesPanel } from '../files';
-import { ArchiveSection } from './ArchiveSection';
 import { PageHead } from '../common';
 import {
   DEFAULT_SETTINGS_KEY,
@@ -26,6 +13,41 @@ import {
   type SettingsKey,
 } from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
+
+/* 设置里除默认页外的每个子页都各自独立成 chunk：点进去才去拉对应那一个 js。
+   定位面板（74KB）、文件页、AI 模型页、跨设备这些低频大块尤其明显——不点开就
+   一个字节都不下载。首屏只留默认页（备份与分享入口）的代码。 */
+const BackupSection = lazy(() =>
+  import('./BackupSection').then((m) => ({ default: m.BackupSection })),
+);
+const SyncSection = lazy(() => import('./SyncSection').then((m) => ({ default: m.SyncSection })));
+const ShareSection = lazy(() => import('./ShareSection').then((m) => ({ default: m.ShareSection })));
+const RemoteSection = lazy(() =>
+  import('./RemoteSection').then((m) => ({ default: m.RemoteSection })),
+);
+const AppearanceSection = lazy(() =>
+  import('./AppearanceSection').then((m) => ({ default: m.AppearanceSection })),
+);
+const SecuritySection = lazy(() =>
+  import('./SecuritySection').then((m) => ({ default: m.SecuritySection })),
+);
+const PeopleSection = lazy(() =>
+  import('./PeopleSection').then((m) => ({ default: m.PeopleSection })),
+);
+const DataSection = lazy(() => import('./DataSection').then((m) => ({ default: m.DataSection })));
+const AiHubSection = lazy(() => import('./AiHubSection').then((m) => ({ default: m.AiHubSection })));
+const AiSection = lazy(() => import('./AiSection').then((m) => ({ default: m.AiSection })));
+const PanelHubSection = lazy(() =>
+  import('./PanelHubSection').then((m) => ({ default: m.PanelHubSection })),
+);
+const MusicPanel = lazy(() => import('../panel/MusicPanel').then((m) => ({ default: m.MusicPanel })));
+const LocationPanel = lazy(() =>
+  import('../panel/LocationPanel').then((m) => ({ default: m.LocationPanel })),
+);
+const FilesPanel = lazy(() => import('../files').then((m) => ({ default: m.FilesPanel })));
+const ArchiveSection = lazy(() =>
+  import('./ArchiveSection').then((m) => ({ default: m.ArchiveSection })),
+);
 
 /* 「功能体验」这一组是实验 / 测试页：多数人从头到尾都不会点开，却要跟着首屏一起下载。
    改成动态 import 之后，各组自己独立成一个 chunk，点进去才去拉对应的那一个 js——
