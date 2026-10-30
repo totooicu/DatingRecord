@@ -130,6 +130,11 @@ function assertUsable(res: DavResponse, what: string): void {
   if (res.status === 507) {
     throw new DavError('坚果云空间不足', 507);
   }
+  if (res.status === 409) {
+    // 409 基本只有一个意思：往不存在的目录里放文件（RFC 4918，坚果云照做）。
+    // 光报数字用户无从下手，写成一句人才知道「是这一级目录没建起来」，不是账号问题。
+    throw new DavError(`${what}失败（409：上一级目录还没建好，先建目录再传）`, 409);
+  }
   if (!res.ok) {
     throw new DavError(`${what}失败（${res.status}）`, res.status);
   }

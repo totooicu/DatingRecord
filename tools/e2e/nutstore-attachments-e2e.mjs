@@ -15,6 +15,9 @@
 //   A11 诊断工具 system.syncAttachments 可读、不含密码
 //
 // 假坚果云起在本进程里（临时端口），带跨域头 —— 桥和浏览器两条路都能打。
+// **父集合不存在的 PUT 一律回 409**（真实 WebDAV 与坚果云都这样）：这一条是 2026-10-30 真机
+// 报「上传分片失败（409）」之后补进来的——当时附件层忘了建 attachments/<sha256>/ 这一级，
+// 而假服务端来者不拒，两套本地回归全绿。放宽这条规矩就等于把唯一会失败的环节藏起来。
 // 「壳」用 addInitScript 装：接 net.capabilities / net.request，用**原始 fetch** 代发
 // （页面的 window.fetch 包了一层计数，所以「有没有走桥」是可证的）。
 // 云端存了什么直接用进程内的 Map 查，不需要测试自己的后门。
@@ -134,6 +137,15 @@ const server = http.createServer((req, res) => {
     }
     if (m === 'PUT') {
       const k = dirKey(pathname);
+      // 真实 WebDAV 的规矩：父集合不存在时 PUT 回 409（RFC 4918 §9.7.1）。
+      // 假服务端必须照做，否则「忘了建目录」这类 bug 在本机永远炸不出来
+      // ——2026-10-30 就是坚果云真机报了 409，两套本地回归全绿。
+      const parent = k.slice(0, k.lastIndexOf('/'));
+      const pv = parent ? files.get(parent) : null;
+      if (!pv || !pv.dir) {
+        res.writeHead(409, h).end('父目录不存在');
+        return;
+      }
       const existed = files.has(k);
       files.set(k, { dir: false, size: body.length, body, ct: req.headers['content-type'] || '' });
       res.writeHead(existed ? 204 : 201, { ...h, etag: `"${body.length.toString(16)}"` }).end('');
@@ -360,11 +372,24 @@ await p.getByLabel(/WebDAV 地址/).fill(CFG.base);
 await p.locator('.sync-advanced summary').click();
 await p.waitForTimeout(300);
 
+/**
+ * 点完同步后等结果。`.sync-err` 也算结果：同步失败时页面根本不会出现 .sync-result，
+ * 只等成功态的写法会把一个明确的报错拖成两分钟的超时（踩过）。
+ */
+const syncOutcome = async () => {
+  await p.waitForSelector('.sync-result, .sync-err', { timeout: 120000 });
+  const bad = await p.locator('.sync-err').count();
+  if (bad) {
+    const msg = await p.locator('.sync-err').first().innerText();
+    throw new Error(`同步报错：${msg}`);
+  }
+  return p.locator('.sync-result').innerText();
+};
+
 const f0 = await fetchCount();
 const m1 = log.length;
 await p.locator('button.btn-primary', { hasText: '立即同步' }).click();
-await p.waitForSelector('.sync-result', { timeout: 120000 });
-const ui1 = await p.locator('.sync-result').innerText();
+const ui1 = await syncOutcome();
 
 console.log('\nA1 第一次同步：字节真传上去了');
 const idx1 = JSON.parse(remoteText('attachments/index.json') || '{}');
@@ -484,8 +509,7 @@ const m9 = log.length;
 await box2.click();
 await p.waitForTimeout(200);
 await p.locator('button.btn-primary', { hasText: '立即同步' }).click();
-await p.waitForSelector('.sync-result', { timeout: 120000 });
-const ui9 = await p.locator('.sync-result').innerText();
+const ui9 = await syncOutcome();
 check('关着点同步：attachments/ 零请求', countFrom(m9, (r) => r.path.startsWith(ATT)) === 0, JSON.stringify(attLog(m9)));
 check('结果表里不再出现附件行', !/附件上传|附件跳过/.test(ui9), ui9.replace(/\s+/g, ' ').slice(0, 200));
 

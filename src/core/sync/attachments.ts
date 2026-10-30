@@ -283,6 +283,10 @@ export async function syncAttachments(
       continue;
     }
     const parts = partCount(bytes.length);
+    // 先建这个对象自己那一级目录：真实 WebDAV（坚果云也一样）不接受「父集合不存在」的 PUT，
+    // 直接传回 409。目录已存在时 MKCOL 回 405，dav.mkcol 把它当成功，所以每个对象一条请求，
+    // 稳态里传新文件才走得到这里。
+    await dav.mkcol(c, `${ATTACH_DIR}/${one.hash}`);
     for (let i = 0; i < parts; i += 1) {
       onProgress(`上传附件 ${one.name || one.hash.slice(0, 8)} 第 ${i + 1}/${parts} 片 · ${humanSize(bytes.length)}`);
       await dav.putBinary(c, partPath(one.hash, i), bytes.subarray(i * PART_SIZE, (i + 1) * PART_SIZE));

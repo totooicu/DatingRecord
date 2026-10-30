@@ -10,6 +10,7 @@
 //   B9 测试连接（建目录 + 列目录）整条走通
 //   B10/B11 诊断入口 system.syncChannel：有壳报 shellNet、无壳报 browserFetch，且不带密码
 //   B12 整轮 syncNow 真跑完：第一轮 upload、第二轮 noop（subarray 视图过 base64 不错位）
+//   B13 往不存在的目录里 PUT：409 报成「上一级目录还没建好」，不是甩一个数字
 //   B7 没有壳时退回浏览器 fetch：服务端给跨域头（反代）就照常同步
 //   B8 没有壳且服务端不给跨域头时，报错要说清两条出路
 //   U1/U2 设置页顶上的「传输通道」一行，两种环境下分别显示「由壳代发」「浏览器直连」，
@@ -164,6 +165,15 @@ const server = http.createServer((req, res) => {
 
     if (m === 'PUT') {
       const k = dirKey(ns, pathname);
+      // 真实 WebDAV（坚果云也一样）不接受「父集合不存在」的 PUT，回 409（RFC 4918 §9.7.1）。
+      // 假服务端必须照做：2026-10-30 附件层忘了建 attachments/<sha256>/ 这一级，
+      // 真机报 409，而这套本地回归当时全绿——就是这个规矩没写进来。
+      const parent = k.slice(0, k.lastIndexOf('/'));
+      const pv = parent ? files.get(parent) : null;
+      if (!pv || !pv.dir) {
+        res.writeHead(409, h).end('父目录不存在');
+        return;
+      }
       const existed = files.has(k);
       files.set(k, { dir: false, size: body.length, body, ct: req.headers['content-type'] || '' });
       res.writeHead(existed ? 204 : 201, { ...h, etag: `"${body.length.toString(16)}"` }).end('');
@@ -361,6 +371,7 @@ const b3 = await p.evaluate(async (conf) => {
   const dav = await import('/src/core/sync/webdav.ts');
   const bytes = new Uint8Array(65536);
   for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 37 + 11) & 0xff;
+  await dav.ensureDir(conf, 'chunks/ab'); // 往不存在的目录里 PUT，真实服务端回 409
   await dav.putBinary(conf, 'chunks/ab/abcdef.bin', bytes);
   const back = await dav.getBinary(conf, 'chunks/ab/abcdef.bin');
   const sum = (u) => u.reduce((a, b) => (a + b) % 65521, 0);
@@ -370,6 +381,18 @@ check('读回 65536 字节且逐字节相同', b3.len === 65536 && b3.same === t
 check('校验和相同（base64 没吃掉尾巴）', b3.sumBefore === b3.sumAfter, JSON.stringify(b3));
 const lg3 = await serverLog();
 check('服务端确实收到 65536 字节请求体', lg3.some((r) => r.method === 'PUT' && r.len === 65536), JSON.stringify(lg3.filter((r) => r.method === 'PUT')));
+
+console.log('\nB13 往不存在的目录里 PUT：409 要报成一句人话');
+const b13 = await p.evaluate(async (conf) => {
+  const dav = await import('/src/core/sync/webdav.ts');
+  try {
+    await dav.putBinary(conf, 'nope/deep/x.bin', new Uint8Array([1, 2, 3]));
+    return { msg: '(没报错)' };
+  } catch (e) {
+    return { msg: String(e.message || e) };
+  }
+}, cfg('cors'));
+check('说的是「上一级目录还没建好」，不是甩一个 409', b13.msg.includes('409') && b13.msg.includes('上一级目录还没建好'), b13.msg);
 
 console.log('\nB4 PROPFIND 207 能被 list() 解析');
 const b4 = await p.evaluate(async (conf) => {
