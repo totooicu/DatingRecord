@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Section } from './Section';
 import { SettingsNav } from './SettingsNav';
 import { HeadStatus } from '../runtime/HeadStatus';
@@ -10,14 +11,7 @@ import { AppearanceSection } from './AppearanceSection';
 import { SecuritySection } from './SecuritySection';
 import { PeopleSection } from './PeopleSection';
 import { DataSection } from './DataSection';
-import { LabSection } from './LabSection';
 import { AiHubSection } from './AiHubSection';
-import { LabAiSection } from './LabAiSection';
-import { LabEdgeSection } from './LabEdgeSection';
-import { LabExtractSection } from './LabExtractSection';
-import { LabDraftSection } from './LabDraftSection';
-import { LabCompatSection } from './LabCompatSection';
-import { LabTrackSection } from './LabTrackSection';
 import { AiSection } from './AiSection';
 import { PanelHubSection } from './PanelHubSection';
 import { MusicPanel } from '../panel/MusicPanel';
@@ -32,6 +26,27 @@ import {
   type SettingsKey,
 } from './sections';
 import { fmtBuildTime } from '../../core/buildInfo';
+
+/* 「功能体验」这一组是实验 / 测试页：多数人从头到尾都不会点开，却要跟着首屏一起下载。
+   改成动态 import 之后，各组自己独立成一个 chunk，点进去才去拉对应的那一个 js——
+   也就是「需要用例时再访问用例资源下载」，首屏只留用得上的代码。 */
+const LabSection = lazy(() => import('./LabSection').then((m) => ({ default: m.LabSection })));
+const LabAiSection = lazy(() => import('./LabAiSection').then((m) => ({ default: m.LabAiSection })));
+const LabEdgeSection = lazy(() =>
+  import('./LabEdgeSection').then((m) => ({ default: m.LabEdgeSection })),
+);
+const LabExtractSection = lazy(() =>
+  import('./LabExtractSection').then((m) => ({ default: m.LabExtractSection })),
+);
+const LabDraftSection = lazy(() =>
+  import('./LabDraftSection').then((m) => ({ default: m.LabDraftSection })),
+);
+const LabCompatSection = lazy(() =>
+  import('./LabCompatSection').then((m) => ({ default: m.LabCompatSection })),
+);
+const LabTrackSection = lazy(() =>
+  import('./LabTrackSection').then((m) => ({ default: m.LabTrackSection })),
+);
 
 /**
  * 设置页：目录（左栏 / 手机首页）+ 子页（右栏 / 手机内容页）。
@@ -69,6 +84,7 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
       />
       <SettingsNav active={active} onPick={go} />
 
+      <Suspense fallback={<div className="muted small" style={{ padding: '14px 16px' }}>载入中…</div>}>
       <div className={active === 'labAi' ? 'settings-body settings-body-tight' : 'settings-body'}>
         {/* 构建时间只是排查用的元信息：放在目录首页一眼能看到就够，
             进了具体子页就别再占一行——这一行在手机上等于半个按钮的高度 */}
@@ -131,6 +147,7 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>
+      </Suspense>
     </div>
   );
 }
