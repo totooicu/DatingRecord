@@ -10,6 +10,8 @@
 //   A5 映射文件（只有外链没有字节）全程不参与，云端 attachments/ 里只有真上传过的那两个
 //   A6 快照里带附件的元数据行（data 一律清空）—— 别的设备因此知道「有这张图」
 //   A7 补算出的 sha256 当场落盘：把指纹抹掉并落盘，同步补算后**刷新页面**还在
+//   A8 传输进行中的界面：按钮里不出现文件名（.btn 是 nowrap，长文件名会把按钮撑出屏幕），
+//      按钮和「保存设置」同时禁用，进度文字在按钮下面单独一行
 //   A9 关掉开关 → 一个附件请求都不发，也不把别人传过的对象说成「没有」（清单作者仍是自己）
 //   A10 设置页的开关默认开着（老库没这个键），关掉后结果表里不该出现附件行
 //   A11 诊断工具 system.syncAttachments 可读、不含密码
@@ -60,6 +62,14 @@ const ATT = `${PREFIX}attachments/`;
 
 const files = new Map(); // '/dav/路径' -> { dir, size, body, ct }
 const log = []; // { method, path, len, depth, auth }
+/**
+ * 附件切片的响应延迟（毫秒）：界面回归要观察「正在传」那一瞬间，本地回环太快，
+ * 不加减速就永远只能看到传完之后的样子。只对 attachments/<sha>/N.bin 生效，
+ * 免得整库快照的几十个分片都跟着慢。用完记得清零。
+ */
+const slow = { ms: 0 };
+const PART_RE = new RegExp(`^${ATT}[0-9a-f]{64}/\\d+\\.bin$`);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const dirKey = (p) => p.replace(/\/+$/, '');
 
@@ -82,7 +92,7 @@ const server = http.createServer((req, res) => {
 
   let raw = [];
   req.on('data', (c) => raw.push(c));
-  req.on('end', () => {
+  req.on('end', async () => {
     const body = Buffer.concat(raw);
     const m = (req.method || '').toUpperCase();
     log.push({ method: m, path: pathname, len: body.length, depth: req.headers.depth ?? null, auth: req.headers.authorization === BASIC });
@@ -91,6 +101,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(204, h).end('');
       return;
     }
+    if (m === 'PUT' && slow.ms && PART_RE.test(pathname)) await sleep(slow.ms);
     if (req.headers.authorization !== BASIC) {
       res.writeHead(401, { ...h, 'www-authenticate': 'Basic realm="dav"' }).end('需要应用密码');
       return;
@@ -388,7 +399,54 @@ const syncOutcome = async () => {
 
 const f0 = await fetchCount();
 const m1 = log.length;
+// 按钮要在**点下去之前**认出来：传起来之后文案一直在变，靠文案就找不到它了
+const btnIdx = await p.evaluate(() =>
+  [...document.querySelectorAll('.row-actions button')].findIndex((b) => b.textContent.trim() === '立即同步'),
+);
+slow.ms = 900; // 两片附件各慢 0.9 秒：界面上的「正在传」才有可以观察的窗口
 await p.locator('button.btn-primary', { hasText: '立即同步' }).click();
+
+// ---------- A8 传输中的按钮（2026-10-30 用户报：文件名写在按钮里，按钮被撑得老长）----------
+// 不抽查某一瞬间，而是**整段传输过程**按 60ms 采样：按钮只在某个时刻被文件名撑开也算 bug。
+// 采样在页面里跑（Playwright 一个来回就几十毫秒，赶不上节拍）。
+console.log('\nA8 传输中：按钮不放大文件名，而且要点不动');
+check('认出了「立即同步」这个按钮', btnIdx >= 0, `序号 ${btnIdx}`);
+const watch = await p.evaluate(async (bi) => {
+  const out = { labels: [], maxW: 0, primSeen: 0, primEnabled: 0, saveSeen: 0, saveEnabled: 0, prog: [] };
+  const done = () => !!(document.querySelector('.sync-result') || document.querySelector('.sync-err'));
+  const t0 = Date.now();
+  while (!done() && Date.now() - t0 < 8000) {
+    const prim = document.querySelectorAll('.row-actions button')[bi];
+    const t = prim ? prim.textContent.trim() : '';
+    // 只采「正在传」的帧：传完那一帧文案和禁用状态一起恢复，算进去会把偶发问题洗掉
+    if (prim && t !== '立即同步') {
+      out.primSeen += 1;
+      if (!out.labels.includes(t)) out.labels.push(t);
+      out.maxW = Math.max(out.maxW, Math.round(prim.getBoundingClientRect().width));
+      if (!prim.disabled) out.primEnabled += 1;
+      const save = [...document.querySelectorAll('.row-actions button')].find((b) => b.textContent.trim() === '保存设置');
+      if (save) {
+        out.saveSeen += 1;
+        if (!save.disabled) out.saveEnabled += 1;
+      }
+      const pr = document.querySelector('.sync-progress');
+      if (pr) out.prog.push(pr.textContent.trim());
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  return out;
+}, btnIdx);
+check('传输中确实采到了「正在传」的若干帧', watch.primSeen > 0, JSON.stringify(watch.labels));
+check('按钮文案自始至终不含文件名（.btn 是 nowrap，一长就顶出屏幕）', watch.labels.every((t) => !/\.jpg|\.bin|海边的下午|老记录/.test(t)), JSON.stringify(watch.labels));
+check('按钮宽度自始至终没被撑开', watch.maxW > 0 && watch.maxW < 200, `${watch.maxW}px`);
+check('传输中「立即同步」点不动（每个采样都是 disabled）', watch.primSeen > 0 && watch.primEnabled === 0, `${watch.primEnabled}/${watch.primSeen} 次可点`);
+check('传输中「保存设置」也点不动：中途改配置不会跟着这一趟走', watch.saveSeen > 0 && watch.saveEnabled === 0, `${watch.saveEnabled}/${watch.saveSeen} 次可点`);
+check(
+  '进度搬到按钮下面单独一行，文件名照常看得见',
+  watch.prog.some((t) => /海边的下午\.jpg/.test(t)),
+  (watch.prog[watch.prog.length - 1] || '整个传输过程没有 .sync-progress').slice(0, 120),
+);
+slow.ms = 0;
 const ui1 = await syncOutcome();
 
 console.log('\nA1 第一次同步：字节真传上去了');

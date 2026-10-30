@@ -186,7 +186,9 @@ export function SyncSection() {
       </p>
 
       <div className="row-actions">
-        <button className="btn" onClick={doSave}>
+        {/* 传输一旦开始就锁住「保存设置」：同步用的配置是点同步那一刻存下来的，
+            中途改账号/目录再点保存，会让人以为正在跑的这一次跟着新配置走（并不会）。 */}
+        <button className="btn" disabled={busy !== ''} onClick={doSave}>
           保存设置
         </button>
         <button className="btn" disabled={!ready || busy !== ''} onClick={() => void doTest()}>
@@ -197,7 +199,10 @@ export function SyncSection() {
           disabled={!ready || busy !== ''}
           onClick={() => void doSync(false)}
         >
-          {busy === 'sync' ? progress || '同步中…' : '立即同步'}
+          {/* 进度文字不往按钮里塞：.btn 是 white-space: nowrap 的，
+              「上传附件 一张很长的文件名.jpg 第 1/3 片 · 11.4 MB」会把按钮撑到屏幕外。
+              按钮只说「在忙」，具体进度放到下面单独一行。 */}
+          {busy === 'sync' ? '同步中…' : '立即同步'}
         </button>
       </div>
 
@@ -207,6 +212,8 @@ export function SyncSection() {
         </button>
         <span className="muted small">上次同步：{fmtMeta(status.lastAt)}</span>
       </div>
+
+      {busy === 'sync' && <p className="muted small sync-progress">{progress || '正在连接…'}</p>}
 
       {msg && <p className="sync-ok">{msg}</p>}
       {err && <p className="sync-err">{err}</p>}

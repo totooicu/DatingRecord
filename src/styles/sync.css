@@ -88,3 +88,10 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* 上传进度单独一行：文件名是用户自己起的，可能很长，这里必须能折行——
+   放进按钮就会被 .btn 的 white-space: nowrap 撑成一条横幅。 */
+.sync-progress {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}

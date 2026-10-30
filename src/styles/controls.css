@@ -22,7 +22,15 @@
   white-space: nowrap;
 }
 
-.btn:hover {
+/* 禁用态要看得出来：全站原来只有「主题重置」那一行单独写过，
+   结果「正在上传」的按钮和不 disable 时长得一模一样，用户会以为点下去没反应是卡了。
+   配套：hover 一律加 :not(:disabled)，禁用时不再变底色，否则看着仍可点。 */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn:not(:disabled):hover {
   border-color: #d3cec5;
   background: #faf9f7;
 }
@@ -33,7 +41,7 @@
   color: #fff;
 }
 
-.btn-primary:hover {
+.btn-primary:not(:disabled):hover {
   background: var(--primary-dark);
   border-color: var(--primary-dark);
 }
