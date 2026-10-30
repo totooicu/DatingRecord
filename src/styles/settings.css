@@ -1164,3 +1164,81 @@
   color: #fff;
   font-weight: 600;
 }
+
+/* ---------- 示例数据与重置：压测数据 ---------- */
+.sample-divider {
+  margin: 18px 0 14px;
+  border-top: 1px solid var(--border);
+}
+
+.sample-sub {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.sample-tier {
+  margin: 10px 0 8px;
+}
+
+.sample-estimate {
+  margin-bottom: 10px;
+  line-height: 1.7;
+}
+
+.sample-toggle {
+  margin-bottom: 10px;
+}
+
+.sample-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.sample-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.sample-field input,
+.sample-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.sample-hint {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sample-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.sample-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--side);
+  overflow: hidden;
+}
+
+.sample-progress-bar > div {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.15s linear;
+}
