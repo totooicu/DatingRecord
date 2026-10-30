@@ -14,6 +14,7 @@ import { getBlob, blobToBase64 } from '../db/blob';
 import type { Attachment, LibraryFile } from '../types';
 import { buildLibrary } from './export';
 import type { ImportResult } from './import';
+import { saveBytes } from './save';
 
 export const ARCHIVE_FORMAT = 'drp/1';
 
@@ -86,17 +87,6 @@ export async function buildArchive(opts: { includeAttachments?: boolean } = {}):
   });
 }
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 /** TS 5.7 起 Uint8Array 的缓冲区泛型可能是 SharedArrayBuffer，BlobPart 只收 ArrayBuffer；拷一份最稳 */
 function toBlob(bytes: Uint8Array, type: string): Blob {
   const copy = new Uint8Array(bytes.length);
@@ -108,7 +98,8 @@ export async function exportArchiveToFile(opts: { includeAttachments?: boolean }
   const bytes = await buildArchive(opts);
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
   const name = `dating-record-${stamp}.drp.zip`;
-  downloadBlob(toBlob(bytes, 'application/zip'), name);
+  // 走 saveBytes：壳里存进手机「下载」，浏览器里弹下载（原来的 <a download> 在壳里毫无反应）
+  await saveBytes(bytes, name, 'application/zip');
   return name;
 }
 
