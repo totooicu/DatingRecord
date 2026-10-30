@@ -1,21 +1,49 @@
 {
-  "version": "2026-10-29T16:33:38.174Z",
+  "version": "2026-10-30T01:30:49.594Z",
   "release": "1.2.0",
   "proto": 1,
   "shellMin": "1.0.0",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "d126c24577431568",
-      "link": "/assets/diff-Do24-1q3.js"
+      "version": "5dffdf954552145e",
+      "link": "/assets/diff-DrchxtHk.js"
     },
     {
       "version": "11215015ed607253",
       "link": "/assets/index-BiAX8jkt.css"
     },
     {
-      "version": "09a8b86ea9225095",
-      "link": "/assets/index-CUMC5wig.js"
+      "version": "4b34f31cbae92e1b",
+      "link": "/assets/index-DXtGcC6I.js"
+    },
+    {
+      "version": "b2cbd618b820106c",
+      "link": "/assets/LabAiSection-Cs9VfTJ0.js"
+    },
+    {
+      "version": "36fa13217645cb7b",
+      "link": "/assets/LabCompatSection-DUMztAv5.js"
+    },
+    {
+      "version": "c9545f38a9416f7a",
+      "link": "/assets/LabDraftSection-ChpIpDwZ.js"
+    },
+    {
+      "version": "cddb6eb84cb6f3d0",
+      "link": "/assets/LabEdgeSection-DsqjQgQf.js"
+    },
+    {
+      "version": "47d68b461da23308",
+      "link": "/assets/LabExtractSection-DWCNRICQ.js"
+    },
+    {
+      "version": "b6082aaad78c4cac",
+      "link": "/assets/LabSection-Cu49m-tm.js"
+    },
+    {
+      "version": "5c5a617ae8785877",
+      "link": "/assets/LabTrackSection-kO7CG_hF.js"
     },
     {
       "version": "8be885f0a6a49903",
@@ -46,7 +74,7 @@
       "link": "/icon.svg"
     },
     {
-      "version": "b04bb804c0f90e26",
+      "version": "0feb2186acd94501",
       "link": "/index.html"
     },
     {
