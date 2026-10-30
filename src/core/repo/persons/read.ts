@@ -34,7 +34,9 @@ export function listPersons(opts: { includeArchived?: boolean; keyword?: string 
     `SELECT * FROM persons p WHERE ${where.join(' AND ')} ORDER BY p.display_name`,
     params,
   );
-  return rows.map((r) => ({ ...personFromRow(r), stats: statsOf(r.id) }));
+  // 一次性把所有人的统计算出来，避免逐人各跑一条 JOIN（万级数据下上千次 SQL）
+  const statsMap = bulkStats();
+  return rows.map((r) => ({ ...personFromRow(r), stats: statsMap.get(r.id) ?? EMPTY_STATS }));
 }
 
 /**
@@ -59,6 +61,8 @@ export function listArchivedPersons(): ArchivedPerson[] {
        ${isPrivacyMode() ? "AND p.is_private = 0" : ''}
      ORDER BY p.updated_at DESC`,
   );
+  // 一次性把所有人的统计算出来（含已归档/合并的，统计口径与 statsOf 一致）
+  const statsMap = bulkStats();
   return rows.map((r) => {
     const person = personFromRow(r);
     // 合并目标记在 oplog 里（mergePersons 写的 { id, mergedInto }），
@@ -76,7 +80,7 @@ export function listArchivedPersons(): ArchivedPerson[] {
     const mergedIntoName = target?.display_name ?? null;
     return {
       ...person,
-      stats: statsOf(r.id),
+      stats: statsMap.get(r.id) ?? EMPTY_STATS,
       reason: r.deleted_at ? 'merged' : 'archived',
       mergedIntoName,
     };
@@ -100,6 +104,8 @@ export function getPerson(id: string): Person | null {
   return row ? personFromRow(row) : null;
 }
 
+const EMPTY_STATS: PersonStats = { eventCount: 0, lastMeetTs: null, totalCost: 0, avgRating: null };
+
 export function statsOf(personId: string): PersonStats {
   const row = queryOne<{ c: number | null; last: number | null; cost: number | null; rating: number | null }>(
     `SELECT COUNT(e.id) AS c,
@@ -118,4 +124,35 @@ export function statsOf(personId: string): PersonStats {
     totalCost: row?.cost ?? 0,
     avgRating: row?.rating ?? null,
   };
+}
+
+/**
+ * 一次性把**所有人**的统计算出来（GROUP BY person_id），取代逐人各跑一条 JOIN。
+ *
+ * 万级事件 + 上千人物时，listPersons 原来的「每人一条 statsOf」就是上千次 SQL，
+ * 人物页要好几秒。改成一条聚合查询后，无论多少人都是常数级开销。
+ */
+export function bulkStats(): Map<string, PersonStats> {
+  const rows = queryAll<{ pid: string; c: number | null; last: number | null; cost: number | null; rating: number | null }>(
+    `SELECT p.person_id AS pid,
+            COUNT(e.id) AS c,
+            MAX(e.start_ts) AS last,
+            COALESCE(SUM(json_extract(e.metrics_json, '$.cost')), 0) AS cost,
+            AVG(json_extract(e.metrics_json, '$.rating')) AS rating
+     FROM event_participants p
+     JOIN events e ON e.id = p.event_id AND e.deleted_at IS NULL
+       ${isPrivacyMode() ? "AND e.is_private = 0" : ''}
+     GROUP BY p.person_id`,
+    [],
+  );
+  const map = new Map<string, PersonStats>();
+  for (const r of rows) {
+    map.set(r.pid, {
+      eventCount: r.c ?? 0,
+      lastMeetTs: r.last ?? null,
+      totalCost: r.cost ?? 0,
+      avgRating: r.rating ?? null,
+    });
+  }
+  return map;
 }
