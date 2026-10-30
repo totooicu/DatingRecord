@@ -117,7 +117,7 @@ $ cli.cjs person.create --displayName 张三 --compact
 | `location.*` | 定位（文件库里的 `.drloc`）：列出/详情/新建/保存（改名、整表换点、改偏移——`offset` 度数 / `offsetMeters` 米制 / `target` 目标坐标三选一）/追加点/按序号删点/导入 JSON 或 CSV/删除文件 |
 | `snapshot.*` | 快照创建、列表、恢复、删除 |
 | `io.*` | 整库导出/导入、事件集分享的打包/预览/导入、读取本地文本文件内容（`io.readFile`） |
-| `system.*` | 库概览、只读 SQL、表结构、操作记录、meta 读写、坚果云同步通道（`system.syncChannel`） |
+| `system.*` | 库概览、只读 SQL、表结构、操作记录、meta 读写、坚果云同步通道（`system.syncChannel`）、附件同步的本地盘点（`system.syncAttachments`） |
 
 完整说明随时用 `cli.cjs tools` 和 `cli.cjs help <工具名>` 查，那是最新的。
 

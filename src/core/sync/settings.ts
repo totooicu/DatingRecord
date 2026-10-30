@@ -11,6 +11,7 @@ const K_PASS = 'nutstore.pass';
 const K_BASE = 'nutstore.base';
 const K_FOLDER = 'nutstore.folder';
 const K_AUTO = 'nutstore.auto';
+const K_ATT = 'nutstore.att';
 
 export interface NutstoreSettings {
   user: string;
@@ -19,6 +20,8 @@ export interface NutstoreSettings {
   base: string;
   folder: string;
   auto: boolean;
+  /** 附件二进制一起上传（默认开：关着的话别的设备只看得到文件名，看不到图） */
+  attachments: boolean;
 }
 
 export function loadSettings(): NutstoreSettings {
@@ -28,6 +31,8 @@ export function loadSettings(): NutstoreSettings {
     base: getMeta(K_BASE) ?? DEFAULT_DAV_BASE,
     folder: getMeta(K_FOLDER) ?? 'DatingRecord',
     auto: getMeta(K_AUTO) === '1',
+    // 只有明确存过 '0' 才算关：老库没有这个键，默认要跟着「文件也要上传」走
+    attachments: getMeta(K_ATT) !== '0',
   };
 }
 
@@ -37,6 +42,7 @@ export function saveSettings(s: NutstoreSettings): void {
   setMeta(K_BASE, s.base.trim() || DEFAULT_DAV_BASE);
   setMeta(K_FOLDER, s.folder.trim() || 'DatingRecord');
   setMeta(K_AUTO, s.auto ? '1' : '0');
+  setMeta(K_ATT, s.attachments ? '1' : '0');
 }
 
 export function toConfig(s: NutstoreSettings): DavConfig {

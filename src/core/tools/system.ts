@@ -14,6 +14,7 @@ import { dbSizeBytes } from '../io/maintenance';
 import { getTree } from '../repo/collections';
 import { currentChannel } from '../sync/nativeHttp';
 import { isConfigured, loadSettings } from '../sync/settings';
+import { humanSize, inspectAttachments } from '../sync/attachments';
 
 /** 只放行单条只读语句 */
 function assertReadOnly(sql: string): string {
@@ -169,6 +170,34 @@ export const SYSTEM_TOOLS: ToolDef[] = [
         hint: ch.native
           ? '请求由壳代发，PROPFIND / MKCOL 都发得出去，不需要反向代理'
           : '浏览器直连要求服务端返回跨域头；坚果云不返回，所以要么装带网络代理的壳，要么在设置里填反向代理地址',
+      };
+    },
+  },
+  {
+    name: 'system.syncAttachments',
+    group: 'system',
+    title: '附件同步的本地盘点',
+    desc:
+      '看坚果云附件同步在本地这一侧的状况：开关开没开、图片/文件一共多少条、' +
+      '其中多少条本地有字节（下次同步会传上去）、多少条只剩记录等着从云端补回来、' +
+      '多少条还没有内容指纹（第一次同步时当场补算）。' +
+      '只读本地库，不联网、不传数据、不含密码。报「附件没同步过去 / 别的设备打不开图」时先调它。',
+    mutating: false,
+    params: [],
+    run: async () => {
+      const s = loadSettings();
+      const inv = await inspectAttachments();
+      return {
+        enabled: s.attachments,
+        ...inv,
+        bytesHuman: humanSize(inv.bytes),
+        hint: !s.attachments
+          ? '开关关着：下次同步不会传附件，别的设备只看得到文件名和大小，打不开图'
+          : inv.missingBytes > 0
+            ? `有 ${inv.missingBytes} 条本机没有字节，同步时从云端补回来`
+            : inv.unnamed > 0
+              ? `有 ${inv.unnamed} 条还没有内容指纹，同步时当场算出来，下一次才算「有名字」`
+              : `本地 ${inv.haveBytes} 条字节齐备，已传过的一律跳过，只传新增的`,
       };
     },
   },

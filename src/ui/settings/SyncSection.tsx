@@ -3,7 +3,7 @@
 // 这一页要说清三件事，否则用户会以为「同步 = 整库重传」「报错就是账号问题」：
 //   · 请求是谁发出去的——壳代发（无跨域问题）还是浏览器直连（必须配反代）
 //   · 只传变化的分片（下面直接显示「上传 3 片 / 省下 27 片」）
-//   · 附件二进制不进日常同步（另走「一次完整上传」）
+//   · 附件二进制另走一套：按内容寻址单独上传，同一个文件只传一次（开关在下面）
 import { useEffect, useState } from 'react';
 import { Section, fmtMeta } from './Section';
 import { bump } from '../../store';
@@ -83,10 +83,22 @@ export function SyncSection() {
     setProgress('');
     try {
       saveSettings(s);
-      const r = await syncNow(toConfig(s), { full, onProgress: setProgress });
+      const r = await syncNow(toConfig(s), {
+        full,
+        attachments: s.attachments,
+        onProgress: setProgress,
+      });
       setResult(r);
       setStatus(getSyncStatus());
-      if (r.action === 'download' || r.action === 'both') bump();
+      // 附件层可能改了本地：拉回来字节、或给老行补算了 sha256，文件页要重新查一次
+      const att = r.attachments;
+      if (
+        r.action === 'download' ||
+        r.action === 'both' ||
+        (!!att && (att.fetched > 0 || att.hashed > 0))
+      ) {
+        bump();
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -96,6 +108,7 @@ export function SyncSection() {
   };
 
   const ready = isConfigured(s);
+  const att = result?.attachments;
 
   return (
     <Section
@@ -158,6 +171,20 @@ export function SyncSection() {
         打开应用时自动同步一次
       </label>
 
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={s.attachments}
+          onChange={(e) => patch({ attachments: e.target.checked })}
+        />
+        同步附件的图片与文件
+      </label>
+      <p className="muted small sync-attach-hint">
+        照片、录音这些二进制按内容单独传到坚果云的 <code>attachments/</code> 目录，同一个文件只传一次
+        （第二次同步只显示「跳过」，不再占上行）。第一次打开会慢一些：整库附件都要上桥一次。
+        关掉它，别的设备只看得到文件名和大小，打不开图。
+      </p>
+
       <div className="row-actions">
         <button className="btn" onClick={doSave}>
           保存设置
@@ -218,8 +245,49 @@ export function SyncSection() {
                 <td>库快照大小</td>
                 <td>{kb(result.totalBytes)}</td>
               </tr>
+              {att && (
+                <>
+                  <tr>
+                    <td>附件上传</td>
+                    <td>
+                      {att.uploaded} 个 · {kb(att.uploadBytes)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>附件补齐（本机缺的）</td>
+                    <td>
+                      {att.fetched} 个 · {kb(att.fetchBytes)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>附件跳过（云端已有）</td>
+                    <td>{att.skipped} 个</td>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
+          {att && att.hashed > 0 && (
+            <p className="muted small">
+              顺手给 {att.hashed} 个老附件算出了内容指纹，下次同步它们才算「有名字」。
+            </p>
+          )}
+          {att && (att.missingRemote > 0 || att.unknown > 0) && (
+            <p className="muted small">
+              {att.missingRemote > 0 && (
+                <>
+                  有 {att.missingRemote} 个附件云端没有字节——多半是另一台设备关了附件同步，
+                  或那台设备上传时还没这套机制。
+                </>
+              )}
+              {att.unknown > 0 && (
+                <>
+                  {att.missingRemote > 0 ? '另外，' : ''}有 {att.unknown} 个既没有本地字节也没有内容指纹，
+                  这次处理不了（多半是导入之前就丢了原文件的那几条）。
+                </>
+              )}
+            </p>
+          )}
           {result.savedBytes > 0 && (
             <p className="muted small">
               相比整份覆盖上传，这次少传了{' '}

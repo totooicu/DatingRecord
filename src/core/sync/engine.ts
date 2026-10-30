@@ -1,4 +1,4 @@
-// 同步引擎：三方比对，只传变化的分片。
+// 同步引擎：三方比对，只传变化的分片；附件字节单独走内容寻址的对象存储。
 //
 // 判定表（baseline = 上次同步成功时本地快照的 digest）：
 //   local == baseline                  → 本机没改过
@@ -9,7 +9,11 @@
 //        否则                           → 只上传
 //
 // 「只传变化的分片」靠内容寻址：分片文件名是内容哈希，
-// 远端清单里已有的哈希直接跳过，所以改一行字通常只上传一个 64KB 分片。
+// 远端清单里已有的哈希直接跳过。注意这只在**等长替换**时省事——
+// 插入或删除会让后面所有字节挪位，之后的分片全要重传，见 DEVELOPMENT.md「坚果云增量备份」。
+//
+// 附件二进制不在快照里（快照只带 attachments 行的元数据，data 一律清空），
+// 走 attachments/<sha256>/<i>.bin 单独一套，见 ./attachments.ts。
 import {
   getDeviceId,
   getMeta,
@@ -24,6 +28,15 @@ import { hlcReceive } from '../time';
 import { ensureClosure } from '../repo/collections';
 import { SCHEMA_VERSION, type LibraryFile } from '../types';
 import { buildLibrary } from '../io';
+import {
+  ATTACH_DIR,
+  INDEX_PATH,
+  emptyIndex,
+  parseIndex,
+  syncAttachments,
+  type AttachIndex,
+  type AttachResult,
+} from './attachments';
 import { strippedLibrary, bytesOf, stableJson } from './snapshot';
 import { CHUNK_SIZE, digestOf, hashChunks, type ChunkMeta } from './chunk';
 import {
@@ -58,6 +71,8 @@ export interface SyncResult {
   /** 从云端拉下来的字节 */
   downloadedBytes: number;
   merged?: MergeCounts;
+  /** 开了附件同步才有：这一趟附件上传 / 补齐了多少 */
+  attachments?: AttachResult;
   at: string;
 }
 
@@ -65,10 +80,19 @@ function sumBytes(metas: ChunkMeta[]): number {
   return metas.reduce((s, m) => s + m.n, 0);
 }
 
-/** 生成本同步用的轻量快照（不含附件二进制、不含凭据） */
+/** 附件行按 id 排序：SELECT * 不带 ORDER BY、两台设备插入顺序不同就会给同一堆内容算出
+ * 不同 digest，增量同步于是误判成「本机改过」而把后面的分片全重传一遍。
+ * 合并时是按 id 逐行落库的，顺序本来无关，这里只是把快照写成规范形式。 */
+function sortAttachments<T extends { id: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** 生成本次同步用的快照：附件只带元数据行（data 一律清空），二进制另走 attachments 层 */
 async function snapshotText(): Promise<string> {
   // 用稳定序列化：否则 meta.exportedAt 每次都在变，分片哈希全换，增量就失效了
-  return stableJson(strippedLibrary(await buildLibrary({ includeAttachments: false })));
+  const lib = strippedLibrary(await buildLibrary({ includeAttachments: 'meta' }));
+  lib.attachments = sortAttachments(lib.attachments ?? []);
+  return stableJson(lib);
 }
 
 /** 把远端分片按清单拼回完整快照 */
@@ -92,21 +116,28 @@ async function downloadSnapshot(c: dav.DavConfig, m: Manifest): Promise<string> 
 /**
  * 执行一次同步。
  * @param opts.full 忽略「本机没改过」的短路，强制上传一份（换机建档用）
+ * @param opts.attachments 顺带把附件二进制传上去 / 补回来（设置页那个开关，这里默认关）
  */
 export async function syncNow(
   c: dav.DavConfig,
-  opts: { full?: boolean; onProgress?: (msg: string) => void } = {},
+  opts: { full?: boolean; attachments?: boolean; onProgress?: (msg: string) => void } = {},
 ): Promise<SyncResult> {
   const report = opts.onProgress ?? (() => {});
   const now = new Date().toISOString();
+  const withAtt = !!opts.attachments;
 
   report('检查云端…');
   await dav.ensureDir(c, '');
   for (const dir of [SNAPSHOT_DIR, 'chunks']) await dav.ensureDir(c, dir);
+  if (withAtt) await dav.ensureDir(c, ATTACH_DIR);
 
   const remoteRaw = await dav.getText(c, MANIFEST_FILE);
   const remote = remoteRaw ? parseManifest(remoteRaw) : null;
   const baseline = getMeta(META_BASE);
+
+  // 附件清单只读这一次：之后「这个文件云端有没有」全在内存里查，不再问服务端
+  const idxRaw = withAtt ? await dav.getText(c, INDEX_PATH) : null;
+  let index: AttachIndex = idxRaw ? parseIndex(idxRaw) : emptyIndex();
 
   report('生成本地快照…');
   const text = await snapshotText();
@@ -128,34 +159,51 @@ export async function syncNow(
     at: now,
   };
 
-  // 1) 本机没改过
+  // 1) 先把本地数据摆平：该下的下、该合并的合并
+  let mergedRemote = false;
   if (!localChanged) {
     if (remote && remoteChanged) {
       report('下载云端变更…');
       await applyRemote(await downloadSnapshot(c, remote), result);
       result.action = 'download';
       result.downloadedBytes = remote.totalBytes;
+      mergedRemote = true;
     }
-    finish(digest, now);
-    return result;
-  }
-
-  // 2) 两边都改过，且远端不是本机写的 → 先合并再上传
-  const conflict = remoteChanged && remote!.deviceId !== getDeviceId();
-  if (conflict) {
+  } else if (remoteChanged && remote!.deviceId !== getDeviceId()) {
+    // 两边都改过，且远端不是本机写的 → 先合并再上传
     report('合并云端变更…');
     await applyRemote(await downloadSnapshot(c, remote!), result);
     result.downloadedBytes = remote!.totalBytes;
     result.action = 'both';
+    mergedRemote = true;
   } else {
     result.action = 'upload';
   }
 
-  // 3) 合并过的要重新生成：本地的行变了，快照自然变
-  const finalText = conflict ? await snapshotText() : text;
-  const finalBytes = conflict ? bytesOf(finalText) : bytes;
-  const finalMetas = conflict ? hashChunks(finalBytes) : metas;
-  const finalDigest = conflict ? digestOf(finalMetas, finalBytes.length) : digest;
+  // 2) 附件往返。开关开着就跑，**包括「本机没改过」这条路**：刚合并完远端的行，
+  //    本地正是缺字节的时候；用户刚把开关打开、或上次拉到一半断了，
+  //    也要有地方把剩下的补完。这一步只碰 attachments/，不动快照分片。
+  if (withAtt) {
+    report('同步附件…');
+    const att = await syncAttachments(c, index, report);
+    result.attachments = att.result;
+    index = att.index;
+  }
+
+  // 3) 只有本机改过才回写云端快照。纯下载那条路上本地内容就等于云端内容，
+  //    再写一份只是多占一格历史快照、把清单作者换成自己。
+  if (!localChanged) {
+    finish(digest, now);
+    return result;
+  }
+
+  // 4) 合并过、或附件层刚补算了 sha256，本地元数据已经和开头不一样 → 重新生成一份。
+  //    补齐的哈希这一趟就带上，别的设备下次同步才知道该去拉哪个对象。
+  const rewrote = mergedRemote || (result.attachments?.hashed ?? 0) > 0;
+  const finalText = rewrote ? await snapshotText() : text;
+  const finalBytes = rewrote ? bytesOf(finalText) : bytes;
+  const finalMetas = rewrote ? hashChunks(finalBytes) : metas;
+  const finalDigest = rewrote ? digestOf(finalMetas, finalBytes.length) : digest;
   result.totalBytes = finalBytes.length;
 
   const known = knownHashes(remote);
@@ -184,7 +232,9 @@ export async function syncNow(
     chunks: finalMetas,
     digest: finalDigest,
     schemaVersion: SCHEMA_VERSION,
-    hasAttachments: false,
+    // 云端有没有附件字节，以清单为准；这一趟没管附件（开关关着）就沿用远端原来的说法，
+    // 别把别人传上去的对象写成「没有」
+    hasAttachments: withAtt ? Object.keys(index.files).length > 0 : (remote?.hasAttachments ?? false),
   };
   await dav.putText(c, MANIFEST_FILE, JSON.stringify(manifest));
 
