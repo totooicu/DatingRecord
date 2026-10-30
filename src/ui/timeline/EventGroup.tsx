@@ -16,37 +16,81 @@ export function MonthGroup({
 }) {
   return (
     <section className="month-group">
-      <div className="month-label">{month === '时间未知' ? '时间未知' : month.replace('-', ' 年 ') + ' 月'}</div>
+      <div className="month-label">
+        <span>{month === '时间未知' ? '时间未知' : month.replace('-', ' 年 ') + ' 月'}</span>
+        <i className="month-rule" />
+        <span className="month-count">{events.length} 条</span>
+      </div>
       <ul className="event-list">
         {events.map((e) => (
-          <li key={e.id}>
-            <button className="event-item" onClick={() => onEdit(e)}>
-              <span className="event-time" title={formatTime(e.time)}>
-                {formatCompact(e.startTs, e.time.allDay === true || e.time.precision === 'day')}
-                {e.time.kind === 'fuzzy' && ' ~'}
-              </span>
-              <span className="event-title">
-                {e.title}
-                {e.isPrivate && <span className="privacy-badge">隐私</span>}
-              </span>
-              <span className="event-people">{e.participants.map((p) => nameOf(p.personId)).join('、')}</span>
-              <span className="event-meta">
-                {e.metrics.rating ? '★'.repeat(e.metrics.rating) : ''}
-                {e.metrics.cost ? ` ¥${e.metrics.cost}` : ''}
-                {e.tags.length ? ` #${e.tags.join(' #')}` : ''}
-                {e.relatedEvents.length > 0 && (
-                  <span className="event-rel" title={`关联了 ${e.relatedEvents.length} 个事件`}>
-                    {` 🔗${e.relatedEvents.length}`}
-                  </span>
-                )}
-              </span>
-              {/* 正文此前没有任何展示点，写完了只能在编辑框里看到 */}
-              {e.content.trim() && <span className="event-excerpt">{markdownExcerpt(e.content, 60)}</span>}
-            </button>
-          </li>
+          <EventRow key={e.id} event={e} nameOf={nameOf} onEdit={onEdit} />
         ))}
       </ul>
     </section>
+  );
+}
+
+/** 单行事件：左边一栏时间（日期 / 时刻），右边标题 - 人物 - 事实 - 摘要 */
+function EventRow({
+  event: e,
+  nameOf,
+  onEdit,
+}: {
+  event: DREvent;
+  nameOf: (id: string) => string;
+  onEdit: (e: DREvent) => void;
+}) {
+  // 全天/只到日的事件没有时刻，formatCompact 只给日期，正好拆成两行
+  const compact = formatCompact(e.startTs, e.time.allDay === true || e.time.precision === 'day');
+  const [day, clock] = compact === '时间未知' ? ['未知', undefined] : compact.split(' ');
+  const people = e.participants.map((p) => nameOf(p.personId)).join('、');
+  const excerpt = e.content.trim() ? markdownExcerpt(e.content, 80) : '';
+  const rating = e.metrics.rating ?? 0;
+  const hasFacts = rating > 0 || !!e.metrics.cost || e.tags.length > 0 || e.relatedEvents.length > 0;
+
+  return (
+    <li>
+      <button className="event-item" onClick={() => onEdit(e)} title={formatTime(e.time)}>
+        <span className="event-when">
+          <span className="event-day">{day}</span>
+          {(clock || e.time.kind === 'fuzzy') && (
+            <span className="event-clock">
+              {clock}
+              {e.time.kind === 'fuzzy' && ' ~'}
+            </span>
+          )}
+        </span>
+        <span className="event-main">
+          <span className="event-title">
+            <span className="event-title-text">{e.title}</span>
+            {e.isPrivate && <span className="privacy-badge">隐私</span>}
+            {people && <span className="event-people">{people}</span>}
+          </span>
+          {hasFacts && (
+            <span className="event-facts">
+              {rating > 0 && (
+                <span className="ev-chip ev-chip-star" title={`评分 ${rating} 星`}>
+                  {'★'.repeat(rating)}
+                </span>
+              )}
+              {!!e.metrics.cost && <span className="ev-chip">{`¥${e.metrics.cost}`}</span>}
+              {e.tags.map((t) => (
+                <span key={t} className="ev-chip ev-chip-tag">
+                  {t}
+                </span>
+              ))}
+              {e.relatedEvents.length > 0 && (
+                <span className="ev-chip event-rel" title={`关联了 ${e.relatedEvents.length} 个事件`}>
+                  {`关联 ${e.relatedEvents.length}`}
+                </span>
+              )}
+            </span>
+          )}
+          {/* 正文此前没有任何展示点，写完了只能在编辑框里看到 */}
+          {excerpt && <span className="event-excerpt">{excerpt}</span>}
+        </span>
+      </button>
+    </li>
   );
 }
 

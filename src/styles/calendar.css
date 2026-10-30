@@ -380,17 +380,35 @@
   line-height: 1.5;
 }
 
-/* 时间线上的「只看某一天」标记 */
+/* 时间线上的「只看某一天」标记：本身就是「取消」入口，× 直接清掉日期 */
 .tl-daychip {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 400;
   color: var(--primary);
-  background: #fde8ef;
+  background: color-mix(in srgb, var(--primary) 12%, var(--panel));
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.tl-chip-x {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 999px;
+  opacity: 0.75;
+}
+
+.tl-chip-x:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--primary) 18%, var(--panel));
 }
 
 /* 宽屏：格子略高一点，滚动条给到正常可读的字号 */

@@ -186,15 +186,15 @@
   font-size: 12px;
 }
 
-/* 时间线里的正文摘要：跨整行，超出省略 */
+/* 时间线里的正文摘要：跟标题同栏，最多两行，超出省略 */
 .event-excerpt {
-  grid-column: 1 / -1;
   overflow: hidden;
   color: var(--muted);
   font-size: 12.5px;
-  line-height: 1.5;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* ---------- 编辑区语法高亮 ---------- */

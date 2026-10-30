@@ -109,17 +109,19 @@
 }
 
 /* ---------- 时间线筛选折叠 ---------- */
+/* 它只是列表上方的一条工具行，不该跟页面标题一样重：透明底、小字、旧灰 */
 .filter-toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 14px;
   border: none;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
-  font-size: 14px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -149,11 +151,6 @@
 
 /* 宽屏由 JS 判断 wide，此时折叠按钮本身也要让位 */
 .filter-toggle-hidden {
-  display: none;
-}
-
-/* 时间线内嵌的「记一件事」在手机端隐藏，避免与 FAB 重复 */
-.btn-new-inline {
   display: none;
 }
 

@@ -8,59 +8,111 @@
   padding: 0;
 }
 
-/* 事件行：手机用「两行」卡片式（时间/人物一行，标题一行），宽屏改单行表格式。
-   单行在 390px 下会把标题挤到只剩省略号，所以 base 必须是两行。 */
+/* 事件行：左边一栏时间（日期 / 时刻），右边标题、人物、事实 chip、摘要。
+   时间不再和标题抢同一行——390px 下把标题挤成省略号是之前最难看的地方。 */
 .event-item {
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    'time people'
-    'title title';
-  align-items: baseline;
-  gap: 2px 10px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 12px;
   width: 100%;
   border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, var(--panel));
   background: transparent;
   text-align: left;
-  padding: 10px 6px;
-  border-bottom: 1px dashed #efece7;
+  padding: 12px 14px 13px;
 }
 
 .event-item:hover {
-  background: #faf9f7;
+  background: color-mix(in srgb, var(--text) 3%, var(--panel));
 }
 
-.event-time {
-  grid-area: time;
+/* 时间栏：日期一行、时刻一行，等宽数字，右边缘对齐不用管（左对齐更像时间轴） */
+.event-when {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 2px;
+  min-width: 0;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.event-day {
   color: var(--muted);
   font-size: 12px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.event-clock {
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.event-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
 }
 
 .event-title {
-  grid-area: title;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.45;
+}
+
+/* 标题最多两行：一行放不下时换行，而不是直接省略掉后半句 */
+.event-title-text {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .event-people {
-  grid-area: people;
+  flex: none;
+  margin-left: auto;
+  max-width: 42%;
+  padding-top: 2px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 400;
   white-space: nowrap;
-}
-
-.event-meta {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/* 评分 / 花费 / 标签 / 关联：只读 chip，跟事件详情页同一套观感 */
+.event-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.event-item .ev-chip {
+  padding: 1px 7px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--text) 6%, var(--panel));
+}
+
+.event-item .ev-chip-tag {
+  background: color-mix(in srgb, var(--ok) 12%, var(--panel));
+}
+
+.event-item .ev-chip-star {
+  color: #c8892a;
+  background: color-mix(in srgb, #c8892a 12%, var(--panel));
+  letter-spacing: 0.5px;
 }
 
 .member-list li,
@@ -148,15 +200,40 @@
   background: #faf9f7;
 }
 
+/* 月份是一段的分界，不只一行小字：吸在 head 下面、后面拖一条细线，
+   长列表滚起来也能知道现在看的是哪个月。 */
 .month-group {
-  margin-bottom: 14px;
+  margin-bottom: 4px;
 }
 
+/* 月份条：左边月份、中间细线、右边条数。线把「一段」的感觉做出来，
+   条数放到最右，不会被误读成日期的一部分。 */
 .month-label {
-  font-size: 12px;
+  position: sticky;
+  top: 44px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 7px;
+  background: var(--bg);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
+}
+
+.month-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.month-count {
+  font-size: 11.5px;
+  font-weight: 400;
   color: var(--muted);
-  padding: 8px 14px 4px;
-  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 事件浏览态（只读） ----------
