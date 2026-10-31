@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { FilePickInput } from '../common';
+import { ConfirmButton, FilePickInput, Segmented } from '../common';
 import { FilesPanel } from '../files';
 import { showToast as toast } from '../toast';
 import { bump } from '../../store';
@@ -90,6 +90,12 @@ export function LocationPanel() {
   /** 用户动过输入框就别再拿示例名覆盖他写的东西 */
   const [nameTouched, setNameTouched] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  /**
+   * 地图下面一次只摆一张卡：回放 或 选中的点，靠一颗分段切换。
+   * 两张都摊着的时候图占不满半屏、要看选中得先滚过整块回放条（390×844 实测内容 908px / 视口 787px），
+   * 现在把两块折叠成一个开关，一屏里放得下地图 + 正在用的那一块。
+   */
+  const [mapCard, setMapCard] = useState<'play' | 'selected'>('play');
   /** 记录列表里刚定位到哪个点：闪一下，让眼睛跟得上 */
   const [flashIdx, setFlashIdx] = useState<number | null>(null);
   /** 位置修正是「三选一」的填法，输入框含义随模式变化 */
@@ -617,7 +623,10 @@ export function LocationPanel() {
       const spd = i > 0 ? speeds[i - 1] : null;
       const marker = L
         .circleMarker([r.lat, r.lng], pointStyle(i === sel, i === lastIdx))
-        .on('click', () => setSelectedIdx(i))
+        .on('click', () => {
+          setSelectedIdx(i);
+          setMapCard('selected');
+        })
         .bindPopup(
           `<div><strong>${esc(fmtTime(r.ts))}</strong><br/>${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}` +
             `${spd !== null ? `<br/>上一段约 ${fmtSpeed(spd)}` : ''}` +
@@ -737,6 +746,7 @@ export function LocationPanel() {
 
   const selectPoint = (idx: number) => {
     setSelectedIdx(idx);
+    setMapCard('selected'); // 选中了就让人看见选中的点，不用再手动切
     const p = rows[idx] ? shifted(rows[idx], idx) : null;
     if (p) mapRef.current?.setView([p.lat, p.lng], 16);
     setTab('map');
@@ -814,10 +824,11 @@ export function LocationPanel() {
       .catch(() => toast('定位失败'));
   };
 
-  const removeAt = async (idx: number) => {
-    const p = rows[idx] ? shifted(rows[idx], idx) : null;
-    if (!p) return;
-    if (!window.confirm(`删除第 ${idx + 1} 个点（${fmtTime(p.ts)}）？`)) return;
+  /**
+   * 真正删一个点：核心 removePoint 会把分段修正的锚点一起前移（见 locationAuto）。
+   * 删完把选中挪开——被删的那个点已经不存在，留在同一下标等于悄悄选中了隔壁那个。
+   */
+  const doRemove = async (idx: number) => {
     try {
       const left = await removePoint(idx);
       if (left == null) {
@@ -829,6 +840,14 @@ export function LocationPanel() {
     } catch (e) {
       toast(`删除失败：${e instanceof Error ? e.message : e}`);
     }
+  };
+
+  /** 记录列表里的 × ：一步确认走原生 confirm（列表行里没有放内联确认条的地方） */
+  const removeAt = async (idx: number) => {
+    const p = rows[idx] ? shifted(rows[idx], idx) : null;
+    if (!p) return;
+    if (!window.confirm(`删除第 ${idx + 1} 个点（${fmtTime(p.ts)}）？`)) return;
+    await doRemove(idx);
   };
 
   const saveOffset = async () => {
@@ -961,7 +980,12 @@ export function LocationPanel() {
 
       {/* ---------- 地图 ---------- */}
       <div className="loc-view" hidden={tab !== 'map'}>
-        <div className="loc-legend">
+        {/*
+         * 图例收成一条可横向滑的行：以前它包 7 项、在 390 宽下折成三行（实测 82px），
+         * 光图例就吃掉地图那么多高度的四分之一。现在一行 22px，滑得到全部内容；
+         * 「当前速度」是活值，挪到下面那颗切换条的右侧，不用滑。
+         */}
+        <div className="loc-legend" role="group" aria-label="图例（可横向滑动）">
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_CURRENT }} />当前位置</span>
           <span className="loc-legend-item" title="最新打的那个点：与线条同粗">
             <i className="loc-dot loc-dot-point" />最新点
@@ -970,6 +994,9 @@ export function LocationPanel() {
             <i className="loc-dot loc-dot-hist" />历史点
           </span>
           <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_SELECTED }} />选中</span>
+          {playActive && (
+            <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_PLAY }} />回放</span>
+          )}
           <span
             className="loc-legend-item"
             title="两段平均速度：蓝 → 青 → 绿 → 黄 → 橙 → 红，红色对应轨迹最高速度；静止为蓝色，未知为灰色"
@@ -977,15 +1004,41 @@ export function LocationPanel() {
             <i className="loc-speedbar" style={{ background: `linear-gradient(90deg, ${speedRamp.join(', ')})` }} />
             <span className="loc-max-speed">最高速度（红色）：{trackSpeedInfo.max === null ? '未知' : fmtSpeed(trackSpeedInfo.max)}</span>
           </span>
-          <span className="loc-legend-item loc-current-speed">
-            当前速度：{currentSpeed === null ? '未知' : fmtSpeed(currentSpeed)}
-          </span>
-          {playActive && (
-            <span className="loc-legend-item"><i className="loc-dot" style={{ background: COLOR_PLAY }} />回放</span>
-          )}
           <span className="muted small">{rows.length} 个点</span>
         </div>
         <div ref={containerRef} className="map-leaflet loc-map" />
+
+        {/*
+         * 地图下面一次只摆一张卡，靠这颗分段在「回放 / 选中的点」之间切；
+         * 右边顺带放「当前速度」（活值，放图例里会被横向滑走）和「我的位置」。
+         * 原来这两个按钮单独占一行 .music-add（42px + 间距），一屏就装不下了；
+         * 「去记录」删掉——它和面板自带的「记录」页签是同一个动作。
+         * 点数不到 2 时回放没意义，这时不出现分段，直接给选中卡（或它的空态提示）。
+         */}
+        <div className="loc-map-switch">
+          {nPts > 1 ? (
+            <div role="group" aria-label="地图下方显示回放还是选中的点">
+              <Segmented
+                value={mapCard}
+                onChange={setMapCard}
+                options={[
+                  { value: 'play', label: '回放' },
+                  { value: 'selected', label: selected ? `选中 ${selectedIdx! + 1}` : '选中' },
+                ]}
+              />
+            </div>
+          ) : (
+            <span className="muted small">至少两个点才有回放</span>
+          )}
+          <span className="loc-map-actions">
+            <span className="muted small loc-current-speed">
+              当前 {currentSpeed === null ? '未知' : fmtSpeed(currentSpeed)}
+            </span>
+            <button className="music-add-btn" onClick={locateMe}>
+              我的位置
+            </button>
+          </span>
+        </div>
 
         {/*
          * 回放：一条进度条 + 一排走带键，单位/顺序/步长收进「更多」。
@@ -993,7 +1046,7 @@ export function LocationPanel() {
          * 键帽符号只用 « ‹ ▶ › » 这类文本字形（▶ 还补了 U+FE0E）：⏮ 在安卓上会被
          * 当成 emoji 渲成橙色方块，跟卡片其它控件不是一个体系。
          */}
-        {nPts > 1 && (
+        {nPts > 1 && mapCard === 'play' && (
           <div className="loc-card loc-play">
             <div className="loc-card-head">
               <strong>回放</strong>
@@ -1136,39 +1189,49 @@ export function LocationPanel() {
           </div>
         )}
 
-        <div className="music-add">
-          <button className="music-add-btn" onClick={locateMe}>定位到我的位置</button>
-          <button className="music-add-btn" onClick={() => setTab('record')}>去记录</button>
-        </div>
-        {selected ? (
-          <div className="loc-card loc-selected">
-            <div className="loc-card-head">
-              <strong>选中的点</strong>
-              <span className="muted small">
-                第 {selectedIdx! + 1} / {rows.length} 个 · {fmtTime(selected.ts)}
-              </span>
-            </div>
-            <div className="loc-coord">{selected.lat.toFixed(6)}, {selected.lng.toFixed(6)}</div>
-            <div className="muted small">
-              {selected.accuracy ? `±${Math.round(selected.accuracy)}m` : '精度未知'}
-              {` · 这一头到这里 ${fmtMeters(cumMeters[selectedIdx!] ?? 0)}`}
-              {selected.note ? ` · ${selected.note}` : ''}
-            </div>
-            <div className="loc-row">
-              {/* 列表只渲染最近 300 条，光切过去常常还不够：这一条把窗口撑到够得着它并滚到中间 */}
-              <button className="music-add-btn" onClick={() => revealInList(selectedIdx!)}>
-                在记录里定位
-              </button>
-              {fileId && rows.length > 1 && (
-                <button className="music-add-btn" onClick={() => { setOffsetScope('seg'); setTab('file'); }}>
-                  从这点起修正
+        {/* 选中卡与回放卡占同一个位置（切换条下面），切来切去页面不跳 */}
+        {(nPts <= 1 || mapCard === 'selected') &&
+          (selected ? (
+            <div className="loc-card loc-selected">
+              <div className="loc-card-head">
+                <strong>选中的点</strong>
+                <span className="muted small">
+                  第 {selectedIdx! + 1} / {rows.length} 个 · {fmtTime(selected.ts)}
+                </span>
+              </div>
+              <div className="loc-coord">{selected.lat.toFixed(6)}, {selected.lng.toFixed(6)}</div>
+              <div className="muted small">
+                {selected.accuracy ? `±${Math.round(selected.accuracy)}m` : '精度未知'}
+                {` · 这一头到这里 ${fmtMeters(cumMeters[selectedIdx!] ?? 0)}`}
+                {selected.note ? ` · ${selected.note}` : ''}
+              </div>
+              <div className="loc-row">
+                {/* 列表只渲染最近 300 条，光切过去常常还不够：这一条把窗口撑到够得着它并滚到中间 */}
+                <button className="music-add-btn" onClick={() => revealInList(selectedIdx!)}>
+                  在记录里定位
                 </button>
-              )}
+                {fileId && rows.length > 1 && (
+                  <button className="music-add-btn" onClick={() => { setOffsetScope('seg'); setTab('file'); }}>
+                    从这点起修正
+                  </button>
+                )}
+                {/* 删点以前只在记录列表里做（行尾一个 ×），选中一个点时手上就有删的需求，这里补一颗 */}
+                {fileId && (
+                  <ConfirmButton
+                    className="loc-del-point"
+                    text="删除该点"
+                    danger
+                    confirmText={`删掉第 ${selectedIdx! + 1} 个点（${fmtTime(selected.ts)}）？`}
+                    onConfirm={() => void doRemove(selectedIdx!)}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        ) : (
-          <p className="muted small">点地图上的白芯小点可看坐标，选中的那个会变成红心；选中后能直接「在记录里定位」。</p>
-        )}
+          ) : (
+            <p className="muted small">
+              点地图上的白芯小点可看坐标，选中的那个会变成红心，下面会自动切到「选中」这张卡；选中后能「在记录里定位」「从这点起修正」或直接删掉它。
+            </p>
+          ))}
       </div>
 
       {/* ---------- 记录 ---------- */}

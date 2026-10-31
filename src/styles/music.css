@@ -344,11 +344,27 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
 }
+/*
+ * 图例收成一行、可横向滑：以前 flex-wrap 在 390 宽下把 7 项折成三行（实测 82px），
+ * 光图例就快赶上地图高度的三分之一。滚动条藏掉（与人物分组筛选条同一套做法）。
+ * 直接子项一律 flex:0 0 auto + nowrap——只给 .loc-legend-item 写的话，
+ * 尾巴那颗「N 个点」是 .muted.small，会被压成 min-content 竖着换三行（实测 58px 高）。
+ */
 .loc-legend {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.loc-legend::-webkit-scrollbar {
+  display: none;
+}
+.loc-legend > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .loc-legend-item {
   display: inline-flex;
@@ -356,6 +372,8 @@
   gap: 5px;
   font-size: 12px;
   color: var(--muted);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .loc-dot {
   width: 8px;
@@ -386,7 +404,42 @@
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 .loc-map {
-  height: 360px;
+  /*
+   * 高度让位给下面的卡片：一屏内要放得下 图例 + 地图 + 切换条 + 一张卡 + 两个按钮，
+   * 固定 360px 在矮屏（壳里横屏、分屏、小手机）上会把卡片顶出屏幕。
+   * 470px = 切换条 + 卡片 + 按钮 + 图例 + 页签与各处 gap 的实测和，超出的部分由地图吃。
+   */
+  height: clamp(200px, calc(100dvh - 470px), 360px);
+}
+/*
+ * 地图下方那颗「回放 / 选中」切换条：左边分段控件，右边是当前速度
+ * （速度是活值，放在图例里会被横向滑走，所以挪出来）。
+ */
+.loc-map-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.loc-map-switch .theme-mode-btn {
+  padding: 6px 14px;
+}
+.loc-map-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.loc-map-actions .loc-current-speed {
+  white-space: nowrap;
+}
+.loc-map-actions .music-add-btn {
+  padding: 6px 10px;
+}
+/* 选中卡里的「删除该点」顶到行尾，与另外两个动作按钮拉开距离（危险操作不挨着顺手按的） */
+.loc-del-point {
+  margin-left: auto;
 }
 .loc-row {
   display: flex;

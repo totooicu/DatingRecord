@@ -663,12 +663,26 @@ export async function locateMe(): Promise<CurrentFix | null> {
   }
 }
 
-/** 删除一个点；返回删除后的点数，下标越界返回 null */
+/**
+ * 删除一个点；返回删除后的点数，下标越界返回 null。
+ *
+ * 分段修正（doc.offsets）记的是「从第几个点起生效」，删点会让后面所有点前移一位，
+ * 所以锚点必须跟着挪——不然「从第 20 个点起的修正」悄悄变成「从第 19 个点起」，
+ * 整段轨迹平移而地图上看不出来。规则：
+ *   · 锚点在删点之后 → 下标 −1；
+ *   · 锚点就是被删的那个点 → 留在同一下标（它的作用域由接上位的后继点继续承担）；
+ *     于是两个锚点可能撞到同一下标，此时后写的赢（effectiveOffsetAt 从数组尾部往前找），
+ *     语义也对：原来只覆盖被删那一点的修正，作用域已经空了。
+ *   · 锚点落在删除后的点数之外（删的是末尾点、锚点在末尾）→ 直接丢掉，不留惰性垃圾。
+ */
 export async function removePoint(index: number): Promise<number | null> {
   if (!state.doc || !Number.isInteger(index) || index < 0 || index >= state.rows.length) return null;
   const points = state.rows.filter((_, i) => i !== index);
-  const doc: LocationDoc = { ...state.doc, points };
-  patch({ rows: points, doc, rev: state.rev + 1 });
+  const offsets = (state.doc.offsets ?? [])
+    .map((s) => (s.fromIndex > index ? { ...s, fromIndex: s.fromIndex - 1 } : s))
+    .filter((s) => s.fromIndex < points.length);
+  const doc: LocationDoc = { ...state.doc, points, offsets };
+  patch({ rows: points, doc, offsets, rev: state.rev + 1 });
   await persist(doc);
   return points.length;
 }
