@@ -96,6 +96,22 @@
   margin-top: 10px;
 }
 
+/* 服务端卡片里的「自启动」：和背景音乐/自动打点服务那个开关同一语义，
+   但位置在设置页卡片里，间距单独给 */
+.remote-auto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.remote-auto input {
+  width: 16px;
+  height: 16px;
+}
+
 .remote-section .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

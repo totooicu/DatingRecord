@@ -1,7 +1,8 @@
 // 跨设备操作：服务端 / 客户端两块面板。
 //
 // 两条连接方式：
-//   中继 —— 局域网里跑 tools/remote-relay，页面由中继托管，ws 明文转发
+//   壳端服务 —— 壳在本机起 HTTP + WebSocket，壳里的页面当服务端，其他设备
+//               打开 http://手机IP:端口 当客户端；浏览器里没有壳时退回 Node 中继
 //   直连 —— WebRTC DataChannel，两个浏览器直接传，靠复制配对码完成信令
 //
 // 不管哪条，切数据都由 core/remote/router 统一负责，这个页面只管配对和展示。
@@ -27,7 +28,18 @@ import {
   type DirectClientSession,
   type DirectHostSession,
   type LinkKind,
+  type RemoteConfig,
 } from '../../core/remote';
+import {
+  lanAddressOf,
+  lanPageUrl,
+  loopbackWsUrl,
+  shellRelayCapable,
+  shellRelayStatus,
+  startShellRelay,
+  type ShellRelayStatus,
+} from '../../core/remote/shellRelay';
+import { setDataShareAutostart, stopDataShare } from '../../core/runtime/dataShare';
 import { Field } from '../common';
 
 function useRemote() {
@@ -54,6 +66,10 @@ export function RemoteSection() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [relay, setRelay] = useState<Awaited<ReturnType<typeof relayInfo>>>(null);
+  /** 壳端服务：null = 还在探测，false = 浏览器里没有 */
+  const [shellOk, setShellOk] = useState<boolean | null>(null);
+  const [shell, setShell] = useState<ShellRelayStatus | null>(null);
+  const [auto, setAuto] = useState(false);
 
   // 直连配对
   const [stun, setStun] = useState('');
@@ -62,23 +78,54 @@ export function RemoteSection() {
   const [hostSession, setHostSession] = useState<{ s: DirectHostSession; invite: string } | null>(null);
   const [clientSession, setClientSession] = useState<{ s: DirectClientSession; answer: string } | null>(null);
 
+  // 客户端页面由壳端服务托管时，地址栏就是服务器的 host:port：直接把它填好，
+  // 用户只需要贴 token。开发端口（5173/5174）不算，免得多出一个莫名其妙的默认值。
+  const servedByLan =
+    typeof location !== 'undefined' &&
+    location.protocol === 'http:' &&
+    !!location.host &&
+    !['5173', '5174'].includes(location.port);
+
   useEffect(() => {
     void relayInfo().then(setRelay);
+    void (async () => {
+      const capable = await shellRelayCapable();
+      setShellOk(capable);
+      if (!capable) return;
+      const st = await shellRelayStatus();
+      if (!st) return;
+      setShell(st);
+      setAuto(st.autostart);
+      setPort(String(st.port));
+      if (st.token) setToken(st.token);
+    })();
   }, []);
+
+  useEffect(() => {
+    if (!servedByLan || addr) return;
+    setAddr(`${location.hostname}:${location.port || '4173'}`);
+  }, [servedByLan, addr]);
 
   const hostCfg = remote.mode === 'host' ? remote.label : '';
   const isDirect = remote.transport === 'direct';
   const choose = remote.mode === 'local';
+  const shellMode = shellOk === true;
 
-  // 给客户端的连接串：地址用当前页面的主机名，换设备时把这段抄过去。
-  // 页面在本机用 localhost / 127.0.0.1 打开时，抄到手机上连的是手机自己，
-  // 所以换成中继报上来的局域网地址。
+  // 给客户端的连接串：优先用「壳报上来的局域网地址」——壳里的页面部署在
+  // github.io，location.hostname 抄给手机会连回 GitHub，不是这台手机。
   const loopback =
     typeof location !== 'undefined' &&
     ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
-  const lanAddr = relay?.addresses?.find((a) => !a.startsWith('127.') && a !== '::1');
-  const shareHost =
-    typeof location !== 'undefined' ? (loopback && lanAddr ? lanAddr : location.hostname) : '127.0.0.1';
+  const lanAddr = shell?.addresses?.find((a) => !a.startsWith('127.')) ??
+    relay?.addresses?.find((a) => !a.startsWith('127.') && a !== '::1');
+  const lanUrl = lanPageUrl(shell ?? { port: Number(port) || 4173, addresses: lanAddr ? [lanAddr] : [] });
+  const shareHost = shellMode
+    ? (lanAddr ?? (typeof location !== 'undefined' ? location.hostname : '127.0.0.1'))
+    : typeof location !== 'undefined'
+      ? loopback && lanAddr
+        ? lanAddr
+        : location.hostname
+      : '127.0.0.1';
   const shareText = useMemo(() => {
     if (!hostCfg) return '';
     return `${shareHost}:${port}?token=${token}`;
@@ -99,26 +146,74 @@ export function RemoteSection() {
     setMsg('');
     setBusy('host');
     try {
-      const parsed = addressForHostPort(port, token);
-      // 同源中继可以把用户填的端口也开起来；静态托管只能连已经开着的端口
-      let sameOriginRelay = false;
-      try {
-        sameOriginRelay = await ensureRelayListener(parsed.port, token);
-      } catch (e) {
-        throw new Error(`中继拒绝在 ${parsed.port} 端口监听：${e instanceof Error ? e.message : String(e)}`);
+      if (shellMode) {
+        // 壳端作服务器：先在壳里绑端口，再让壳里的页面以服务端身份连 loopback。
+        // 用 127.0.0.1 而不是页面的 github.io：页面本身是 https，但 loopback 是
+        // 可信源，ws://127.0.0.1 不会被混合内容策略拦。
+        const st = await startShellRelay(Number(port), token);
+        setShell(st);
+        setAuto(st.autostart);
+        setToken(st.token);
+        const cfg: RemoteConfig = {
+          url: loopbackWsUrl(st),
+          token: st.token,
+          label: `${lanAddressOf(st) ?? '127.0.0.1'}:${st.port}`,
+        };
+        await startHost(cfg);
+        setMsg(
+          `服务已开启。另一台设备在浏览器打开 ${lanUrl ?? `http://${shareHost}:${st.port}`}，` +
+            '在「作为客户端」里填上面的连接串。壳要保持运行。',
+        );
+      } else {
+        const parsed = addressForHostPort(port, token);
+        // 同源中继可以把用户填的端口也开起来；静态托管只能连已经开着的端口
+        let sameOriginRelay = false;
+        try {
+          sameOriginRelay = await ensureRelayListener(parsed.port, token);
+        } catch (e) {
+          throw new Error(`中继拒绝在 ${parsed.port} 端口监听：${e instanceof Error ? e.message : String(e)}`);
+        }
+        await startHost(configOf(parsed));
+        // 中继可能刚被 POST 开起来，这里补一次自述，连接串才能拿到局域网地址
+        void relayInfo().then(setRelay);
+        setMsg(
+          sameOriginRelay
+            ? '服务已开启。另一台设备打开同一个网址，在「作为客户端」里填上面的连接串。'
+            : '已连上中继。若另一台设备连不上，请确认中继进程在运行，并让客户端通过中继提供的页面访问。',
+        );
       }
-      await startHost(configOf(parsed));
-      // 中继可能刚被 POST 开起来，这里补一次自述，连接串才能拿到局域网地址
-      void relayInfo().then(setRelay);
-      setMsg(
-        sameOriginRelay
-          ? '服务已开启。另一台设备打开同一个网址，在「作为客户端」里填上面的连接串。'
-          : '已连上中继。若另一台设备连不上，请确认中继进程在运行，并让客户端通过中继提供的页面访问。',
-      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy('');
+    }
+  };
+
+  /** 停止：壳端模式顺带关掉端口，客户端会被中继告知「服务端已离线」 */
+  const stop = async () => {
+    if (shellMode) {
+      try {
+        await stopDataShare();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+      const st = await shellRelayStatus();
+      if (st) setShell(st);
+      return;
+    }
+    stopHost();
+  };
+
+  const toggleAuto = async (on: boolean) => {
+    setAuto(on);
+    setErr('');
+    try {
+      await setDataShareAutostart(on);
+      const st = await shellRelayStatus();
+      if (st) setShell(st);
+    } catch (e) {
+      setAuto(!on);
+      setErr(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -233,7 +328,7 @@ export function RemoteSection() {
             className={link === 'relay' ? 'on' : ''}
             onClick={() => setLink('relay')}
           >
-            中继（局域网）
+            {shellMode ? '壳端服务（局域网）' : '中继（局域网）'}
           </button>
           <button
             role="tab"
@@ -265,7 +360,13 @@ export function RemoteSection() {
                   <span className="muted small">客户端连接串</span>
                 </p>
                 <textarea className="remote-share" readOnly value={shareText} rows={2} />
-                {loopback && lanAddr && (
+                {shellMode && lanUrl && (
+                  <p className="muted small">
+                    另一台设备先在浏览器打开 <code>{lanUrl}</code>，再把上面这段填进「作为客户端」。
+                    页面由壳端服务提供，和壳里是同一份数据。
+                  </p>
+                )}
+                {!shellMode && loopback && lanAddr && (
                   <p className="muted small">
                     已把地址换成本机局域网 IP；<code>127.0.0.1</code> 只在本机有效，手机连不上。
                   </p>
@@ -276,8 +377,18 @@ export function RemoteSection() {
               当前 {remote.clients.length} 个客户端
               {remote.clients.length > 0 ? `：${remote.clients.map((c) => c.name).join('、')}` : ''}
             </p>
+            {shellMode && !isDirect && (
+              <label className="remote-auto">
+                <input
+                  type="checkbox"
+                  checked={auto}
+                  onChange={(e) => void toggleAuto(e.target.checked)}
+                />
+                自启动（手机开机后自动开前台服务）
+              </label>
+            )}
             <div className="remote-actions">
-              <button className="btn btn-danger btn-sm" onClick={() => stopHost()}>
+              <button className="btn btn-danger btn-sm" onClick={() => void stop()}>
                 停止服务
               </button>
             </div>
@@ -305,19 +416,43 @@ export function RemoteSection() {
                 </button>
               </div>
             </label>
+            {shellMode && (
+              <label className="remote-auto">
+                <input
+                  type="checkbox"
+                  checked={auto}
+                  onChange={(e) => void toggleAuto(e.target.checked)}
+                />
+                自启动（手机开机后自动开前台服务）
+              </label>
+            )}
             <div className="remote-actions">
               <button className="btn btn-primary" onClick={() => void start()} disabled={busy !== ''}>
                 {busy === 'host' ? '正在开启…' : '开启跨设备操作'}
               </button>
             </div>
-            {!relay && (
+            {shellMode ? (
               <div className="remote-hint">
                 <p className="muted small">
-                  浏览器页面不能自己监听端口，需要先在本机运行项目自带的中继；然后由中继托管这个页面。
-                  在其他设备上打开 <code>http://本机IP:{port}</code> 即可。
+                  壳端服务已内置：开启后这台手机就是服务器，另一台设备打开
+                  {lanUrl ? <code>{lanUrl}</code> : ' http://手机IP:端口'} 加载页面，
+                  再在「作为客户端」里填连接串。数据始终在壳里的网页中，壳要保持运行。
                 </p>
-                <code className="remote-cmd">node tools/remote-relay/server.mjs --port {port} --token {token}</code>
+                <p className="muted small">
+                  手机休眠或切到后台时，前台服务会保住端口；但壳被划掉后数据会暂时离线，
+                  客户端会立刻回到自己的库。
+                </p>
               </div>
+            ) : (
+              !relay && (
+                <div className="remote-hint">
+                  <p className="muted small">
+                    浏览器页面不能自己监听端口，需要先在本机运行项目自带的中继；然后由中继托管这个页面。
+                    在其他设备上打开 <code>http://本机IP:{port}</code> 即可。
+                  </p>
+                  <code className="remote-cmd">node tools/remote-relay/server.mjs --port {port} --token {token}</code>
+                </div>
+              )
             )}
           </>
         ) : hostSession ? (
@@ -413,7 +548,11 @@ export function RemoteSection() {
             <label className="field">
               <span className="field-label">
                 地址:端口?token=
-                <em>示例：192.168.1.8:4173?token=abc123</em>
+                <em>
+                  {servedByLan
+                    ? '本页由壳端服务提供：地址已填好，只需补 token'
+                    : '示例：192.168.1.8:4173?token=abc123'}
+                </em>
               </span>
               <input
                 value={addr}
@@ -442,7 +581,9 @@ export function RemoteSection() {
             <p className="muted small">
               {remote.mode === 'host'
                 ? '本页正在作为服务端，要连接请换一台设备或新开一个标签页。'
-                : '客户端页面必须由服务端中继托管（同一局域网的 http 地址），否则 https 页面连不上 ws://。'}
+                : servedByLan
+                  ? '本页已由壳端服务加载，可以直接连；token 在服务端页面的「客户端连接串」里。'
+                  : '客户端页面必须由服务端提供（同一局域网的 http 地址），否则 https 页面连不上 ws://；壳端模式请让手机先开服务，再用 http://手机IP:端口 打开本页。'}
             </p>
           </>
         ) : clientSession ? (

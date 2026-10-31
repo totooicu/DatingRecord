@@ -624,6 +624,58 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 
 **回归**：`node tools/e2e/shell-back-e2e.mjs [url]`（B1–B6）。假壳除了应答 `ui.goBack / ui.finish`，还照抄了 3 秒兜底并计数：B1 详情回列表且等过 3 秒兜底仍为 0；B2 图标弹窗只关弹窗、详情不动；B3 设置子页 → 父级 → 目录 → `ui.finish`；B4 日历某天 → 时间线 → 回日历；B5 新建事件弹窗里的全屏编辑先退全屏再关弹窗；B6 列表根上返回只发 `ui.finish`。
 
+### 1.17 跨设备操作：壳端做服务器，网页连上来用手机的库
+
+**为什么不能直接同步**：库在 IndexedDB 里（sql.js），IndexedDB 按源隔离。壳加载的是
+`https://totooicu.github.io/DatingRecord/`，浏览器里同一页面是同一个源，但手机的库在手机
+WebView 里——别的设备根本读不到。所以「共享」只能是：手机页面把库挂出来，别人连它。
+
+**分工**（两层，别混）：
+
+- **壳**（`DataShareServer.java`）起一个局域网服务器，端口默认 4173：
+  - `http://手机IP:4173/` 反向代理 gh-pages 的页面。别的设备从这里打开，源就是手机这个地址，
+    页面的 IndexedDB 归属这个源——只有同源，客户端才是在「用手机的页面」；
+  - `ws://手机IP:4173/remote?token=…` 把 `RemoteTransport` 的消息在「服务端页面」和
+    「客户端页面」之间转发。壳**不读库**，它只是通道。
+- **网页**（`src/core/remote/*`，原有数据路由器不改）：
+  - 手机页面仍是 `host`：`startHost({url: 'ws://127.0.0.1:4173/remote?token=…'})`，
+    库、持久化、附件都还在手机上；
+  - 客户端仍是 `client`：不落库，`startClient(...)` 连同一个 token，读到的是服务端快照。
+
+**混合内容**（这是整件事能成立的关键）：
+
+| 谁 | 页面源 | 连的 WS | 浏览器判定 |
+|---|---|---|---|
+| 手机页面 | `https://totooicu.github.io` | `ws://127.0.0.1:4173` | 回环地址按「潜在可信」处理，放行 |
+| 别的设备 | `http://手机IP:4173` | `ws://手机IP:4173` | 明文源开明文 WS，同源，放行 |
+
+客户端那个源是 `http`（不安全源），没有 service worker、没有 `crypto.subtle`——页面本来
+就按这个环境降级，别在客户端路径上新加「必须有 HTTPS 才能用」的能力。
+
+**服务化**（服务页那一行 + 自启动）：
+
+- `src/core/runtime/dataShare.ts` 注册 `data-share` 服务：运行态 = 当前页面是不是 host；
+  自启动写两份——`localStorage['dr.svc.autostart']`（页面刷新恢复）+ 壳端
+  `SharedPreferences`（`remote.autostart`，手机重启由 `BootReceiver` 拉起前台服务）。
+- `src/core/remote/shellRelay.ts` 是 `remote.*` 桥的唯一入口：探测 `remote.capabilities`、
+  读 `remote.status`、`remote.start/stop/autostart`。浏览器里没有壳 → 探测失败 →
+  服务页显示不可用，并提示用「中继（局域网）」或直接走 `tools/remote-relay`。
+- 设置页（`RemoteSection`）在壳可用时把标题换成「壳端服务（局域网）」：连接串用手机局域网
+  IP（`http://IP:4173`），客户端地址也按当前源预填。
+
+**限制（写进 UI，也写进这里）**：
+
+- 壳端只是通道，**手机页面得开着**：页面关掉，服务端 WS 就断了，客户端会收到「服务端已离线」。
+- 前台服务保的是端口，不是数据；`START_STICKY` 只保证壳被杀后端口重来。
+- 手机断网时代理页面拿不到（502 页），但 WS 仍可用——只要客户端手上有页面缓存；正常路径
+  要求手机能访问 gh-pages。
+- 端口由壳固定，`/__remote/listen` 会被拒；浏览器端的中继才允许页面自己选端口。
+
+**回归**：`npm run build && node tools/e2e/datashare-e2e.mjs <端口>`（S1–S6）。
+用 Node 中继当真实 WS 服务器、用 `addInitScript` 注入假壳桥挡 `remote.*`，验证服务页那一行、
+自启动、设置页壳端文案与连接串、第二台设备连上、停止后客户端回本地、关闭自启动。
+壳端协议本身另有 `tools/datashare-test/run.sh`（31 项，纯 Java 服务器 + Node 客户端）。
+
 ---
 
 # 第二部分 · 功能规格

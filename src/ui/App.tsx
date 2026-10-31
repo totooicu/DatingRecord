@@ -24,6 +24,7 @@ import { peekSnapReturn } from './snapReturn';
 import { setNavHandler } from '../core/runtime/nav';
 import { initMusicService } from '../core/runtime/music';
 import { initLocationAutoService } from '../core/runtime/locationAuto';
+import { initDataShareService } from '../core/runtime/dataShare';
 import { restoreAutostartServices } from '../core/runtime/store';
 import { registerAutoSyncService } from '../core/sync/auto';
 import { HeadStatus } from './runtime/HeadStatus';
@@ -147,6 +148,8 @@ export default function App() {
     initMusicService();
     initLocationAutoService();
     registerAutoSyncService();
+    // 壳端「跨设备操作」：先注册（交出启动函数），restoreAutostartServices 才能点名恢复
+    initDataShareService();
     restoreAutostartServices();
   }, []);
 
