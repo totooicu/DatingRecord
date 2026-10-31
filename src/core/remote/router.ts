@@ -11,17 +11,13 @@
 // 服务端（host）保留本地落盘，收到客户端的整库快照就替换当前实例并落盘，
 // 再把新快照广播给其余客户端——所有来源最终都汇到服务端这一份权威数据上。
 
-import type { Database } from 'sql.js';
 import {
-  getDbInstance,
-  resetUndo,
   setPersistSink,
   onPersisted,
   flushPersist,
   dropPendingPersist,
   hasPendingPersist,
 } from '../db';
-import { getSql, setDbInstance } from '../db/state';
 import {
   setBlobStore,
   getBlob,
@@ -40,128 +36,28 @@ import { parseRemoteAddress, type ParsedAddress } from './url';
 import type { DirectClientSession, DirectHostSession } from './direct';
 import type { ClientMessage, LinkKind, PeerInfo, RemoteConfig, RemoteLink, RemotePayload } from './types';
 
-const CLIENT_KEY = 'dr.remote.client';
-const HOST_KEY = 'dr.remote.host';
+// 状态与会话标记在 ./state，整库快照的编解码在 ./snapshotCodec；
+// 本文件只管「消息怎么路由」。下面几个符号是对外（core/remote/index.ts）的，
+// 从 ./state 原样转出去，外部 import 路径不用改。
+import {
+  forgetClient,
+  forgetHost,
+  getRemoteState,
+  publish,
+  rememberClient,
+  rememberHost,
+  savedClientConfig,
+} from './state';
+import { exportDb, replaceDb, toBase64 } from './snapshotCodec';
 
-export type RemoteMode = 'local' | 'host' | 'client';
-
-export interface RemoteState {
-  mode: RemoteMode;
-  status: 'idle' | 'connecting' | 'connected' | 'error';
-  /** 展示用地址 host:port，或「直连 · 设备名」 */
-  label: string;
-  clients: PeerInfo[];
-  error: string;
-  version: number;
-  /** 当前这条连接是走中继还是 WebRTC 直连 */
-  transport: LinkKind | null;
-}
-
-let state: RemoteState = {
-  mode: 'local',
-  status: 'idle',
-  label: '',
-  clients: [],
-  error: '',
-  version: 0,
-  transport: null,
-};
-const listeners = new Set<() => void>();
-
-function publish(patch: Partial<RemoteState>): void {
-  state = { ...state, ...patch };
-  listeners.forEach((fn) => fn());
-}
-
-export function getRemoteState(): RemoteState {
-  return state;
-}
-
-export function subscribeRemote(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-// ---------------- 会话标记 ----------------
-//
-// 只用 sessionStorage 存「连接到哪」，不存任何业务数据。
-// 刷新页面时靠它决定是否自动回到远程；断开时删掉标记即可回到本地。
-
-function readJson<T>(key: string): T | null {
-  try {
-    const raw = sessionStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeJson(key: string, value: unknown): void {
-  try {
-    sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* 无痕模式可能禁用 sessionStorage：这轮连接仍然可用，只是刷新后不自动恢复 */
-  }
-}
-
-function clearKey(key: string): void {
-  try {
-    sessionStorage.removeItem(key);
-  } catch {
-    /* ignore */
-  }
-}
-
-export function savedClientConfig(): RemoteConfig | null {
-  return readJson<RemoteConfig>(CLIENT_KEY);
-}
-
-/** 一键地址解析出的连接：写进会话，紧接着 prepareClientBoot() 会照它启动 */
-export function saveClientConfig(cfg: RemoteConfig): void {
-  writeJson(CLIENT_KEY, cfg);
-}
-
-export function savedHostConfig(): RemoteConfig | null {
-  return readJson<RemoteConfig>(HOST_KEY);
-}
-
-// ---------------- 快照编解码 ----------------
-
-function toBase64(bytes: Uint8Array): string {
-  let s = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    s += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(s);
-}
-
-function fromBase64(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-function exportDb(): string {
-  const db = getDbInstance();
-  if (!db) throw new Error('数据库尚未初始化');
-  return toBase64(new Uint8Array(db.export()));
-}
-
-function replaceDb(b64: string): void {
-  const sql = getSql();
-  if (!sql) throw new Error('数据库引擎尚未就绪');
-  const bytes = fromBase64(b64);
-  const next: Database = new sql.Database(bytes);
-  next.run('PRAGMA foreign_keys = ON');
-  const old = getDbInstance();
-  setDbInstance(next);
-  // 撤销栈保存的是旧实例的整库字节，换库后必须清掉
-  resetUndo();
-  old?.close();
-  bump();
-}
+export type { RemoteState, RemoteMode } from './state';
+export {
+  getRemoteState,
+  savedClientConfig,
+  savedHostConfig,
+  saveClientConfig,
+  subscribeRemote,
+} from './state';
 
 // ---------------- 客户端附件代理 ----------------
 //
@@ -395,7 +291,7 @@ async function attachClient(
     clientTransport = null;
     setPersistSink(null);
     setBlobStore(null);
-    if (remember) clearKey(CLIENT_KEY);
+    if (remember) forgetClient();
     const msg = err instanceof Error ? err.message : String(err);
     publish({ mode: 'local', status: 'error', label: '', transport: null, error: `连接失败：${msg}` });
     // 快照已经换过库了：页面里的数据是服务端的，必须重载回本地，不能就这么留在界面上
@@ -409,7 +305,7 @@ async function attachClient(
     }
     throw err;
   }
-  if (remember) writeJson(CLIENT_KEY, remember);
+  if (remember) rememberClient(remember);
 }
 
 /**
@@ -437,8 +333,8 @@ export async function adoptDirectClient(session: DirectClientSession): Promise<v
 
 /** 断开并 reload：本地库一直在盘上，重载后就是自己的数据 */
 export function leaveRemoteAndReload(tip?: string): void {
-  clearKey(CLIENT_KEY);
-  clearKey(HOST_KEY);
+  forgetClient();
+  forgetHost();
   if (tip) {
     try {
       sessionStorage.setItem('dr.remote.tip', tip);
@@ -480,12 +376,12 @@ export function takeRemoteTip(): string {
 /** 回到前台：补一次同步，不必刷新页面 */
 function onWake(): void {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-  if (state.mode === 'local') return;
+  if (getRemoteState().mode === 'local') return;
   const now = Date.now();
   if (now - lastWakeAt < 2000) return;
   lastWakeAt = now;
-  if (state.mode === 'client') {
-    if (state.status !== 'connected' || !clientTransport) return;
+  if (getRemoteState().mode === 'client') {
+    if (getRemoteState().status !== 'connected' || !clientTransport) return;
     try {
       clientTransport.send({ k: 'ping', ts: now });
     } catch {
@@ -542,7 +438,7 @@ async function reconnectClient(): Promise<void> {
 }
 
 function heartbeatTick(): void {
-  if (state.mode !== 'client' || !clientTransport || reconnecting) return;
+  if (getRemoteState().mode !== 'client' || !clientTransport || reconnecting) return;
   // 只有对端答过 pong 才敢用「没消息」判断断线，否则老服务端会被冤枉
   if (pongSeen && Date.now() - lastInboundAt > DEAD_MS) {
     void reconnectClient();
@@ -600,7 +496,7 @@ export function broadcastAppearance(): void {
 
 function handleHostPeer(ev: 'join' | 'leave', peer: PeerInfo): void {
   const clients = [...(hostTransport?.clients ?? [])];
-  const label = state.transport === 'direct' && ev === 'join' ? `直连 · ${peer.name}` : state.label;
+  const label = getRemoteState().transport === 'direct' && ev === 'join' ? `直连 · ${peer.name}` : getRemoteState().label;
   if (ev === 'join') {
     publish({ clients, label });
     // 新客户端一进来就给一份快照，不必等它再问
@@ -616,7 +512,7 @@ function handleHostPeer(ev: 'join' | 'leave', peer: PeerInfo): void {
 }
 
 function handleHostClose(): void {
-  const direct = state.transport === 'direct';
+  const direct = getRemoteState().transport === 'direct';
   teardownHost();
   publish({
     mode: 'local',
@@ -672,7 +568,7 @@ async function attachHost(
       /* 导出失败不阻塞落盘 */
     }
   });
-  if (remember) writeJson(HOST_KEY, remember);
+  if (remember) rememberHost(remember);
   publish({
     mode: 'host',
     status: 'connected',
@@ -786,7 +682,7 @@ async function handleClientMessage(msg: RemotePayload, from: string): Promise<vo
 
 export function stopHost(reload = false): void {
   teardownHost();
-  clearKey(HOST_KEY);
+  forgetHost();
   publish({ mode: 'local', status: 'idle', label: '', clients: [], transport: null, error: '' });
   if (reload) location.reload();
 }
@@ -922,7 +818,7 @@ export async function probeRemote(input: string, token: string): Promise<string>
 export async function connectClient(input: string, token: string): Promise<void> {
   const parsed = parseRemoteAddress(input, token);
   await probeRemote(input, token);
-  clearKey(HOST_KEY);
-  writeJson(CLIENT_KEY, { url: parsed.url, token: parsed.token, label: parsed.label });
+  forgetHost();
+  rememberClient({ url: parsed.url, token: parsed.token, label: parsed.label });
   location.reload();
 }
