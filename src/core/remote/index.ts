@@ -9,6 +9,7 @@ export {
   subscribeRemote,
   savedClientConfig,
   savedHostConfig,
+  saveClientConfig,
   prepareClientBoot,
   bootClient,
   adoptDirectClient,

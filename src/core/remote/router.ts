@@ -108,6 +108,11 @@ export function savedClientConfig(): RemoteConfig | null {
   return readJson<RemoteConfig>(CLIENT_KEY);
 }
 
+/** 一键地址解析出的连接：写进会话，紧接着 prepareClientBoot() 会照它启动 */
+export function saveClientConfig(cfg: RemoteConfig): void {
+  writeJson(CLIENT_KEY, cfg);
+}
+
 export function savedHostConfig(): RemoteConfig | null {
   return readJson<RemoteConfig>(HOST_KEY);
 }

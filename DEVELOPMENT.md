@@ -671,6 +671,16 @@ WebView 里——别的设备根本读不到。所以「共享」只能是：手
   要求手机能访问 gh-pages。
 - 端口由壳固定，`/__remote/listen` 会被拒；浏览器端的中继才允许页面自己选端口。
 
+**一键打开**（2026-10-31 补）：设置页除了「客户端连接串」，还给一条带 token 的页面地址
+`http://手机IP:4173/?token=…`（`lanJoinUrl`）。别的设备把它粘进浏览器就直接是客户端模式：
+
+- `clientConfigFromPageUrl()` 只认 **http 源**（壳端代理出来的地址），把 token 拼成
+  `ws://IP:端口/remote?token=…` 写进会话（`saveClientConfig`），`prepareClientBoot()` 照它启动；
+- 读完立刻 `history.replaceState` 把 token 从地址栏抹掉，截图/录屏不会漏；会话标记还在，
+  刷新仍能自动连回；
+- github.io 的 https 页面即使带 `?token=` 也不会被当成客户端配置（那条地址不代表手机那个服务）；
+- token 错了会在启动阶段被服务端拒绝，页面退回本地库并提示，不会卡在启动画面。
+
 **配色跟着连接走**（2026-10-31 补）：主题仍是「这台设备看着顺眼」的偏好，存
 localStorage、不进库也不进备份；但客户端在用服务端数据时颜色不一致会像两个软件。
 协议里因此多了一条 `{k:'appearance', appearance:{accent,base,mode}}`：

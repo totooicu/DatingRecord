@@ -66,6 +66,31 @@ export function configOf(a: ParsedAddress): RemoteConfig {
   return { url: a.url, token: a.token, label: a.label };
 }
 
+/**
+ * 壳端「一键打开」：别的设备直接访问 http://手机IP:4173/?token=… 时，
+ * 页面从地址栏认出 token，自动按客户端连上去，不用再手填。
+ *
+ * 只认 http 源：https 页面部署在 github.io，地址栏里的 token 不代表手机那个服务；
+ * 而壳端代理出来的页面必然是 http://手机IP:端口。
+ */
+export function clientConfigFromPageUrl(href: string): RemoteConfig | null {
+  let u: URL;
+  try {
+    u = new URL(href);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'http:') return null;
+  const token = (u.searchParams.get('token') ?? '').trim();
+  if (!token) return null;
+  try {
+    const port = u.port || String(DEFAULT_PORT);
+    return configOf(parseRemoteAddress(`${u.hostname}:${port}`, token));
+  } catch {
+    return null;
+  }
+}
+
 /** 当前页面是否由中继进程提供（能调用 /__remote/listen 才会是 true） */
 export function relayOrigin(): string {
   return typeof location !== 'undefined' ? location.origin : '';

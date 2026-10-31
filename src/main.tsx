@@ -7,7 +7,9 @@ import { initDb, probeEnc } from './core/db';
 import { unlock } from './core/lock';
 import {
   bootClient,
+  clientConfigFromPageUrl,
   prepareClientBoot,
+  saveClientConfig,
   savedHostConfig,
   startHost,
   takeRemoteTip,
@@ -119,6 +121,19 @@ const hardTimer = window.setTimeout(() => {
 //
 // 跨设备客户端是例外：它不读本地库，直接连服务端；本地加不加密都不影响它。
 // 但必须先 prepareClientBoot() 把本地落盘堵住，再 initDb（迁移会 markDirty）。
+// 壳端「一键打开」：别的设备把 http://手机IP:4173/?token=… 粘进浏览器，
+// 页面自己认出 token 并按客户端启动；token 立刻从地址栏抹掉，只剩会话里的连接。
+// 必须在 prepareClientBoot() 之前：它是照着会话标记决定这次是不是客户端启动的。
+const joinCfg = clientConfigFromPageUrl(location.href);
+if (joinCfg) {
+  saveClientConfig(joinCfg);
+  try {
+    history.replaceState(null, '', `${location.pathname}${location.hash}`);
+  } catch {
+    /* 地址栏不让改（少数内嵌浏览器）：token 留在地址里也能用 */
+  }
+}
+
 const clientCfg = prepareClientBoot();
 
 /** 统一的 React 挂载：本地 / 远程成功后都走这里 */

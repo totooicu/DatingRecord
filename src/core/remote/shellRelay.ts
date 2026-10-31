@@ -102,3 +102,13 @@ export function lanPageUrl(st: Pick<ShellRelayStatus, 'port' | 'addresses'>): st
   const ip = st.addresses.find((a) => !a.startsWith('127.'));
   return ip ? `http://${ip}:${st.port}` : null;
 }
+
+/**
+ * 一键地址：带 token 的页面地址。别的设备直接粘贴到浏览器就是客户端模式，
+ * 不用再回设置页手填「地址 + token」。
+ */
+export function lanJoinUrl(st: Pick<ShellRelayStatus, 'port' | 'addresses' | 'token'>): string | null {
+  const ip = st.addresses.find((a) => !a.startsWith('127.'));
+  if (!ip || !st.token) return null;
+  return `http://${ip}:${st.port}/?token=${encodeURIComponent(st.token)}`;
+}

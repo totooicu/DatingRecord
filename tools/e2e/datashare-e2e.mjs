@@ -7,8 +7,10 @@
 // 覆盖：
 //   S1 服务页列出「跨设备操作」，壳端可用时自启动可点
 //   S2 打开自启动 → 壳端端口启动 + 页面以服务端身份连上中继
-//   S3 设置页：连接方式显示「壳端服务」，连接串用手机局域网 IP，自启动已勾
+//   S3 设置页：连接方式显示「壳端服务」，连接串用手机局域网 IP，一键地址带 token，自启动已勾
 //   S4 第二台设备（无桥）从 http://IP:端口 打开，作为客户端连上并使用服务端数据
+//   S4b 服务端换配色 → 客户端同步（且不覆盖客户端自己的存档）
+//   S4c 一键地址 ?token= 打开直接是客户端，地址栏里的 token 用完即抹
 //   S5 服务端停止 → 客户端被断开并回到本地
 //   S6 关掉自启动 → 壳端存档同步
 //
@@ -223,7 +225,13 @@ check('服务端徽标「已开启」', (await p.locator('.remote-badge-on', { h
 check('卡片写明页面由壳端服务提供', (await p.locator('.remote-section').innerText()).includes('页面由壳端服务提供'));
 const share = await p.locator('.remote-section textarea.remote-share').first().inputValue();
 check('连接串用手机局域网 IP', share === `${LAN_IP}:${PORT}?token=${TOKEN}`, share);
-check('提示另一台设备打开的地址', (await p.locator('.remote-section').innerText()).includes(`http://${LAN_IP}:${PORT}`));
+const joinUrl = await p.locator('.remote-section textarea.remote-share').nth(1).inputValue();
+check(
+  '一键地址带 token',
+  joinUrl === `http://${LAN_IP}:${PORT}/?token=${TOKEN}`,
+  joinUrl,
+);
+check('一键地址旁写明直接粘浏览器', (await p.locator('.remote-section').innerText()).includes('粘到另一台设备的浏览器'));
 check('设置页自启动已勾选', (await p.locator('.remote-auto input').isChecked()) === true);
 
 // ---- S4 客户端（无桥，http 源）----
@@ -294,6 +302,30 @@ const clientStored = await cp.evaluate(() => localStorage.getItem('dr.appearance
 check('客户端没把服务端配色写进自己的存档', clientStored === null, String(clientStored));
 // 回到跨设备页，后面的停止步骤还在这一页上
 await openRemote(p);
+
+// ---- S4c 一键地址：粘到浏览器直接是客户端 ----
+console.log('\nS4c 一键地址 ?token= 打开即客户端');
+const joinCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+const jp = await joinCtx.newPage();
+jp.on('pageerror', (e) => console.log('[join pageerror]', String(e).slice(0, 300)));
+await jp.goto(`${APP}?token=${TOKEN}`, { waitUntil: 'load' });
+await boot(jp);
+const joinClient = await waitFor(
+  async () => (await jp.locator('.remote-bar-client').count()) === 1,
+  25000,
+);
+check('一键地址直接进入客户端模式', joinClient);
+check('地址栏里的 token 已抹掉', !jp.url().includes('token'), jp.url());
+const sessJoin = await jp.evaluate(() => sessionStorage.getItem('dr.remote.client'));
+check('连接记进会话（刷新仍可恢复）', !!sessJoin, String(sessJoin));
+const infoTwo = await relayInfo();
+check('中继报告 2 个客户端', infoTwo.clients === 2, JSON.stringify(infoTwo));
+// 用页面上的「断开」退出（等价于关标签页）：服务端应当立刻少一个客户端
+await jp.locator('.remote-bar-client button', { hasText: '断开' }).click();
+const backToOne = await waitFor(async () => (await relayInfo()).clients === 1, 15000);
+check('一键客户端断开后回到 1 个', backToOne);
+await jp.close();
+await joinCtx.close();
 
 // ---- S5 停止服务端 ----
 console.log('\nS5 停止服务端 → 客户端回到本地');

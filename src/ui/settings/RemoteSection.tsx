@@ -32,6 +32,7 @@ import {
 } from '../../core/remote';
 import {
   lanAddressOf,
+  lanJoinUrl,
   lanPageUrl,
   loopbackWsUrl,
   shellRelayCapable,
@@ -119,6 +120,9 @@ export function RemoteSection() {
   const lanAddr = shell?.addresses?.find((a) => !a.startsWith('127.')) ??
     relay?.addresses?.find((a) => !a.startsWith('127.') && a !== '::1');
   const lanUrl = lanPageUrl(shell ?? { port: Number(port) || 4173, addresses: lanAddr ? [lanAddr] : [] });
+  const joinUrl = lanJoinUrl(
+    shell ?? { port: Number(port) || 4173, addresses: lanAddr ? [lanAddr] : [], token },
+  );
   const shareHost = shellMode
     ? (lanAddr ?? (typeof location !== 'undefined' ? location.hostname : '127.0.0.1'))
     : typeof location !== 'undefined'
@@ -360,11 +364,34 @@ export function RemoteSection() {
                   <span className="muted small">客户端连接串</span>
                 </p>
                 <textarea className="remote-share" readOnly value={shareText} rows={2} />
-                {shellMode && lanUrl && (
+                {shellMode && joinUrl && (
+                  <>
+                    <p className="remote-line">
+                      <span className="muted small">一键打开（另一台设备的浏览器）</span>
+                    </p>
+                    <textarea
+                      className="remote-share"
+                      readOnly
+                      rows={2}
+                      value={joinUrl}
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <div className="remote-actions">
+                      <button className="btn btn-sm" onClick={() => void copy(joinUrl, '一键地址')}>
+                        复制一键地址
+                      </button>
+                    </div>
+                    <p className="muted small">
+                      把这条地址粘到另一台设备的浏览器里打开，就是客户端模式，不用再填 token。
+                      页面由壳端服务提供，和壳里是同一份数据；配色也跟着这台设备走，
+                      断开后客户端回到自己的颜色。
+                    </p>
+                  </>
+                )}
+                {shellMode && !joinUrl && lanUrl && (
                   <p className="muted small">
                     另一台设备先在浏览器打开 <code>{lanUrl}</code>，再把上面这段填进「作为客户端」。
-                    页面由壳端服务提供，和壳里是同一份数据；配色也跟着这台设备走，
-                    断开后客户端回到自己的颜色。
+                    页面由壳端服务提供，和壳里是同一份数据。
                   </p>
                 )}
                 {!shellMode && loopback && lanAddr && (
