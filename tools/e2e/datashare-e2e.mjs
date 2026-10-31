@@ -17,6 +17,10 @@
 //
 // 用法：node tools/e2e/datashare-e2e.mjs [port]
 // 前置：npm run build；本脚本自己起 tools/remote-relay。
+//
+// 默认端口不能是 URL 规范的「禁止端口」（WHATWG forbidden port），否则
+// 浏览器和 Node 的 fetch 都会直接拒绝连接（Node 报 `bad port`），
+// 页面根本打不开——之前默认的 4190 就撞在这上面。4390 是安全的。
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -28,7 +32,7 @@ try {
   ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
 }
 
-const PORT = Number(process.argv[2] || 4190);
+const PORT = Number(process.argv[2] || 4390);
 const APP = `http://127.0.0.1:${PORT}/`;
 const TOKEN = 'e2e-token';
 const LAN_IP = '192.168.1.50';

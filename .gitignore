@@ -31,6 +31,8 @@ attachments/
 *.db
 *.sqlite
 *.sqlite3
+# CLI 的快照目录：src/cli/snapStore.ts 写成「<库名>.snapshots/」，一个快照一个 .snap
+*.sqlite.snapshots/
 
 # ---- 发布工具产生的元数据（含发布记录，不入库）----
 .cloudstudio/
