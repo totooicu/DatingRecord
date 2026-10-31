@@ -50,184 +50,33 @@ import {
 import type { SampleStrategy } from '../../core/runtime/locationNative';
 import { maxTrackSpeed, speedColors, speedLines } from './locationPaint';
 
-type TabKey = 'map' | 'record' | 'file' | 'help';
-
-/** 回放单位：按时间（秒）/ 按点（个） */
-type PlayMode = 'time' | 'dot';
-/** 回放方向：顺序（第 1 点 → 最后）/ 逆序（最后 → 第 1 点） */
-type PlayOrder = 'fwd' | 'rev';
-
-/** 位置修正的三种填法：度数偏移 / 距离偏移 / 目标坐标 */
-type OffsetMode = 'deg' | 'm' | 'target';
-
-const OFFSET_MODES: { key: OffsetMode; label: string }[] = [
-  { key: 'deg', label: '度数' },
-  { key: 'm', label: '距离' },
-  { key: 'target', label: '目标' },
-];
-
-/** 线宽 4；打的点直径与线同粗（4px），历史点直径是线的一半（2px） */
-const LINE_WEIGHT = 4;
-const DOT_RADIUS = LINE_WEIGHT / 2;
-const HIST_RADIUS = LINE_WEIGHT / 4;
-/** 线的颜色不是常量：按相邻两点速度取主题色的深浅（见 locationPaint.ts） */
-const COLOR_CURRENT = '#2196F3';
-const COLOR_SELECTED = '#E53935';
-/**
- * 记录点的预留色：白芯 + 深色描边。
- * 线本身就是主题色的浅→深阶，点再用主题色会糊在线上；白色芯在任何档位上都跳出来。
- */
-const COLOR_POINT_FILL = '#ffffff';
-const COLOR_POINT_RING = '#2b2a28';
-/**
- * 历史点：线宽一半的小白点。
- *
- * 原本想用小墨点，但速度线最快一档本身就是深色，黑点压上去直接消失；
- * 白点在任何档位上都看得见，又只是 2px，不会抢速度线的视觉。
- */
-const COLOR_HIST_POINT = 'rgba(30, 24, 26, 0.28)';
-/** 当前点（蓝点）比记录点大一圈，一眼认出「现在在哪」 */
-const CURRENT_SIZE = 10;
-/** 回放：走过的轨迹高亮 + 播放头。和选中红、当前蓝都拉开距离 */
-const COLOR_PLAY = '#7C4DFF';
-
-/**
- * 回放的速度档位，做成一排可点的胶囊而不是数字框：
- * 按时间 = 一秒真实时间推进多少秒记录（1× 就是原速）；按点 = 一秒走几个点。
- * 数字框留在「更多」里，档位没覆盖到的自定义值还能填。
- */
-const RATE_TIME = [1, 5, 30, 60, 300, 900];
-const RATE_DOT = [1, 2, 5, 10, 30];
-/** 步进档位：按时间 = 秒/步，按点 = 点/步 */
-const STEP_TIME = [1, 5, 10, 30, 60];
-const STEP_DOT = [1, 5, 20];
-
-/** 里程读数：不到 1 公里就报米，别写成 0.0 km */
-function fmtMeters(m: number): string {
-  if (!Number.isFinite(m) || m <= 0) return '0 m';
-  if (m < 1000) return `${Math.round(m)} m`;
-  return `${(m / 1000).toFixed(m >= 10000 ? 0 : 1)} km`;
-}
-
-/**
- * 新建定位文件的示例名：日期打底，用户在这个基础上改成「这次要记的事」。
- * 只当默认值用——用户一旦自己动过输入框（nameTouched），就不再被它覆盖。
- */
-function exampleLocationName(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} 定位记录`;
-}
-
-/**
- * 记录点样式：
- *   选中 —— 放大两倍、白边红芯；
- *   最新 —— 与线同粗，白芯深边（刚打的那个点一眼能看到）；
- *   历史 —— 线宽一半的小墨点。
- */
-function pointStyle(selected: boolean, latest: boolean): L.CircleMarkerOptions {
-  if (selected) {
-    return { radius: DOT_RADIUS * 2, color: '#ffffff', weight: 2, fillColor: COLOR_SELECTED, fillOpacity: 1 };
-  }
-  if (latest) {
-    return {
-      radius: DOT_RADIUS,
-      color: COLOR_POINT_RING,
-      weight: 1.2,
-      fillColor: COLOR_POINT_FILL,
-      fillOpacity: 1,
-    };
-  }
-  // 2px 的淡墨点：只让线有一点「这里采过一个点」的质感，别把线串成珠子
-  return { radius: HIST_RADIUS, color: COLOR_HIST_POINT, weight: 0, fillColor: COLOR_HIST_POINT, fillOpacity: 1 };
-}
-
-/** 速度读数：<1 显示 0.x，两位数以上不留小数 */
-function fmtSpeed(kmh: number): string {
-  return `${kmh < 10 ? kmh.toFixed(1) : Math.round(kmh)} km/h`;
-}
-
-/** 回放进度标签用的时钟：HH:mm:ss（跨天也只是一串数字，够看） */
-function clockOf(ms: number): string {
-  const d = new Date(ms);
-  if (Number.isNaN(d.getTime())) return '--:--:--';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
-/** 一条轨迹最多画多少个方向箭头：点很密时按段数均摊，别把地图糊满
- *  （线宽只有 4px，箭头画太密会把速度颜色整个盖住） */
-const ARROW_MAX = 12;
-/** 箭头大小：比线宽大一点就够指方向，别把整条线糊成白色 */
-const ARROW_SIZE = 6;
-
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-}
-
-function dotIcon(color: string, size = CURRENT_SIZE): L.DivIcon {
-  return L.divIcon({
-    className: '',
-    html: `<div class="loc-pin" style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  });
-}
-
-/**
- * 回放播放头：白边圆点 + 一圈扩散的脉冲环。
- * 图标只在第一次建的时候换，之后每帧只 setLatLng —— 如果每次移动都 setIcon，
- * 环的动画会从头重启，看着就是一闪一闪的卡顿而不是平稳地跟着走。
- */
-function playIcon(): L.DivIcon {
-  const size = 16;
-  return L.divIcon({
-    className: '',
-    html: `<div class="loc-playhead" style="--loc-play:${COLOR_PLAY}"></div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  });
-}
-
-/** a→b 的方位角（度）：0 = 正北，90 = 正东；箭头图标默认尖朝北，照这个角旋转 */
-function bearingDeg(a: LocationPoint, b: LocationPoint): number {
-  const φ1 = (a.lat * Math.PI) / 180;
-  const φ2 = (b.lat * Math.PI) / 180;
-  const Δλ = ((b.lng - a.lng) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return (Math.atan2(y, x) * 180) / Math.PI;
-}
-
-/** 沿线放方向箭头：不引插件，每隔几段在段中点放一个旋转三角（不拦点击） */
-function addArrows(layer: L.LayerGroup, pts: LocationPoint[]): void {
-  const segCount = pts.length - 1;
-  if (segCount < 1) return;
-  const step = Math.max(1, Math.ceil(segCount / ARROW_MAX));
-  for (let i = 0; i < segCount; i += step) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="loc-arrow" style="transform: rotate(${bearingDeg(a, b).toFixed(1)}deg)"></div>`,
-      iconSize: [ARROW_SIZE, ARROW_SIZE],
-      iconAnchor: [ARROW_SIZE / 2, ARROW_SIZE / 2],
-    });
-    L.marker([(a.lat + b.lat) / 2, (a.lng + b.lng) / 2], { icon, interactive: false }).addTo(layer);
-  }
-}
-
-function fmtTime(ts: string): string {
-  const d = new Date(ts);
-  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
-}
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'map', label: '地图' },
-  { key: 'record', label: '记录' },
-  { key: 'file', label: '文件' },
-  { key: 'help', label: '说明' },
-];
+// 色号、半径、档位表、格式化函数都在 ./locationPanel/model；
+// Leaflet 的图标与箭头在 ./locationPanel/mapKit。本文件只留交互。
+import {
+  COLOR_CURRENT,
+  COLOR_PLAY,
+  COLOR_SELECTED,
+  DOT_RADIUS,
+  HIST_RADIUS,
+  LINE_WEIGHT,
+  OFFSET_MODES,
+  RATE_DOT,
+  RATE_TIME,
+  STEP_DOT,
+  STEP_TIME,
+  TABS,
+  clockOf,
+  exampleLocationName,
+  esc,
+  fmtMeters,
+  fmtSpeed,
+  fmtTime,
+  type OffsetMode,
+  type PlayMode,
+  type PlayOrder,
+  type TabKey,
+} from './locationPanel/model';
+import { addArrows, dotIcon, playIcon, pointStyle } from './locationPanel/mapKit';
 
 export function LocationPanel() {
   const la = useLocationAuto();

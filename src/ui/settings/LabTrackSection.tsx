@@ -68,76 +68,27 @@ import { LabHead } from './LabEdgeSection';
 import { showToast } from '../toast';
 import { saveText } from '../../core/io/save';
 
-/** 主题变量实时读取：canvas 没法用 CSS var，只能取计算后的值；随外观改主题也跟着变 */
-function cssVar(name: string, fallback: string): string {
-  if (typeof window === 'undefined') return fallback;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || fallback;
-}
-
-/** 自动校准的评分：选「留下的红像素多、断口少」的那组参数 */
-function scoreOf(r: ExtractResult): number {
-  const { calibration: cal, stats, gaps } = r;
-  if (!r.segments.length) return -1e6;
-  // 有独立比例尺校准 + 官方里程 → 直接按覆盖率误差评分（最硬的标准）
-  if (cal.source === 'scale' && cal.officialM > 0) {
-    const err = Math.abs(cal.coverage - 1);
-    // 覆盖率超过 1 说明把图标/杂色也算进里程了（假里程），额外扣分——否则评分会
-    // 被「多提取 = 覆盖率更接近 1」这种假象骗过去，专挑一堆噪点的参数。
-    const over = cal.coverage > 1.03 ? 15 : 0;
-    return -err * 100 - over - gaps.length * 0.5;
-  }
-  // 否则用代理指标：有效像素召回（占红色总量）+ 连续性
-  const keptPx = r.segments.reduce((s, x) => s + x.skelPx, 0);
-  const recall = stats.redPx > 0 ? Math.min(1, keptPx / (stats.redPx * 0.12)) : 0;
-  const continuity = 1 / (1 + gaps.length * 0.6);
-  return recall * 0.65 + continuity * 0.35;
-}
-
-/** 按米/像素把像素距离说成人话 */
-function fmtLen(m: number): string {
-  if (!(m > 0)) return '未定标';
-  return m >= 1000 ? `${(m / 1000).toFixed(2)} 公里` : `${Math.round(m)} 米`;
-}
-
-// 参数网格：色相窗口是主开关（实测 12° 最能把深红轨迹从卫星底图里捞全），
-// 明度/红优势/最小面积只在收噪时微调。第 4 组即默认值。
-const AUTO_GRID: Partial<ExtractOptions>[] = [
-  { redSat: 70, redVal: 40, hueHi: 12, rDominance: 1.1, minArea: 200, gapPx: 60 },
-  { redSat: 80, redVal: 45, hueHi: 13, rDominance: 1.2, minArea: 300, gapPx: 60 },
-  { redSat: 90, redVal: 55, hueHi: 15, rDominance: 1.3, minArea: 500, gapPx: 80 },
-  { redSat: 75, redVal: 45, hueHi: 12, rDominance: 1.15, minArea: 300, gapPx: 60 },
-  { redSat: 85, redVal: 50, hueHi: 16, rDominance: 1.35, minArea: 400, gapPx: 100 },
-  { redSat: 70, redVal: 35, hueHi: 11, rDominance: 1.05, minArea: 150, gapPx: 45 },
-];
-
-/** 对比图里的图层：底图 / 提取的点 / 算法轨迹 / AI 优化 / 手动布线 */
-interface Layers {
-  img: boolean;
-  pts: boolean;
-  alg: boolean;
-  ai: boolean;
-  man: boolean;
-}
-
-type Scheme = 'alg' | 'ai' | 'man';
-
-const COLOR_AI = '#2196F3';
-const COLOR_ALG = '#d9536b';
-const COLOR_MAN = '#F57C00';
-/** 点云用青色：和原图红线、AI 蓝、手动橙都能分开 */
-const COLOR_DOT = '#00897B';
-
-/** 手动布线的一条腿：沿线走 or 两段不连通只能拉直线 */
-interface ManualLeg {
-  pts: TrackPoint[];
-  straight: boolean;
-}
-
-/** 点选时离轨迹多远以内算「点在轨迹上」 */
-const SNAP_PX = 18;
-/** 手动布线的转角权重：直行不加钱，急转加价，路口就不会来回切 */
-const TURN_K = 0.8;
+// 常量、类型、纯函数都搬到 ./labTrack/model：这段组件体只管交互。
+// 三个纯展示区块同理：步骤条、视图切换、底部说明。
+import {
+  AUTO_GRID,
+  COLOR_AI,
+  COLOR_ALG,
+  COLOR_DOT,
+  COLOR_MAN,
+  SNAP_PX,
+  TURN_K,
+  cssVar,
+  fmtLen,
+  scoreOf,
+  type Layers,
+  type ManualLeg,
+  type Scheme,
+} from './labTrack/model';
+import { TrackHelp } from './labTrack/TrackHelp';
+import { TrackModeBar } from './labTrack/TrackModeBar';
+import { TrackSteps } from './labTrack/TrackSteps';
+import { TrackTabs } from './labTrack/TrackTabs';
 
 export function LabTrackSection() {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1184,13 +1135,11 @@ export function LabTrackSection() {
         : tab === 'map'
           ? 5
           : 4;
-  const steps: { n: 1 | 2 | 3 | 4 | 5; label: string }[] = [
-    { n: 1, label: '导入图片' },
-    { n: 2, label: '自动取点' },
-    { n: 3, label: '修点' },
-    { n: 4, label: '画路径' },
-    { n: 5, label: '地图对齐' },
-  ];
+  // 切视图：切到地图要等一帧再 invalidateSize()，否则容器还是隐藏时的尺寸
+  const showTab = (t: 'img' | 'map') => {
+    setTab(t);
+    if (t === 'map') setTimeout(() => mapRef.current?.invalidateSize(), 80);
+  };
 
   return (
     <div className="lab-page lab-track">
@@ -1198,71 +1147,26 @@ export function LabTrackSection() {
 
       <div className="lab-track-status">{status}</div>
 
-      <div className="lab-track-steps">
-        {steps.map(({ n, label }) => (
-          <button
-            key={n}
-            type="button"
-            className={`lab-track-step${stage === n ? ' on' : ''}${n < stage ? ' done' : ''}`}
-            aria-current={stage === n ? 'step' : undefined}
-            disabled={
-              (n === 2 && (!imgSize || !!busy)) ||
-              ((n === 3 || n === 4) && !dotRes?.points.length) ||
-              (n === 5 && !(result || manualPts.length))
-            }
-            onClick={() => {
-              if (n === 1) {
-                fileRef.current?.click();
-                return;
-              }
-              if (n === 2) {
-                runPoints();
-                return;
-              }
-              if (n === 3) {
-                setTab('img');
-                if (mode === 'browse') setMode('add');
-                setStatus('修点：画点 / 擦除点 / 补直线，改完点再画路径');
-                return;
-              }
-              if (n === 4) {
-                setTab('img');
-                autoLink();
-                return;
-              }
-              setTab('map');
-              setTimeout(() => mapRef.current?.invalidateSize(), 80);
-            }}
-          >
-            <i>{n}</i>
-            {label}
-          </button>
-        ))}
-      </div>
+      <TrackSteps
+        stage={stage}
+        canPickDots={!!imgSize && !busy}
+        hasDots={!!dotRes?.points.length}
+        hasPath={!!(result || manualPts.length)}
+        onPickImage={() => fileRef.current?.click()}
+        onRunPoints={runPoints}
+        onFixDots={() => {
+          showTab('img');
+          if (mode === 'browse') setMode('add');
+          setStatus('修点：画点 / 擦除点 / 补直线，改完点再画路径');
+        }}
+        onAutoLink={() => {
+          showTab('img');
+          autoLink();
+        }}
+        onGotoMap={() => showTab('map')}
+      />
 
-      <div className="lab-track-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          className={tab === 'img' ? 'on' : undefined}
-          aria-selected={tab === 'img'}
-          onClick={() => setTab('img')}
-        >
-          图片 · 画路径
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={tab === 'map' ? 'on' : undefined}
-          aria-selected={tab === 'map'}
-          onClick={() => {
-            setTab('map');
-            setTimeout(() => mapRef.current?.invalidateSize(), 80);
-          }}
-        >
-          地图 · 复现与保存
-        </button>
-      </div>
+      <TrackTabs tab={tab} onTab={showTab} />
 
       <div className={`lab-track-pane${tab === 'img' ? '' : ' is-off'}`}>
         {!imgSize ? (
@@ -1366,122 +1270,26 @@ export function LabTrackSection() {
           }}
         />
 
-        <div className="lab-track-modes">
-          <span className="lab-track-group">修点</span>
-          <button
-            type="button"
-            className={mode === 'add' ? 'on' : undefined}
-            aria-pressed={mode === 'add'}
-            disabled={!imgSize || !dotRes?.points.length}
-            onClick={() => {
-              setMode(mode === 'add' ? 'browse' : 'add');
-              setLineStart(null);
-              setStatus(mode === 'add' ? '已结束画点' : '画点：按住拖动，把漏掉的弯道描回去');
-            }}
-          >
-            画点
-          </button>
-          <button
-            type="button"
-            className={mode === 'erase' ? 'on' : undefined}
-            aria-pressed={mode === 'erase'}
-            disabled={!imgSize || !dotRes?.points.length}
-            onClick={() => {
-              setMode(mode === 'erase' ? 'browse' : 'erase');
-              setLineStart(null);
-              setStatus(
-                mode === 'erase' ? '已结束擦除' : '擦除：点图上误检的红点/图标，擦完重新「自动画路径」',
-              );
-            }}
-          >
-            擦除点
-          </button>
-          <button
-            type="button"
-            className={mode === 'line' ? 'on' : undefined}
-            aria-pressed={mode === 'line'}
-            disabled={!imgSize || !dotRes?.points.length}
-            onClick={() => {
-              setMode(mode === 'line' ? 'browse' : 'line');
-              setLineStart(null);
-              setStatus(mode === 'line' ? '已结束补线' : '补直线：点两下，把漏提取的一段接上');
-            }}
-          >
-            补直线
-          </button>
-          <span className="lab-track-group">画路径</span>
-          <button
-            type="button"
-            className={mode === 'manual' ? 'on' : undefined}
-            aria-pressed={mode === 'manual'}
-            disabled={!imgSize}
-            onClick={() => {
-              setMode(mode === 'manual' ? 'browse' : 'manual');
-              setManualAnchor(null);
-              setLineStart(null);
-              if (mode !== 'manual') setLayers((l) => ({ ...l, man: true }));
-              setStatus(
-                mode === 'manual'
-                  ? '已结束手动布线'
-                  : graph
-                    ? '手动布线：点提取出来的起点 A，再点 B，系统沿点云导航过去'
-                    : '手动布线：先「提取点」，之后点 A、点 B 就能沿点云走',
-              );
-            }}
-          >
-            {manualMode ? '结束布线' : '手动布线'}
-          </button>
-          {manualMode && (
-            <>
-              <button
-                className="btn btn-ghost"
-                disabled={!manualLegs.length}
-                onClick={() => {
-                  setManualLegs((prev) => {
-                    const next = prev.slice(0, -1);
-                    const last = next[next.length - 1];
-                    if (!last) {
-                      setManualAnchor(null);
-                    } else {
-                      const end = last.pts[last.pts.length - 1];
-                      const hit = graph ? nearestNode(graph, end.x, end.y, SNAP_PX) : null;
-                      setManualAnchor({ idx: hit ? hit.idx : null, pt: end });
-                    }
-                    return next;
-                  });
-                }}
-              >
-                撤销一段
-              </button>
-              <button
-                className="btn btn-ghost"
-                disabled={!manualLegs.length}
-                onClick={() => {
-                  setManualLegs([]);
-                  setManualAnchor(null);
-                  setStatus('手动路径已清空');
-                }}
-              >
-                清空手动
-              </button>
-            </>
-          )}
-          {dotHistory.length > 0 && (
-            <button className="btn btn-ghost" onClick={undoDot}>
-              撤销修点
-            </button>
-          )}
-          <span className="muted small lab-track-modehint">{modeHint}</span>
-          {(manualMode || manualLegs.length > 0) && (
-            <span className="lab-track-maninfo">
-              {manualLegs.length
-                ? `${manualLegs.length} 段（沿轨迹 ${manStats.along} · 直线 ${manStats.line}）· ${manualPts.length} 点 · ${fmtLen(
-                    manStats.lenPx * mPerPx,
-                  )}${manStats.dupPts ? ` · 重复经过 ${manStats.dupPts} 点` : ''}`
-                : '手动路径是「A→B 沿轨迹导航」：同一条路可以反复经过，长度按走两遍算'}
-            </span>
-          )}
-        </div>
+        <TrackModeBar
+          mode={mode}
+          setMode={setMode}
+          setStatus={setStatus}
+          setLineStart={setLineStart}
+          setManualAnchor={setManualAnchor}
+          setLayers={setLayers}
+          setManualLegs={setManualLegs}
+          graph={graph}
+          hasImage={!!imgSize}
+          hasDots={!!dotRes?.points.length}
+          manualMode={manualMode}
+          manualLegs={manualLegs}
+          manualPtsLen={manualPts.length}
+          manStats={manStats}
+          mPerPx={mPerPx}
+          modeHint={modeHint}
+          canUndoDots={dotHistory.length > 0}
+          onUndoDots={undoDot}
+        />
 
         <div className="lab-track-actions">
           <button className="btn btn-primary" disabled={!imgSize || !!busy} onClick={() => runPoints()}>
@@ -1913,50 +1721,7 @@ export function LabTrackSection() {
         </div>
       </div>
 
-      <details className="lab-help">
-        <summary>它是怎么取点的 / 路径是怎么画出来的</summary>
-        <p className="muted small">
-          <b>流程</b>：导入图片 → 自动取点 → 修点（画点 / 擦除点 / 补直线）→ 画路径（自动 / 手动 / AI）
-          → 地图对齐。取点在导入后自动跑一次，改完参数可以点「自动取点」重来；修点改的是点云本身，
-          所以修完要重新画路径。
-        </p>
-        <p className="muted small">
-          <b>① 提取点</b>：红色判定（饱和度、明度过线，色相落在 0~{opts.hueHi}° 或 {opts.hueLo}~180°，
-          且 R 通道明显压过 G/B）→ 闭运算补 1~3px 细断口 → 连通域 + 形状校准（骨架长 / 包围盒对角线
-          &lt; 0.95 判为圆形图标，实心块直接丢）→ 骨架化后按分叉点切成简单链，摊成点云。
-          点云按<b>距离聚类</b>上色：同色 = 一个能连起来的网络，颜色一变中间就是断的。
-        </p>
-        <p className="muted small">
-          <b>② 自动画路径</b>：把点连成一张图（链内相邻、簇内端点桥接），从任一端点做两次最短路
-          求出<b>最长测地线</b>当主干；主轴之外的短枝丢掉、长枝按「往返」写回点列，环线剩下的半圈在末尾
-          接回去，所以整条路只画一遍、不会重复。之后沿弧长等距重采样 + 移动平均平滑。
-        </p>
-        <p className="muted small">
-          <b>③ 手动布线</b>：点起点 A（18px 内吸附到<b>点云里的点</b>）再点 B，在点云图上跑带<b>转角惩罚</b>
-          的最短路——直行不加钱、急转加价，所以路口不会来回切；跨连通簇找不到路时直接拉直线（橙色虚线）。
-          因为图是拿点建的，还没自动画路径也能手动连，被自动路径当毛刺丢掉的支线也还能走。
-          手动路径是<b>有序点列</b>，A→B→A 会把同一条路算两遍，统计里的「重复经过」就是它。
-        </p>
-        <p className="muted small">
-          <b>画点 / 擦除点 / 补直线</b>：画点是按住拖出一条点列，把漏掉的弯道描回去；擦除是按画笔半径
-          删掉点云里的一圈点（图标被误检时用）；补直线是把漏提取的一段直线接上。三者改的都是点云本身，
-          之后重新聚类、重新画路径，结果才是自洽的；每一步都留了撤销。
-        </p>
-        <p className="muted small">
-          <b>AI 优化</b>：只做「最小必要修改」——断口处 insert、误检 delete、整段偏了 move，附带 reasoning。
-          模型不重画整条线：像素阈值已经把「红线在哪」做得很准，重画等于把正确的部分也重算一遍。
-          图上绿点是新增、蓝圈是移动、红叉是删除，实线是算法结果、虚线是优化后的结果。
-        </p>
-        <p className="muted small">
-          <b>地图复现</b>要三样东西：比例尺（米/像素）、起点（地图上点一下 / 当前位置 / AI 读到的坐标）、
-          方位（截图正上方相对真北的角度）。「保存为定位文件」会把当前方案的像素点换成经纬度，
-          写进文件库，和自动打点是同一个 <code>.drloc</code> 格式。
-        </p>
-        <p className="muted small">
-          CSV 列：<code>idx,x,y,x_m,y_m,cum_m,seg</code>。x/y 是截图像素坐标；x_m/y_m 以每段首点为原点、
-          y 轴翻转成向上为正；cum_m 是段内累计米数；seg 是断口分段号。
-        </p>
-      </details>
+      <TrackHelp hueHi={opts.hueHi} hueLo={opts.hueLo} />
     </div>
   );
 }
