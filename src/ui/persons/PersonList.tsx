@@ -7,8 +7,7 @@ import { HeadStatus } from '../runtime/HeadStatus';
 import { PageHead, VersionStrip } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
-
-const PAGE_SIZE = 50;
+import { usePageSize } from '../prefs';
 
 export function PersonList({
   selectedId,
@@ -24,7 +23,7 @@ export function PersonList({
   const v = useVersion();
   const persons = useMemo(() => listPersons({ keyword }), [v, keyword]);
   // 搜索词一变，结果集就换了一批；留在深处的页码没意义，回到第一页
-  const paged = usePaged(persons, PAGE_SIZE);
+  const paged = usePaged(persons, usePageSize());
   useEffect(() => {
     paged.setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,7 +171,7 @@ export function PersonList({
           </span>
         </button>
       ))}
-      <Paginator paged={paged} onPage={paged.setPage} />
+      <Paginator paged={paged} />
     </div>
   );
 }

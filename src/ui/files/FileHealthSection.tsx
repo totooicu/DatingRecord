@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { getBlob, type StoredFile } from '../../core/repo/files';
 import { kindOf } from '../preview/kind';
 import { fmtSize } from './fileFormat';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 
 type Status = 'missing' | 'failed' | 'unknown' | 'ok';
 type Result = { file: StoredFile; status: Status; reason: string; actual?: number };
@@ -94,6 +97,12 @@ export function FileHealthSection({ files }: { files: StoredFile[] }) {
     }
   };
   const visible = results.filter((r) => filter === 'all' || (filter === 'issues' ? r.status === 'missing' || r.status === 'failed' : r.status === filter));
+  // 整库体检一次就是一文件一行，上千个文件必须分页；换筛选条件时回到第一页
+  const pagedVisible = usePaged(visible, usePageSize());
+  useEffect(() => {
+    pagedVisible.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
   return (
     <section className="files-advanced file-health">
       <h4>扫描丢失 / 无法打开的文件</h4>
@@ -111,11 +120,12 @@ export function FileHealthSection({ files }: { files: StoredFile[] }) {
         </select>
       </label>
       <p className="muted small">{(['missing', 'failed', 'unknown', 'ok'] as Status[]).map((s) => `${labels[s]} ${results.filter((r) => r.status === s).length}`).join(' · ')}</p>
-      {visible.map((r) => <div className="dup-group" key={r.file.id}>
+      {pagedVisible.pageItems.map((r) => <div className="dup-group" key={r.file.id}>
         <strong style={{ overflowWrap: 'anywhere' }}>{r.file.name}</strong>
         <p className="small" style={{ overflowWrap: 'anywhere' }}>hash：{r.file.sha256 || '未记录'}<br />记录大小：{fmtSize(r.file.size)}（{r.file.size} 字节）{r.actual !== undefined && <> · 实际大小：{fmtSize(r.actual)}（{r.actual} 字节）</>}</p>
         <p className="small">{labels[r.status]}：{r.reason}</p>
       </div>)}
+      <Paginator paged={pagedVisible} />
       {!busy && results.length > 0 && !visible.length && <p className="muted">当前筛选下没有结果；请同时查看“无法验证”。</p>}
     </section>
   );

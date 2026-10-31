@@ -2,6 +2,9 @@
 import { useMemo } from 'react';
 import { getTree, moveCollection, flattenTree } from '../../core/repo/collections';
 import { Modal } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { useVersion, bump } from '../../store';
 
 export function MoveModal({
@@ -14,7 +17,9 @@ export function MoveModal({
   onError: (msg: string) => void;
 }) {
   const v = useVersion();
-  const flat = useMemo(() => flattenTree(getTree()), [v]);
+  // 候选先筛掉「自己」再分页：不然当前这一页可能白白被排除掉的那条占一个位置
+  const flat = useMemo(() => flattenTree(getTree()).filter((f) => f.id !== collectionId), [v, collectionId]);
+  const paged = usePaged(flat, usePageSize());
 
   return (
     <Modal
@@ -27,9 +32,7 @@ export function MoveModal({
       }
     >
       <ul className="pick-list">
-        {flat
-          .filter((f) => f.id !== collectionId)
-          .map((f) => (
+        {paged.pageItems.map((f) => (
             <li key={f.id}>
               <button
                 onClick={() => {
@@ -45,6 +48,7 @@ export function MoveModal({
             </li>
           ))}
       </ul>
+      <Paginator paged={paged} />
     </Modal>
   );
 }

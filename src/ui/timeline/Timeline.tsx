@@ -9,12 +9,18 @@ import type { DREvent } from '../../core/types';
 import type { TimelineFilter } from './filter';
 import { MonthGroup, groupByMonth } from './EventGroup';
 import { TrashModal } from './TrashModal';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 
-/** 时间线单次最多先渲染多少条事件，剩下的靠「显示更多」逐批放出。
+/** 时间线分页：与人物 / 文件 / 事件集共用同一颗分页控件和同一个「每页条数」偏好。
  *
- * 万级数据下一次性把全部事件渲染成 DOM 节点会卡好几秒。先画一屏，
- * 剩下的等用户要看了再逐批补，避免整页假死。 */
-const PAGE = 300;
+ * 万级数据下一次性把全部事件渲染成 DOM 节点会卡好几秒。以前是「先画 300 条 +
+ * 显示更多」——那是渐进渲染，不是分页：点一次多一叠，越滚越长，回不去也跳不动。
+ * 现在切成一页一页，DOM 数量恒定，还能直接跳到第 N 页。
+ *
+ * 分页切在「扁平事件列表」上、而不是切在月份分组上：分组要按整表算才不会乱序，
+ * 而每一页各自 group 一次，月份标题跟着这一页的内容走。 */
 
 export function Timeline({
   filter,
@@ -80,24 +86,16 @@ export function Timeline({
     onOpened?.();
   }, [openId, seenOpenId, onOpened]);
   const [trashOpen, setTrashOpen] = useState(false);
-  // 渐进渲染：先画前 PAGE 条，剩下靠「显示更多」放出，避免万级数据整页假死
-  const [visible, setVisible] = useState(PAGE);
-  useEffect(() => { setVisible(PAGE); }, [filter, keyword]);
-  const groups = useMemo(() => groupByMonth(events), [events]);
-  const visibleGroups = useMemo(() => {
-    let remaining = visible;
-    const out: [string, DREvent[]][] = [];
-    for (const [month, list] of groups) {
-      if (remaining <= 0) break;
-      const take = list.slice(0, remaining);
-      out.push([month, take]);
-      remaining -= take.length;
-    }
-    return out;
-  }, [groups, visible]);
+  // 筛选/关键词一变，结果集整体换血，留在深页没意义——和人物列表、文件库同一套做法
+  const paged = usePaged(events, usePageSize());
+  useEffect(() => {
+    paged.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, keyword]);
+  const groups = useMemo(() => groupByMonth(paged.pageItems), [paged.pageItems]);
 
   return (
-    <div className="timeline">
+    <div className="timeline pin-body">
       {/* 页面标题在 head 上，这里只留一条工具条：多少条 + 几个文字动作。
           不再重复一行「时间线」，也不再放「＋记一件事」——右下角 FAB 各处都在 */}
       <div className="timeline-head">
@@ -124,17 +122,11 @@ export function Timeline({
 
       {events.length === 0 && <Empty text="没有符合条件的事件" />}
 
-      {visibleGroups.map(([month, list]) => (
+      {groups.map(([month, list]) => (
         <MonthGroup key={month} month={month} events={list} nameOf={nameOf} onEdit={setEditing} />
       ))}
 
-      {events.length > visible && (
-        <div className="timeline-more">
-          <button className="btn" onClick={() => setVisible((v) => v + PAGE)}>
-            显示更多（还剩 {events.length - visible} 条）
-          </button>
-        </div>
-      )}
+      <Paginator paged={paged} />
 
       {editing && (
         <EventForm

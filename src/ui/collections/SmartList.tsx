@@ -3,6 +3,9 @@ import { EVENT_KINDS } from '../../core/repo/events';
 import { getPerson } from '../../core/repo/persons';
 import { describeRule } from '../../core/repo/collections';
 import { formatTime } from '../../core/time';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import type { DREvent, SmartRule } from '../../core/types';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
@@ -23,6 +26,8 @@ export function SmartList({
   onEditRule: () => void;
 }) {
   const kindLabel = (k: string) => EVENT_KINDS.find((x) => x.value === k)?.label ?? k;
+  // 智能集合命中多少条全看规则，一条宽规则就能命中上万事件：必须分页
+  const paged = usePaged(events, usePageSize());
 
   return (
     <section className="card">
@@ -40,7 +45,7 @@ export function SmartList({
         <p className="muted">还没有事件满足当前规则。</p>
       ) : (
         <ul className="member-list">
-          {events.map((ev) => (
+          {paged.pageItems.map((ev) => (
             <li key={ev.id}>
               <span className="member-type">{kindLabel(ev.kind)}</span>
               <div className="member-main">
@@ -67,6 +72,7 @@ export function SmartList({
           ))}
         </ul>
       )}
+      <Paginator paged={paged} />
       <p className="muted small">成员由规则实时算出：新建事件满足条件会自动进来，删除后自动消失。</p>
     </section>
   );

@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { fileNameDuplicates, resolveFileNameDuplicates } from '../../core/repo/files';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { bump, useVersion } from '../../store';
 
 export function DupNameSection({ onMerge }: { onMerge: (ids: string[]) => void }) {
@@ -7,12 +10,14 @@ export function DupNameSection({ onMerge }: { onMerge: (ids: string[]) => void }
   const [scanned, setScanned] = useState(false);
   const [note, setNote] = useState('');
   const groups = scanned ? fileNameDuplicates() : [];
+  // 同名组可能有几百组
+  const paged = usePaged(groups, usePageSize());
   return <section className="files-advanced">
     <h4>同名文件整理</h4>
     <p className="muted small">名称去除首尾空白后区分大小写。编号只改显示名，不改内容或引用；保留每组最早文件的名称。隐私模式只显示可见文件。</p>
     <button className="btn btn-sm" onClick={() => { setScanned(true); setNote(''); }}>扫描同名文件</button>
     {scanned && groups.length === 0 && <p className="small">没有可见的同名文件组</p>}
-    {groups.map((g) => <div key={g.name}>
+    {paged.pageItems.map((g) => <div key={g.name}>
       <h5 style={{ overflowWrap: 'anywhere' }}>{g.name} · {g.files.length} 个</h5>
       <ul>{g.files.map((f) => <li key={f.id} style={{ overflowWrap: 'anywhere' }}>{f.name} · {f.size} 字节 · {f.id}</li>)}</ul>
       <div className="row-actions">
@@ -27,6 +32,7 @@ export function DupNameSection({ onMerge }: { onMerge: (ids: string[]) => void }
         <button className="btn btn-sm" onClick={() => onMerge(g.files.map((f) => f.id))}>选择合并</button>
       </div>
     </div>)}
+    <Paginator paged={paged} />
     {note && <p role="status" className="small">{note}</p>}
   </section>;
 }

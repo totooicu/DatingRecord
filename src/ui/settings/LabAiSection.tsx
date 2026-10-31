@@ -69,6 +69,9 @@ import { openEvent } from '../openEvent';
 import { openCollection } from '../openCollection';
 import { PencilIcon } from '../files/rowIcons';
 import { FilePickInput, Modal } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { FilesSection } from '../files';
 import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
@@ -382,6 +385,8 @@ export function LabAiSection() {
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [tab, setTab] = useState<TabKey>('chat');
   const [snaps, setSnaps] = useState(() => listSnapshots());
+  // 历史会话 / 成果是「用得越久越多」的两张表，和别处共用分页控件与每页条数。
+  // 勾选（批量删除）仍按全量算，分页只管这一屏渲染多少条。
   /** 正在看详情的快照（点列表项弹出：这一轮到底做了什么） */
   const [snapDetail, setSnapDetail] = useState<SnapMeta | null>(null);
   /** 删除类 target 点开展示删前存下的内容（对象已软删，不查库） */
@@ -408,6 +413,10 @@ export function LabAiSection() {
   const logRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const seq = useRef(0);
+
+  const aiPagerSize = usePageSize();
+  const pagedSessions = usePaged(sessions, aiPagerSize);
+  const pagedSnaps = usePaged(snaps, aiPagerSize);
 
   const model = useMemo(() => findByAlias(alias) ?? getDefaultModel(), [alias, models]);
 
@@ -1037,7 +1046,7 @@ export function LabAiSection() {
               <p className="muted small aichat-history-empty">还没有历史会话。在「聊天」里说点什么，会自动存下来。</p>
             ) : (
               <ul className="aichat-session-list">
-                {sessions.map((s) => (
+                {pagedSessions.pageItems.map((s) => (
                   <li
                     key={s.id}
                     className={
@@ -1105,6 +1114,7 @@ export function LabAiSection() {
                 ))}
               </ul>
             )}
+            <Paginator paged={pagedSessions} />
           </div>
         )}
 
@@ -1117,7 +1127,7 @@ export function LabAiSection() {
               <p className="muted small aichat-history-empty">还没有成果。</p>
             ) : (
               <ul className="aichat-snap-list">
-                {snaps.map((s) => (
+                {pagedSnaps.pageItems.map((s) => (
                   <li key={s.id}>
                     {/* 卡片只给「标题 + 时间」。具体改了谁、加了谁、删了谁，
                         点开详情里按 新增 / 修改 / 删除 分组看——列表上再堆净变化数字和
@@ -1163,6 +1173,7 @@ export function LabAiSection() {
                 ))}
               </ul>
             )}
+            <Paginator paged={pagedSnaps} />
           </div>
         )}
 

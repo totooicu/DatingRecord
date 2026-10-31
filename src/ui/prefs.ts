@@ -1,4 +1,4 @@
-// 通用界面偏好：目前只管「陪伴 / 专注」两种引导强度。
+// 通用界面偏好：引导强度（陪伴 / 专注）、事件集详情的排版、列表每页条数。
 //
 // 和主题色一样存 localStorage 而不是 meta 表——这是「这台设备想怎么看」的偏好，
 // 不是库数据，换设备/清缓存回到默认都合理。
@@ -19,10 +19,15 @@ interface Prefs {
   guide: GuideMode;
   /** 上次在事件集详情选的视图；跟着设备走，不进库也不进备份 */
   collectionView: CollectionView;
+  /** 各列表共用的每页条数（一台设备一个数，不分页分别记） */
+  pageSize: number;
 }
 
 const KEY = 'dr.prefs.v1';
-const DEFAULT_PREFS: Prefs = { guide: 'companion', collectionView: 'list' };
+const DEFAULT_PREFS: Prefs = { guide: 'companion', collectionView: 'list', pageSize: 50 };
+
+/** 每页条数只认这几档：其它值（包括手改 localStorage）一律回默认，别把列表切成一条一页 */
+export const PAGE_SIZES = [20, 50, 100, 200, 500];
 
 function read(): Prefs {
   try {
@@ -33,6 +38,7 @@ function read(): Prefs {
     return {
       guide: p?.guide === 'focus' ? 'focus' : 'companion',
       collectionView: p?.collectionView === 'table' ? 'table' : 'list',
+      pageSize: PAGE_SIZES.includes(Number(p?.pageSize)) ? Number(p.pageSize) : DEFAULT_PREFS.pageSize,
     };
   } catch {
     /* 存储被禁或内容损坏：退回默认，不阻塞启动 */
@@ -50,6 +56,23 @@ export function getGuide(): GuideMode {
 
 export function getCollectionView(): CollectionView {
   return read().collectionView;
+}
+
+/** 当前每页条数：分页控件与 usePaged 都读这一个数 */
+export function getPageSize(): number {
+  return read().pageSize;
+}
+
+/** 改每页条数：全局偏好，一次改动所有分页列表同时生效 */
+export function setPageSize(n: number): void {
+  if (!PAGE_SIZES.includes(n)) return;
+  const next: Prefs = { ...read(), pageSize: n };
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    /* 存不下也先让本次会话生效（调用方自己还持有当前值） */
+  }
+  window.dispatchEvent(new Event('dr-prefs'));
 }
 
 /** 记住事件集详情的列表/表格选择；只写本机偏好，不碰库数据 */
@@ -99,4 +122,9 @@ function snapshot(): GuideMode {
 /** 组件内读取当前模式；模式变化自动重渲染 */
 export function useGuide(): GuideMode {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
+/** 组件内读取每页条数；在任一分页控件里改了，其它列表同帧跟着变 */
+export function usePageSize(): number {
+  return useSyncExternalStore(subscribe, getPageSize, getPageSize);
 }

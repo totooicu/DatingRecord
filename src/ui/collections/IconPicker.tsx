@@ -11,6 +11,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { uploadFileQuiet } from '../../core/files';
 import { listFiles, urlForFile, type StoredFile } from '../../core/repo/files';
 import { ConfirmButton, FilePickInput, Modal } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { ColorPicker } from '../color/ColorPicker';
 import { rememberColor } from '../color/history';
 import { useVersion, bump } from '../../store';
@@ -93,6 +96,12 @@ export function IconPicker({
     return [];
     // v 触发重算：刚上传的文件要立刻出现在图库里
   }, [type, files]);
+  // 图库可能有上千张图：一格一个缩略图，全铺出来第一次打开就卡住
+  const pagedLibrary = usePaged(library, usePageSize());
+  useEffect(() => {
+    pagedLibrary.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type]);
 
   const draft: CollectionIcon | null =
     type === 'text' || type === 'alpha'
@@ -247,7 +256,7 @@ export function IconPicker({
               </p>
             ) : (
               <div className="icon-lib">
-                {library.map((f) => (
+                {pagedLibrary.pageItems.map((f) => (
                   <LibraryTile
                     key={f.id}
                     file={f}
@@ -260,6 +269,7 @@ export function IconPicker({
                 ))}
               </div>
             )}
+            <Paginator paged={pagedLibrary} />
           </div>
         )}
 

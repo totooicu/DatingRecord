@@ -6,6 +6,9 @@
 import { useMemo, useState } from 'react';
 import type { DREvent } from '../../core/types';
 import { eventTableRows, type EventTableRow } from '../../core/repo/collections';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
 
@@ -65,6 +68,8 @@ export function EventTable({
     () => rows.reduce((sum, r) => sum + (r.cost ?? 0), 0),
     [rows],
   );
+  // 表格最容易铺满几千行 DOM：同样只渲染当前这一页（页脚的合计仍是全集合的）
+  const paged = usePaged(sorted, usePageSize());
 
   const clickSort = (key: SortKey) => {
     setSort((s) =>
@@ -108,7 +113,7 @@ export function EventTable({
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((r) => (
+                {paged.pageItems.map((r) => (
                   <tr key={r.id}>
                     <td>
                       <button type="button" className="ev-table-title" onClick={() => onOpen(r.id)}>
@@ -133,6 +138,7 @@ export function EventTable({
               </tfoot>
             </table>
           </div>
+          <Paginator paged={paged} />
         </>
       )}
     </section>

@@ -3,11 +3,14 @@
 // 模板是一条真事件：不复制、不另存快照，改模板事件即改默认值。
 // 因此候选只排除已删除事件；可以选别的事件集里的事件，也可以选一条
 // 专门用来当「配置」的事件（不挂进本集合，成员列表也就不会被占位）。
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getCollection, setCollectionTemplate } from '../../core/repo/collections';
 import { getEvent, listEvents } from '../../core/repo/events';
 import { formatTime } from '../../core/time';
 import { Field, Modal } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { useVersion, bump } from '../../store';
 import { hides } from '../../privacy';
 
@@ -26,10 +29,16 @@ export function TemplateEventModal({
     return id ? getEvent(id) : null;
   }, [collection, v]);
   const current = rawCurrent && !hides(rawCurrent) ? rawCurrent : null;
+  // 以前这里也硬截 50 条：库里有上万事件时，第 51 条之后的永远选不中。改成共用分页。
   const candidates = useMemo(() => {
     const all = listEvents();
-    return (kw ? all.filter((e) => e.title.includes(kw)) : all).slice(0, 50);
+    return kw ? all.filter((e) => e.title.includes(kw)) : all;
   }, [v, kw]);
+  const paged = usePaged(candidates, usePageSize());
+  useEffect(() => {
+    paged.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kw]);
 
   const pick = (eventId: string | null) => {
     try {
@@ -65,7 +74,7 @@ export function TemplateEventModal({
             <span className="muted">新事件按表单默认值</span>
           </button>
         </li>
-        {candidates.map((e) => (
+        {paged.pageItems.map((e) => (
           <li key={e.id}>
             <button type="button" onClick={() => pick(e.id)}>
               <span>
@@ -78,6 +87,7 @@ export function TemplateEventModal({
         ))}
         {candidates.length === 0 && <li className="muted">没有匹配的事件</li>}
       </ul>
+      <Paginator paged={paged} />
     </Modal>
   );
 }

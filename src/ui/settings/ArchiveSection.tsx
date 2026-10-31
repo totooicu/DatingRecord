@@ -13,6 +13,9 @@ import {
 import { listDefs, restoreDef } from '../../core/repo/persons';
 import { ArchivedPersons } from '../merge';
 import { ConfirmButton } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { useVersion, bump } from '../../store';
 import { Section, fmtMeta } from './Section';
 
@@ -21,6 +24,12 @@ export function ArchiveSection() {
   const events = useMemo(() => listDeletedEvents(), [v]);
   const collections = useMemo(() => listArchivedCollections(), [v]);
   const defs = useMemo(() => listDefs(true).filter((d) => d.archived), [v]);
+  // 三块归档列表都可能很长（尤其事件回收站：清一次压测数据就是上千条），
+  // 分页控件与「每页条数」沿用别处那一套；不足一页时整条不出现。
+  const pageSize = usePageSize();
+  const pagedEvents = usePaged(events, pageSize);
+  const pagedCollections = usePaged(collections, pageSize);
+  const pagedDefs = usePaged(defs, pageSize);
 
   return (
     <>
@@ -43,7 +52,7 @@ export function ArchiveSection() {
           <p className="muted small">回收站是空的。</p>
         ) : (
           <ul className="merge-list">
-            {events.map((e) => (
+            {pagedEvents.pageItems.map((e) => (
               <li key={e.id}>
                 <span className="merge-rec">
                   <span className="merge-rec-main">{e.title || '（无标题）'}</span>
@@ -73,6 +82,7 @@ export function ArchiveSection() {
             ))}
           </ul>
         )}
+        <Paginator paged={pagedEvents} />
       </Section>
 
       <Section
@@ -90,7 +100,7 @@ export function ArchiveSection() {
           <p className="muted small">没有归档的事件集。</p>
         ) : (
           <ul className="merge-list">
-            {collections.map((c) => (
+            {pagedCollections.pageItems.map((c) => (
               <li key={c.id}>
                 <span className="merge-rec">
                   <span className="merge-rec-main">{c.name}</span>
@@ -120,6 +130,7 @@ export function ArchiveSection() {
             ))}
           </ul>
         )}
+        <Paginator paged={pagedCollections} />
       </Section>
 
       <Section
@@ -130,7 +141,7 @@ export function ArchiveSection() {
           <p className="muted small">没有归档的属性。</p>
         ) : (
           <ul className="merge-list">
-            {defs.map((d) => (
+            {pagedDefs.pageItems.map((d) => (
               <li key={d.key}>
                 <span className="merge-rec">
                   <span className="merge-rec-main">
@@ -153,6 +164,7 @@ export function ArchiveSection() {
             ))}
           </ul>
         )}
+        <Paginator paged={pagedDefs} />
       </Section>
     </>
   );

@@ -2,11 +2,15 @@
 //
 // 子事件集不混进来——它们在上面的「子事件集」卡片里，标题和计数才对得上
 // 旁边的表格视图（表格也只列事件）。
+import { useMemo } from 'react';
 import { getCollection, listMembers, moveMemberTo, removeMember } from '../../core/repo/collections';
 import { getEvent } from '../../core/repo/events';
 import { getPerson } from '../../core/repo/persons';
 import { bump } from '../../store';
 import { formatTime } from '../../core/time';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import type { MemberItem } from '../../core/repo/collections';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
@@ -34,9 +38,15 @@ export function MemberList({
   templateEventId?: string | null;
 }) {
   // 留一份全长列表里的下标：moveMemberTo 的 targetIndex 是按完整成员表算的
-  const eventRows = members
-    .map((member, fullIndex) => ({ member, fullIndex }))
-    .filter(({ member }) => member.memberType === 'event');
+  const eventRows = useMemo(
+    () =>
+      members
+        .map((member, fullIndex) => ({ member, fullIndex }))
+        .filter(({ member }) => member.memberType === 'event'),
+    [members],
+  );
+  // 一个集合几千条事件时不能整铺：分页控件与每页条数都跟人物列表那套共用
+  const paged = usePaged(eventRows, usePageSize());
 
   return (
     <section className="card">
@@ -58,7 +68,7 @@ export function MemberList({
         <p className="muted">还没有事件。可以新建，也可以从已有事件里挑。</p>
       )}
       <ul className="member-list">
-        {eventRows.map(({ member: m, fullIndex }) => {
+        {paged.pageItems.map(({ member: m, fullIndex }) => {
           const ev = getEvent(m.memberId);
           const title = ev ? ev.title : '(已删除)';
           return (
@@ -117,6 +127,7 @@ export function MemberList({
           );
         })}
       </ul>
+      <Paginator paged={paged} />
       {eventRows.length > 0 && <p className="muted small">共 {eventRows.length} 个事件；↑↓ 调整顺序。</p>}
     </section>
   );

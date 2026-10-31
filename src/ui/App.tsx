@@ -301,7 +301,7 @@ export default function App() {
           />
         )}
         {view.k === 'timeline' && (
-          <div className="pane pane-solo">
+          <div className="pane pane-solo pane-pin">
             <PageHead title="时间线" right={<HeadStatus />} />
             <TimelineFilters filter={filter} onChange={setFilter} />
             <Timeline

@@ -8,52 +8,60 @@
 import { useMemo } from 'react';
 import { hardDeletePerson, listArchivedPersons, unarchivePerson } from '../../core/repo/persons';
 import { ConfirmButton, Empty } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { useVersion, bump } from '../../store';
 import { fmtDate } from './format';
 
 export function ArchivedPersons() {
   const v = useVersion();
   const list = useMemo(() => listArchivedPersons(), [v]);
+  // 归档/墓碑记录攒几年可能上百条：与别处同一颗分页控件（不足一页时它自己不出现）
+  const paged = usePaged(list, usePageSize());
 
   if (list.length === 0) return <Empty compact text="没有归档的人物" />;
 
   return (
-    <ul className="merge-list">
-      {list.map((p) => (
-        <li key={p.id}>
-          <span className="merge-rec">
-            <span className="merge-rec-main">{p.displayName}</span>
-            <span className="muted small">
-              {p.reason === 'merged'
-                ? `${fmtDate(p.updatedAt)} 被并入「${p.mergedIntoName ?? '另一条记录'}」· 事件已转到对方名下`
-                : `${fmtDate(p.updatedAt)} 归档 · ${p.stats.eventCount} 次事件`}
+    <>
+      <ul className="merge-list">
+        {paged.pageItems.map((p) => (
+          <li key={p.id}>
+            <span className="merge-rec">
+              <span className="merge-rec-main">{p.displayName}</span>
+              <span className="muted small">
+                {p.reason === 'merged'
+                  ? `${fmtDate(p.updatedAt)} 被并入「${p.mergedIntoName ?? '另一条记录'}」· 事件已转到对方名下`
+                  : `${fmtDate(p.updatedAt)} 归档 · ${p.stats.eventCount} 次事件`}
+              </span>
             </span>
-          </span>
-          <span className="member-actions">
-            {/* 合并留下的墓碑不给恢复：参与者已经转走，恢复出来只会是一个没有事件的空壳 */}
-            {p.reason === 'archived' && (
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  unarchivePerson(p.id);
+            <span className="member-actions">
+              {/* 合并留下的墓碑不给恢复：参与者已经转走，恢复出来只会是一个没有事件的空壳 */}
+              {p.reason === 'archived' && (
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    unarchivePerson(p.id);
+                    bump();
+                  }}
+                >
+                  恢复
+                </button>
+              )}
+              <ConfirmButton
+                text="彻底删除"
+                danger
+                confirmText={`彻底删除「${p.displayName}」？此操作不可撤销，会一并移除其事件关联。`}
+                onConfirm={() => {
+                  hardDeletePerson(p.id);
                   bump();
                 }}
-              >
-                恢复
-              </button>
-            )}
-            <ConfirmButton
-              text="彻底删除"
-              danger
-              confirmText={`彻底删除「${p.displayName}」？此操作不可撤销，会一并移除其事件关联。`}
-              onConfirm={() => {
-                hardDeletePerson(p.id);
-                bump();
-              }}
-            />
-          </span>
-        </li>
-      ))}
-    </ul>
+              />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <Paginator paged={paged} />
+    </>
   );
 }

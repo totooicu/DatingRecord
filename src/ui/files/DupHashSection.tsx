@@ -15,6 +15,9 @@ import { countTotalRefs, deleteFile, setHashShared, type StoredFile } from '../.
 import { bump, useVersion } from '../../store';
 import { fmtSize } from './fileFormat';
 import { MergeModal } from './MergeModal';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 
 /** 合并目标默认挑引用最多的那条：改写面最小 */
 function bestTarget(g: HashGroup): StoredFile {
@@ -180,6 +183,9 @@ export function DupHashSection({
 
   const pending = audit.groups.filter((g) => g.files.some((f) => !f.hashShared));
   const marked = audit.groups.filter((g) => g.files.every((f) => f.hashShared));
+  // 重复组一组一张卡，几千个文件能出几百张卡：两块各自分页（组内的文件不拆）
+  const pagedPending = usePaged(pending, usePageSize());
+  const pagedMarked = usePaged(marked, usePageSize());
   const wasted = pending.reduce((s, g) => s + wasteOf(g, bestTarget(g).id), 0);
 
   const backfill = async () => {
@@ -213,16 +219,18 @@ export function DupHashSection({
         {msg && <span className="muted small">{msg}</span>}
       </div>
 
-      {pending.map((g) => (
+      {pagedPending.pageItems.map((g) => (
         <GroupCard key={g.sha256} group={g} onSearchHash={onSearchHash} onDone={onDone} />
       ))}
+      <Paginator paged={pagedPending} />
 
       {marked.length > 0 && (
         <details className="dup-marked">
           <summary>已确认「同 hash 但内容不同」的 {marked.length} 组（不再当重复）</summary>
-          {marked.map((g) => (
+          {pagedMarked.pageItems.map((g) => (
             <GroupCard key={g.sha256} group={g} onSearchHash={onSearchHash} onDone={onDone} />
           ))}
+          <Paginator paged={pagedMarked} />
         </details>
       )}
     </div>
