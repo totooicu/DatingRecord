@@ -17,6 +17,7 @@ export {
   takeRemoteTip,
   startHost,
   stopHost,
+  broadcastAppearance,
   localDeviceName,
   relayInfo,
   ensureRelayListener,

@@ -671,7 +671,17 @@ WebView 里——别的设备根本读不到。所以「共享」只能是：手
   要求手机能访问 gh-pages。
 - 端口由壳固定，`/__remote/listen` 会被拒；浏览器端的中继才允许页面自己选端口。
 
-**回归**：`npm run build && node tools/e2e/datashare-e2e.mjs <端口>`（S1–S6）。
+**配色跟着连接走**（2026-10-31 补）：主题仍是「这台设备看着顺眼」的偏好，存
+localStorage、不进库也不进备份；但客户端在用服务端数据时颜色不一致会像两个软件。
+协议里因此多了一条 `{k:'appearance', appearance:{accent,base,mode}}`：
+
+- 服务端在 `request-snapshot` 和 `peer join` 时各发一次，客户端一连上就是同样的配色；
+- 服务端在设置里换主题（`applyAppearance` 派发 `dr-theme`）时广播一次，客户端立即跟着变；
+- 客户端只调 CSS 变量（`applyAppearanceVisual`），**不写自己的 localStorage**——断开刷新回本地，
+  还是它自己选的那套；
+- 中继（Node / 壳端）对业务层不解析，这条消息不需要改服务器。
+
+**回归**：`npm run build && node tools/e2e/datashare-e2e.mjs <端口>`（S1–S6，含 S4b 配色同步）。
 用 Node 中继当真实 WS 服务器、用 `addInitScript` 注入假壳桥挡 `remote.*`，验证服务页那一行、
 自启动、设置页壳端文案与连接串、第二台设备连上、停止后客户端回本地、关闭自启动。
 壳端协议本身另有 `tools/datashare-test/run.sh`（31 项，纯 Java 服务器 + Node 客户端）。

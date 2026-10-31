@@ -29,10 +29,18 @@ export interface PeerInfo {
   role: PeerRole;
 }
 
+/** 外观偏好：随连接走一趟，客户端照抄服务端的配色（只调色，不改客户端存档） */
+export interface RemoteAppearance {
+  accent: string;
+  base: string;
+  mode: 'light' | 'dark';
+}
+
 /** 业务层：服务端 → 客户端 */
 export type RemoteMessage =
   | { k: 'snapshot'; version: number; db: string; reason?: 'init' | 'update' | 'conflict' }
   | { k: 'applied'; version: number }
+  | { k: 'appearance'; appearance: RemoteAppearance }
   | { k: 'blob'; reqId: string; data: string | null }
   | { k: 'error'; error: string };
 

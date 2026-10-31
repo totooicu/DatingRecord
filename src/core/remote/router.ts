@@ -27,6 +27,7 @@ import {
 import { getDeviceId } from '../db/device';
 import { bump } from '../../store';
 import { RemoteTransport, type TransportHandlers } from './transport';
+import { applyRemoteAppearance, hostAppearance } from './appearance';
 import { parseRemoteAddress, type ParsedAddress } from './url';
 import type { DirectClientSession, DirectHostSession } from './direct';
 import type { ClientMessage, LinkKind, PeerInfo, RemoteConfig, RemoteLink, RemotePayload } from './types';
@@ -271,6 +272,9 @@ function handleClientPayload(msg: RemotePayload, _from: string): void {
     } else {
       publish({ version: msg.version });
     }
+  } else if (msg.k === 'appearance') {
+    // 服务端换了配色：客户端跟着调，但不写自己的 localStorage
+    applyRemoteAppearance(msg.appearance);
   } else if (msg.k === 'blob') {
     const p = pending.get(msg.reqId);
     if (p) {
@@ -422,6 +426,25 @@ function broadcastSnapshot(reason: 'init' | 'update' | 'conflict' = 'update', to
   publish({ version: hostVersion });
 }
 
+/** 把服务端当前外观发给某个客户端 / 所有客户端；桥没接上时什么都不发 */
+function sendAppearanceTo(to?: string): void {
+  if (!hostTransport) return;
+  const appearance = hostAppearance();
+  if (!appearance) return;
+  const msg = { k: 'appearance' as const, appearance };
+  try {
+    if (to) hostTransport.sendTo(to, msg);
+    else hostTransport.broadcast(msg);
+  } catch {
+    /* 连接刚好断了：下一个 join / request-snapshot 会补发 */
+  }
+}
+
+/** 服务端换了配色就推给所有人（由 ui/theme.ts 监听主题变更后调用） */
+export function broadcastAppearance(): void {
+  sendAppearanceTo();
+}
+
 function handleHostPeer(ev: 'join' | 'leave', peer: PeerInfo): void {
   const clients = [...(hostTransport?.clients ?? [])];
   const label = state.transport === 'direct' && ev === 'join' ? `直连 · ${peer.name}` : state.label;
@@ -433,6 +456,7 @@ function handleHostPeer(ev: 'join' | 'leave', peer: PeerInfo): void {
     } catch {
       /* 导出失败（库没初始化）时交给客户端自己重试 */
     }
+    sendAppearanceTo(peer.id);
   } else {
     publish({ clients, label });
   }
@@ -540,6 +564,8 @@ async function handleClientMessage(msg: RemotePayload, from: string): Promise<vo
       } catch (e) {
         transport.sendTo(from, { k: 'error', error: e instanceof Error ? e.message : String(e) });
       }
+      // 快照后面紧跟一份外观：客户端一进来颜色就和这台设备一致
+      sendAppearanceTo(from);
       return;
     case 'apply': {
       if (msg.baseVersion !== hostVersion) {

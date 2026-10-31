@@ -10,6 +10,9 @@
 // 这里统一把亮度过高的颜色压暗到白字对比度 ≥ 3:1（WCAG 大字号标准），
 // 页面会告诉用户「已自动加深」。
 
+import { getRemoteState, broadcastAppearance } from '../core/remote';
+import { setAppearanceBridge } from '../core/remote/appearance';
+
 export interface BaseTone {
   key: string;
   name: string;
@@ -342,7 +345,44 @@ export function applyAppearance(next: Appearance): ApplyResult {
   } catch {
     // 存储被禁（无痕/配额满）时至少本次会话仍然生效
   }
+  // 服务端连着客户端时，主题一变就把新配色推过去（见 initAppearanceShare）
+  window.dispatchEvent(new Event('dr-theme'));
   return { appearance, adjusted };
+}
+
+/**
+ * 只调色、不落盘：客户端连上服务端时照抄对方的配色。
+ *
+ * 和 applyAppearance 的差别就在「不写 localStorage」——断开后刷新回本地，
+ * 还是这台设备自己选的那套颜色，不会被服务端的口味覆盖掉。
+ */
+export function applyAppearanceVisual(next: Partial<Appearance>): void {
+  const appearance: Appearance = {
+    accent: normalizeHex(next.accent ?? '') ?? DEFAULT_ACCENT,
+    base: BASE_TONES.some((b) => b.key === next.base) ? (next.base as string) : 'warm',
+    mode: next.mode === 'dark' ? 'dark' : 'light',
+  };
+  paint(varsFor(appearance), appearance.mode);
+}
+
+/**
+ * 把外观接进跨设备协议（main.tsx 启动时调用一次）。
+ *
+ * · 提供服务端当前配色：客户端连上时由路由器带过去；
+ * · 提供服务端配色变更的广播：用户在设置里换了主题，客户端立刻跟着变；
+ * · 提供服务端→客户端的贴色能力（不落盘）。
+ */
+export function initAppearanceShare(): void {
+  setAppearanceBridge(
+    () => {
+      const a = getAppearance();
+      return { accent: a.accent, base: a.base, mode: a.mode };
+    },
+    (a) => applyAppearanceVisual(a),
+  );
+  window.addEventListener('dr-theme', () => {
+    if (getRemoteState().mode === 'host') broadcastAppearance();
+  });
 }
 
 /**

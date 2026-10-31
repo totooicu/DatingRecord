@@ -14,13 +14,15 @@ import {
   type RemoteConfig,
 } from './core/remote';
 import { showToast } from './ui/toast';
-import { initAppearance } from './ui/theme';
+import { initAppearance, initAppearanceShare } from './ui/theme';
 import { initPrefs } from './ui/prefs';
 import './styles.css';
 
 // 主题变量尽早贴上：index.html 的首屏脚本已经按缓存刷过一次，
 // 这里再做一次是为了校验存储内容，并顺便更新浏览器状态栏颜色。
 initAppearance();
+// 外观随连接同步：服务端的配色会在客户端连上后贴过去（不覆盖本机存档）
+initAppearanceShare();
 // 界面引导强度（陪伴 / 专注）同步贴上，驱动 .guide-only 的显隐
 initPrefs();
 

@@ -152,13 +152,25 @@ const openRemote = async (page) => {
   await page.locator('.tabbar-item', { hasText: '设置' }).click();
   await page.waitForTimeout(500);
   if (await page.locator('.remote-section').count()) return;
+  // 手机子页会把目录藏起来：先退到目录，再点「备份与分享」
+  for (let i = 0; i < 4; i++) {
+    const navEl = page.locator('.settings-nav-title', { hasText: '备份与分享' });
+    if ((await navEl.count()) > 0 && (await navEl.first().isVisible().catch(() => false))) break;
+    const back = page.locator('.page-head .back-btn');
+    if (!(await back.count())) break;
+    await back.first().click();
+    await page.waitForTimeout(450);
+  }
   const nav = page.locator('.settings-nav-title', { hasText: '备份与分享' });
   if (await nav.count()) {
     await nav.click();
     await page.waitForTimeout(500);
   }
-  await page.locator('.settings-hub-title', { hasText: '跨设备操作' }).click();
-  await page.waitForTimeout(700);
+  const hub = page.locator('.settings-hub-title', { hasText: '跨设备操作' });
+  if (await hub.count()) {
+    await hub.click();
+    await page.waitForTimeout(700);
+  }
 };
 const waitFor = async (fn, ms = 12000) => {
   const t0 = Date.now();
@@ -246,6 +258,42 @@ const infoWithClient = await relayInfo();
 check('中继报告 1 个客户端', infoWithClient.clients === 1, JSON.stringify(infoWithClient));
 const hostBar = await p.locator('.remote-bar-host').innerText();
 check('服务端状态条显示 1 个客户端', hostBar.includes('1 个客户端'), hostBar);
+
+// ---- S4b 配色跟着服务端走 ----
+console.log('\nS4b 服务端换配色 → 客户端同步');
+/** 设置子页在手机上藏起目录，先一路退回目录再点「外观」 */
+const openAppearance = async (page) => {
+  // 手机子页只把目录藏起来（display:none），元素仍在 DOM，所以看 isVisible 不看 count
+  for (let i = 0; i < 4; i++) {
+    const navEl = page.locator('.settings-nav-title', { hasText: '外观' });
+    if ((await navEl.count()) > 0 && (await navEl.first().isVisible().catch(() => false))) break;
+    const back = page.locator('.page-head .back-btn');
+    if (!(await back.count())) break;
+    await back.first().click();
+    await page.waitForTimeout(450);
+  }
+  await page.locator('.settings-nav-title', { hasText: '外观' }).click();
+  await page.waitForTimeout(800);
+};
+await openAppearance(p);
+await p.locator('.theme-mode button', { hasText: '深色' }).click();
+await p.locator('.theme-swatch', { hasText: '湖蓝' }).click();
+await p.waitForTimeout(400);
+const hostPrimary = await p.evaluate(() =>
+  getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+);
+const clientDark = await waitFor(
+  async () => (await cp.evaluate(() => document.documentElement.dataset.mode)) === 'dark',
+);
+check('客户端跟随服务端切到深色', clientDark);
+const clientPrimary = await cp.evaluate(() =>
+  getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+);
+check('客户端主题色与服务端一致', clientPrimary === hostPrimary, `${clientPrimary} vs ${hostPrimary}`);
+const clientStored = await cp.evaluate(() => localStorage.getItem('dr.appearance.v1'));
+check('客户端没把服务端配色写进自己的存档', clientStored === null, String(clientStored));
+// 回到跨设备页，后面的停止步骤还在这一页上
+await openRemote(p);
 
 // ---- S5 停止服务端 ----
 console.log('\nS5 停止服务端 → 客户端回到本地');

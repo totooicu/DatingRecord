@@ -363,7 +363,8 @@ export function RemoteSection() {
                 {shellMode && lanUrl && (
                   <p className="muted small">
                     另一台设备先在浏览器打开 <code>{lanUrl}</code>，再把上面这段填进「作为客户端」。
-                    页面由壳端服务提供，和壳里是同一份数据。
+                    页面由壳端服务提供，和壳里是同一份数据；配色也跟着这台设备走，
+                    断开后客户端回到自己的颜色。
                   </p>
                 )}
                 {!shellMode && loopback && lanAddr && (
