@@ -5,15 +5,21 @@
 //   2. npx vite preview --port 4173
 //   3. node tools/e2e/wasm-cache-check.mjs [url]
 //
-// 依赖：全局 playwright（沙箱里在 /root/.nvm/versions/node/*/lib/node_modules/playwright）
+// 依赖：全局 playwright（路径按机器不同：nvm / 系统 node，两处都试一次）
 // 已知限制：只统计 wasm 这一个资源；命中 Cache Storage 时浏览器根本不发网络请求，
 //          所以用 CDP 的 Network.responseReceived 来数，request 事件数会更少。
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
 
 const url = process.argv[2] || 'http://localhost:4173/';
 
-const b = await chromium.launch();
+// 系统里没装 playwright 自带的浏览器，统一用 /usr/bin/chromium（CHROMIUM 可覆盖）。
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
 const p = await ctx.newPage();
 

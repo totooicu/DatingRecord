@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { applyCompactNames, planCompactNames, type CompactChange } from '../../core/files/compact';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { bump } from '../../store';
 
 export function CompactNamesSection() {
   const [plan, setPlan] = useState<CompactChange[] | null>(null);
   const [message, setMessage] = useState('');
+  // 预览计划一次可能上千条改名，全部铺出来 DOM 就废了；「确认紧密编号」仍是对整份计划生效
+  const pagedPlan = usePaged(plan ?? [], usePageSize());
   const preview = () => {
     setPlan(planCompactNames());
     setMessage('');
@@ -28,9 +33,10 @@ export function CompactNamesSection() {
     <button className="btn btn-sm" onClick={preview}>预览紧密编号</button>
     {plan && <>
       <p>{plan.length ? `将修改 ${plan.length} 个引用名` : '引用名已连续，无需修改'}</p>
-      {plan.map(p => <div className="dup-group" key={p.id} style={{ overflowWrap: 'anywhere' }}>
+      {pagedPlan.pageItems.map(p => <div className="dup-group" key={p.id} style={{ overflowWrap: 'anywhere' }}>
         <strong>{p.name}</strong><div><code>{p.from}</code> → <code>{p.to}</code></div>
       </div>)}
+      <Paginator paged={pagedPlan} />
       {plan.length > 0 && <div className="row-actions">
         <button className="btn btn-primary btn-sm" onClick={apply}>确认紧密编号</button>
         <button className="btn btn-sm" onClick={() => setPlan(null)}>取消</button>

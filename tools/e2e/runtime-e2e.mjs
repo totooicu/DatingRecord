@@ -15,7 +15,32 @@
 // 依赖：fake-ai-matrix.mjs（含「慢慢」慢响应场景 + 「失败」500 场景）+ vite preview。
 // 用法：node tools/e2e/runtime-e2e.mjs [url]
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+// playwright 全局安装路径按机器不同（nvm / 系统 node），两处都试一次。
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
+
+import fs from 'node:fs';
+
+// R4/R9 要真往页面传一首音频。以前假设 /tmp/tone.wav 已经在机器上（README 没写，
+// 换台机器就 ENOENT 挂在半路），所以这里自带一份：1 秒 440Hz 单音，写法与 music-playlist 一致。
+const TONE = '/tmp/tone.wav';
+if (!fs.existsSync(TONE)) {
+  const sr = 8000, n = sr, freq = 440;
+  const data = Buffer.alloc(44 + n * 2);
+  data.write('RIFF', 0); data.writeUInt32LE(36 + n * 2, 4); data.write('WAVE', 8);
+  data.write('fmt ', 12); data.writeUInt32LE(16, 16); data.writeUInt16LE(1, 20);
+  data.writeUInt16LE(1, 22); data.writeUInt32LE(sr, 24); data.writeUInt32LE(sr * 2, 28);
+  data.writeUInt16LE(2, 32); data.writeUInt16LE(16, 34); data.write('data', 36);
+  data.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i += 1) {
+    data.writeInt16LE(Math.round(11000 * Math.sin((2 * Math.PI * freq * i) / sr)), 44 + i * 2);
+  }
+  fs.writeFileSync(TONE, data);
+}
 
 const APP = process.argv[2] || 'http://localhost:4173/';
 const FAKE = process.env.FAKE ?? 'http://localhost:8794/v1';
@@ -132,7 +157,8 @@ const scenario = async (name, fn) => {
   }
 };
 
-const browser = await chromium.launch();
+// 系统里没装 playwright 自带的浏览器，统一用 /usr/bin/chromium（CHROMIUM 可覆盖）。
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 
 // ---- R1：AI 进行中离开页面，head 出图标，完成后变色，点回且回复完好 ----
 await scenario('R1 AI 后台任务 + 离开页面', async () => {

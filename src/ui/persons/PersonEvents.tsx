@@ -1,16 +1,23 @@
-// 人物详情 → 相关事件：直接复用时间线的事件行（EventRow），
-// 别再手写一套 .event-time / .event-meta —— 那两个类名早就没了，
-// 结果就是时间被塞进 44px 的网格列里换三行、评分和花费掉到时间下面。
+// 人物详情 → 相关事件：行样式复用时间线的 EventRow，列表和人物列表一样分页。
+//
+// 一个人的事件可以攒到几百上千条，这里和人物列表共用同一颗分页控件与同一个
+// 「每页条数」偏好——详情页不再一次把全部 DOM 铺出来。
+// 行本身别再手写 .event-time / .event-meta：那两个类名早已随时间线改版删掉，
+// 结果就是完整时间被塞进 44px 的窄列换三行、评分和花费掉到时间下面。
 import { useState } from 'react';
 import { getEvent } from '../../core/repo/events';
 import { EventForm } from '../event';
 import { bump } from '../../store';
 import { EventRow } from '../timeline/EventGroup';
 import { personNameOf } from './personName';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import type { DREvent } from '../../core/types';
 
 export function PersonEvents({ personId, events }: { personId: string; events: DREvent[] }) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const paged = usePaged(events, usePageSize());
 
   return (
     <>
@@ -20,7 +27,7 @@ export function PersonEvents({ personId, events }: { personId: string; events: D
         </div>
         {events.length === 0 && <p className="muted">还没有和 TA 的事件</p>}
         <ul className="event-list">
-          {events.map((e) => (
+          {paged.pageItems.map((e) => (
             <EventRow
               key={e.id}
               event={e}
@@ -30,6 +37,7 @@ export function PersonEvents({ personId, events }: { personId: string; events: D
             />
           ))}
         </ul>
+        <Paginator paged={paged} />
       </section>
 
       {editingEventId && (

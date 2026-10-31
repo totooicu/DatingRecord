@@ -385,16 +385,27 @@
 }
 
 /* ---------- 分页 ---------- */
+/* 一行导航，全是图标与数字，没有文字按钮：
+   « ‹ [输入页码]/总页数 › » [当前区间] ……… [每页条数]
+   文字只活在 aria-label / title 里（读屏与 e2e 按可访问名点，屏幕上看不到字）。 */
 .pager {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 钉在底部导航栏上方只对「列表栏」成立；卡片、弹窗里的分页条就是普通一行，
+   跟着 sticky 会飘到可视区下沿盖住别的内容。 */
+.pane-list .pager,
+.pane-pin .pager {
   position: sticky;
   bottom: 0;
-  background: var(--panel);
 }
 
 /* 分页条要贴着底部导航栏，不能飘在半屏高。
@@ -419,24 +430,44 @@
   margin-top: auto;
 }
 
+/* 时间线这种「单栏 + 分页」页：.pane-solo 本身就是纵向 flex，
+   列表体（.pin-body）用 flex:1 吃掉标题条与筛选条之外的全部高度，
+   分页条同样靠 margin-top:auto 沉到底。
+   这里必须写 .pane.pane-pin：.pane-solo 的 padding:0 0 24px 与它同权重，
+   只靠 .pane-pin 谁在后面谁赢，CSS 文件顺序一改底部留白就复活。 */
+.pane.pane-pin {
+  padding-bottom: 0;
+}
+
+.pane-pin > .pin-body {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-pin .pager {
+  margin-top: auto;
+}
+
 /* 分页条钉到底部之后，要给右下角那颗悬浮「记一件事」让出位置：
    .fab 是 right:16px + 宽 56px，正好压在分页条右端那颗「下一页」上（实测重叠）。
    手机端（有底部导航栏的那一档）把分页条的内容右边界推到 fab 左边再留 12px；
    宽屏 .fab 在窗口右下角、分页条在 320px 左栏里，本来就不相干，不用让。 */
 @media (max-width: 1023px) {
-  .pane-list .pager {
+  .pane-list .pager,
+  .pane-pin .pager {
     padding-right: calc(56px + 16px + 12px);
   }
 }
 
-.pager-single {
-  padding: 8px 14px;
-  text-align: center;
-}
-
+/* 四个箭头：28–30px 见方，靠 aria-label 说明自己是首页/上页/下页/末页 */
 .pager-btn {
-  min-width: 72px;
-  padding: 6px 12px;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -449,11 +480,94 @@
 }
 
 .pager-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-.pager-info {
+.pager-ico {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* 跳到第几页：一个能直接编辑的数字 + 灰的总页数，比「第 3 页 / 共 20 页」省一半宽。
+   flex 必须是 0 0 auto：写成 0 1 auto 时这一格会在行装不下时被压到 0 宽，
+   里面的输入框照旧 34px 溢出，被隔壁「下一页」盖住（实测 390 宽就点不到它）。 */
+.pager-page {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pager-jump {
+  width: 34px;
+  padding: 3px 2px;
+  text-align: center;
   font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.pager-jump:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.pager-of,
+.pager-range {
+  font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.pager-range {
+  flex: 0 0 auto;
+}
+
+/* 每页条数：设备偏好，推到行尾，和导航分开。
+   width:auto 不能省——base.css 给 input/select/textarea 定了 width:100%，
+   留着它这颗下拉会把整行按容器宽度撑开，把四个箭头挤到屏幕左边外面去（实测 320–430 全中）。 */
+.pager-size {
+  flex: 0 0 auto;
+  width: auto;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+/* 窄屏放不下当前区间就丢掉它：它是这行里最没用的信息
+   （跳到第几页和总页数已经够定位了），而箭头与页码不能动。 */
+@media (max-width: 420px) {
+  .pager .pager-range {
+    display: none;
+  }
+}
+
+/* 320–360 这一档：箭头缩到 26、间距收到 4、给 FAB 让的位收到 76，
+   整行仍然装得下（实测 320 宽需要 228px，可用 232px） */
+@media (max-width: 360px) {
+  .pager {
+    gap: 4px;
+  }
+
+  .pager-btn {
+    width: 26px;
+    height: 26px;
+  }
+
+  .pager-jump {
+    width: 30px;
+  }
+
+  .pane-list .pager,
+  .pane-pin .pager {
+    padding-right: calc(56px + 16px + 4px);
+  }
 }

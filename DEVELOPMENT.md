@@ -436,7 +436,7 @@ AI 执行操作**不能让用户直接承受后果**——它跑完一整轮后�
 | `core/location/locationFile.ts` | 文件库 CRUD：`listLocations/createLocation/readLocation/writeLocation/importLocationText/deleteLocation`；选中态存 localStorage `dr.locationFileId` |
 | `core/runtime/locationAuto.ts` | 自动打点服务单例：原始点、offset、当前 GPS 蓝点、`rev` 结构版本都在这里；`saveChain` 串行落盘，偏移编辑与自动打点不会互相覆盖；手动 `punch` 返回新点下标，`removePoint` 按序删点 |
 | `ui/panel/LocationPanel.tsx` | 四个分段（地图 / 记录 / 文件 / 说明），沿用 AI 对话页的 `.aichat-tabs`；文件页内嵌只列定位文件的 `FilesPanel compact`，位置修正支持度数 / 距离 / 目标三种填法；记录页逐点删除，一次只渲染最近 300 条 |
-| `ui/preview/LocationPreview.tsx` | 文件库 `.drloc` 只读预览：可滚动点位表（100 点分页）、上一点/下一点/滑块跳转、「播放点位 / 暂停播放」逐点动画（200ms 一步，末点自动停，拖滑块即暂停）、偏移后的 Leaflet 速度彩虹地图；原始文件不改写。回归 `tools/e2e/location-preview-e2e.mjs`，数据仍由 `location.get` 向 AI/CLI 提供 |
+| `ui/preview/LocationPreview.tsx` | 文件库 `.drloc` 只读预览：可滚动点位表（窗口宽度 = 设备「每页条数」偏好，见 1.18）、上一点/下一点/滑块跳转、「播放点位 / 暂停播放」逐点动画（200ms 一步，末点自动停，拖滑块即暂停）、偏移后的 Leaflet 速度彩虹地图；原始文件不改写。回归 `tools/e2e/location-preview-e2e.mjs`，数据仍由 `location.get` 向 AI/CLI 提供 |
 | `core/tools/locations.ts` | `location.*` 八个工具（list/get/create/save/add/remove/import/delete），CLI / AI 与 UI 共用实现 |
 
 **地图约定（速度着色）**：线宽 4px，颜色不再是一个常量——每段采用两段窗口速度（`segmentSpeeds()`：BC = (haversine AB + haversine BC) ÷ (tC − tA)，首段仍用单段距离 ÷ 时间差；窗口内任一相邻时间不前进或无效给 `null`，原始点不变；回归 `tools/e2e/location-speed-smooth-e2e.mjs`），按 0 到当前轨迹有效最高速度等分六档（另加「速度未知」档），最高速度对应红色，不再固定 25 km/h 上限；全静止用蓝色，无有效速度显示「未知」。地图图例显示当前速度（默认最新段，回放时为游标所在段）及全轨迹最高速度，回放不改变色阶上限；档位颜色固定为**蓝 → 青 → 绿 → 黄 → 橙 → 红**（慢 → 快），不随主题改变，图例与轨迹共用 `speedColors()`；「速度未知」用灰色，免得把「不知道」画成「站着不动」。点的规矩：**最新那个点直径 = 线宽 4px**（白芯 + 深色描边，和主题色色阶明显区分），**历史点直径 = 线宽一半 2px**（淡墨色，只交代采样位置）；选中点放大到 8px 染红。当前位置仍是蓝点，只来自本次定位，不写进文件，只有打点才追加。
@@ -712,6 +712,60 @@ S4c 一键地址、S4d 不留回传 + 回前台补同步）。
 自启动、设置页壳端文案与连接串、第二台设备连上、停止后客户端回本地、关闭自启动。
 壳端协议本身另有 `tools/datashare-test/run.sh`（31 项，纯 Java 服务器 + Node 客户端）。
 
+### 1.18 分页：一套控件 + 一个设备偏好
+
+**为什么只留一套**：以前人物列表用 `PAGE_SIZE=50` 的死分页，时间线用「每页 300 + 显示更多」的
+渐进渲染，事件集/文件/回收站/归档/健康扫描/查重/AI 会话等十几处干脆不分页（一次性渲染全部行），
+另外两处（添加事件、模板事件）用 `.slice(0, 50)` 硬截——列表看起来短，用户根本不知道下面还有。
+四个用户主界面还各画各的翻页条，「上一页 / 下一页」是文字按钮，手机上吃掉半行宽度。
+现在只有一句话：**有列表就有 `<Paginator>`，有 `<Paginator>` 就用同一个 `pageSize`**。
+
+**契约**（`src/ui/common/`）：
+
+- `usePaged(items, pageSize)` → `Paged<T>`：`{ page, setPage, first, prev, next, last, canPrev,
+  canNext, pageItems, totalPages, from, to, pageSize }`。数据集变小会自动夹回最后一页。
+- `<Paginator paged={paged} />`：四个按钮全是 SVG 箭头（`<Chev>`），首页/末页是双箭头——
+  「首页 / 上一页 / 下一页 / 末页」只存在于 `aria-label` 与 `title`，屏幕上不写字。
+  中间是**可编辑的页码输入框**：Enter 提交、Escape 还原、聚焦即全选，直接敲数字跳页；
+  后面跟 `/总页数`；再往右是 `from-to` 区间（≤420px 宽度时隐藏）与「每页条数」下拉。
+- 只有一页（含空列表）时整条控件 `return null`——不给「1-12 /1 ▾」这种噪音。
+  所以**先过滤再分页**：像移动弹窗要把当前集合自身筛掉之后才交给 `usePaged`，
+  否则筛完只剩一条而页码条还在数过滤前的页数。
+
+**每页条数是设备偏好**（`src/ui/prefs.ts`）：`localStorage['dr.prefs.v1'].pageSize`，
+可选 `PAGE_SIZES = 20/50/100/200/500`，默认 50，读进来时逐字段校验（脏值回默认）。
+`setPageSize()` 写完 localStorage 会 `dispatchEvent(new Event('dr-prefs'))`，
+组件用 `usePageSize()`（`useSyncExternalStore`）订阅——一处下拉改动，所有列表立刻跟着重排，
+刷新与重开保留。定位预览的点位窗口也读它（那里游标被滑块/播放带着走，所以只留左右箭头 +
+区间，不放整套控件，见 1.12b）。
+
+**钉在底部**：分页条跟着列表走，不该悬在屏幕中间。`.pane-list .pager` / `.pane-pin .pager`
+用 `position:sticky; bottom:0`，配合 `.pane-list > .pane-body{min-height:100%; display:flex}`
+与 `.pager{margin-top:auto}`——`sticky` 只会把元素往上提，必须由内容把面板撑满才贴得住。
+时间线那种「面板本体就是列表」的用 `.pane.pane-pin` + `.pin-body{flex:1 0 auto}`。
+**卡片内的分页不 sticky**（会浮到别的内容上），`sticky` 只 scoped 到 `.pane-list` / `.pane-pin`。
+右下角 FAB 与分页条右侧让位：手机宽度下 `padding-right: calc(56px + 16px + 12px)`，
+≤360px 收到 `+4px`（这条是 `verify-pagination-mode-e2e` 用 `elementFromPoint` 实测出来的，
+不是估的）。
+
+**两个 CSS 陷阱**（都只靠量出来的几何发现，注释与断言一起留下）：
+
+- `base.css` 有 `input, select, textarea { width: 100% }`——行内 `<select>` 必须自己写回
+  `width: auto`，否则「每页条数」拉到 224–334px，把箭头挤出负坐标。
+- `.pager-page` 必须是 `flex: 0 0 auto`；`0 1 auto` + `min-width:0` 会在窄屏把页码输入框压到 0 宽。
+
+**已接分页的位置**：人物列表、人物详情事件、事件集树、集合成员 / 事件表 / 智能列表、时间线、
+回收站、添加事件与模板事件的选择列表、文件列表、文件引用弹窗、归档（三处）、归档人物、
+移动弹窗、重名 / 紧密编号 / 健康 / 重复 hash 四个整理页、AI 会话与快照、图标库。
+**合计类数字仍算全量**：事件表 `tfoot` 统计的是整个集合，不是当前页——这点别跟着分页改。
+
+**回归**：`node tools/e2e/verify-pagination-mode-e2e.mjs http://localhost:5173/ 1000`
+（灌 1000 条规模，390×844）——默认每页 50、按钮全图标无文字、下一页换行并滚回顶、
+跳转输入框 Enter/Escape、首页末页在两端置灰、钉底 `gap===0`、窄屏不横向溢出、FAB 不重叠、
+每页条数 20→时间线 `/3` 变 `/7` 且写进 localStorage、时间线与事件集用同一颗控件（无「显示更多」）、
+事件集折叠后页数变少、500/页时全站不分页且人物 125 行全出、刷新保留偏好、陪伴/专注模式说明文字。
+`location-preview-e2e` 另钉「点位窗口跟着设备偏好走」。
+
 ---
 
 # 第二部分 · 功能规格
@@ -842,6 +896,7 @@ interface SqlDriver {
 
 - 卡片/列表双视图；按标签、分组、归档状态筛选；按名称、创建时间、最近互动时间、任意属性字段排序。
 - 显示关键统计角标：事件数、最近见面天数、平均评分。
+- 列表分页用 1.18 那套控件（钉在底部 tab 栏上沿、只有图标），每页条数是设备偏好；人多的时候 DOM 里只留当前页。
 - 标题上方的版本条显示两个时间（`VersionStrip`）：「壳:…」是壳在 `getEnv()` 里上报的 `builtAt`，「网:…」是网页构建设入的 `__BUILD_TIME__`，两边统一折到 Asia/Shanghai 才可比；不在壳里时只剩「网:…」，老壳不报时间则退回显示壳版本号。**双击这一行重新加载页面**，用来确认线上是不是最新版。SW 的导航请求是网络优先，刷新一次就能拿到新的 `index.html`；双击前关掉双击缩放与文字选中（`touch-action: manipulation` + `user-select: none`），否则手机上第二下会被当成缩放/选词。
 
 ### F-P07 人物详情 — P0
@@ -850,7 +905,7 @@ interface SqlDriver {
 
 - 头部：头像、名称、别名、标签、关系状态；
 - 属性分区（按 group）；
-- **相关事件**（倒序）：直接复用时间线的事件行 `EventRow`（左列日期/时刻，右列标题、同行其他人、
+- **相关事件**（倒序、分页见 1.18）：行样式直接复用时间线的事件行 `EventRow`（左列日期/时刻，右列标题、同行其他人、
   评分/花费/标签 chip、正文摘要），不再自己拼 `.event-time` / `.event-meta`——那两个类名早已随时间线改版删掉，
   结果是完整时间被塞进 44px 的窄列换三行、评分和花费掉到时间下面。人物自己那行名字从参与者里去掉（`omitPersonId`），
   每行都写一遍「小林」是纯重复；隐私打码统一走 `persons/personName.ts` 的 `personNameOf`，与时间线同一份实现。
@@ -928,6 +983,7 @@ interface SqlDriver {
 文件页拆成两页后，「单层文件库（不分子文件夹）…」这段介绍只出现在**整理**页（`Settings.tsx` 的 `desc` 已移除）。整理页新增同名分组扫描、确认编号和跳去选择合并；编号保留组内最早文件名称，只改其余 `name`，过期分组拒绝执行。附件目前硬删除，删除后不再占名；快照整库恢复保留历史原貌，可再扫描整理。AI/CLI：`file.nameDuplicates`（只读）、`file.resolveNameDuplicates`（mutating，传扫描分组 name/ids）、`file.rename`（`occupy` 参数 = 占用此名）。`.drloc` 只读预览新增「播放点位 / 暂停播放」：每 200ms 前进一点，末点自动停，滑块与列表键盘操作互不干扰，原始文件照旧不写。回归：`tools/e2e/file-name-e2e.mjs`（并发/大小写/隐私占名/占用此名/导入/同步/歌单/定位/内容引用保持/三视口）、`tools/e2e/location-preview-e2e.mjs`（播放推进、暂停、末点自动停）。
 
 **2026-10-29 文件分页**：沿用定位页切页杆，分「文件 / 整理」。整理页常驻显示重复 hash 管理、文件健康扫描、hash 紧密编号、判重阈值与内容寻址迁移；首次访问才挂载，往返保留扫描结果和筛选。按 hash 搜索自动回文件页。紧凑选择器不显示切页杆。回归：`dup-hash-e2e`、`file-health-e2e`（含三视口和切页保留）、`compact-hash-e2e`。
+**2026-10-31 全站统一**：文件页与整理页的切页杆换成 1.18 那套 `<Paginator>`（图标箭头 + 跳页 + 每页条数），不再自己算页数。
 
 - 正文：Markdown，支持图片内联；
 - 附件：存 `attachments` 表，**内容寻址（sha256 命名）**，天然去重；
@@ -994,9 +1050,10 @@ interface SqlDriver {
 
 ### F-E06 事件时间线 — P0
 
-- 全局时间线按月分组、虚拟滚动；
-- 筛选：人物、标签、类型、时间范围、评分、集合；
-- **性能要求**：1 万条事件下首屏 < 200ms（靠索引 + 分页）。
+- 全局时间线按月分组，**按页渲染**（以前是虚拟滚动 + 「显示更多」，2026-10-31 换成 1.18 那套分页）；
+- 筛选：人物、标签、类型、时间范围、评分、集合；筛选词或筛选条件一变就回到第 1 页；
+- 分组只按当前页的事件分组，所以月份标题会随页码走——这是分页模型的正常结果，不是漏了跨页合并；
+- **性能要求**：1 万条事件下首屏 < 200ms（靠索引 + 分页，DOM 里最多只有「每页条数」那么多条）。
 
 ### F-E07 编辑与删除 — P0
 

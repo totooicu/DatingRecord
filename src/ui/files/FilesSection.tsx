@@ -39,8 +39,7 @@ import {
 import { fmtSize } from './fileFormat';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
-
-const PAGE_SIZE = 50;
+import { usePageSize } from '../prefs';
 
 export function FilesSection({
   onPick,
@@ -122,7 +121,7 @@ export function FilesSection({
   );
   // 文件可能上千，整页 DOM 直接卡死；按页切片，只渲染当前这 50 条。
   // 筛选/排序变化时结果集整体换血，留在深页没意义，回第一页。
-  const paged = usePaged(visible, PAGE_SIZE);
+  const paged = usePaged(visible, usePageSize());
   const filterKey = `${filter.q}|${filter.types.join(',')}|${filter.refs}|${sort.key}|${sort.dir}`;
   useEffect(() => {
     paged.setPage(1);
@@ -279,7 +278,7 @@ export function FilesSection({
             />
           ))}
           </ul>
-          <Paginator paged={paged} onPage={paged.setPage} />
+          <Paginator paged={paged} />
         </>
       )}
 

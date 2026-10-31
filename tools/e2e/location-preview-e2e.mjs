@@ -26,13 +26,25 @@ try {
     assert(await list.evaluate(el => { el.scrollTop = 100; return el.scrollHeight > el.clientHeight && el.scrollTop > 0; }));
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   }
+  // 点位窗口不再是写死的 100，而是跟着设备偏好「每页条数」走（默认 50）
+  const step = await page.evaluate(async () => (await import('/src/ui/prefs.ts')).getPageSize());
+  assert.equal(step, 50);
   await page.getByRole('button', { name: '下一点', exact: true }).click();
   assert.equal(await page.locator('.location-preview-map').getAttribute('data-selected'), '1');
   await page.getByRole('button', { name: '下一页点位' }).click();
-  assert.equal(await page.locator('.location-preview-map').getAttribute('data-selected'), '100');
+  assert.equal(await page.locator('.location-preview-map').getAttribute('data-selected'), String(step));
   await page.getByLabel('定位点跳转').fill('249');
-  assert.equal(await page.locator('.location-preview-list li').count(), 50);
+  const lastStart = Math.floor(249 / step) * step;
+  assert.equal(await page.locator('.location-preview-list li').count(), Math.min(step, 250 - lastStart));
   assert(await page.getByRole('button', { name: '下一点', exact: true }).isDisabled());
+  // 每页条数改成 100 → 窗口步长与列表长度立刻跟着变（同一份偏好，不再各处写死）
+  await page.evaluate(async () => (await import('/src/ui/prefs.ts')).setPageSize(100));
+  await page.getByLabel('定位点跳转').fill('0');
+  assert.equal(await page.locator('.location-preview-list li').count(), 100);
+  await page.getByRole('button', { name: '下一页点位' }).click();
+  assert.equal(await page.locator('.location-preview-map').getAttribute('data-selected'), '100');
+  await page.evaluate(async () => (await import('/src/ui/prefs.ts')).setPageSize(50));
+  await page.getByLabel('定位点跳转').fill('249');
   const playBtn = () => page.getByRole('button', { name: '播放点位', exact: true });
   const pauseBtn = () => page.getByRole('button', { name: '暂停播放', exact: true });
   await playBtn().click();

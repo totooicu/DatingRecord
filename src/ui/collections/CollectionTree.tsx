@@ -4,6 +4,27 @@ import { useVersion, bump } from '../../store';
 import { CollectionIconView } from './CollectionIcon';
 import { HeadStatus } from '../runtime/HeadStatus';
 import { PageHead } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
+
+/** 一行的坐标：节点 + 它所在的层级 */
+interface Row {
+  node: TreeNode;
+  depth: number;
+}
+
+/** 把树摊成可见行：折叠节点的子树不进列表（也不进分页计数），
+ *  否则「一共多少页」会把看不见的行算进去。 */
+function flatten(tree: TreeNode, collapsed: Record<string, boolean>): Row[] {
+  const out: Row[] = [];
+  const walk = (node: TreeNode, depth: number) => {
+    out.push({ node, depth });
+    if (!collapsed[node.id]) node.children.forEach((c) => walk(c, depth + 1));
+  };
+  walk(tree, 0);
+  return out;
+}
 
 export function CollectionTree({
   selectedId,
@@ -18,6 +39,11 @@ export function CollectionTree({
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [newKind, setNewKind] = useState<'manual' | 'smart'>('manual');
+
+  // 事件集可以是几百个的树：与人物 / 时间线 / 文件同一颗分页控件、同一个每页条数。
+  // 分页吃在「摊平后的可见行」上，树形缩进照旧，只是每页只渲染这一截。
+  const rows = useMemo(() => (tree ? flatten(tree, collapsed) : []), [tree, collapsed]);
+  const paged = usePaged(rows, usePageSize());
 
   if (!tree) return <div className="muted pad">暂无事件集</div>;
 
@@ -37,30 +63,29 @@ export function CollectionTree({
     onSelect(c.id);
   };
 
-  const render = (node: TreeNode, depth: number): JSX.Element => {
+  /** 一行：缩进由 depth 给，折叠只看 collapsed 里这个节点自己的标记 */
+  const row = ({ node, depth }: Row) => {
     const isCollapsed = collapsed[node.id];
     return (
-      <div key={node.id}>
-        <div
-          className={node.id === selectedId ? 'tree-row tree-row-on' : 'tree-row'}
-          style={{ paddingLeft: 8 + depth * 14 }}
+      <div
+        key={node.id}
+        className={node.id === selectedId ? 'tree-row tree-row-on' : 'tree-row'}
+        style={{ paddingLeft: 8 + depth * 14 }}
+      >
+        <button
+          className="tree-toggle"
+          onClick={() => setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }))}
+          disabled={node.children.length === 0}
         >
-          <button
-            className="tree-toggle"
-            onClick={() => setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }))}
-            disabled={node.children.length === 0}
-          >
-            {node.children.length ? (isCollapsed ? '▸' : '▾') : '·'}
-          </button>
-          <button className="tree-name" onClick={() => onSelect(node.id)}>
-            <CollectionIconView icon={node.icon} size="sm" fallback={node.name} />
-            <span className="tree-label">{node.name}</span>
-            {node.kind === 'smart' && <em className="tree-smart" title="智能集合：成员由规则实时算出">⚡</em>}
-            {node.isPrivate && <em className="tree-private" title="隐私：开启隐私模式后隐藏">隐私</em>}
-            {node.totalEventCount > 0 && <em>{node.totalEventCount}</em>}
-          </button>
-        </div>
-        {!isCollapsed && node.children.map((c) => render(c, depth + 1))}
+          {node.children.length ? (isCollapsed ? '▸' : '▾') : '·'}
+        </button>
+        <button className="tree-name" onClick={() => onSelect(node.id)}>
+          <CollectionIconView icon={node.icon} size="sm" fallback={node.name} />
+          <span className="tree-label">{node.name}</span>
+          {node.kind === 'smart' && <em className="tree-smart" title="智能集合：成员由规则实时算出">⚡</em>}
+          {node.isPrivate && <em className="tree-private" title="隐私：开启隐私模式后隐藏">隐私</em>}
+          {node.totalEventCount > 0 && <em>{node.totalEventCount}</em>}
+        </button>
       </div>
     );
   };
@@ -105,7 +130,8 @@ export function CollectionTree({
           </button>
         </div>
       )}
-      {render(tree, 0)}
+      {paged.pageItems.map(row)}
+      <Paginator paged={paged} />
     </div>
   );
 }

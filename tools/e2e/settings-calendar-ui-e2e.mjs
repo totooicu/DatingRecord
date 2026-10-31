@@ -2,8 +2,8 @@
 //
 // S1 设置目录：功能体验、功能面板两个入口都有图标（曾经 panel 一族漏配，
 //    目录和子页只剩一个空粉色方块）
-// S2 功能面板子页：音乐 / 定位两条都有图标；功能体验三条（边缘分割 / 软件适配测试 /
-//    未完成的记录）也都有图标
+// S2 功能面板子页：音乐 / 定位两条都有图标；功能体验四条（边缘分割 / 软件适配测试 /
+//    未完成的记录 / 轨迹提取）也都有图标
 // C1 日历事件条：底色按事件集配色散列，不再是写死的粉色
 //    （样本数据 3 个集合，至少应出现 2 种不同底色；同一集合的事件同色）
 //
@@ -98,7 +98,7 @@ await p.waitForTimeout(400);
 await p.locator('.settings-nav-title', { hasText: '功能体验' }).click();
 await p.waitForTimeout(500);
 const labIcons = await hubIcons();
-check('功能体验 3 条都有图标', labIcons.length === 3 && labIcons.every(Boolean), JSON.stringify(labIcons));
+check('功能体验 4 条都有图标（边缘分割 / 软件适配测试 / 未完成的记录 / 轨迹提取）', labIcons.length === 4 && labIcons.every(Boolean), JSON.stringify(labIcons));
 
 console.log('\nC1 日历事件条配色');
 await p.locator('.tabbar-item', { hasText: '日历' }).click();

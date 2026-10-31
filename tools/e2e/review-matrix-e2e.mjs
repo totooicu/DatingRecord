@@ -30,7 +30,13 @@
 // 重置子页状态——所以每次要进目录都先走 toSettingsRoot() 点返回键爬回去，
 // 直接点 .settings-nav-title 会等到超时（元素在 DOM 里但不可见）。
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+// playwright 全局安装路径按机器不同（nvm / 系统 node），两处都试一次。
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
 
 const APP = process.argv[2] || 'http://localhost:4173/';
 const FAKE = process.env.FAKE ?? 'http://localhost:8794/v1';
@@ -220,7 +226,8 @@ const scenario = async (browser, name, fn) => {
 
 // ---------------- 场景 ----------------
 
-const b = await chromium.launch();
+// 系统里没装 playwright 自带的浏览器，统一用 /usr/bin/chromium（CHROMIUM 可覆盖）。
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 
 await scenario(b, 'S1 纯新增：T2 看不到、T3 看得到', async (p) => {
   await boot(p);

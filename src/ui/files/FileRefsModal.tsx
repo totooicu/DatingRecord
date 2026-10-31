@@ -6,7 +6,7 @@
 //      由全局回调交给 App（设置页在弹窗里，没有自己的路由栈）
 //   3. 图标那栏要写出「被「初恋」用作图标」，用户才能确认上传的图没白传
 //   4. 事件正文那栏支持批量转移：勾几个事件，把对 a 的引用换成 b
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   collectionsUsingFile,
   eventsReferencingFile,
@@ -17,6 +17,9 @@ import {
 import { transferRefsInEvents } from '../../core/files';
 import { bump, useVersion } from '../../store';
 import { Modal } from '../common';
+import { usePaged } from '../common/usePaged';
+import { Paginator } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 import { fmtDate, fmtSize } from './fileFormat';
 import { openEvent } from '../openEvent';
 import { openPerson } from '../openPerson';
@@ -44,6 +47,15 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
     const k = q.trim().toLowerCase();
     return k ? candidates.filter((f) => f.name.toLowerCase().includes(k)) : candidates;
   }, [candidates, q]);
+
+  // 引用一个文件的事件可能有几百条，可选目标文件更是可能有整库：两处都分页。
+  // 「全选 / 已选 x / 总数」按全量算，分页只管这一屏渲染多少行。
+  const pagedItems = usePaged(items, usePageSize());
+  const pagedTargets = usePaged(filtered, usePageSize());
+  useEffect(() => {
+    pagedTargets.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   const reset = () => {
     setPicked(new Set());
@@ -145,7 +157,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
             <p className="muted">没有事件在正文里引用它。</p>
           ) : (
             <ul className="ref-ev-list">
-              {items.map((e) => (
+              {pagedItems.pageItems.map((e) => (
                 <li key={e.id}>
                   <button
                     type="button"
@@ -169,6 +181,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
               ))}
             </ul>
           )}
+          <Paginator paged={pagedItems} />
 
           {items.length === 0 && avatars.length === 0 && icons.length === 0 && (
             <p className="muted">目前没有任何地方引用这个文件。</p>
@@ -188,7 +201,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
             <span className="muted small">已选 {picked.size} / {items.length}</span>
           </div>
           <ul className="ref-ev-list">
-            {items.map((e) => (
+            {pagedItems.pageItems.map((e) => (
               <li key={e.id}>
                 <label className="ref-ev-item ref-pick">
                   <input
@@ -206,6 +219,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
               </li>
             ))}
           </ul>
+          <Paginator paged={pagedItems} />
           <div className="ref-actions">
             <button type="button" className="btn" onClick={reset}>
               取消
@@ -237,7 +251,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
             <p className="muted">没有可选的其它文件。</p>
           ) : (
             <ul className="ref-ev-list">
-              {filtered.map((f) => (
+              {pagedTargets.pageItems.map((f) => (
                 <li key={f.id}>
                   <button
                     type="button"
@@ -254,6 +268,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
               ))}
             </ul>
           )}
+          <Paginator paged={pagedTargets} />
           <div className="ref-actions">
             <button type="button" className="btn" onClick={() => setMode('select')}>
               返回

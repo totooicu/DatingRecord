@@ -13,12 +13,19 @@
 //
 // 依赖：全局 playwright + 上面的两个服务。手机视口（390×844）下跑，贴近真实使用。
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+// playwright 全局安装路径按机器不同（nvm / 系统 node），两处都试一次。
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
 
 const APP = process.argv[2] || 'http://localhost:5173/';
 const FAKE = process.env.FAKE ?? 'http://localhost:8791/v1';
 
-const b = await chromium.launch();
+// 系统里没装 playwright 自带的浏览器，统一用 /usr/bin/chromium（CHROMIUM 可覆盖）。
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
 p.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 160)));
 // 警告不是 error，但「渲染 A 时改 B」这类信号往往就是 bug 的苗头，一并抓下来

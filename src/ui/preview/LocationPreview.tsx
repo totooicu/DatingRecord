@@ -6,6 +6,8 @@ import type { StoredFile } from '../../core/repo/files';
 import { readLocation } from '../../core/location/locationFile';
 import { applyOffset, type LocationDoc } from '../../core/location/format';
 import { speedColors, speedLines } from '../panel/locationPaint';
+import { Chev } from '../common/Paginator';
+import { usePageSize } from '../prefs';
 
 export function LocationPreview({ file }: { file: StoredFile }) {
   const [doc, setDoc] = useState<LocationDoc | null>(null);
@@ -31,7 +33,10 @@ function LocationContents({ doc }: { doc: LocationDoc }) {
   const map = useRef<L.Map | null>(null);
   const marker = useRef<L.CircleMarker | null>(null);
   const index = Math.min(selected, Math.max(0, points.length - 1));
-  const pageStart = Math.floor(index / 100) * 100;
+  // 点位窗口跟着全局「每页条数」走（默认 100 → 现在的 50 也行）：
+  // 这里窗口是被游标带着走的（滑块、播放都会挪），所以只用箭头翻页，不放整套分页控件。
+  const size = usePageSize();
+  const pageStart = Math.floor(index / size) * size;
   useEffect(() => {
     const m = L.map(host.current!, { preferCanvas: true, scrollWheelZoom: false }).setView([31.2304, 121.4737], 10);
     map.current = m;
@@ -85,16 +90,19 @@ function LocationContents({ doc }: { doc: LocationDoc }) {
       </div>
       <ul ref={list} className="playlist-preview-list location-preview-list" tabIndex={0} aria-label="定位点清单"
         onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); move(e.key === 'ArrowLeft' ? -1 : 1); } }}>
-        {points.slice(pageStart, pageStart + 100).map((p, n) => <li key={pageStart + n} aria-current={pageStart + n === index}>
+        {points.slice(pageStart, pageStart + size).map((p, n) => <li key={pageStart + n} aria-current={pageStart + n === index}>
           <button type="button" onClick={() => setSelected(pageStart + n)}>
             {pageStart + n + 1}. {new Date(p.ts).toLocaleString()} · {p.lat.toFixed(6)}, {p.lng.toFixed(6)}{p.note ? ` · ${p.note}` : ''}{p.accuracy ? ` · ±${Math.round(p.accuracy)}m` : ''}
           </button>
         </li>)}
       </ul>
+      {/* 窗口翻页：箭头 + 区间，和分页条同一套画法；aria-label 保留原可访问名，读屏与 e2e 不受影响 */}
       <div className="location-preview-nav">
-        <button className="btn btn-sm" disabled={pageStart === 0} onClick={() => setSelected(Math.max(0, pageStart - 100))}>上一页点位</button>
-        <span className="small">{pageStart + 1}–{Math.min(pageStart + 100, points.length)}</span>
-        <button className="btn btn-sm" disabled={pageStart + 100 >= points.length} onClick={() => setSelected(pageStart + 100)}>下一页点位</button>
+        <button className="pager-btn" disabled={pageStart === 0} aria-label="上一页点位" title="上一页点位"
+          onClick={() => setSelected(Math.max(0, pageStart - size))}><Chev dir="l" /></button>
+        <span className="small">{pageStart + 1}–{Math.min(pageStart + size, points.length)}</span>
+        <button className="pager-btn" disabled={pageStart + size >= points.length} aria-label="下一页点位" title="下一页点位"
+          onClick={() => setSelected(Math.min(points.length - 1, pageStart + size))}><Chev dir="r" /></button>
       </div>
     </> : <p className="muted">这个定位文件还没有点。</p>}
   </div>;
