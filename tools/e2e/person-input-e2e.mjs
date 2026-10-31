@@ -89,6 +89,60 @@ try {
     const r = c.getBoundingClientRect();
     return r.top < l.bottom && r.bottom > l.top;
   })));
+  // 人物详情「相关事件」：必须复用时间线的事件行（.event-when + .event-main），
+  // 时间不再被塞进窄列换三行、评分花费不掉到时间下面；TA 自己的名字也不重复出现在每行
+  await page.evaluate(async () => {
+    document.getElementById('input-test')?.remove();
+    const { default: React } = await import('/node_modules/.vite/deps/react.js');
+    const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
+    const pe = await import('/src/core/repo/persons/index.ts');
+    const ev = await import('/src/core/repo/events/index.ts');
+    const { useVersion } = await import('/src/store.ts');
+    const { PersonEvents } = await import('/src/ui/persons/PersonEvents.tsx');
+    const self = pe.createPerson({ displayName: '本人' });
+    const other = pe.createPerson({ displayName: '同行者' });
+    const mk = (title, start) => ev.createEvent({
+      title,
+      kind: 'date',
+      time: { kind: 'instant', start, precision: 'minute' },
+      content: `# ${title}\n\n正文一行。`,
+      tags: ['吃饭'],
+      metrics: { cost: 88, rating: 4 },
+      participants: [
+        { personId: self.id, role: 'primary' },
+        { personId: other.id, role: 'companion' },
+      ],
+    });
+    const events = [
+      mk('在表参道吃了一碗超级辣的豚骨拉面，还加了两份叉烧', '2026-10-01T11:30:00.000Z'),
+      mk('短标题', '2026-10-05T12:00:00.000Z'),
+    ];
+    const host = document.createElement('div');
+    host.id = 'person-events-test';
+    host.style = 'position:fixed;inset:0;background:white;z-index:99999;overflow:auto';
+    document.body.append(host);
+    function Test() {
+      useVersion();
+      return React.createElement(PersonEvents, { personId: self.id, events });
+    }
+    ReactDOM.createRoot(host).render(React.createElement(Test));
+  });
+  const row = page.locator('#person-events-test .event-item').first();
+  assert.equal(await page.locator('#person-events-test .event-item').count(), 2);
+  assert.equal(await page.locator('#person-events-test .event-item .event-when').count(), 2);
+  assert.equal(await page.locator('#person-events-test .event-item .event-main').count(), 2);
+  const whenText = (await row.locator('.event-when').innerText()).trim();
+  assert(!/^\d{4}-/.test(whenText) && whenText.split('\n').length <= 2, `时间栏被撑高：${whenText}`);
+  assert.equal(await row.locator('.event-title-text').count(), 1);
+  const chips = row.locator('.event-facts .ev-chip');
+  assert((await chips.count()) >= 3, `评分/花费/标签应排在同一行的事实区，实际 ${await chips.count()} 个`);
+  const rowBox = await row.boundingBox();
+  const chipBox = await chips.first().boundingBox();
+  assert(chipBox.x > rowBox.x + 50, '事实 chip 掉到了时间列下面');
+  const cardText = await page.locator('#person-events-test .card').innerText();
+  assert(cardText.includes('同行者') && !cardText.includes('本人'), '人物自己的名字不该重复出现在每行');
+  assert(cardText.includes('正文一行'), '事件摘要该展示出来');
+
   for (const width of [390, 820, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
