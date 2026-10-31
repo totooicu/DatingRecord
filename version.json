@@ -1,129 +1,129 @@
 {
-  "version": "2026-10-31T12:22:02.605Z",
+  "version": "2026-10-31T12:28:34.770Z",
   "release": "1.2.0",
   "proto": 1,
   "shellMin": "1.0.0",
   "link": "/index.html",
   "subversion": [
     {
-      "version": "6defa82308fe589d",
-      "link": "/assets/AiHubSection-hL_VltHw.js"
+      "version": "2f550ac07f2ebbd7",
+      "link": "/assets/AiHubSection-epsG9Gnz.js"
     },
     {
-      "version": "2423f403ab43b182",
-      "link": "/assets/AiSection-DlQbN7pv.js"
+      "version": "e9e1007b5d80b7f1",
+      "link": "/assets/AiSection-z7Lzd2bx.js"
     },
     {
-      "version": "84770172f090d62b",
-      "link": "/assets/AppearanceSection-CNvghQLU.js"
+      "version": "3f71904f64d9c44a",
+      "link": "/assets/AppearanceSection-whmeptOg.js"
     },
     {
-      "version": "fb63fb14bbda2b8e",
-      "link": "/assets/archive-D5ENpHsC.js"
+      "version": "77aabf6eaaace9d0",
+      "link": "/assets/archive-bKQyMRuM.js"
     },
     {
-      "version": "bcd706b57000d929",
-      "link": "/assets/ArchiveSection-CcNIuF7V.js"
+      "version": "d2d4df240374f028",
+      "link": "/assets/ArchiveSection-ffbe1gzT.js"
     },
     {
-      "version": "e00d50bc2fb6f646",
-      "link": "/assets/BackupSection-Bo-g2TLE.js"
+      "version": "d512ae6f0befc6a5",
+      "link": "/assets/BackupSection-CSljU98t.js"
     },
     {
-      "version": "077623cd73f6a378",
-      "link": "/assets/DataSection-B8PV4GJP.js"
+      "version": "02173362dfcf05c5",
+      "link": "/assets/DataSection-CkYyoyr2.js"
     },
     {
-      "version": "92b997faabc41642",
-      "link": "/assets/diff-C-ZBzVQg.js"
+      "version": "f4014b0c43fc6990",
+      "link": "/assets/diff-BStsysZO.js"
     },
     {
       "version": "7b1b9e0b40e7ffd7",
       "link": "/assets/format-Cb-sJqcX.js"
     },
     {
-      "version": "d26b1c80f0d05b36",
-      "link": "/assets/import-Iq_7GbxQ.js"
+      "version": "a535c764a0719a60",
+      "link": "/assets/import-5vMGD-l6.js"
     },
     {
-      "version": "6f39d8555a4b5745",
-      "link": "/assets/index-B6PZVJM4.css"
+      "version": "7c9f4f817efc2585",
+      "link": "/assets/index-D_nDREOj.css"
     },
     {
-      "version": "43a7e7781f54565e",
-      "link": "/assets/index-DyNEgs1J.js"
+      "version": "109f727ab52ba9a8",
+      "link": "/assets/index-Dan8eE9P.js"
     },
     {
-      "version": "6fff047703e1536c",
-      "link": "/assets/LabAiSection-C2OgLhn-.js"
+      "version": "9c0e758dd903ce11",
+      "link": "/assets/LabAiSection-CBpfbcJX.js"
     },
     {
-      "version": "fa4349fdfc93444f",
-      "link": "/assets/LabCompatSection-BXpCTHcW.js"
+      "version": "48d1fe00dba6e8e7",
+      "link": "/assets/LabCompatSection-3m9sReG5.js"
     },
     {
-      "version": "bcc504051fa8a9d2",
-      "link": "/assets/LabDraftSection-DncwbG-x.js"
+      "version": "c88fa31b66e96b19",
+      "link": "/assets/LabDraftSection-CW3Kkmm4.js"
     },
     {
-      "version": "44063adedc497012",
-      "link": "/assets/LabEdgeSection-ByeM6qNL.js"
+      "version": "fd5f526af7a6ccff",
+      "link": "/assets/LabEdgeSection-C--x-iFU.js"
     },
     {
-      "version": "ea7d3f5815238460",
-      "link": "/assets/LabExtractSection-1IlPg74Y.js"
+      "version": "c205975d3652e9e5",
+      "link": "/assets/LabExtractSection-BzcJbzW2.js"
     },
     {
-      "version": "7d93d9291f81f72e",
-      "link": "/assets/LabSection-DLV8fDwX.js"
+      "version": "ef974236c47b380a",
+      "link": "/assets/LabSection-DhdpNccw.js"
     },
     {
-      "version": "f1355a98dfdc8366",
-      "link": "/assets/LabTrackSection-B9qG-fVn.js"
+      "version": "051138eab2357bef",
+      "link": "/assets/LabTrackSection-hHwu8zHN.js"
     },
     {
-      "version": "74315fb5ea39da86",
-      "link": "/assets/LocationPanel-DTJMe80-.js"
+      "version": "36b44d7af357179b",
+      "link": "/assets/LocationPanel-DqG_F7wQ.js"
     },
     {
-      "version": "f7aa11bd8baabd0f",
-      "link": "/assets/maintenance-BI6qf5Ms.js"
+      "version": "330ff67aefabf04c",
+      "link": "/assets/maintenance-D7p5uj43.js"
     },
     {
-      "version": "1c666fb0467ff4dc",
-      "link": "/assets/merge-Dd_PME8k.js"
+      "version": "73a69bd5e218da05",
+      "link": "/assets/merge-C3LqNJq0.js"
     },
     {
-      "version": "098a499a29c4c5e6",
-      "link": "/assets/PanelHubSection-CjNB39aD.js"
+      "version": "7ff7c1bc3fcbc070",
+      "link": "/assets/PanelHubSection-I73C3xs4.js"
     },
     {
-      "version": "8bafc6a09c3037df",
-      "link": "/assets/PeopleSection-D6psy7eL.js"
+      "version": "b4a46f784e1532f3",
+      "link": "/assets/PeopleSection-C9nTzOOC.js"
     },
     {
-      "version": "14d5caaafa1fc225",
-      "link": "/assets/RemoteSection-DqGSnd1A.js"
+      "version": "fcb3532915bbf3ab",
+      "link": "/assets/RemoteSection-PMZtdYAs.js"
     },
     {
-      "version": "3821f87370ad97eb",
-      "link": "/assets/SecuritySection-DAS6Dh2f.js"
+      "version": "c9806dadc5827e86",
+      "link": "/assets/SecuritySection-D3L6zIKT.js"
     },
     {
-      "version": "a76b49f29a322c3c",
-      "link": "/assets/share-D-ftZh1v.js"
+      "version": "13a5704597dfe153",
+      "link": "/assets/share-B5e14nKM.js"
     },
     {
-      "version": "610efa12a14be3c2",
-      "link": "/assets/ShareSection-COEolPL3.js"
+      "version": "cacf07a3c6adeeb0",
+      "link": "/assets/ShareSection-DnH_MGmQ.js"
     },
     {
-      "version": "69a7a46e67e7a66e",
-      "link": "/assets/ShareWizard-DuzuMUHl.js"
+      "version": "9c20962685ea619c",
+      "link": "/assets/ShareWizard-Ddg4Z9i7.js"
     },
     {
-      "version": "98d936dfda816c68",
-      "link": "/assets/SyncSection-OfggWU4L.js"
+      "version": "1161bc5df96fd9e4",
+      "link": "/assets/SyncSection-CeqKR-c2.js"
     },
     {
       "version": "8be885f0a6a49903",
@@ -154,7 +154,7 @@
       "link": "/icon.svg"
     },
     {
-      "version": "a51bd38271c62fa4",
+      "version": "9ea3fc88a1db5cb1",
       "link": "/index.html"
     },
     {
