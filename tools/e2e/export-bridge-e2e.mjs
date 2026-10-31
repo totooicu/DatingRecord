@@ -8,9 +8,15 @@
 //      假壳拼回来的字节与原数据逐字节一致（sha256 相同）
 //   E5 有壳但写失败：不回退 <a download>（壳里那条路本来就没反应），错误冒到界面
 //   E6 附件下载 downloadFile 走同一条通道，文件名/MIME 一起交过去
+//   E7 壳太旧（会回话，但回的是「unknown action: file.capabilities」）：
+//      既不谎称「已开始下载」，也不静默——必须把「这版壳存不了」说出来
 //
 // 假壳用 addInitScript 装，和 nutstore-bridge-e2e 同一套做法：
 // 接 gv-bridge-request，把 file.capabilities / file.writePublic 记下来再回包。
+//
+// 反证（证明 E7 不是摆设）：把 save.ts 里 `if (c.answered) throw` 那三行删掉，
+// 旧壳这一路立刻退回 anchorDownload + 「已开始下载」，E7 的
+// 「错误说清是壳的问题」「没有退回 <a download>」「页面上不出现『已开始下载』」三条当场变红。
 //
 // 用法：node tools/e2e/export-bridge-e2e.mjs [dev-url]   默认 http://localhost:5174/
 // 必须 Vite dev 服务（要动态 import 源码模块直接调 saveBytes）。
@@ -36,8 +42,8 @@ const check = (label, cond, extra = '') => {
 };
 
 /** 假壳：接 file.capabilities / file.writePublic，把收到的分片按 uri 拼回字节 */
-function fakeShell({ failWrite = false, maxChunkBytes = 4 * 1024 * 1024 } = {}) {
-  const state = { caps: 0, writes: [], files: new Map() };
+function fakeShell({ failWrite = false, oldShell = false, maxChunkBytes = 4 * 1024 * 1024 } = {}) {
+  const state = { caps: 0, writes: [], answered: 0, files: new Map() };
   const send = (id, ok, result, error) => {
     window.postMessage({ type: 'gv-bridge-response', id, ok, result, error }, '*');
   };
@@ -45,6 +51,17 @@ function fakeShell({ failWrite = false, maxChunkBytes = 4 * 1024 * 1024 } = {}) 
     const m = e.data;
     if (!m || m.type !== 'gv-bridge-request') return;
     const params = m.params || {};
+    if (oldShell) {
+      // file.writePublic v2 之前的壳：ping 认，其它一律照真实 JsBridge 的回法
+      // 回一句「unknown action: …」——**它会回话**，这是它和「根本没有壳」唯一的区别。
+      state.answered += 1;
+      if (m.action === 'ping') {
+        send(m.id, true, { pong: true, engine: 'webview' });
+        return;
+      }
+      send(m.id, false, null, `unknown action: ${m.action}`);
+      return;
+    }
     if (m.action === 'file.capabilities') {
       state.caps += 1;
       send(m.id, true, { version: 2, binary: true, encodings: ['utf8', 'base64'], append: true, maxChunkBytes, downloads: 'MediaStore' });
@@ -205,6 +222,35 @@ async function page(withShell, opts = {}) {
   check('文件名原样带过去', w.name === '照片备份.zip', w.name);
   check('MIME 带过去了', w.mime === 'application/zip', w.mime);
   check('字节数对上（9 字节）', r.files[0] === 9, String(r.files[0]));
+  await ctx.close();
+}
+
+// ---------- E7 壳太旧（会回话，但不认识 file.capabilities）：不许谎称「已开始下载」 ----------
+{
+  console.log('\nE7 旧壳（回了「unknown action: file.capabilities」）：既不假装下载，也不静默');
+  const { ctx, p } = await page(true, { oldShell: true });
+  let downloads = 0;
+  p.on('download', () => (downloads += 1));
+  const err = await p.evaluate(async () => {
+    const { saveBytes } = await import('/src/core/io/save.ts');
+    try {
+      await saveBytes(new Uint8Array([1, 2, 3]), 'old.bin', 'application/octet-stream');
+      return null;
+    } catch (e) {
+      return String(e && e.message ? e.message : e);
+    }
+  });
+  await p.waitForTimeout(400);
+  const st = await p.evaluate(() => ({
+    answered: window.__fakeShell.answered,
+    writes: window.__fakeShell.writes.length,
+    lied: document.body.innerText.includes('已开始下载'),
+  }));
+  check('壳真的回了话（不是等超时）', st.answered >= 1, `answered=${st.answered}`);
+  check('没写成任何文件', st.writes === 0, `writes=${st.writes}`);
+  check('错误说清是壳的问题', /壳/.test(err ?? '') && /更新|v2/.test(err ?? ''), err ?? 'null');
+  check('没有退回 <a download>（旧壳里那条路是死的）', downloads === 0, `downloads=${downloads}`);
+  check('页面上不出现「已开始下载」', st.lied === false);
   await ctx.close();
 }
 

@@ -4,15 +4,20 @@
 // 没有任何人接（DownloadManager 也拿不到 blob:），点了就是「一点反应都没有」。
 // 用户在壳里导出备份、下载附件、保存分享包，全都撞在这上面。
 //
-// 桥那边对应 file.capabilities / file.writePublic（见壳仓库 ADAPTATION_GUIDE §4.2）：
+// 桥那边对应 file.capabilities / file.writePublic。main 线的说明在壳的
+// `jsbridge/FileBridge.java` 类注释与 `tools/file-write-test/`（协议与实现同一处），
+// 测试线的 docs/ADAPTATION_GUIDE.md §4.2 写的是同一套协议：
 //   · 能力只问一次：发 file.capabilities，有人回才算「支持二进制写」，
 //     没人回（浏览器）就退回 <a download>。不回环境猜、不读 UA。
 //   · 二进制按 2MB 分片：一次 postMessage 塞几十 MB 的 base64 会卡死页面，
 //     第一片带 name/mime 建文件，后续片带 uri + append 续写。
 //   · 有壳但写失败时**不**回退 <a download>：壳里那条路本来就没反应，
 //     回退等于二次静默失败，宁可把错误抛给调用方。
+//   · 壳回了「不认识这个 action」也不算浏览器：那是**有壳、壳太旧**。
+//     以前这一种被当成「没有壳」，退回 <a download> 还提示「已开始下载」，
+//     于是用户在壳里看到提示、手机「下载」里却没有文件（2026-10-31 的现场）。
 
-import { bytesToBase64, invoke } from '../compat/bridge';
+import { bytesToBase64, invoke, isBridgeTimeout } from '../compat/bridge';
 import { showToast } from '../../ui/toast';
 
 /** 单片原始字节数。base64 后约 2.7MB 字符串，手机上一次 postMessage 还算轻快 */
@@ -33,6 +38,8 @@ export interface SaveResult {
 interface Caps {
   binary: boolean;
   maxChunk: number;
+  /** 探测到底有没有收到回包：收到才说明「这是壳」，只是这版壳还不认识 file.capabilities */
+  answered: boolean;
 }
 
 let capsPromise: Promise<Caps> | null = null;
@@ -44,8 +51,14 @@ function caps(): Promise<Caps> {
       .then((r) => ({
         binary: r.binary === true,
         maxChunk: Number(r.maxChunkBytes) > 0 ? Number(r.maxChunkBytes) : CHUNK,
+        answered: true,
       }))
-      .catch(() => ({ binary: false, maxChunk: CHUNK }));
+      .catch((e) => ({
+        binary: false,
+        maxChunk: CHUNK,
+        // 只有「到点没人回」才是浏览器；壳回了「unknown action」是另一回事
+        answered: !isBridgeTimeout(e),
+      }));
   }
   return capsPromise;
 }
@@ -104,6 +117,11 @@ async function writeThroughShell(bytes: Uint8Array, name: string, mime: string, 
 export async function saveBytes(bytes: Uint8Array, name: string, mime = ''): Promise<SaveResult> {
   const c = await caps();
   if (!c.binary) {
+    if (c.answered) {
+      // 壳回了话却说不认识 file.capabilities = 有壳、壳太旧。绝不退回 <a download>：
+      // 壳里那条路没有下载监听，退下去就是「提示已开始下载、手机里啥也没有」。
+      throw new Error(`这版壳存不了文件到手机「下载」（缺 file.writePublic v2），${name} 没有保存。请更新壳到带公共目录写入的版本。`);
+    }
     anchorDownload(bytes, name, mime);
     showToast(`已开始下载 ${name}`);
     return { name, via: 'browser' };

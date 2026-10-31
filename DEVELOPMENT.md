@@ -1222,7 +1222,8 @@ AI 服务商能连，是因为它们**主动返回** `Access-Control-Allow-Origi
    错误串才有意义。分片只有 64 KB，离上限很远。
 5. **3xx 不自动跟随**：`Location` 原样回给页面，要不要跟由业务判断。
 
-桥契约（参数名、上限、`ok:false` 的含义）写在**壳仓库** `docs/ADAPTATION_GUIDE.md` §4.5；
+桥契约（参数名、上限、`ok:false` 的含义）写在**壳仓库** main 线 `docs/NET_BRIDGE.md`
+（坚果云测试线的 `docs/ADAPTATION_GUIDE.md` §4.5 是同一份契约）；
 `net.*` 是纯新增命名空间，`proto` 保持 1，老壳收不到就是自动退回浏览器路径。
 诊断入口：`system.syncChannel`（AI / CLI / 页面三处同一条结论），设置页顶部也常驻一行「传输通道」。
 
@@ -1404,12 +1405,16 @@ dating-record-YYYYMMDDHHmm.drp.zip/
 | 环境 | 路径 |
 |---|---|
 | 浏览器 | `<a download>` + objectURL（文件名靠 `download` 属性带下去） |
-| 壳（WebView） | 先 `file.capabilities`（1.2s 超时，正负都缓存），有人回就按 2MB 分片 `file.writePublic`（`encoding:'base64'` + 首片建文件、后续 `uri`+`append`），落到手机「下载」 |
+| 壳（WebView，有 `file.writePublic` v2） | 先 `file.capabilities`（1.2s 超时，正负都缓存），有人回就按 2MB 分片 `file.writePublic`（`encoding:'base64'` + 首片建文件、后续 `uri`+`append`），落到手机「下载」 |
+| 壳太旧（v2 之前，回的是 `unknown action: file.capabilities`） | **报错**：「这版壳存不了文件到手机『下载』，请更新壳」。这一种也会回话，靠 `isBridgeTimeout()` 与「没人回=浏览器」分开 |
 
 壳里 `<a download>` 是死路：`blob:` 没有任何人接，`DownloadManager` 也拿不到，
 用户看到的现象就是「点了导出，一点反应都没有」。所以有壳时**不许**回退到 `<a download>`
-（那是二次静默失败），写盘错误原样抛给页面显示。回归：`tools/e2e/export-bridge-e2e.mjs`
-（E1–E6，含 5MB 分片逐字节比对）。
+（那是二次静默失败），写盘错误原样抛给页面显示。
+2026-10-31 补上第三种：旧壳也会回话，以前被当成「没有壳」，于是手机上弹出
+「已开始下载 xxx」而「下载」目录里什么都没有——这条谎现在换成明说「壳太旧」。
+回归：`tools/e2e/export-bridge-e2e.mjs`（E1–E7，含 5MB 分片逐字节比对；
+E7 的反证写在文件头：删掉 `save.ts` 里 `if (c.answered) throw` 三行，E7 红三条）。
 
 ### F-I02 `.drp` 导入 — P0
 

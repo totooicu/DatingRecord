@@ -14,6 +14,23 @@
 /** 一次原生调用的结果：壳返回什么就是什么，不做结构假设 */
 export type BridgeResult = Record<string, unknown>;
 
+/** invoke 失败时抛出的错误：超时的哪一种额外带标记，调用方据此分「没人回」与「壳回了但拒绝」 */
+export interface BridgeError extends Error {
+  /** true = 到了时间没人回包（多半是根本没有壳） */
+  bridgeTimeout?: boolean;
+}
+
+/**
+ * 这条错误是不是「没人回」。
+ *
+ * 别去匹配错误文案里的「超时」两个字——那句话由本文件写，改了文案调用方就悄悄失效。
+ * save.ts 靠它分岔：没人回 = 浏览器，可以退回 &lt;a download&gt;；
+ * 有人回了却说不认识这个 action = 有壳、壳太旧，那条退路在壳里同样是死的。
+ */
+export function isBridgeTimeout(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as BridgeError).bridgeTimeout === true;
+}
+
 interface PendingCall {
   resolve: (v: BridgeResult) => void;
   reject: (e: Error) => void;
@@ -66,7 +83,9 @@ export function invoke(action: string, params: Record<string, unknown> = {}, tim
     const id = `r${++seq}`;
     const timer = setTimeout(() => {
       pending.delete(id);
-      reject(new Error(`超时：${Math.round(timeoutMs / 1000)} 秒没有收到壳的回应`));
+      const err: BridgeError = new Error(`超时：${Math.round(timeoutMs / 1000)} 秒没有收到壳的回应`);
+      err.bridgeTimeout = true;
+      reject(err);
     }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     window.postMessage({ type: 'gv-bridge-request', id, action, params }, '*');
