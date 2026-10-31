@@ -306,7 +306,9 @@ check('历史点直径 = 线宽一半 2px', info.hist === '2', `hist=${info.hist
 check('最新点排在最后一个', info.last === '1', `last=${info.last}`);
 check('连线按速度取主题色的深浅', info.colors.length >= 1 && info.colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)), info.colors.join(' '));
 check('速度色不等于旧的黄色线', info.colors.every((c) => c.toLowerCase() !== '#ffc107'), info.colors.join(' '));
-await p.getByRole('button', { name: '定位到我的位置' }).click();
+// 这颗键原来单独占一行，叫「定位到我的位置」；为了把地图压进一屏，它并进了切换条右侧，
+// 文案缩短成「我的位置」（同一行的「去记录」删掉了——面板本来就有「记录」页签）。
+await p.getByRole('button', { name: '我的位置' }).click();
 await p.waitForTimeout(1000);
 check('当前位置是蓝点', (await currentPins()).filter((c) => c === BLUE).length === 1);
 await tab('记录').click();

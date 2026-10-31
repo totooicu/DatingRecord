@@ -165,7 +165,9 @@ await p.waitForTimeout(600);
 check('导入后出现回放卡', (await card().count()) === 1);
 const latestSpeedText = await p.locator('.loc-current-speed').innerText();
 const maxSpeedText = await p.locator('.loc-max-speed').innerText();
-check('显示最新段速度与轨迹最大速度', /当前速度：.*km\/h/.test(latestSpeedText) && /最高速度（红色）：.*km\/h/.test(maxSpeedText));
+// 「当前速度」原来是图例里的一项（图例折三行、把地图挤出屏幕），现在挪到地图下面的切换条右侧，
+// 文案缩成「当前 x km/h」；它还是活值，跟着回放走（见后面「回放不改变…」那条）。
+check('显示最新段速度与轨迹最大速度', /^当前 .*km\/h/.test(latestSpeedText) && /最高速度（红色）：.*km\/h/.test(maxSpeedText));
 check('图例从蓝到红', await p.locator('.loc-speedbar').evaluate(el => {
   const bg = el.style.background;
   return bg.indexOf('37, 99, 235') >= 0 && bg.indexOf('239, 68, 68') > bg.indexOf('37, 99, 235');
