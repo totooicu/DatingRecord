@@ -3,7 +3,7 @@ import { createCollection, getTree, type TreeNode } from '../../core/repo/collec
 import { useVersion, bump } from '../../store';
 import { CollectionIconView } from './CollectionIcon';
 import { HeadStatus } from '../runtime/HeadStatus';
-import { PageHead } from '../common';
+import { PageHead, Empty } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
@@ -45,7 +45,7 @@ export function CollectionTree({
   const rows = useMemo(() => (tree ? flatten(tree, collapsed) : []), [tree, collapsed]);
   const paged = usePaged(rows, usePageSize());
 
-  if (!tree) return <div className="muted pad">暂无事件集</div>;
+  if (!tree) return <Empty compact text="暂无事件集" />;
 
   const submit = () => {
     const n = name.trim();

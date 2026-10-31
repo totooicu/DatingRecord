@@ -8,6 +8,7 @@ import { applyOffset, type LocationDoc } from '../../core/location/format';
 import { speedColors, speedLines } from '../panel/locationPaint';
 import { Chev } from '../common/Paginator';
 import { usePageSize } from '../prefs';
+import { Empty } from '../common';
 
 export function LocationPreview({ file }: { file: StoredFile }) {
   const [doc, setDoc] = useState<LocationDoc | null>(null);
@@ -104,6 +105,6 @@ function LocationContents({ doc }: { doc: LocationDoc }) {
         <button className="pager-btn" disabled={pageStart + size >= points.length} aria-label="下一页点位" title="下一页点位"
           onClick={() => setSelected(Math.min(points.length - 1, pageStart + size))}><Chev dir="r" /></button>
       </div>
-    </> : <p className="muted">这个定位文件还没有点。</p>}
+    </> : <Empty compact text="这个定位文件还没有点。" />}
   </div>;
 }

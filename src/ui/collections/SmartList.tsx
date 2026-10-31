@@ -9,6 +9,7 @@ import { usePageSize } from '../prefs';
 import type { DREvent, SmartRule } from '../../core/types';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
+import { Empty } from '../common';
 
 export function SmartList({
   events,
@@ -42,7 +43,7 @@ export function SmartList({
       </div>
       <p className="muted small rule-summary">{describeRule(rule)}</p>
       {events.length === 0 ? (
-        <p className="muted">还没有事件满足当前规则。</p>
+        <Empty compact text="还没有事件满足当前规则。" />
       ) : (
         <ul className="member-list">
           {paged.pageItems.map((ev) => (

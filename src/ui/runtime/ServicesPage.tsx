@@ -1,7 +1,7 @@
 // 服务管理页：列出所有后台服务，显示运行状态，可开关自启动、点开服务页。
 // 目前支持自启动的服务：背景音乐、自动打点、坚果云自动同步、跨设备操作；注册表是通用的，以后加服务零成本。
 
-import { PageHead } from '../common';
+import { PageHead, Empty } from '../common';
 import { useServices, setServiceAutostart, type ServiceItem } from '../../core/runtime/store';
 import { navigate } from '../../core/runtime/nav';
 import { setAutostart as setMusicAutostart } from '../../core/runtime/music';
@@ -77,7 +77,7 @@ export function ServicesPage({ onBack }: { onBack: () => void }) {
     <div className="pane pane-solo">
       <PageHead title="服务" onBack={onBack} />
       <div className="svc-list">
-        {services.length === 0 && <p className="muted">还没有后台服务。</p>}
+        {services.length === 0 && <Empty compact text="还没有后台服务。" />}
         {services.map((s) => (
           <ServiceRow key={s.id} s={s} />
         ))}

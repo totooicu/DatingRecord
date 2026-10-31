@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { formatCompact } from '../../core/time';
 import { RELATION_LABELS, RELATION_TYPES } from '../../core/repo/events';
 import type { RelatedEvent } from '../../core/types';
-import { Field } from '../common';
+import { Field, Empty } from '../common';
 
 export function RelatedField({
   selfId,
@@ -102,7 +102,7 @@ export function RelatedField({
                   <span className="muted">{c.startTs ? formatCompact(c.startTs, false) : '时间未知'}</span>
                 </button>
               ))}
-              {results.length === 0 && <span className="muted rel-empty">没有可关联的事件</span>}
+              {results.length === 0 && <Empty inline text="没有可关联的事件" />}
             </div>
           </div>
         ) : (

@@ -18,7 +18,7 @@ import { getPlaylistFile, listPlaylists } from '../../core/music/playlistFile';
 import { formatTime } from '../../core/time';
 import { bump, useVersion } from '../../store';
 import { useBlobUrl } from '../preview/useBlobUrl';
-import { PageHead } from '../common';
+import { PageHead, Empty } from '../common';
 import { pushBackLayer } from '../back';
 import type { Memoir, MemoirPage } from '../../core/types';
 import { AiMemoirButton } from './AiMemoir';
@@ -296,7 +296,7 @@ export function MemoirEditor({
           ))}
         </ol>
 
-        {draft.pages.length === 0 && <p className="muted">这本回忆录还没有页。用「扫描新增事件」把范围里的事件加进来。</p>}
+        {draft.pages.length === 0 && <Empty compact text="这本回忆录还没有页。用「扫描新增事件」把范围里的事件加进来。" />}
       </section>
     </>
   );

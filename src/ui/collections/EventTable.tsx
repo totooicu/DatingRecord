@@ -11,6 +11,7 @@ import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
+import { Empty } from '../common';
 
 type SortKey = 'time' | 'title' | 'kind' | 'rating' | 'cost';
 
@@ -86,7 +87,7 @@ export function EventTable({
         <EventViewToggle view={view} onChange={onView} />
       </div>
       {rows.length === 0 ? (
-        <p className="muted">这个事件集还没有事件。</p>
+        <Empty compact text="这个事件集还没有事件。" />
       ) : (
         <>
           <p className="muted small ev-table-hint">只读 · 点标题查看；手机可左右滑动查看全部列</p>

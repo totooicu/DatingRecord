@@ -18,7 +18,7 @@ import {
   type ScaleTier,
 } from '../../core/seed/bulk';
 import { TEXT_SCALE_LABEL, type TextScale } from '../../core/seed/corpus';
-import { ConfirmButton } from '../common';
+import { ConfirmButton, Segmented } from '../common';
 import { Section } from './Section';
 import { bump } from '../../store';
 
@@ -104,19 +104,13 @@ export function SampleSection() {
         极端档位还会造出无空格的超长文件名，顺带试界面会不会被顶宽。
       </p>
 
-      <div className="theme-mode sample-tier">
-        {SCALE_TIERS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            className={t === tier ? 'theme-mode-btn on' : 'theme-mode-btn'}
-            disabled={busy}
-            onClick={() => chooseTier(t)}
-          >
-            {fmt(t)}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        className="sample-tier"
+        value={String(tier)}
+        onChange={(v) => chooseTier(Number(v) as ScaleTier)}
+        disabled={busy}
+        options={SCALE_TIERS.map((t) => ({ value: String(t), label: fmt(t) }))}
+      />
 
       <div className="sample-estimate muted small">
         预估写入约 <strong>{fmt(estimateRows(plan))}</strong> 行（人物 {fmt(plan.persons)} · 事件{' '}

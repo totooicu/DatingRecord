@@ -142,20 +142,81 @@ export function FilePickInput({
   );
 }
 
+/**
+ * 空状态。全站只有这一个——以前各页自己写 <p className="muted">还没有…</p>，
+ * 结果同一个「列表空了」在十几个页面有十几种留白和字号。
+ *
+ * 三种形态覆盖所有场合：
+ *   默认   —— 整块区域空了，居中大留白；
+ *   compact—— 卡片里连续出现多个空状态，留白收小；
+ *   inline —— 行内提示（输入框旁、列表项里），不居中也不占块。
+ * 另加 dashed：空态本身要占一块地方、暗示「这里可以放东西」时套虚线框。
+ */
 export function Empty({
   text,
   action,
   compact,
+  inline,
+  dashed,
 }: {
   text: string;
   action?: ReactNode;
   /** 卡片里连续出现多个空状态时用更小的留白 */
   compact?: boolean;
+  /** 行内：不换行、不居中，用在输入框旁或列表项里 */
+  inline?: boolean;
+  /** 虚线框：空态本身要占一块地方时用（密钥列表等） */
+  dashed?: boolean;
 }) {
+  if (inline) return <span className="muted">{text}</span>;
+  const cls = ['empty', compact ? 'empty-compact' : '', dashed ? 'empty-dashed' : '']
+    .filter(Boolean)
+    .join(' ');
   return (
-    <div className={compact ? 'empty empty-compact' : 'empty'}>
+    <div className={cls}>
       <p>{text}</p>
       {action}
+    </div>
+  );
+}
+
+/**
+ * 分段切换（浅色/深色、陪伴/专注、量级档位这类二选一/多选一）。
+ *
+ * 以前每个页面自己手写一遍 `<div className="theme-mode">` 加一排
+ * `className={x === y ? 'theme-mode-btn on' : 'theme-mode-btn'}`，
+ * 于是同一套控件在不同页面上的 aria-pressed、on 类名写法各差一点。
+ * 现在只有这一处实现，选中态与无障碍属性不会再漏写。
+ */
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  className,
+  disabled,
+}: {
+  value: T;
+  options: { value: T; label: ReactNode }[];
+  onChange: (v: T) => void;
+  /** 追加的类名（如压测量级条要再加一个 sample-tier） */
+  className?: string;
+  /** 整条禁用：压测数据正在造的时候不能切档位 */
+  disabled?: boolean;
+}) {
+  return (
+    <div className={className ? `theme-mode ${className}` : 'theme-mode'}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          className={o.value === value ? 'theme-mode-btn on' : 'theme-mode-btn'}
+          aria-pressed={o.value === value}
+          disabled={disabled}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

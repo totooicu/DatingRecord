@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Section } from './Section';
 import { ColorPicker } from '../color/ColorPicker';
+import { Segmented } from '../common';
 import {
   ACCENT_PRESETS,
   BASE_TONES,
@@ -47,51 +48,28 @@ export function AppearanceSection() {
   return (
     <div className="theme-page">
       <Section title="界面模式" desc="陪伴模式保留每一步的小字说明；专注模式只留控件，去掉解释性文字，界面更清爽。">
-        <div className="theme-mode">
-          <button
-            type="button"
-            className={guide === 'companion' ? 'theme-mode-btn on' : 'theme-mode-btn'}
-            aria-pressed={guide === 'companion'}
-            onClick={() => {
-              setGuide('companion');
-              setGuideState('companion');
-            }}
-          >
-            陪伴模式
-          </button>
-          <button
-            type="button"
-            className={guide === 'focus' ? 'theme-mode-btn on' : 'theme-mode-btn'}
-            aria-pressed={guide === 'focus'}
-            onClick={() => {
-              setGuide('focus');
-              setGuideState('focus');
-            }}
-          >
-            专注模式
-          </button>
-        </div>
+        <Segmented
+          value={guide}
+          onChange={(v) => {
+            setGuide(v);
+            setGuideState(v);
+          }}
+          options={[
+            { value: 'companion', label: '陪伴模式' },
+            { value: 'focus', label: '专注模式' },
+          ]}
+        />
       </Section>
 
       <Section title="外观模式" desc="深色模式的底色由主题色派生：选了湖蓝，夜景就偏蓝；选了朱砂，夜景就偏红。">
-        <div className="theme-mode">
-          <button
-            type="button"
-            className={appearance.mode === 'light' ? 'theme-mode-btn on' : 'theme-mode-btn'}
-            aria-pressed={appearance.mode === 'light'}
-            onClick={() => commit({ mode: 'light' })}
-          >
-            浅色
-          </button>
-          <button
-            type="button"
-            className={appearance.mode === 'dark' ? 'theme-mode-btn on' : 'theme-mode-btn'}
-            aria-pressed={appearance.mode === 'dark'}
-            onClick={() => commit({ mode: 'dark' })}
-          >
-            深色
-          </button>
-        </div>
+        <Segmented
+          value={appearance.mode}
+          onChange={(m) => commit({ mode: m })}
+          options={[
+            { value: 'light', label: '浅色' },
+            { value: 'dark', label: '深色' },
+          ]}
+        />
       </Section>
 
       <Section

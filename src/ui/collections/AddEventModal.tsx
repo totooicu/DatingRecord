@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { addMember, listMembers } from '../../core/repo/collections';
 import { listEvents } from '../../core/repo/events';
-import { Field, Modal } from '../common';
+import { Field, Modal, Empty } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
@@ -50,7 +50,7 @@ export function AddEventModal({ collectionId, onClose }: { collectionId: string;
             </button>
           </li>
         ))}
-        {candidates.length === 0 && <li className="muted">没有可添加的事件</li>}
+        {candidates.length === 0 && <li><Empty inline text="没有可添加的事件" /></li>}
       </ul>
       <Paginator paged={paged} />
     </Modal>

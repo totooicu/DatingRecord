@@ -7,7 +7,7 @@ import {
   saveAsTemplate,
   type AttrTemplate,
 } from '../../core/repo/persons';
-import { Modal } from '../common';
+import { Modal, Empty } from '../common';
 import { bump } from '../../store';
 
 /** 套模板弹窗：列出所有模板，点「套用」即合并 */
@@ -30,7 +30,7 @@ export function ApplyTemplateModal({ personId, onClose }: { personId: string; on
     >
       <p className="muted small">合并语义：只补缺失的字段，已经填了值的一个不动。</p>
       {done && <div className="alert alert-ok">已套用「{done}」</div>}
-      {templates.length === 0 && <p className="muted">还没有模板，去「设置 → 属性模板」新建一个。</p>}
+      {templates.length === 0 && <Empty compact text="还没有模板，去「设置 → 属性模板」新建一个。" />}
       <ul className="member-list">
         {templates.map((t) => (
           <li key={t.id}>
@@ -119,7 +119,7 @@ export function SaveTemplateModal({
           ))}
         </div>
       ) : (
-        <p className="muted">这个人物还没有填任何字段，存出来会是个空模板。</p>
+        <Empty compact text="这个人物还没有填任何字段，存出来会是个空模板。" />
       )}
     </Modal>
   );

@@ -28,6 +28,7 @@ import {
   type AiProvider,
   type RemoteModel,
 } from '../../core/ai';
+import { Empty } from '../common';
 
 interface Draft {
   id: string | null;
@@ -115,7 +116,7 @@ export function AiSection() {
         {msg && <p className="sync-ok">{msg}</p>}
 
         {models.length === 0 ? (
-          <p className="muted small">还没有模型。点「添加模型」，选服务商、填模型名和一个好记的别名。</p>
+          <Empty compact text="还没有模型。点「添加模型」，选服务商、填模型名和一个好记的别名。" />
         ) : (
           <ul className="ai-list">
             {models.map((m) => (
@@ -564,7 +565,7 @@ function KeySection({ onSaved }: { onSaved: () => void }) {
   return (
     <Section title="密钥" desc="按服务商各存一份，多条别名共用。只在本机，不进备份。">
       <div className="key-cards">
-        {!hasAny && <div className="key-empty muted small">还没有任何密钥。</div>}
+        {!hasAny && <Empty dashed text="还没有任何密钥。" />}
 
         {rows.map((r) => (
           <div className="key-card" key={r.id}>

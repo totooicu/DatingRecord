@@ -10,6 +10,7 @@ import { EVENT_KINDS, RELATION_LABELS } from '../../core/repo/events';
 import { formatTime } from '../../core/time';
 import { MarkdownView } from '../markdown';
 import type { Collection, DREvent } from '../../core/types';
+import { Empty } from '../common';
 
 export function EventView({
   event,
@@ -145,7 +146,7 @@ export function EventView({
           (event.content.trim() ? (
             <MarkdownView source={event.content} />
           ) : (
-            <p className="muted">还没有正文。</p>
+            <Empty compact text="还没有正文。" />
           ))}
       </div>
     </div>

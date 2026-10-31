@@ -14,6 +14,7 @@ import { usePageSize } from '../prefs';
 import type { MemberItem } from '../../core/repo/collections';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
+import { Empty } from '../common';
 
 export function MemberList({
   collectionId,
@@ -65,7 +66,7 @@ export function MemberList({
         </button>
       </div>
       {eventRows.length === 0 && (
-        <p className="muted">还没有事件。可以新建，也可以从已有事件里挑。</p>
+        <Empty compact text="还没有事件。可以新建，也可以从已有事件里挑。" />
       )}
       <ul className="member-list">
         {paged.pageItems.map(({ member: m, fullIndex }) => {
@@ -157,7 +158,7 @@ export function ChildList({
         <h4 className="card-title">子事件集（{rows.length}）</h4>
       </div>
       {rows.length === 0 ? (
-        <p className="muted">暂无子事件集。事件集可无限嵌套。</p>
+        <Empty compact text="暂无子事件集。事件集可无限嵌套。" />
       ) : (
         <ul className="plain-list">
           {rows.map((c) => (

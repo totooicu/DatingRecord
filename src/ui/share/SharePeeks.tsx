@@ -15,7 +15,7 @@ import { listEvents } from '../../core/repo/events';
 import { listPersons } from '../../core/repo/persons';
 import { formatTime } from '../../core/time';
 import type { ChatMessage, Collection, DREvent } from '../../core/types';
-import { Modal } from '../common';
+import { Modal, Empty } from '../common';
 import { EventView } from '../event/EventView';
 
 /** 事件集详情里的一行事件：off = 被取消勾选，不会分享 */
@@ -186,7 +186,7 @@ export function ColPeekModal({
 
         <div className="share-colpeek-events-title">事件（点开预览）</div>
         {data.events.length === 0 ? (
-          <p className="muted small">这个事件集下面还没有事件。</p>
+          <Empty compact text="这个事件集下面还没有事件。" />
         ) : (
           <div className="share-events">
             {data.events.map(({ event, off }) => (

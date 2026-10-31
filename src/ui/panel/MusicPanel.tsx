@@ -43,7 +43,7 @@ import { FilesPanel } from '../files';
 import { LoopIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from './MusicIcons';
 import { CollisionModal } from '../files/CollisionModal';
 import { showToast as toast } from '../toast';
-import { ConfirmButton, Field, FilePickInput, Modal } from '../common';
+import { ConfirmButton, Field, FilePickInput, Modal, Empty } from '../common';
 import { bump, useVersion } from '../../store';
 import type { PreviewKind } from '../preview';
 
@@ -339,7 +339,7 @@ export function MusicPanel() {
       </div>
 
       <ul className="music-list">
-        {m.tracks.length === 0 && <li className="muted small">还没有音频，从本地或文件库添加。</li>}
+        {m.tracks.length === 0 && <li><Empty inline text="还没有音频，从本地或文件库添加。" /></li>}
         {m.tracks.map((t, i) => (
           <li key={t.id} className={`music-row${m.current?.id === t.id ? ' on' : ''}`}>
             <span className="music-row-order">

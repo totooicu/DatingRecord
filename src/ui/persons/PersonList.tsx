@@ -10,7 +10,7 @@ import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
 import { Avatar } from './Avatar';
 import { HeadStatus } from '../runtime/HeadStatus';
-import { PageHead, VersionStrip } from '../common';
+import { PageHead, VersionStrip, Empty } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
 import { GroupChips, GroupPicker } from './GroupPicker';
@@ -205,7 +205,7 @@ export function PersonList({
         active={groupFilter}
         onPick={setGroupFilter}
       />
-      {rows.length === 0 && <div className="muted pad">暂无人物</div>}
+      {rows.length === 0 && <Empty compact text="暂无人物" />}
       {paged.pageItems.map((row, i) =>
         row.kind === 'head' ? (
           <div key={`h:${row.name}:${i}`} className="group-head">

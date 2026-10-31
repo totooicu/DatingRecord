@@ -1,6 +1,6 @@
 // 事件表单字段网格
 import { EVENT_KINDS } from '../../core/repo/events';
-import { Field, TagInput } from '../common';
+import { Field, TagInput, Empty } from '../common';
 import { MarkdownEditor } from '../markdown';
 import type { Collection, RelatedEvent } from '../../core/types';
 import type { Precision, TimeKind } from '../../core/time';
@@ -168,7 +168,7 @@ export function EventFields({
               {p.displayName}
             </button>
           ))}
-          {persons.length === 0 && <span className="muted">还没有人物，先去「人物」页创建</span>}
+          {persons.length === 0 && <Empty inline text="还没有人物，先去「人物」页创建" />}
         </div>
       </Field>
       <Field label="标签">

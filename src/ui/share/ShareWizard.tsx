@@ -35,7 +35,7 @@ import {
 } from '../../core/types';
 import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
 import { formatAttrValue } from '../attr';
-import { Modal } from '../common';
+import { Modal, Empty } from '../common';
 import { EventView } from '../event/EventView';
 import { Avatar } from '../persons/Avatar';
 import { showToast } from '../toast';
@@ -542,7 +542,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
               </span>
             </div>
             {treeRows.length === 0 ? (
-              <p className="muted">还没有事件集。</p>
+              <Empty compact text="还没有事件集。" />
             ) : (
               <div className="share-pick-list">
                 {treeRows.map((row) => {
@@ -701,7 +701,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
             )}
 
             {involved.length === 0 && extras.length === 0 && (
-              <p className="muted">库里还没有人物。</p>
+              <Empty compact text="库里还没有人物。" />
             )}
           </>
         )}

@@ -349,3 +349,11 @@
   max-width: 130px;
   font-size: 12px;
 }
+
+/* 虚线框空态：空的地方要占一块、暗示「这里可以放东西」（密钥列表等）。
+   以前写死在 ai.css 的 .key-empty 里，现在收进 Empty 的 dashed 形态，全站一处定义。 */
+.empty-dashed {
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}

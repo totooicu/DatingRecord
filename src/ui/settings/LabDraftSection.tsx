@@ -19,7 +19,7 @@ import {
 } from '../../core/drafts';
 import { EventForm } from '../event';
 import { ShareWizard } from '../share/ShareWizard';
-import { ConfirmButton } from '../common';
+import { ConfirmButton, Empty } from '../common';
 import { Section, fmtMeta } from './Section';
 import { LabHead } from './LabEdgeSection';
 import type { SettingsKey } from './sections';
@@ -86,7 +86,7 @@ export function LabDraftSection({ onPick }: { onPick: (k: SettingsKey) => void }
         </div>
 
         {list.length === 0 ? (
-          <p className="muted small">还没有草稿。关掉开关后不会再记录新的。</p>
+          <Empty compact text="还没有草稿。关掉开关后不会再记录新的。" />
         ) : (
           <div className="draft-list">
             {list.map((d) => (

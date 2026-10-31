@@ -11,7 +11,7 @@ import { markdownToText } from '../../core/markdown';
 import { formatTime } from '../../core/time';
 import { useVersion } from '../../store';
 import { openEvent } from '../openEvent';
-import { Modal, PageHead } from '../common';
+import { Modal, PageHead, Empty } from '../common';
 import { MusicPanel } from '../panel/MusicPanel';
 import { useBlobUrl } from '../preview/useBlobUrl';
 import { hides } from '../../privacy';
@@ -214,7 +214,7 @@ export function MemoirReader({
           })}
         </div>
 
-        {pages.length === 0 && <p className="muted">这本回忆录还没有页。</p>}
+        {pages.length === 0 && <Empty compact text="这本回忆录还没有页。" />}
       </section>
 
       {playerOpen && (

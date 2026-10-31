@@ -68,7 +68,7 @@ import { openPerson } from '../openPerson';
 import { openEvent } from '../openEvent';
 import { openCollection } from '../openCollection';
 import { PencilIcon } from '../files/rowIcons';
-import { FilePickInput, Modal } from '../common';
+import { FilePickInput, Modal, Empty } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
@@ -1043,7 +1043,7 @@ export function LabAiSection() {
               </span>
             </div>
             {sessions.length === 0 ? (
-              <p className="muted small aichat-history-empty">还没有历史会话。在「聊天」里说点什么，会自动存下来。</p>
+              <Empty compact text="还没有历史会话。在「聊天」里说点什么，会自动存下来。" />
             ) : (
               <ul className="aichat-session-list">
                 {pagedSessions.pageItems.map((s) => (
@@ -1124,7 +1124,7 @@ export function LabAiSection() {
               <span className="muted small">AI / CLI 动手前会自动记录：做了什么、做成了什么都在这里，点开能看具体结果。</span>
             </div>
             {snaps.length === 0 ? (
-              <p className="muted small aichat-history-empty">还没有成果。</p>
+              <Empty compact text="还没有成果。" />
             ) : (
               <ul className="aichat-snap-list">
                 {pagedSnaps.pageItems.map((s) => (

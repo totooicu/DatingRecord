@@ -1,6 +1,6 @@
 // 任务管理页：列出活动与最近的任务，显示状态与时间，点开跳来源页。
 
-import { PageHead } from '../common';
+import { PageHead, Empty } from '../common';
 import { markTaskRead, removeTask, useTasks, type TaskItem } from '../../core/runtime/store';
 import { navigate } from '../../core/runtime/nav';
 
@@ -56,7 +56,7 @@ export function TasksPage({ onBack }: { onBack: () => void }) {
     <div className="pane pane-solo">
       <PageHead title="任务" onBack={onBack} />
       <div className="task-list">
-        {tasks.length === 0 && <p className="muted">还没有任务。AI 回复、后台工作会显示在这里。</p>}
+        {tasks.length === 0 && <Empty compact text="还没有任务。AI 回复、后台工作会显示在这里。" />}
         {sorted.map((t) => (
           <TaskRow key={t.id} t={t} />
         ))}

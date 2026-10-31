@@ -28,7 +28,7 @@ import { listEvents } from '../../core/repo/events';
 import { bump, useVersion } from '../../store';
 import { MarkdownEditor, MarkdownView } from '../markdown';
 import { Avatar } from '../persons/Avatar';
-import { Modal } from '../common';
+import { Modal, Empty } from '../common';
 import type { ChatMessage, DREvent, Person } from '../../core/types';
 
 /** 时间输入框（datetime-local）用的本地时间字符串 */
@@ -612,7 +612,7 @@ function AvatarMenu({
                 <span>{p.displayName}</span>
               </button>
             ))}
-            {persons.length === 0 && <p className="muted">还没有人物，用「新建人物」加一个</p>}
+            {persons.length === 0 && <Empty compact text="还没有人物，用「新建人物」加一个" />}
           </div>
         </Modal>
       )}

@@ -4,7 +4,7 @@ import { fileRefSyntax, type StoredFile } from '../../core/repo/files';
 import { uploadFileQuiet } from '../../core/files';
 import { getSmallLimit } from '../filePrefs';
 import { bump } from '../../store';
-import { FilePickInput, Modal } from '../common';
+import { FilePickInput, Modal, Empty } from '../common';
 import { FilesSection } from '../files';
 import { MarkdownView } from './MarkdownView';
 import { MarkdownToolbar } from './MarkdownToolbar';
@@ -177,7 +177,7 @@ export function MarkdownEditor({
             />
           </div>
           <div className="md-full-preview md-preview">
-            {value.trim() ? <MarkdownView source={value} /> : <span className="muted">还没有内容</span>}
+            {value.trim() ? <MarkdownView source={value} /> : <Empty inline text="还没有内容" />}
           </div>
         </div>
       ) : mode === 'edit' ? (
@@ -204,7 +204,7 @@ export function MarkdownEditor({
           <MarkdownView source={value} />
         </div>
       ) : (
-        <div className="md-preview muted">还没有内容</div>
+        <div className="md-preview"><Empty compact text="还没有内容" /></div>
       )}
 
       <FilePickInput

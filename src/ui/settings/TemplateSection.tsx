@@ -8,7 +8,7 @@ import {
   listTemplates,
   renameTemplate,
 } from '../../core/repo/persons';
-import { ConfirmButton, Modal } from '../common';
+import { ConfirmButton, Modal, Empty } from '../common';
 import { bump, useVersion } from '../../store';
 import { Section } from './Section';
 
@@ -32,7 +32,7 @@ export function TemplateSection() {
         </button>
       </div>
 
-      {templates.length === 0 && <p className="muted">还没有模板。新建一个，或在人物详情点「存为模板」。</p>}
+      {templates.length === 0 && <Empty compact text="还没有模板。新建一个，或在人物详情点「存为模板」。" />}
 
       <ul className="member-list">
         {templates.map((t) => (

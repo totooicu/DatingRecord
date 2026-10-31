@@ -16,7 +16,7 @@ import {
 } from '../../core/repo/files';
 import { transferRefsInEvents } from '../../core/files';
 import { bump, useVersion } from '../../store';
-import { Modal } from '../common';
+import { Modal, Empty } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
@@ -154,7 +154,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
             )}
           </div>
           {items.length === 0 ? (
-            <p className="muted">没有事件在正文里引用它。</p>
+            <Empty compact text="没有事件在正文里引用它。" />
           ) : (
             <ul className="ref-ev-list">
               {pagedItems.pageItems.map((e) => (
@@ -184,7 +184,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
           <Paginator paged={pagedItems} />
 
           {items.length === 0 && avatars.length === 0 && icons.length === 0 && (
-            <p className="muted">目前没有任何地方引用这个文件。</p>
+            <Empty compact text="目前没有任何地方引用这个文件。" />
           )}
         </>
       )}
@@ -248,7 +248,7 @@ export function FileRefsModal({ file, onClose }: { file: StoredFile; onClose: ()
             onChange={(e) => setQ(e.target.value)}
           />
           {filtered.length === 0 ? (
-            <p className="muted">没有可选的其它文件。</p>
+            <Empty compact text="没有可选的其它文件。" />
           ) : (
             <ul className="ref-ev-list">
               {pagedTargets.pageItems.map((f) => (

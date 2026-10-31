@@ -14,6 +14,7 @@ import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
 import type { DREvent } from '../../core/types';
+import { Empty } from '../common';
 
 export function PersonEvents({ personId, events }: { personId: string; events: DREvent[] }) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export function PersonEvents({ personId, events }: { personId: string; events: D
         <div className="card-head">
           <h4 className="card-title">相关事件（{events.length}）</h4>
         </div>
-        {events.length === 0 && <p className="muted">还没有和 TA 的事件</p>}
+        {events.length === 0 && <Empty compact text="还没有和 TA 的事件" />}
         <ul className="event-list">
           {paged.pageItems.map((e) => (
             <EventRow
