@@ -108,7 +108,7 @@ $ cli.cjs person.create --displayName 张三 --compact
 
 | 分组 | 能干什么 |
 | --- | --- |
-| `person.*` | 人物增删改查、属性定义与属性值、属性历史、查重、合并、模板 |
+| `person.*` | 人物增删改查、QQ 式分组（`person.groups` 列组名与人数，`person.list --group` 按组筛、`--group ''` 只看未分组，`person.create/update --groupName` 归组 / 移出）、属性定义与属性值、属性历史、查重、合并、模板 |
 | `event.*` | 事件增删改查、回收站、隐私标记、类型字典、全局统计 |
 | `chat.*` | 聊天事件的增删改查、插播、上移下移 |
 | `collection.*` | 事件集树、增删改、移动、成员增删、智能集合规则 |

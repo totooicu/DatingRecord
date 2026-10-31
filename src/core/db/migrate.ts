@@ -180,6 +180,15 @@ export function runMigrations(d: Database, current: number): string {
     }
     v = 13;
   }
+  if (v < 14) {
+    // 人物分组（v14）：QQ 那种分组——一个人只属于一个组，空串 = 未分组。
+    // 组名不另建表：列表要的下拉候选直接从 persons.group_name 里 DISTINCT 出来，
+    // 老库全部落空串，不回填。
+    if (!hasColumn(d, 'persons', 'group_name')) {
+      d.run(`ALTER TABLE persons ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`);
+    }
+    v = 14;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

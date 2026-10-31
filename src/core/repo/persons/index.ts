@@ -8,6 +8,7 @@ export type { DefRow, PersonRow } from './rows';
 export { listDefs, getDef, upsertDef, archiveDef, restoreDef } from './attrs';
 export {
   listPersons,
+  listGroupNames,
   listArchivedPersons,
   getPerson,
   statsOf,

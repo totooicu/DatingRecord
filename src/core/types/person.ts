@@ -16,6 +16,11 @@ export interface Person {
   tags: string[];
   attrs: Record<string, AttributeValue>;
   notes: string;
+  /**
+   * QQ 那种分组：一个人只挂一个组（同学 / 家人 / 同事…），组名自己填、填过的从库里复用。
+   * 空串 = 未分组。与 `kind === 'group'`（这条人物记录本身是个组织）无关，别看混。
+   */
+  groupName: string;
   deviceId: string;
   rev: number;
   hlc: string;

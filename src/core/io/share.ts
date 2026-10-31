@@ -97,7 +97,9 @@ function displayNameFor(p: Person, level: ShareLevel, alias: string | undefined)
 
 /** 抹掉一切资料，只留一个名字 */
 function stripProfile(p: Person, name: string): Person {
-  return { ...p, displayName: name, aliases: [], tags: [], notes: '', avatar: null, icon: null, attrs: {} };
+  // 分组名和标签一样会暴露关系（「大学同学」「同事」），剥资料时一起剥掉；
+  // 对面要归组是他自己的事，不收别人排的组。
+  return { ...p, displayName: name, aliases: [], tags: [], notes: '', avatar: null, icon: null, attrs: {}, groupName: '' };
 }
 
 /**

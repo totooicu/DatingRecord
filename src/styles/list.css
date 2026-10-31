@@ -571,3 +571,110 @@
     padding-right: calc(56px + 16px + 4px);
   }
 }
+
+/* ---------- 人物分组（QQ 式：一人一组，组头分节 + 折叠 + 筛选条） ---------- */
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.group-toggle {
+  flex: 0 0 auto;
+  width: 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.group-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* 人数在行尾；一行放得下就不换行，组名过长时自己省略 */
+.group-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 筛选条横向滚，不挤成两行——手机上一行能露出三四个组名 */
+.group-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 14px 8px;
+  scrollbar-width: none;
+}
+
+.group-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.group-chip {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.group-chip-on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.group-chip-count {
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.group-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.group-picker-label {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+/* base.css 写着 `input{width:100%}`：不给死宽度，这个框会在详情头里撑到整行、
+   在新建那一行里被 flex:1 拉到看不见。7.5em 够放「大学宿舍」这种四字组名。 */
+.group-picker-input {
+  flex: 0 1 auto;
+  width: 7.5em;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+/* 新建那一行里三个控件都要占位：名字吃剩余宽度，分组保持自己的窄尺寸 */
+.inline-create .group-picker {
+  flex: 0 1 auto;
+}
+
+.inline-create .group-picker-input {
+  flex: 0 1 auto;
+  width: 7.5em;
+  min-height: 38px;
+}
+
+.group-picker-clear {
+  flex: 0 0 auto;
+}

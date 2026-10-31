@@ -12,6 +12,8 @@ export interface SamplePersonDef {
   key: string;
   name: string;
   tags: string[];
+  /** QQ 式分组（v14）：一个人只挂一个组；不写 = 未分组 */
+  group?: string;
   attrs: Record<string, unknown>;
 }
 
@@ -89,6 +91,7 @@ export const SAMPLE_PERSONS: SamplePersonDef[] = [
     key: 'man',
     name: '林小满',
     tags: ['同事', '攀岩'],
+    group: '同事',
     attrs: {
       birthday: '1998-06-12',
       occupation: '产品经理',
@@ -105,18 +108,21 @@ export const SAMPLE_PERSONS: SamplePersonDef[] = [
     key: 'xia',
     name: '许知夏',
     tags: ['朋友'],
+    group: '朋友',
     attrs: { occupation: '摄影师', affinity: 3, hobbies: ['胶片', '骑行'], city: '杭州' },
   },
   {
     key: 'yu',
     name: '陈屿',
     tags: ['朋友介绍'],
+    group: '朋友',
     attrs: { occupation: '建筑设计师', affinity: 2, hobbies: ['咖啡', '羽毛球'], mbti: 'INTJ', city: '杭州' },
   },
   {
     key: 'nian',
     name: '苏念',
     tags: ['大学同学'],
+    group: '大学同学',
     attrs: { occupation: '高校老师', affinity: 3, hobbies: ['读书', '徒步'], city: '南京' },
   },
   {

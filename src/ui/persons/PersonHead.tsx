@@ -8,6 +8,7 @@ import {
   setPersonIcon,
 } from '../../core/repo/persons';
 import { TagInput, PrivacyButton } from '../common';
+import { GroupPicker } from './GroupPicker';
 import { Avatar } from './Avatar';
 import { IconPicker } from '../collections/IconPicker';
 import { bump } from '../../store';
@@ -78,6 +79,14 @@ export function PersonHead({
               bump();
             }}
             placeholder="添加标签"
+          />
+          {/* QQ 式分组：一个人挂一个组，组名自己填、填过的从下拉里复用 */}
+          <GroupPicker
+            value={person.groupName ?? ''}
+            onCommit={(g) => {
+              updatePerson(person.id, { groupName: g });
+              bump();
+            }}
           />
         </div>
         <div className="detail-head-actions">

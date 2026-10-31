@@ -20,11 +20,17 @@ export interface PersonWithStats extends Person {
   stats: PersonStats;
 }
 
-export function listPersons(opts: { includeArchived?: boolean; keyword?: string } = {}): PersonWithStats[] {
+export function listPersons(
+  opts: { includeArchived?: boolean; keyword?: string; /** QQ 式分组筛选；给空串 = 只要未分组的人 */ group?: string } = {},
+): PersonWithStats[] {
   const where: string[] = ['p.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (!opts.includeArchived) where.push("p.status = 'active'");
   if (isPrivacyMode()) where.push('p.is_private = 0');
+  if (opts.group !== undefined) {
+    where.push('p.group_name = ?');
+    params.push(opts.group.trim());
+  }
   if (opts.keyword) {
     where.push('(p.display_name LIKE ? OR p.aliases_json LIKE ? OR p.tags_json LIKE ?)');
     const kw = `%${opts.keyword}%`;
@@ -37,6 +43,26 @@ export function listPersons(opts: { includeArchived?: boolean; keyword?: string 
   // 一次性把所有人的统计算出来，避免逐人各跑一条 JOIN（万级数据下上千次 SQL）
   const statsMap = bulkStats();
   return rows.map((r) => ({ ...personFromRow(r), stats: statsMap.get(r.id) ?? EMPTY_STATS }));
+}
+
+/**
+ * 「填过的组名」——不另建一张组表，直接从人物里 DISTINCT 出来。
+ *
+ * 所以组名天然是「用过才有」的：改完最后一个人的分组，那个组名就自动消失，
+ * 不会留下一堆没人认领的空组。归档的人也算数（不然误归档会把组名抹掉），
+ * 合并产生的墓碑不算。
+ */
+export function listGroupNames(): { name: string; count: number }[] {
+  const rows = queryAll<{ name: string; c: number }>(
+    `SELECT group_name AS name, COUNT(*) AS c FROM persons
+     WHERE deleted_at IS NULL AND group_name <> '' ${isPrivacyMode() ? 'AND is_private = 0' : ''}
+     GROUP BY group_name`,
+    [],
+  );
+  // 人多在前、一样多按名字排；中文排序交给 localeCompare，SQLite 自己没有像样的 zh collation
+  return rows
+    .map((r) => ({ name: r.name, count: r.c }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh'));
 }
 
 /**

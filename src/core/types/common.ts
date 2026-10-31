@@ -64,4 +64,4 @@ export interface LibraryFile {
   memoirs?: Memoir[];
 }
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;

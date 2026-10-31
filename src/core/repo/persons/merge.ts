@@ -123,11 +123,14 @@ export function mergePersons(keepId: string, dropId: string, choices: Record<str
     const aliases = Array.from(
       new Set([...keep.aliases, ...drop.aliases, drop.displayName].filter((a) => a !== keep.displayName)),
     );
+    // 分组：保留者的组为准；保留者没归组而另一方有，就沿用那一方的——
+    // 不然「把两个人合成一个」会顺手把人家的组弄丢
+    const groupName = keep.groupName || drop.groupName;
 
     run(
-      `UPDATE persons SET attrs_json=?, tags_json=?, aliases_json=?, notes=?,
+      `UPDATE persons SET attrs_json=?, tags_json=?, aliases_json=?, notes=?, group_name=?,
        rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
-      [JSON.stringify(merged), JSON.stringify(tags), JSON.stringify(aliases), keep.notes || drop.notes, hlc, now, keepId],
+      [JSON.stringify(merged), JSON.stringify(tags), JSON.stringify(aliases), keep.notes || drop.notes, groupName, hlc, now, keepId],
     );
 
     // 4) 属性历史跟随转移（不合并，只是改归属）

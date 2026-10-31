@@ -7,15 +7,21 @@ import { hlcNow } from '../../time';
 import type { AttributeValue, Person } from '../../types';
 import { getPerson } from './read';
 
-export function createPerson(input: { displayName: string; tags?: string[]; attrs?: Record<string, AttributeValue> }): Person {
+export function createPerson(input: {
+  displayName: string;
+  tags?: string[];
+  attrs?: Record<string, AttributeValue>;
+  /** QQ 式分组名；不填 / 空串 = 未分组 */
+  groupName?: string;
+}): Person {
   const id = newId('p');
   const now = new Date().toISOString();
   const hlc = hlcNow(getDeviceId());
   transact(() => {
     run(
       `INSERT INTO persons
-       (id,display_name,aliases_json,kind,status,tags_json,attrs_json,notes,device_id,rev,hlc,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id,display_name,aliases_json,kind,status,tags_json,attrs_json,notes,group_name,device_id,rev,hlc,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         input.displayName,
@@ -25,6 +31,7 @@ export function createPerson(input: { displayName: string; tags?: string[]; attr
         JSON.stringify(input.tags ?? []),
         JSON.stringify(input.attrs ?? {}),
         '',
+        (input.groupName ?? '').trim(),
         getDeviceId(),
         1,
         hlc,
@@ -39,7 +46,7 @@ export function createPerson(input: { displayName: string; tags?: string[]; attr
 
 export function updatePerson(
   id: string,
-  patch: Partial<Pick<Person, 'displayName' | 'aliases' | 'tags' | 'notes' | 'status' | 'avatar' | 'kind'>>,
+  patch: Partial<Pick<Person, 'displayName' | 'aliases' | 'tags' | 'notes' | 'status' | 'avatar' | 'kind' | 'groupName'>>,
 ): void {
   const now = new Date().toISOString();
   const hlc = hlcNow(getDeviceId());
@@ -48,7 +55,7 @@ export function updatePerson(
     if (!p) return;
     run(
       `UPDATE persons SET display_name=?, aliases_json=?, tags_json=?, notes=?, status=?, avatar=?, kind=?,
-       rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
+       group_name=?, rev=rev+1, hlc=?, updated_at=? WHERE id=?`,
       [
         patch.displayName ?? p.displayName,
         JSON.stringify(patch.aliases ?? p.aliases),
@@ -57,6 +64,8 @@ export function updatePerson(
         patch.status ?? p.status,
         patch.avatar !== undefined ? patch.avatar : p.avatar,
         patch.kind ?? p.kind,
+        // 分组允许清空：给了就用给的（trim 后空串 = 未分组），没给才保持原值
+        patch.groupName !== undefined ? patch.groupName.trim() : p.groupName,
         hlc,
         now,
         id,

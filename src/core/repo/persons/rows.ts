@@ -30,6 +30,8 @@ export interface PersonRow {
   tags_json: string;
   attrs_json: string;
   notes: string;
+  /** v14 人物分组；迁移前的旧结果集可能没有这一列，读出来是 undefined → 空串 */
+  group_name?: string | null;
   device_id: string;
   rev: number;
   hlc: string;
@@ -77,6 +79,7 @@ export function personFromRow(r: PersonRow): Person {
     tags: safeParse<string[]>(r.tags_json, []),
     attrs: safeParse<Record<string, AttributeValue>>(r.attrs_json, {}),
     notes: r.notes,
+    groupName: r.group_name ?? '',
     deviceId: r.device_id,
     rev: r.rev,
     hlc: r.hlc,

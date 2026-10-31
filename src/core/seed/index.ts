@@ -84,7 +84,7 @@ export async function loadSampleData(): Promise<SampleCounts> {
 
     const personIds = new Map<string, string>();
     for (const def of SAMPLE_PERSONS) {
-      const p = createPerson({ displayName: def.name, tags: def.tags });
+      const p = createPerson({ displayName: def.name, tags: def.tags, groupName: def.group });
       personIds.set(def.key, p.id);
       for (const [key, value] of Object.entries(def.attrs)) setAttribute(p.id, key, value);
     }

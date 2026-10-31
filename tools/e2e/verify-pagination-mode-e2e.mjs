@@ -66,8 +66,10 @@ const navBtn = (k, name) => p.locator(`${PANE[k]} .pager`).getByRole('button', {
 const jumpVal = (k) => pagerOf(k).locator('.pager-jump').inputValue();
 const ofVal = (k) => pagerOf(k).locator('.pager-of').innerText();
 const sizeSel = (k) => pagerOf(k).locator('.pager-size');
+// 人物列表的分页吃在「可见行」上：组头也是一行，所以每页 = 组头 + 人。
+// 压测数据没有人归组 → 第一页是 1 个「未分组」组头 + 49 个人。
 const rowSel = {
-  persons: '.list-item',
+  persons: '.list-item, .group-head',
   timeline: '.month-group .event-item',
   collections: '.tree-row',
   files: '.file-list li',
@@ -107,7 +109,12 @@ await p.locator('.tabbar-item', { hasText: '人物' }).click();
 await p.waitForSelector('.list-item', { timeout: 120000 });
 await p.waitForTimeout(400);
 
-ok((await rowCount('persons')) === 50, `默认每页 50 条（实际渲染 ${await rowCount('persons')}）`);
+ok((await rowCount('persons')) === 50, `默认每页 50 行（实际渲染 ${await rowCount('persons')}）`);
+{
+  const persons = await p.locator('.pane-list .list-item').count();
+  const heads = await p.locator('.pane-list .group-head').count();
+  ok(persons === 49 && heads === 1, `组头也占一行：第 1 页 = ${heads} 个组头 + ${persons} 个人`);
+}
 ok((await pagerOf('persons').count()) === 1, '人物列表出现分页条');
 ok((await jumpVal('persons')) === '1', `分页条停在第 1 页（${await jumpVal('persons')} ${await ofVal('persons')}）`);
 const pagesAt50 = parseInt((await ofVal('persons')).slice(1), 10);
@@ -150,7 +157,7 @@ const afterNext = await p.evaluate(() => ({
 ok(afterNext.first !== flip.firstBefore, `下一页换了内容（"${flip.firstBefore}" → "${afterNext.first}"）`);
 ok((await jumpVal('persons')) === '2', `页码到 2（实际 ${await jumpVal('persons')}）`);
 ok(afterNext.scrollTop < 5, `翻页后滚回顶部（scrollTop=${afterNext.scrollTop}，翻页前停在 ${flip.atBottom}）`);
-ok((await rowCount('persons')) === 50, `第 2 页仍渲染 50 条（实际 ${await rowCount('persons')}）`);
+ok((await rowCount('persons')) === 50, `第 2 页仍渲染 50 行（实际 ${await rowCount('persons')}）`);
 await navBtn('persons', '上一页').click();
 await p.waitForTimeout(300);
 ok((await jumpVal('persons')) === '1', `上一页回到 1（实际 ${await jumpVal('persons')}）`);
@@ -181,7 +188,7 @@ await navBtn('persons', '末页').click();
 await p.waitForTimeout(400);
 ok((await jumpVal('persons')) === String(pagesAt50), `末页跳到最后一页 ${pagesAt50}（实际 ${await jumpVal('persons')} ${await ofVal('persons')}）`);
 const lastRows = await rowCount('persons');
-ok(lastRows > 0 && lastRows <= 50, `最后一页不满也正常渲染（${lastRows} 条）`);
+ok(lastRows > 0 && lastRows <= 50, `最后一页不满也正常渲染（${lastRows} 行）`);
 ok((await navBtn('persons', '下一页').isDisabled()) && (await navBtn('persons', '末页').isDisabled()), '末页时「下一页 / 末页」置灰');
 await navBtn('persons', '首页').click();
 await p.waitForTimeout(300);
@@ -245,7 +252,7 @@ await p.addStyleTag({ content: '.fab{display:none!important}' });
 const SIZE = 20;
 await sizeSel('persons').selectOption(String(SIZE));
 await p.waitForTimeout(500);
-ok((await rowCount('persons')) === SIZE, `人物列表按新偏好渲染 ${SIZE} 条（实际 ${await rowCount('persons')}）`);
+ok((await rowCount('persons')) === SIZE, `人物列表按新偏好渲染 ${SIZE} 行（实际 ${await rowCount('persons')}）`);
 const pagesAt20 = parseInt((await ofVal('persons')).slice(1), 10);
 ok(pagesAt20 > pagesAt50, `总页数跟着重算（${pagesAt50} 页 → ${pagesAt20} 页）`);
 const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('dr.prefs.v1') || '{}').pageSize);
@@ -348,7 +355,7 @@ await p.locator('.tabbar-item', { hasText: '人物' }).click();
 await p.waitForTimeout(600);
 ok((await pagerOf('persons').count()) === 0, `每页 500 时人物列表也不挂分页条（条数=${await pagerOf('persons').count()}）`);
 const allPersons = await rowCount('persons');
-ok(allPersons > 0 && allPersons < 500, `这时人物列表一次铺满 ${allPersons} 条`);
+ok(allPersons > 0 && allPersons < 500, `这时人物列表一次铺满 ${allPersons} 行（含组头）`);
 
 // 刷新：设备偏好还在，各列表仍按它渲染
 await p.reload({ waitUntil: 'load' });
@@ -356,7 +363,8 @@ await waitBoot();
 await p.waitForTimeout(800);
 const afterReload = await p.evaluate(() => ({
   stored: JSON.parse(localStorage.getItem('dr.prefs.v1') || '{}').pageSize,
-  rows: document.querySelectorAll('.list-item').length,
+  // 与 rowCount('persons') 同口径：组头也算一行，否则这里永远少 1
+  rows: document.querySelectorAll('.list-item, .group-head').length,
 }));
 ok(afterReload.stored === 500, `刷新后每页条数还是偏好里那个数（${afterReload.stored}）`);
 ok(afterReload.rows === allPersons, `刷新后人物列表按 500/页 铺满（实际 ${afterReload.rows}）`);

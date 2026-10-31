@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS persons (
   tags_json TEXT NOT NULL DEFAULT '[]',
   attrs_json TEXT NOT NULL DEFAULT '{}',
   notes TEXT NOT NULL DEFAULT '',
+  group_name TEXT NOT NULL DEFAULT '',
   device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
   created_at TEXT, updated_at TEXT,
   is_private INTEGER NOT NULL DEFAULT 0

@@ -6,6 +6,7 @@ import { existingInputChoices } from '../repo/inputChoices';
 import {
   listPersons,
   listArchivedPersons,
+  listGroupNames,
   unarchivePerson,
   getPerson,
   findDuplicatePersons,
@@ -29,6 +30,7 @@ function brief(p: Person & { stats?: unknown }): Record<string, unknown> {
     kind: p.kind,
     status: p.status,
     tags: p.tags,
+    groupName: p.groupName ?? '',
     attrKeys: Object.keys(p.attrs ?? {}),
     notes: p.notes ? p.notes.slice(0, 200) : '',
     isPrivate: p.isPrivate,
@@ -50,17 +52,28 @@ export const PERSON_TOOLS: ToolDef[] = [
     name: 'person.list',
     group: 'person',
     title: '列出人物',
-    desc: '按关键词搜索人物，返回摘要（id/姓名/别名/标签/属性键）。要完整属性用 person.get',
+    desc: '按关键词 / 分组搜索人物，返回摘要（id/姓名/别名/标签/分组/属性键）。要完整属性用 person.get',
     mutating: false,
     params: [
       { name: 'keyword', type: 'string', desc: '姓名/别名/标签模糊搜索，可省略', required: false },
+      { name: 'group', type: 'string', desc: '只看某个 QQ 式分组（精确匹配组名）；空串=只看未分组；省略=全部', required: false },
       { name: 'includeArchived', type: 'boolean', desc: '包含已归档人物', required: false, default: false },
     ],
     run: (a) =>
       listPersons({
         keyword: a.keyword as string | undefined,
+        group: a.group as string | undefined,
         includeArchived: a.includeArchived as boolean | undefined,
       }).map(brief),
+  },
+  {
+    name: 'person.groups',
+    group: 'person',
+    title: '已有分组',
+    desc: '列出用过的 QQ 式分组名与人数（人多在前）。组名是从人物里 DISTINCT 出来的，没有专门的组表：最后一人离开某组，这个组名就不在这里出现了',
+    mutating: false,
+    params: [],
+    run: () => listGroupNames(),
   },
   {
     name: 'person.archivedList',
@@ -95,19 +108,21 @@ export const PERSON_TOOLS: ToolDef[] = [
       { name: 'displayName', type: 'string', desc: '姓名 / 称呼', required: true },
       { name: 'tags', type: 'array', desc: '标签数组', required: false },
       { name: 'attrs', type: 'object', desc: '属性值，如 {"phone":"138...","birthday":"1998-05-01"}', required: false },
+      { name: 'groupName', type: 'string', desc: '分组名（同学 / 家人 / 同事…，自己填；先用 person.groups 看看已有组名，别造近义的新组）', required: false },
     ],
     run: (a) =>
       createPerson({
         displayName: a.displayName as string,
         tags: (a.tags as string[] | undefined) ?? undefined,
         attrs: (a.attrs as Record<string, never> | undefined) ?? undefined,
+        groupName: a.groupName as string | undefined,
       }),
   },
   {
     name: 'person.update',
     group: 'person',
     title: '修改人物',
-    desc: '改姓名/别名/标签/备注/类型/头像。只传要改的字段',
+    desc: '改姓名/别名/标签/备注/分组/类型/头像。只传要改的字段',
     mutating: true,
     params: [
       { name: 'id', type: 'string', desc: '人物 id', required: true },
@@ -115,15 +130,17 @@ export const PERSON_TOOLS: ToolDef[] = [
       { name: 'aliases', type: 'array', desc: '别名数组（整体替换）', required: false },
       { name: 'tags', type: 'array', desc: '标签数组（整体替换）', required: false },
       { name: 'notes', type: 'string', desc: '备注全文（整体替换）', required: false },
+      { name: 'groupName', type: 'string', desc: '分组名（QQ 式，一人一组）；空串 = 移出分组（未分组）', required: false },
       { name: 'kind', type: 'string', desc: 'person=个人, group=群体', required: false, enum: ['person', 'group'] },
       { name: 'status', type: 'string', desc: 'active=正常, archived=归档', required: false, enum: ['active', 'archived'] },
     ],
     run: (a) => {
-      const patch: Partial<Pick<Person, 'displayName' | 'aliases' | 'tags' | 'notes' | 'status' | 'kind'>> = {};
+      const patch: Partial<Pick<Person, 'displayName' | 'aliases' | 'tags' | 'notes' | 'status' | 'kind' | 'groupName'>> = {};
       if (a.displayName !== undefined) patch.displayName = a.displayName as string;
       if (a.aliases !== undefined) patch.aliases = a.aliases as string[];
       if (a.tags !== undefined) patch.tags = a.tags as string[];
       if (a.notes !== undefined) patch.notes = a.notes as string;
+      if (a.groupName !== undefined) patch.groupName = a.groupName as string;
       if (a.kind !== undefined) patch.kind = a.kind as Person['kind'];
       if (a.status !== undefined) patch.status = a.status as Person['status'];
       updatePerson(a.id as string, patch);

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { applyTemplate, createPerson, listPersons, listTemplates } from '../../core/repo/persons';
+import {
+  applyTemplate,
+  createPerson,
+  listPersons,
+  listTemplates,
+  type PersonWithStats,
+} from '../../core/repo/persons';
 import { useVersion, bump } from '../../store';
 import { relativeDays } from '../../core/time';
 import { Avatar } from './Avatar';
@@ -7,7 +13,31 @@ import { HeadStatus } from '../runtime/HeadStatus';
 import { PageHead, VersionStrip } from '../common';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
+import { GroupChips, GroupPicker } from './GroupPicker';
 import { usePageSize } from '../prefs';
+
+/** 人物列表里的一行：组头，或一个人。组头也占一行，所以分页吃在「可见行」上 */
+type ListRow =
+  | { kind: 'head'; name: string; count: number; collapsed: boolean }
+  | { kind: 'person'; person: PersonWithStats };
+
+/** 按组分节：组名按中文排，未分组（空串）永远在最后——它不是一个组，是「还没归类」 */
+function groupSections(persons: PersonWithStats[]): { name: string; people: PersonWithStats[] }[] {
+  const map = new Map<string, PersonWithStats[]>();
+  for (const p of persons) {
+    const key = (p.groupName ?? '').trim();
+    const bucket = map.get(key);
+    if (bucket) bucket.push(p);
+    else map.set(key, [p]);
+  }
+  return [...map.entries()]
+    .map(([name, people]) => ({ name, people }))
+    .sort((a, b) => {
+      if (!a.name) return 1;
+      if (!b.name) return -1;
+      return a.name.localeCompare(b.name, 'zh');
+    });
+}
 
 export function PersonList({
   selectedId,
@@ -22,16 +52,32 @@ export function PersonList({
 }) {
   const v = useVersion();
   const persons = useMemo(() => listPersons({ keyword }), [v, keyword]);
-  // 搜索词一变，结果集就换了一批；留在深处的页码没意义，回到第一页
-  const paged = usePaged(persons, usePageSize());
+  const sections = useMemo(() => groupSections(persons), [persons]);
+  // 折叠状态只在本次会话里记（与事件集树一致）：组名是「用过才有」的临时集合，
+  // 存进设备偏好会为几个已经空掉的组名留下垃圾。
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [groupFilter, setGroupFilter] = useState<string | undefined>(undefined);
+  const rows = useMemo<ListRow[]>(() => {
+    const out: ListRow[] = [];
+    for (const s of sections) {
+      if (groupFilter !== undefined && s.name !== groupFilter) continue;
+      const isCollapsed = !!collapsed[s.name];
+      out.push({ kind: 'head', name: s.name, count: s.people.length, collapsed: isCollapsed });
+      if (!isCollapsed) for (const p of s.people) out.push({ kind: 'person', person: p });
+    }
+    return out;
+  }, [sections, collapsed, groupFilter]);
+  // 搜索词或分组一换，结果集就换了一批；留在深处的页码没意义，回到第一页
+  const paged = usePaged(rows, usePageSize());
   useEffect(() => {
     paged.setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword]);
+  }, [keyword, groupFilter]);
   const allPersons = useMemo(() => listPersons({ includeArchived: true }), [v]);
   const templates = useMemo(() => listTemplates(), [v]);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const [newGroup, setNewGroup] = useState('');
   /** 新建时套哪个模板；空 = 不套 */
   const [tplId, setTplId] = useState('');
   /** 重名时拦一次：不是禁止（同名真实存在），而是让用户确认「是不是同一个人」 */
@@ -42,6 +88,7 @@ export function PersonList({
 
   const close = () => {
     setName('');
+    setNewGroup('');
     setTplId('');
     setCreating(false);
     setDupWarn(null);
@@ -55,7 +102,7 @@ export function PersonList({
       setDupWarn(existing.id);
       return;
     }
-    const p = createPerson({ displayName: n });
+    const p = createPerson({ displayName: n, groupName: newGroup.trim() || undefined });
     if (tplId) applyTemplate(tplId, p.id);
     bump();
     close();
@@ -96,6 +143,8 @@ export function PersonList({
               if (e.key === 'Escape') close();
             }}
           />
+          {/* 新建时就能顺手归组：组名自己填，填过的从下拉里选 */}
+          <GroupPicker value={newGroup} onCommit={setNewGroup} label="归入" />
           {templates.length > 0 && (
             <select
               className="inline-create-tpl"
@@ -151,26 +200,48 @@ export function PersonList({
           </button>
         )}
       </div>
-      {persons.length === 0 && <div className="muted pad">暂无人物</div>}
-      {paged.pageItems.map((p) => (
-        <button
-          key={p.id}
-          className={p.id === selectedId ? 'list-item list-item-on' : 'list-item'}
-          onClick={() => onSelect(p.id)}
-        >
-          <Avatar name={p.displayName} avatar={p.avatar} icon={p.icon} />
-          <span className="list-item-main">
-            <span className="list-item-title">
-              {p.displayName}
-              {p.isPrivate && <span className="privacy-badge">隐私</span>}
+      <GroupChips
+        sections={sections.map((s) => ({ name: s.name, count: s.people.length }))}
+        active={groupFilter}
+        onPick={setGroupFilter}
+      />
+      {rows.length === 0 && <div className="muted pad">暂无人物</div>}
+      {paged.pageItems.map((row, i) =>
+        row.kind === 'head' ? (
+          <div key={`h:${row.name}:${i}`} className="group-head">
+            <button
+              type="button"
+              className="group-toggle"
+              aria-expanded={!row.collapsed}
+              aria-label={row.collapsed ? `展开 ${row.name || '未分组'}` : `折叠 ${row.name || '未分组'}`}
+              title={row.collapsed ? '展开' : '折叠'}
+              onClick={() => setCollapsed((s) => ({ ...s, [row.name]: !s[row.name] }))}
+            >
+              {row.collapsed ? '▸' : '▾'}
+            </button>
+            <span className="group-name">{row.name || '未分组'}</span>
+            <span className="group-count">{row.count}</span>
+          </div>
+        ) : (
+          <button
+            key={row.person.id}
+            className={row.person.id === selectedId ? 'list-item list-item-on' : 'list-item'}
+            onClick={() => onSelect(row.person.id)}
+          >
+            <Avatar name={row.person.displayName} avatar={row.person.avatar} icon={row.person.icon} />
+            <span className="list-item-main">
+              <span className="list-item-title">
+                {row.person.displayName}
+                {row.person.isPrivate && <span className="privacy-badge">隐私</span>}
+              </span>
+              <span className="list-item-sub">
+                {row.person.stats.eventCount} 次事件
+                {row.person.stats.lastMeetTs ? ` · ${relativeDays(new Date(row.person.stats.lastMeetTs).toISOString())}` : ''}
+              </span>
             </span>
-            <span className="list-item-sub">
-              {p.stats.eventCount} 次事件
-              {p.stats.lastMeetTs ? ` · ${relativeDays(new Date(p.stats.lastMeetTs).toISOString())}` : ''}
-            </span>
-          </span>
-        </button>
-      ))}
+          </button>
+        ),
+      )}
       <Paginator paged={paged} />
     </div>
   );
