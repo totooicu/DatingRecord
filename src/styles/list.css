@@ -397,6 +397,38 @@
   background: var(--panel);
 }
 
+/* 分页条要贴着底部导航栏，不能飘在半屏高。
+   光靠 sticky 做不到：sticky 只能把元素往「上」拉回视野，不会把它往「下」推到
+   容器末尾——列表不满一屏时（人物只有 5 个），分页条就停在列表下面，
+   底下空一大片，看着像坏了。所以两件事一起做：
+   · 列表栏里的 .pane-body 撑满一屏（min-height:100%）并排成纵向 flex；
+   · 分页条 margin-top:auto 沉到底。列表长过一屏时没有剩余空间，auto 自动失效，
+     上面那条 sticky 接着负责让它留在视野里。
+   .pane 自带 24px 底部留白是给普通内容用的，这里清掉，否则贴着导航栏还差一截。 */
+.pane-list {
+  padding-bottom: 0;
+}
+
+.pane-list > .pane-body {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-list .pager {
+  margin-top: auto;
+}
+
+/* 分页条钉到底部之后，要给右下角那颗悬浮「记一件事」让出位置：
+   .fab 是 right:16px + 宽 56px，正好压在分页条右端那颗「下一页」上（实测重叠）。
+   手机端（有底部导航栏的那一档）把分页条的内容右边界推到 fab 左边再留 12px；
+   宽屏 .fab 在窗口右下角、分页条在 320px 左栏里，本来就不相干，不用让。 */
+@media (max-width: 1023px) {
+  .pane-list .pager {
+    padding-right: calc(56px + 16px + 12px);
+  }
+}
+
 .pager-single {
   padding: 8px 14px;
   text-align: center;

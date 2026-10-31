@@ -40,7 +40,7 @@ await p.goto(APP, { waitUntil: 'load' });
 await waitBoot();
 // 测试环境：隐藏全局悬浮「记一件事」按钮，避免它挡住设置页按钮拦截点击。
 // 注入到 <head>，React 不会重渲染 head，故子页面切换导致的重挂载也不会让它复活。
-await p.addStyleTag({ content: '.fab{display:none!important}' });
+const fabStyle = await p.addStyleTag({ content: '.fab{display:none!important}' });
 if (await p.getByText('直接开始创建').count()) { await p.getByText('直接开始创建').click(); await p.waitForTimeout(500); }
 const closeBtn = p.locator('[aria-label="关闭"]').first();
 if (await closeBtn.count()) { await closeBtn.click(); await p.waitForTimeout(300); }
@@ -83,6 +83,49 @@ const firstAfter = await p.locator('.list-item .list-item-title').first().textCo
 ok(/第 2 \//.test(pagerText2 || ''), `点下一页跳到第 2 页（"${pagerText2}"）`);
 ok(firstBefore !== firstAfter, `第 2 页首条与第 1 页不同（"${firstBefore}" → "${firstAfter}"）`);
 ok((await p.locator('.list-item').count()) === 50, `第 2 页仍渲染 50 条`);
+
+// ---------- ①b 分页条的位置：贴着底部导航栏，不留一大截空白 ----------
+// 只看几何，不看像素：分页条下沿与 tabbar 上沿的缝、以及滚动时它是否还在视野里。
+const pagerGeo = await p.evaluate(() => {
+  const pager = document.querySelector('.pane-list .pager');
+  const tab = document.querySelector('.tabbar');
+  const pane = document.querySelector('.pane-list');
+  if (!pager || !tab) return null;
+  const gapAt = () => Math.round(tab.getBoundingClientRect().top - pager.getBoundingClientRect().bottom);
+  const visible = () => {
+    const r = pager.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= tab.getBoundingClientRect().top + 1;
+  };
+  const before = { gap: gapAt(), visible: visible() };
+  pane.scrollTop = 240;
+  const mid = { gap: gapAt(), visible: visible() };
+  pane.scrollTop = 0;
+  return { before, mid };
+});
+ok(!!pagerGeo, '人物列表里有分页条（.pane-list .pager）');
+ok(pagerGeo?.before.gap === 0, `分页条下沿与导航栏上沿无缝（gap=${pagerGeo?.before.gap}）`);
+ok(pagerGeo?.before.visible === true, '列表不满/满屏时分页条都在视野内');
+ok(pagerGeo?.mid.visible === true, `列表滚到中间分页条仍吸在导航栏上方（gap=${pagerGeo?.mid.gap}）`);
+
+// 分页条钉到底部后，右下角那颗悬浮「记一件事」不能压住「下一页」。
+// 上面为了点设置页按钮把 .fab 藏了，这一段先放出来量，量完再藏回去。
+await fabStyle.evaluate((el) => el.remove());
+const fabHit = await p.evaluate(() => {
+  const fab = document.querySelector('.fab');
+  const next = [...document.querySelectorAll('.pager-btn')].find((e) => e.textContent.includes('下一页'));
+  if (!fab || !next) return { skip: true };
+  const a = fab.getBoundingClientRect();
+  const c = next.getBoundingClientRect();
+  const hit = !(a.right < c.left || c.right < a.left || a.bottom < c.top || c.bottom < a.top);
+  // 真到点击那一层：命中的最内层元素必须是分页按钮本身，而不是浮在上面的 .fab
+  const cx = c.left + c.width / 2;
+  const cy = c.top + c.height / 2;
+  const topEl = document.elementFromPoint(cx, cy);
+  return { hit, reached: !!topEl && (topEl === next || next.contains(topEl)) };
+});
+ok(fabHit?.skip === true || fabHit?.hit === false, `悬浮按钮不压住「下一页」（hit=${fabHit?.hit}）`);
+ok(fabHit?.skip === true || fabHit?.reached === true, `点「下一页」正中间命中的是按钮本身（${fabHit?.reached}）`);
+await p.addStyleTag({ content: '.fab{display:none!important}' });
 
 // ---------- ② 陪伴/专注模式 ----------
 await p.locator('.tabbar-item', { hasText: '设置' }).click();
