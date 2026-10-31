@@ -9,6 +9,7 @@ import { usePageSize } from '../prefs';
 import type { DREvent, SmartRule } from '../../core/types';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
+import { Card } from '../common/Card';
 import { Empty } from '../common';
 
 export function SmartList({
@@ -31,16 +32,17 @@ export function SmartList({
   const paged = usePaged(events, usePageSize());
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <h4 className="card-title">命中事件（{events.length}）</h4>
+    <Card
+      title={`命中事件（${events.length}）`}
+      extra={
         <div className="card-head-actions">
           <EventViewToggle view={view} onChange={onView} />
           <button className="btn btn-sm" onClick={onEditRule}>
             编辑规则
           </button>
         </div>
-      </div>
+      }
+    >
       <p className="muted small rule-summary">{describeRule(rule)}</p>
       {events.length === 0 ? (
         <Empty compact text="还没有事件满足当前规则。" />
@@ -75,6 +77,6 @@ export function SmartList({
       )}
       <Paginator paged={paged} />
       <p className="muted small">成员由规则实时算出：新建事件满足条件会自动进来，删除后自动消失。</p>
-    </section>
+    </Card>
   );
 }

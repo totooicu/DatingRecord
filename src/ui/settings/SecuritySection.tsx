@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { LockSection } from './LockSection';
 import { EncSection } from './EncSection';
+import { Section } from './Section';
 import { usePrivacyMode, setPrivacyMode } from '../../privacy';
 
 export function SecuritySection() {
@@ -38,11 +39,10 @@ function PrivacyCard() {
   const [msg, setMsg] = useState('');
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <h4 className="card-title">隐私模式</h4>
-        <span className={privacy ? 'pill pill-on' : 'pill'}>{privacy ? '已开启' : '未开启'}</span>
-      </div>
+    <Section
+      title="隐私模式"
+      extra={<span className={privacy ? 'pill pill-on' : 'pill'}>{privacy ? '已开启' : '未开启'}</span>}
+    >
       <p className="muted small">
         开启后，所有标记为「隐私」的人物 / 事件集 / 事件 / 文件将从列表与详情中隐藏；
         标记本身不会被清除，随时关掉就回来。它只是查看偏好，<strong>不加密、不拦人</strong>——
@@ -61,6 +61,6 @@ function PrivacyCard() {
         </button>
       </div>
       {msg && <p className="lock-ok">{msg}</p>}
-    </section>
+    </Section>
   );
 }

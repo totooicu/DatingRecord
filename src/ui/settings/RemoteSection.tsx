@@ -42,6 +42,7 @@ import {
 } from '../../core/remote/shellRelay';
 import { setDataShareAutostart, stopDataShare } from '../../core/runtime/dataShare';
 import { Field } from '../common';
+import { Section } from './Section';
 
 function useRemote() {
   return useSyncExternalStore(subscribeRemote, getRemoteState, getRemoteState);
@@ -345,13 +346,14 @@ export function RemoteSection() {
         </div>
       )}
 
-      <section className="card">
-        <div className="card-head">
-          <h4 className="card-title">作为服务端</h4>
-          {remote.mode === 'host' && (
+      <Section
+        title="作为服务端"
+        extra={
+          remote.mode === 'host' ? (
             <span className="remote-badge remote-badge-on">{isDirect ? '直连中' : '已开启'}</span>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
 
         {remote.mode === 'host' ? (
           <>
@@ -549,15 +551,16 @@ export function RemoteSection() {
             </div>
           </>
         )}
-      </section>
+      </Section>
 
-      <section className="card">
-        <div className="card-head">
-          <h4 className="card-title">作为客户端</h4>
-          {remote.mode === 'client' && (
+      <Section
+        title="作为客户端"
+        extra={
+          remote.mode === 'client' ? (
             <span className="remote-badge remote-badge-on">{isDirect ? '直连数据' : '使用服务端数据'}</span>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
 
         {remote.mode === 'client' ? (
           <>
@@ -663,7 +666,7 @@ export function RemoteSection() {
             </p>
           </>
         )}
-      </section>
+      </Section>
 
       {msg && <p className="remote-ok small">{msg}</p>}
       {(err || remote.error) && <p className="lock-err">{err || remote.error}</p>}

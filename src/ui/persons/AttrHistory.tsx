@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { listAttrHistory } from '../../core/repo/persons';
 import { formatAttrValue } from '../attr';
 import { HistoryChart, type ChartPoint } from './HistoryChart';
+import { Card } from '../common/Card';
 import { useVersion } from '../../store';
 import { relativeDays, toTs, formatCompact } from '../../core/time';
 import type { AttributeDef } from '../../core/types';
@@ -75,8 +76,8 @@ export function AttrHistory({ personId, defs }: { personId: string; defs: Attrib
   const points: ChartPoint[] = entries.map((e) => ({ changedAt: e.changedAt, value: e.value }));
 
   return (
-    <section className="card">
-      <div className="card-head">
+    <Card
+      head={
         <button className="hist-toggle" aria-expanded={open} onClick={() => setOpen((s) => !s)}>
           <h4 className="card-title">属性变化（{keys.length} 项）</h4>
           <span className="hist-sub">
@@ -84,7 +85,8 @@ export function AttrHistory({ personId, defs }: { personId: string; defs: Attrib
           </span>
           <em className="hist-caret">{open ? '▾' : '▸'}</em>
         </button>
-      </div>
+      }
+    >
 
       {open && (
         <div className="hist-body">
@@ -119,6 +121,6 @@ export function AttrHistory({ personId, defs }: { personId: string; defs: Attrib
           )}
         </div>
       )}
-    </section>
+    </Card>
   );
 }

@@ -12,6 +12,7 @@ import { EventRow } from '../timeline/EventGroup';
 import { personNameOf } from './personName';
 import { usePaged } from '../common/usePaged';
 import { Paginator } from '../common/Paginator';
+import { Card } from '../common/Card';
 import { usePageSize } from '../prefs';
 import type { DREvent } from '../../core/types';
 import { Empty } from '../common';
@@ -22,10 +23,7 @@ export function PersonEvents({ personId, events }: { personId: string; events: D
 
   return (
     <>
-      <section className="card">
-        <div className="card-head">
-          <h4 className="card-title">相关事件（{events.length}）</h4>
-        </div>
+      <Card title={`相关事件（${events.length}）`}>
         {events.length === 0 && <Empty compact text="还没有和 TA 的事件" />}
         <ul className="event-list">
           {paged.pageItems.map((e) => (
@@ -39,7 +37,7 @@ export function PersonEvents({ personId, events }: { personId: string; events: D
           ))}
         </ul>
         <Paginator paged={paged} />
-      </section>
+      </Card>
 
       {editingEventId && (
         <EventForm

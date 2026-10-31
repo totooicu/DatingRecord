@@ -4,6 +4,7 @@ import { setAttribute } from '../../core/repo/persons';
 import { AttributeField } from '../attr';
 import { SensitiveMask } from '../attr/SensitiveValue';
 import { ApplyTemplateModal, SaveTemplateModal } from './TemplateModal';
+import { Card } from '../common/Card';
 import { bump } from '../../store';
 import type { AttributeDef, Person } from '../../core/types';
 
@@ -48,8 +49,7 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
       </div>
 
       {groups.map((g) => (
-        <section key={g} className="card">
-          <h4 className="card-title">{g || '未分组'}</h4>
+        <Card key={g} title={g || '未分组'}>
           <div className="attr-grid">
             {sortByAttrs(defs.filter((d) => d.group === g)).map((d) => (
                 <div key={d.key} className="attr-row"
@@ -76,18 +76,19 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
                 </div>
               ))}
           </div>
-        </section>
+        </Card>
       ))}
 
-      <section className="card">
-        <div className="card-head">
-          <h4 className="card-title">自定义字段</h4>
-          {unusedDefs.length > 0 && (
+      <Card
+        title="自定义字段"
+        extra={
+          unusedDefs.length > 0 ? (
             <button className="btn btn-sm" onClick={() => setAdding((s) => !s)}>
               {adding ? '取消' : '＋ 添加字段'}
             </button>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
         {adding && (
           <div className="chip-group">
             {unusedDefs.map((d) => (
@@ -108,7 +109,7 @@ export function PersonAttrs({ person, defs }: { person: Person; defs: AttributeD
         {unusedDefs.length === 0 && (
           <p className="muted">所有已定义的字段都已添加。可在「设置 → 属性字典」新建字段。</p>
         )}
-      </section>
+      </Card>
 
       {applying && <ApplyTemplateModal personId={person.id} onClose={() => { setApplying(false); bump(); }} />}
       {saving && (

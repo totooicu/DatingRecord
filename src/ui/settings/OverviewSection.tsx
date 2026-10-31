@@ -6,6 +6,7 @@ import { dbSizeBytes } from '../../core/io';
 import { queryOne } from '../../core/db';
 import { SCHEMA_VERSION } from '../../core/types';
 import { Section } from './Section';
+import { Card } from '../common/Card';
 import { useVersion } from '../../store';
 
 export function OverviewSection() {
@@ -17,25 +18,21 @@ export function OverviewSection() {
   return (
     <Section title="库概览">
       <div className="stat-row">
-        <div className="stat-card">
-          <span className="stat-num">
-            {stats.personCount}
-            {stats.archivedPersonCount > 0 && <em className="stat-sub">+{stats.archivedPersonCount} 归档</em>}
-          </span>
-          <span className="stat-label">人物</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{stats.eventCount}</span>
-          <span className="stat-label">事件</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{oplogCount}</span>
-          <span className="stat-label">操作日志</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{sizeKb} KB</span>
-          <span className="stat-label">数据库</span>
-        </div>
+        <Card
+          variant="stat"
+          num={
+            <>
+              {stats.personCount}
+              {stats.archivedPersonCount > 0 && (
+                <em className="stat-sub">+{stats.archivedPersonCount} 归档</em>
+              )}
+            </>
+          }
+          label="人物"
+        />
+        <Card variant="stat" num={stats.eventCount} label="事件" />
+        <Card variant="stat" num={oplogCount} label="操作日志" />
+        <Card variant="stat" num={`${sizeKb} KB`} label="数据库" />
       </div>
       <p className="muted small">
         schema 版本 {SCHEMA_VERSION}　·　根集合 {getRoot()?.name ?? '—'}

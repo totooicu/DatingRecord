@@ -11,6 +11,7 @@ import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
+import { Card } from '../common/Card';
 import { Empty } from '../common';
 
 type SortKey = 'time' | 'title' | 'kind' | 'rating' | 'cost';
@@ -81,11 +82,11 @@ export function EventTable({
   };
 
   return (
-    <section className="card">
-      <div className="card-head event-card-head">
-        <h4 className="card-title">事件（{rows.length}）</h4>
-        <EventViewToggle view={view} onChange={onView} />
-      </div>
+    <Card
+      title={`事件（${rows.length}）`}
+      headClassName="event-card-head"
+      extra={<EventViewToggle view={view} onChange={onView} />}
+    >
       {rows.length === 0 ? (
         <Empty compact text="这个事件集还没有事件。" />
       ) : (
@@ -142,6 +143,6 @@ export function EventTable({
           <Paginator paged={paged} />
         </>
       )}
-    </section>
+    </Card>
   );
 }

@@ -14,6 +14,7 @@ import { usePageSize } from '../prefs';
 import type { MemberItem } from '../../core/repo/collections';
 import type { CollectionView } from '../prefs';
 import { EventViewToggle } from './EventViewToggle';
+import { Card } from '../common/Card';
 import { Empty } from '../common';
 
 export function MemberList({
@@ -50,11 +51,11 @@ export function MemberList({
   const paged = usePaged(eventRows, usePageSize());
 
   return (
-    <section className="card">
-      <div className="card-head event-card-head">
-        <h4 className="card-title">事件（{eventRows.length}）</h4>
-        <EventViewToggle view={view} onChange={onView} />
-      </div>
+    <Card
+      title={`事件（${eventRows.length}）`}
+      headClassName="event-card-head"
+      extra={<EventViewToggle view={view} onChange={onView} />}
+    >
       <div className="event-toolbar">
         {onNew && (
           <button className="btn btn-sm btn-primary" onClick={onNew}>
@@ -130,7 +131,7 @@ export function MemberList({
       </ul>
       <Paginator paged={paged} />
       {eventRows.length > 0 && <p className="muted small">共 {eventRows.length} 个事件；↑↓ 调整顺序。</p>}
-    </section>
+    </Card>
   );
 }
 
@@ -153,10 +154,7 @@ export function ChildList({
   ];
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <h4 className="card-title">子事件集（{rows.length}）</h4>
-      </div>
+    <Card title={`子事件集（${rows.length}）`}>
       {rows.length === 0 ? (
         <Empty compact text="暂无子事件集。事件集可无限嵌套。" />
       ) : (
@@ -180,6 +178,6 @@ export function ChildList({
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }
