@@ -31,19 +31,25 @@ export function MonthGroup({
 }
 
 /** 单行事件：左边一栏时间（日期 / 时刻），右边标题 - 人物 - 事实 - 摘要 */
-function EventRow({
+export function EventRow({
   event: e,
   nameOf,
   onEdit,
+  omitPersonId,
 }: {
   event: DREvent;
   nameOf: (id: string) => string;
   onEdit: (e: DREvent) => void;
+  /** 人物详情页：TA 自己那行名字是重复信息，从参与者里去掉 */
+  omitPersonId?: string;
 }) {
   // 全天/只到日的事件没有时刻，formatCompact 只给日期，正好拆成两行
   const compact = formatCompact(e.startTs, e.time.allDay === true || e.time.precision === 'day');
   const [day, clock] = compact === '时间未知' ? ['未知', undefined] : compact.split(' ');
-  const people = e.participants.map((p) => nameOf(p.personId)).join('、');
+  const people = e.participants
+    .filter((p) => p.personId !== omitPersonId)
+    .map((p) => nameOf(p.personId))
+    .join('、');
   const excerpt = e.content.trim() ? markdownExcerpt(e.content, 80) : '';
   const rating = e.metrics.rating ?? 0;
   const hasFacts = rating > 0 || !!e.metrics.cost || e.tags.length > 0 || e.relatedEvents.length > 0;

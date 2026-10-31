@@ -26,6 +26,13 @@
   background: color-mix(in srgb, var(--text) 3%, var(--panel));
 }
 
+/* 卡片里的事件行（人物详情「相关事件」）：卡片自己已有 16px 内边距，
+   行内不再重复左右留白，否则整行被推进去一截、和卡片标题对不齐 */
+.card .event-item {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 /* 时间栏：日期一行、时刻一行，等宽数字，右边缘对齐不用管（左对齐更像时间轴） */
 .event-when {
   display: flex;

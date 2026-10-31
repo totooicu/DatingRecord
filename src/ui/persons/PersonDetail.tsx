@@ -30,7 +30,7 @@ export function PersonDetail({ id, onArchived }: { id: string; onArchived?: (nex
       <PersonAttrs person={person} defs={defs} />
       {/* key：换人物时重置展开态与选中项，否则会继承上一个人的状态 */}
       <AttrHistory key={id} personId={id} defs={defs} />
-      <PersonEvents events={events} />
+      <PersonEvents personId={id} events={events} />
 
       {newEvent && (
         <EventForm

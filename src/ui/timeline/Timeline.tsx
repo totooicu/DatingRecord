@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getEvent, listEvents } from '../../core/repo/events';
-import { getPerson } from '../../core/repo/persons';
 import { EventForm } from '../event';
 import { Empty } from '../common';
 import { useVersion, bump } from '../../store';
-import { isPrivacyMode } from '../../privacy';
+import { personNameOf } from '../persons/personName';
 import type { DREvent } from '../../core/types';
 import type { TimelineFilter } from './filter';
 import { MonthGroup, groupByMonth } from './EventGroup';
@@ -35,15 +34,8 @@ export function Timeline({
   onBackToCalendar?: () => void;
 }) {
   const v = useVersion();
-  // 参与者名字：隐私模式下，标了隐私的人物显示成「（隐私）」而不是真名——
-  // 否则一个公开事件里挂着个隐藏人物，名字照样漏出来。getPerson 不受隐私过滤影响，
-  // 所以这里能拿到私有人物再就地打码。
-  const nameOf = (id: string) => {
-    const p = getPerson(id);
-    if (!p) return '?';
-    if (isPrivacyMode() && p.isPrivate) return '（隐私）';
-    return p.displayName;
-  };
+  // 参与者名字（含隐私打码）与人物详情共用 personNameOf，别在这儿再写一份
+  const nameOf = personNameOf;
 
   const events = useMemo<DREvent[]>(() => {
     // 日历给的精确区间优先；否则退回「最近 N 天」的粗筛

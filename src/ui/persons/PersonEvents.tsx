@@ -1,12 +1,15 @@
-// 相关事件列表：点一条直接打开编辑弹窗
+// 人物详情 → 相关事件：直接复用时间线的事件行（EventRow），
+// 别再手写一套 .event-time / .event-meta —— 那两个类名早就没了，
+// 结果就是时间被塞进 44px 的网格列里换三行、评分和花费掉到时间下面。
 import { useState } from 'react';
 import { getEvent } from '../../core/repo/events';
 import { EventForm } from '../event';
 import { bump } from '../../store';
-import { formatTime } from '../../core/time';
+import { EventRow } from '../timeline/EventGroup';
+import { personNameOf } from './personName';
 import type { DREvent } from '../../core/types';
 
-export function PersonEvents({ events }: { events: DREvent[] }) {
+export function PersonEvents({ personId, events }: { personId: string; events: DREvent[] }) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   return (
@@ -18,16 +21,13 @@ export function PersonEvents({ events }: { events: DREvent[] }) {
         {events.length === 0 && <p className="muted">还没有和 TA 的事件</p>}
         <ul className="event-list">
           {events.map((e) => (
-            <li key={e.id}>
-              <button className="event-item" onClick={() => setEditingEventId(e.id)}>
-                <span className="event-time">{formatTime(e.time)}</span>
-                <span className="event-title">{e.title}</span>
-                <span className="event-meta">
-                  {e.metrics.rating ? '★'.repeat(e.metrics.rating) : ''}
-                  {e.metrics.cost ? ` ¥${e.metrics.cost}` : ''}
-                </span>
-              </button>
-            </li>
+            <EventRow
+              key={e.id}
+              event={e}
+              nameOf={personNameOf}
+              omitPersonId={personId}
+              onEdit={(ev) => setEditingEventId(ev.id)}
+            />
           ))}
         </ul>
       </section>
