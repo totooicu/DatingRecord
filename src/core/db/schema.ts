@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS collections (
   status TEXT NOT NULL DEFAULT 'ongoing',
   rule_json TEXT,
   icon_json TEXT,
+  /* 模板事件（v13）：新建本集合下的事件时按它预填字段；可空 = 不套模板 */
+  template_event_id TEXT,
   is_root INTEGER NOT NULL DEFAULT 0,
   time_range_auto INTEGER NOT NULL DEFAULT 1,
   time_range_start TEXT, time_range_end TEXT,

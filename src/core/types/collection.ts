@@ -56,6 +56,12 @@ export interface Collection {
   cover?: string | null;
   /** 自定义图标（F-C08）；没设为 null，各处回退到原来的外观 */
   icon: CollectionIcon | null;
+  /**
+   * 模板事件（v13）：在本集合下新建事件时，按这条事件的字段预填。
+   * 存事件 id 而不是快照：模板就是一条真事件，改它即改默认值；
+   * 事件进回收站/被删时这里保留引用，解析不到就当作没模板（恢复后自动生效）。
+   */
+  templateEventId: string | null;
   status: 'ongoing' | 'finished' | 'archived';
   rule: SmartRule | null; // 智能集合（F-C04）；普通集合为 null
   isRoot: boolean;

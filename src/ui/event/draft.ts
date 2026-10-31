@@ -27,34 +27,47 @@ export interface EventDraft {
   viewMode: 'doc' | 'chat';
 }
 
+/**
+ * 新建事件时的默认值。
+ *
+ * `template` 是事件集指定的模板事件（collections.template_event_id）：
+ * 只复制「以后也一样」的字段（类型、呈现形态、地点、正文、标签、度量、参与者），
+ * **不复制标题、时间、关联事件**——标题每次都得自己写，时间默认当前，
+ * 关联事件指向的是具体某一条，抄过来全是错。草稿恢复时模板不参与（草稿优先）。
+ */
 export function initialDraft(
   event: DREvent | undefined,
   defaultPersonId: string | undefined,
   defaultCollectionId: string | undefined,
   existingCols: string[],
+  template?: DREvent | null,
 ): EventDraft {
+  /** 编辑事件时用事件本身；新建时模板提供默认值；都没有就落到表单默认 */
+  const src = event ?? template ?? null;
+  const templatePersonIds = !event && template ? template.participants.map((p) => p.personId) : [];
   return {
     title: event?.title ?? '',
-    kind: event?.kind ?? 'date',
+    kind: src?.kind ?? 'date',
     timeKind: event?.time.kind ?? 'instant',
     start: timeText(event?.time.start ?? null),
     end: timeText(event?.time.end ?? null),
     precision: event?.time.precision ?? 'minute',
     raw: event?.time.raw ?? '',
-    placeName: event?.place.name ?? '',
-    placeAddress: event?.place.address,
-    placeGeo: event?.place.geo,
-    content: event?.content ?? '',
-    tags: event?.tags ?? [],
-    rating: event?.metrics.rating ?? '',
-    cost: event?.metrics.cost ?? '',
-    mood: event?.metrics.mood ?? '',
-    intimacyDelta: event?.metrics.intimacyDelta ?? '',
+    placeName: src?.place.name ?? '',
+    placeAddress: src?.place.address,
+    placeGeo: src?.place.geo,
+    content: src?.content ?? '',
+    tags: src?.tags ?? [],
+    rating: src?.metrics.rating ?? '',
+    cost: src?.metrics.cost ?? '',
+    mood: src?.metrics.mood ?? '',
+    intimacyDelta: src?.metrics.intimacyDelta ?? '',
     participantIds:
-      event?.participants.map((p) => p.personId) ?? (defaultPersonId ? [defaultPersonId] : []),
+      event?.participants.map((p) => p.personId) ??
+      (templatePersonIds.length ? templatePersonIds : defaultPersonId ? [defaultPersonId] : []),
     cols: existingCols.length ? existingCols : defaultCollectionId ? [defaultCollectionId] : [],
     relatedEvents: event?.relatedEvents ?? [],
-    viewMode: event?.viewMode ?? 'doc',
+    viewMode: src?.viewMode ?? 'doc',
   };
 }
 

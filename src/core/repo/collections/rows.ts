@@ -13,6 +13,7 @@ export interface CollectionRow {
   status: string;
   rule_json: string | null;
   icon_json: string | null;
+  template_event_id: string | null;
   is_root: number;
   time_range_auto: number;
   time_range_start: string | null;
@@ -39,6 +40,7 @@ export function collectionFromRow(r: CollectionRow): Collection {
     rule: r.rule_json ? JSON.parse(r.rule_json) : null,
     // 图标是可选的展示属性：老库没有这一列（null）就回落成「没图标」
     icon: r.icon_json ? (JSON.parse(r.icon_json) as CollectionIcon) : null,
+    templateEventId: r.template_event_id ?? null,
     isRoot: !!r.is_root,
     timeRangeAuto: !!r.time_range_auto,
     timeRangeStart: r.time_range_start,

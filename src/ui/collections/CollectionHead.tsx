@@ -8,9 +8,12 @@ import {
 } from '../../core/repo/collections';
 import { ConfirmButton, PrivacyButton } from '../common';
 import { bump } from '../../store';
+import { getEvent } from '../../core/repo/events';
+import { hides } from '../../privacy';
 import type { Collection } from '../../core/types';
 import { CollectionIconView } from './CollectionIcon';
 import { IconPicker } from './IconPicker';
+import { TemplateEventModal } from './TemplateEventModal';
 
 export function CollectionHead({
   collection,
@@ -24,6 +27,9 @@ export function CollectionHead({
   onError: (msg: string) => void;
 }) {
   const [iconOpen, setIconOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const template = collection.templateEventId ? getEvent(collection.templateEventId) : null;
+  const templateShown = template && !hides(template) ? template : null;
 
   return (
     <>
@@ -73,6 +79,13 @@ export function CollectionHead({
             <option value="finished">已结束</option>
             <option value="archived">已归档</option>
           </select>
+          <button
+            className="btn"
+            onClick={() => setTemplateOpen(true)}
+            title={templateShown ? `新建事件模板：${templateShown.title}` : '设置新建事件的模板事件'}
+          >
+            模板
+          </button>
           <button className="btn" onClick={onMove}>
             移动
           </button>
@@ -98,6 +111,14 @@ export function CollectionHead({
         </div>
       </div>
 
+      {collection.templateEventId && (
+        <p className="muted small collect-template-hint">
+          {templateShown
+            ? `新建事件将按模板《${templateShown.title}》自动填充`
+            : '模板事件不可用，新建事件不会填充；可在「模板」里重选'}
+        </p>
+      )}
+
       {iconOpen && (
         <IconPicker
           icon={collection.icon}
@@ -108,6 +129,9 @@ export function CollectionHead({
           }}
           onClose={() => setIconOpen(false)}
         />
+      )}
+      {templateOpen && (
+        <TemplateEventModal collectionId={collection.id} onClose={() => setTemplateOpen(false)} />
       )}
     </>
   );

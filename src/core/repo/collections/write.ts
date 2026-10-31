@@ -117,6 +117,40 @@ export function setCollectionIcon(id: string, icon: CollectionIcon | null): void
   });
 }
 
+/**
+ * 设置 / 清除事件集模板事件（v13）。
+ *
+ * 单独一个函数而不是走 updateCollection：模板是「新建事件时的默认值」，
+ * 改它不该惊动名称/状态/成员，撤销提示条也要说人话。
+ * 只校验事件当前存在（回收站里的不算）；传 null 表示不套模板。
+ */
+export function setCollectionTemplate(id: string, eventId: string | null): void {
+  const c = getCollection(id);
+  if (!c) return;
+  const next = eventId || null;
+  if ((c.templateEventId ?? null) === next) return; // 幂等：没变就不落 oplog
+  if (next) {
+    // 直接查表而不是 import getEvent：collections → events 已有读取依赖，
+    // 写侧再反向引用会绕成环；这里只需要「这条事件还在不在」。
+    const hit = queryOne<{ id: string }>(
+      'SELECT id FROM events WHERE id = ? AND deleted_at IS NULL',
+      [next],
+    );
+    if (!hit) throw new Error(`模板事件不存在或已删除：${next}`);
+  }
+  const now = new Date().toISOString();
+  transact(() => {
+    run(
+      'UPDATE collections SET template_event_id = ?, rev = rev + 1, hlc = ?, updated_at = ? WHERE id = ?',
+      [next, hlcNow(getDeviceId()), now, id],
+    );
+    appendOplog('collection', id, 'update', {
+      title: c.name,
+      templateEventId: next,
+    });
+  });
+}
+
 /** 标记 / 取消隐私（隐私模式下的隐藏开关）。单独一个函数，避免污染 updateCollection 的字段清单 */
 export function setCollectionPrivate(id: string, on: boolean): void {
   const now = new Date().toISOString();

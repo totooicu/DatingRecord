@@ -173,6 +173,13 @@ export function runMigrations(d: Database, current: number): string {
     d.run(`CREATE INDEX IF NOT EXISTS idx_memoirs_collection ON memoirs(collection_id)`);
     v = 12;
   }
+  if (v < 13) {
+    // 事件集模板事件（v13）：可空外键语义，不回填。老集合保持「不套模板」。
+    if (!hasColumn(d, 'collections', 'template_event_id')) {
+      d.run(`ALTER TABLE collections ADD COLUMN template_event_id TEXT`);
+    }
+    v = 13;
+  }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));
   return String(v);

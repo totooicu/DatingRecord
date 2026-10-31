@@ -339,3 +339,175 @@
   border-top: 1px dashed #efece7;
   min-width: 0;
 }
+
+
+/* ---------- 事件集详情：列表 / 表格切换（F-C10） ---------- */
+.collect-view-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -2px 0 10px;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.seg button {
+  border: none;
+  background: transparent;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.seg button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--primary) 12%, var(--panel));
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* 卡片头右侧多个按钮：挤在一起，不再被 space-between 拉开 */
+.card-head-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* 模板事件提示：只在设置了模板时出现，说清「以后新建会带入什么」 */
+.collect-template-hint {
+  margin: -4px 0 10px;
+}
+
+/* 新建事件表单顶部的「已套用模板」提示 */
+.template-applied {
+  margin: 0 0 10px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel));
+}
+
+/* ---------- 事件集表格阅览 ---------- */
+.ev-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px;
+}
+
+.ev-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.ev-table th,
+.ev-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.ev-table th {
+  color: var(--muted);
+  font-weight: 600;
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ev-table th.num,
+.ev-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ev-table tbody tr:hover {
+  background: color-mix(in srgb, var(--text) 3%, var(--panel));
+}
+
+.ev-table-title {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.ev-table-title:hover {
+  color: var(--primary);
+}
+
+/* 首列吸左：手机横滑时标题一直在，不会滑到只剩数字 */
+.ev-table th:first-child,
+.ev-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--panel);
+}
+
+.ev-table th:first-child {
+  z-index: 3;
+}
+
+.ev-table-time {
+  color: var(--muted);
+}
+
+.ev-table-tags {
+  color: var(--muted);
+  max-width: 160px;
+  white-space: normal;
+}
+
+.ev-table-sort {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ev-table-sort:hover {
+  color: var(--primary);
+}
+
+.ev-table tfoot td {
+  border-bottom: none;
+  padding-top: 10px;
+  font-weight: 600;
+}
+
+.ev-table-hint {
+  margin: 6px 0 0;
+}
+
+@media (min-width: 768px) {
+  .ev-table-hint {
+    display: none;
+  }
+}

@@ -17,8 +17,10 @@ import {
   deleteCollection,
   restoreCollection,
   setCollectionPrivate,
+  setCollectionTemplate,
   listSmartEvents,
   describeRule,
+  eventTableRows,
 } from '../repo/collections';
 import { getEvent } from '../repo/events';
 import type { Collection, SmartRule } from '../types';
@@ -32,6 +34,7 @@ function brief(c: Collection): Record<string, unknown> {
     status: c.status,
     description: c.description.slice(0, 120),
     rule: c.rule,
+    templateEventId: c.templateEventId,
     isRoot: c.isRoot,
     isPrivate: c.isPrivate,
   };
@@ -288,6 +291,48 @@ export const COLLECTION_TOOLS: ToolDef[] = [
           return e ? { id: e.id, title: e.title, kind: e.kind, startTs: e.startTs } : { id, missing: true };
         }),
       };
+    },
+  },
+  {
+    name: 'collection.setTemplate',
+    group: 'collection',
+    title: '设置模板事件',
+    desc: '为事件集指定模板事件：在本集合下新建事件时自动带入它的类型/人物/地点/标签/正文/度量；eventId 传空串清除模板',
+    mutating: true,
+    params: [
+      { name: 'id', type: 'string', desc: '事件集 id', required: true },
+      { name: 'eventId', type: 'string', desc: '模板事件 id；空串表示不使用模板', required: true },
+    ],
+    run: (a) => {
+      const id = a.id as string;
+      const eventId = (a.eventId as string) || null;
+      setCollectionTemplate(id, eventId);
+      return { ok: true, id, templateEventId: eventId };
+    },
+  },
+  {
+    name: 'collection.table',
+    group: 'collection',
+    title: '事件集表格',
+    desc: '按事件集「表格阅览」的列返回数据：标题/时间/类型/人物/地点/标签/评分/花费。普通集合取直接成员，智能集合取规则命中事件',
+    mutating: false,
+    params: [
+      { name: 'id', type: 'string', desc: '事件集 id', required: true },
+      { name: 'limit', type: 'number', desc: '最多返回几行，默认 200', required: false, default: 200 },
+    ],
+    run: (a) => {
+      const c = getCollection(a.id as string);
+      if (!c) throw new Error(`事件集不存在：${a.id}`);
+      const events = c.rule
+        ? listSmartEvents(c)
+        : listMembers(c.id).flatMap((m) => {
+            if (m.memberType !== 'event') return [];
+            const e = getEvent(m.memberId);
+            return e ? [e] : [];
+          });
+      const limit = a.limit === undefined ? 200 : Number(a.limit);
+      const rows = eventTableRows(events);
+      return { count: rows.length, rows: rows.slice(0, limit) };
     },
   },
   {

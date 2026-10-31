@@ -33,6 +33,7 @@ export {
   deleteCollection,
   setCollectionPrivate,
   setCollectionIcon,
+  setCollectionTemplate,
 } from './write';
 export {
   listMembers,
@@ -43,4 +44,5 @@ export {
   descendantEventIds,
   type MemberItem,
 } from './members';
+export { eventTableRows, type EventTableRow } from './table';
 export { FIRST_ORDER_KEY } from '../../order';

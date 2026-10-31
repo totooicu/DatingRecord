@@ -22,6 +22,8 @@ import { SmartList } from './SmartList';
 import { RuleModal } from './RuleModal';
 import { AddEventModal } from './AddEventModal';
 import { MoveModal } from './MoveModal';
+import { EventTable } from './EventTable';
+import { getCollectionView, setCollectionView } from '../prefs';
 import { MemoirList } from '../memoir';
 
 export function CollectionDetail({ id }: { id: string }) {
@@ -40,9 +42,27 @@ export function CollectionDetail({ id }: { id: string }) {
     () => (collection ? collectionTotalCost(collection) : 0),
     [collection, v],
   );
+  // 表格与成员列表看同一批事件：直接成员里的 event，按成员顺序
+  const memberEvents = useMemo(
+    () =>
+      members.flatMap((m) => {
+        if (m.memberType !== 'event') return [];
+        const e = getEvent(m.memberId);
+        return e ? [e] : [];
+      }),
+    [members, v],
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  /** 直接在本集合下新建事件（不是从已有事件里挑） */
+  const [newOpen, setNewOpen] = useState(false);
+  /** 列表 / 表格：跟着设备走的偏好，只写 localStorage */
+  const [view, setView] = useState(() => getCollectionView());
+  const changeView = (next: 'list' | 'table') => {
+    setView(next);
+    setCollectionView(next);
+  };
   const [ruleOpen, setRuleOpen] = useState(false);
   // 新建出来的智能集合规则是空的，进详情页就弹规则编辑，省得先被「全部事件」唬住
   const [ruleDismissed, setRuleDismissed] = useState(false);
@@ -118,6 +138,17 @@ export function CollectionDetail({ id }: { id: string }) {
         <MemoirList collectionId={id} collectionName={collection.name} />
       ) : (
         <>
+      <div className="collect-view-bar">
+        <span className="muted small">事件视图</span>
+        <div className="seg" role="group" aria-label="事件视图">
+          <button type="button" aria-pressed={view === 'list'} onClick={() => changeView('list')}>
+            列表
+          </button>
+          <button type="button" aria-pressed={view === 'table'} onClick={() => changeView('table')}>
+            表格
+          </button>
+        </div>
+      </div>
       <CollectionStats
         collectionId={id}
         members={smart ? [] : members}
@@ -127,18 +158,26 @@ export function CollectionDetail({ id }: { id: string }) {
       />
       <ChildList children={children} />
       {smart ? (
-        <SmartList
-          events={smartEvents}
-          rule={collection.rule}
-          onEditEvent={setEditingEventId}
-          onEditRule={() => setRuleOpen(true)}
-        />
+        view === 'table' ? (
+          <EventTable events={smartEvents} onOpen={setEditingEventId} />
+        ) : (
+          <SmartList
+            events={smartEvents}
+            rule={collection.rule}
+            onEditEvent={setEditingEventId}
+            onEditRule={() => setRuleOpen(true)}
+          />
+        )
+      ) : view === 'table' ? (
+        <EventTable events={memberEvents} onOpen={setEditingEventId} />
       ) : (
         <MemberList
           collectionId={id}
           members={members}
           onEditEvent={setEditingEventId}
           onAdd={() => setAddOpen(true)}
+          onNew={() => setNewOpen(true)}
+          templateEventId={collection.templateEventId}
         />
       )}
         </>
@@ -156,6 +195,15 @@ export function CollectionDetail({ id }: { id: string }) {
         />
       )}
       {addOpen && <AddEventModal collectionId={id} onClose={() => setAddOpen(false)} />}
+      {newOpen && (
+        <EventForm
+          defaultCollectionId={id}
+          onClose={() => {
+            setNewOpen(false);
+            bump();
+          }}
+        />
+      )}
       {moveOpen && (
         <MoveModal collectionId={id} onClose={() => setMoveOpen(false)} onError={setMsg} />
       )}

@@ -4,6 +4,7 @@ import { listPersons } from '../../core/repo/persons';
 import {
   addMember,
   collectionsOfEvent,
+  getCollection,
   getTree,
   removeMember,
   type TreeNode,
@@ -54,12 +55,22 @@ export function EventForm({
     [ev?.id],
   );
 
+  // 事件集模板：只对「新建 + 从某个事件集进来」生效。
+  // 模板事件自己也可能是隐私事件，隐私模式下当作没有——不能借模板把隐藏内容漏出来。
+  const template = useMemo(() => {
+    if (event || !defaultCollectionId) return null;
+    const c = getCollection(defaultCollectionId);
+    if (!c?.templateEventId) return null;
+    const t = getEvent(c.templateEventId);
+    return t && !hides(t) ? t : null;
+  }, [event, defaultCollectionId]);
+
   // 新建时若上次写了一半就关掉页面，这里把草稿捡回来（开关在设置里）
   const [restored] = useState(() => (event ? null : loadDraft<NewEventDraft>(DRAFT_KEY)));
   const [d, setD] = useState<EventDraft>(() =>
     !event && restored
       ? restored.data.d
-      : initialDraft(event, defaultPersonId, defaultCollectionId, existingCols),
+      : initialDraft(event, defaultPersonId, defaultCollectionId, existingCols, template),
   );
   // 打开已有事件先给浏览态：读的人不需要一屏输入框；点「编辑」才进表单。
   // 新建没有可读的旧数据，直接进编辑态。
@@ -85,7 +96,7 @@ export function EventForm({
 
   const discardDraft = () => {
     clearDraft(DRAFT_KEY);
-    setD(initialDraft(undefined, defaultPersonId, defaultCollectionId, []));
+    setD(initialDraft(undefined, defaultPersonId, defaultCollectionId, [], template));
     setPriv(false);
     setDraftRestored(false);
   };
@@ -182,6 +193,11 @@ export function EventForm({
             丢弃草稿
           </button>
         </div>
+      )}
+      {isNew && template && !draftRestored && (
+        <p className="muted small template-applied">
+          已按事件集模板《{template.title}》带入类型、标签、人物、地点与度量；标题、时间和关联事件不复制。
+        </p>
       )}
       {ev && mode === 'view' ? (
         <EventView

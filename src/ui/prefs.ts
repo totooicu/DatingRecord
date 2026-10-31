@@ -11,22 +11,29 @@ import { useSyncExternalStore } from 'react';
 
 export type GuideMode = 'companion' | 'focus';
 
+/** 事件集详情里事件的默认排版：列表（成员行）/ 表格（只读阅览） */
+export type CollectionView = 'list' | 'table';
+
 interface Prefs {
   /** companion=陪伴（默认，带引导与小字）；focus=专注（只留控件，去解释） */
   guide: GuideMode;
+  /** 上次在事件集详情选的视图；跟着设备走，不进库也不进备份 */
+  collectionView: CollectionView;
 }
 
 const KEY = 'dr.prefs.v1';
-const DEFAULT_PREFS: Prefs = { guide: 'companion' };
+const DEFAULT_PREFS: Prefs = { guide: 'companion', collectionView: 'list' };
 
 function read(): Prefs {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_PREFS;
     const p = JSON.parse(raw) as Partial<Prefs>;
-    if (p && (p.guide === 'companion' || p.guide === 'focus')) {
-      return { guide: p.guide };
-    }
+    // 逐项校验：任意一项损坏只回落该项，不把整份偏好清掉
+    return {
+      guide: p?.guide === 'focus' ? 'focus' : 'companion',
+      collectionView: p?.collectionView === 'table' ? 'table' : 'list',
+    };
   } catch {
     /* 存储被禁或内容损坏：退回默认，不阻塞启动 */
   }
@@ -39,6 +46,20 @@ export function getPrefs(): Prefs {
 
 export function getGuide(): GuideMode {
   return read().guide;
+}
+
+export function getCollectionView(): CollectionView {
+  return read().collectionView;
+}
+
+/** 记住事件集详情的列表/表格选择；只写本机偏好，不碰库数据 */
+export function setCollectionView(v: CollectionView): void {
+  const next: Prefs = { ...read(), collectionView: v };
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    /* 存储不可用时本次会话仍生效（调用方自己持有 state） */
+  }
 }
 
 /** 把当前模式写到 :root，驱动 .guide-only 的显隐 */

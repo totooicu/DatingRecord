@@ -172,6 +172,12 @@ export function purgeEvent(id: string): void {
     run('DELETE FROM events WHERE id = ?', [id]);
     run('DELETE FROM event_participants WHERE event_id = ?', [id]);
     run('DELETE FROM collection_members WHERE member_type = ? AND member_id = ?', ['event', id]);
+    // 彻底删除才清模板引用：软删除保留引用，恢复后模板自动重新生效。
+    // rev/hlc 一起前移：否则以后导入一份旧备份时，凭更高的 hlc 又能把引用写回来。
+    run(
+      'UPDATE collections SET template_event_id = NULL, rev = rev + 1, hlc = ?, updated_at = ? WHERE template_event_id = ?',
+      [hlcNow(getDeviceId()), new Date().toISOString(), id],
+    );
     stripRefsTo(id); // 别的事件 related_json 里可能指着它
     appendOplog('event', id, 'delete', { id, hard: true });
     // 附件回收放在最后：此刻「还有没有别的主」才是准的（F-E05）

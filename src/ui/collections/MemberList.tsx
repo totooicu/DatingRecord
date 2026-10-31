@@ -11,11 +11,18 @@ export function MemberList({
   members,
   onEditEvent,
   onAdd,
+  onNew,
+  templateEventId,
 }: {
   collectionId: string;
   members: MemberItem[];
   onEditEvent: (id: string) => void;
+  /** 打开「添加已有事件」弹窗 */
   onAdd: () => void;
+  /** 直接在本集合下新建事件：会带上集合 id 与模板事件 */
+  onNew?: () => void;
+  /** 当前模板事件 id：成员行上打「模板」标记 */
+  templateEventId?: string | null;
 }) {
   const eventCount = members.filter((m) => m.memberType === 'event').length;
 
@@ -23,9 +30,16 @@ export function MemberList({
     <section className="card">
       <div className="card-head">
         <h4 className="card-title">成员（{members.length}）</h4>
-        <button className="btn btn-sm btn-primary" onClick={onAdd}>
-          ＋ 添加事件
-        </button>
+        <div className="card-head-actions">
+          {onNew && (
+            <button className="btn btn-sm btn-primary" onClick={onNew}>
+              ＋ 新建事件
+            </button>
+          )}
+          <button className="btn btn-sm" onClick={onAdd}>
+            添加已有
+          </button>
+        </div>
       </div>
       {members.length === 0 && <p className="muted">还没有成员。成员可以是事件，也可以是子事件集。</p>}
       <ul className="member-list">
@@ -36,6 +50,7 @@ export function MemberList({
           return (
             <li key={`${m.memberType}-${m.memberId}`}>
               <span className="member-type">{m.memberType === 'event' ? '事件' : '集合'}</span>
+              {ev && templateEventId === ev.id && <span className="member-type">模板</span>}
               <div className="member-main">
                 <button className="member-title" onClick={() => ev && onEditEvent(ev.id)}>
                   {title}
