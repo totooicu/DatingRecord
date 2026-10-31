@@ -89,9 +89,26 @@ try {
   const hint = await page.locator('.collect-template-hint').innerText();
   check('事件集详情显示模板提示', hint.includes('咖啡模板'), hint);
 
+  // ---- 视图开关的位置与标题 ----
+  check('不再单独占一行放视图开关', (await page.locator('.collect-view-bar').count()) === 0);
+  const listTitle = await page.locator('.card:has(.member-list) .card-title').innerText();
+  check('列表卡片标题只数事件', listTitle === '事件（2）', listTitle);
+  check(
+    '列表卡片头里有视图开关',
+    (await page.locator('.card:has(.member-list) .card-head .seg').count()) === 1,
+  );
+  const tabBadge = await page.locator('.collect-tabs .aichat-tab-n').first().innerText();
+  check('页签计数与事件数一致', tabBadge === '2', tabBadge);
+
   // ---- 表格阅览 ----
   await page.getByRole('button', { name: '表格', exact: true }).click();
   await page.waitForSelector('.ev-table');
+  const tableTitle = await page.locator('.card:has(.ev-table) .card-title').innerText();
+  check('表格卡片沿用同一个标题', tableTitle === '事件（2）', tableTitle);
+  check(
+    '表格卡片头里有视图开关',
+    (await page.locator('.card:has(.ev-table) .card-head .seg').count()) === 1,
+  );
   check('表格有 8 列', (await page.locator('.ev-table thead th').count()) === 8);
   check('表格只列直接成员（2 条）', (await page.locator('.ev-table tbody tr').count()) === 2);
   const firstTitle = await page.locator('.ev-table tbody tr').first().locator('.ev-table-title').innerText();

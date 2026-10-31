@@ -4,15 +4,21 @@ import { getPerson } from '../../core/repo/persons';
 import { describeRule } from '../../core/repo/collections';
 import { formatTime } from '../../core/time';
 import type { DREvent, SmartRule } from '../../core/types';
+import type { CollectionView } from '../prefs';
+import { EventViewToggle } from './EventViewToggle';
 
 export function SmartList({
   events,
   rule,
+  view,
+  onView,
   onEditEvent,
   onEditRule,
 }: {
   events: DREvent[];
   rule: SmartRule | null;
+  view: CollectionView;
+  onView: (v: CollectionView) => void;
   onEditEvent: (id: string) => void;
   onEditRule: () => void;
 }) {
@@ -22,9 +28,12 @@ export function SmartList({
     <section className="card">
       <div className="card-head">
         <h4 className="card-title">命中事件（{events.length}）</h4>
-        <button className="btn btn-sm" onClick={onEditRule}>
-          编辑规则
-        </button>
+        <div className="card-head-actions">
+          <EventViewToggle view={view} onChange={onView} />
+          <button className="btn btn-sm" onClick={onEditRule}>
+            编辑规则
+          </button>
+        </div>
       </div>
       <p className="muted small rule-summary">{describeRule(rule)}</p>
       {events.length === 0 ? (

@@ -8,6 +8,7 @@ import {
   listMembers,
   listSmartEvents,
   updateCollection,
+  removeMember,
   collectionTotalCost,
 } from '../../core/repo/collections';
 import { getEvent } from '../../core/repo/events';
@@ -42,13 +43,23 @@ export function CollectionDetail({ id }: { id: string }) {
     () => (collection ? collectionTotalCost(collection) : 0),
     [collection, v],
   );
-  // 表格与成员列表看同一批事件：直接成员里的 event，按成员顺序
+  // 表格与事件列表看同一批事件：直接成员里的 event，按成员顺序
   const memberEvents = useMemo(
     () =>
       members.flatMap((m) => {
         if (m.memberType !== 'event') return [];
         const e = getEvent(m.memberId);
         return e ? [e] : [];
+      }),
+    [members, v],
+  );
+  // 以成员关系挂进来的集合（不是 parent_id 子集）：并进「子事件集」卡片，别让它们消失
+  const memberCollections = useMemo(
+    () =>
+      members.flatMap((m) => {
+        if (m.memberType !== 'collection') return [];
+        const c = getCollection(m.memberId);
+        return c ? [{ id: c.id, name: c.name }] : [];
       }),
     [members, v],
   );
@@ -122,7 +133,7 @@ export function CollectionDetail({ id }: { id: string }) {
           onClick={() => setTab('events')}
         >
           事件
-          <span className="aichat-tab-n">{smart ? smartEvents.length : members.length}</span>
+          <span className="aichat-tab-n">{smart ? smartEvents.length : memberEvents.length}</span>
         </button>
         <button
           role="tab"
@@ -138,17 +149,6 @@ export function CollectionDetail({ id }: { id: string }) {
         <MemoirList collectionId={id} collectionName={collection.name} />
       ) : (
         <>
-      <div className="collect-view-bar">
-        <span className="muted small">事件视图</span>
-        <div className="seg" role="group" aria-label="事件视图">
-          <button type="button" aria-pressed={view === 'list'} onClick={() => changeView('list')}>
-            列表
-          </button>
-          <button type="button" aria-pressed={view === 'table'} onClick={() => changeView('table')}>
-            表格
-          </button>
-        </div>
-      </div>
       <CollectionStats
         collectionId={id}
         members={smart ? [] : members}
@@ -156,24 +156,45 @@ export function CollectionDetail({ id }: { id: string }) {
         smartCount={smart ? smartEvents.length : undefined}
         totalCost={totalCost}
       />
-      <ChildList children={children} />
+      <ChildList
+        children={children}
+        memberCollections={smart ? [] : memberCollections}
+        onRemoveMember={(cid) => {
+          removeMember(id, 'collection', cid);
+          bump();
+        }}
+      />
       {smart ? (
         view === 'table' ? (
-          <EventTable events={smartEvents} onOpen={setEditingEventId} />
+          <EventTable
+            events={smartEvents}
+            view={view}
+            onView={changeView}
+            onOpen={setEditingEventId}
+          />
         ) : (
           <SmartList
             events={smartEvents}
             rule={collection.rule}
+            view={view}
+            onView={changeView}
             onEditEvent={setEditingEventId}
             onEditRule={() => setRuleOpen(true)}
           />
         )
       ) : view === 'table' ? (
-        <EventTable events={memberEvents} onOpen={setEditingEventId} />
+        <EventTable
+          events={memberEvents}
+          view={view}
+          onView={changeView}
+          onOpen={setEditingEventId}
+        />
       ) : (
         <MemberList
           collectionId={id}
           members={members}
+          view={view}
+          onView={changeView}
           onEditEvent={setEditingEventId}
           onAdd={() => setAddOpen(true)}
           onNew={() => setNewOpen(true)}

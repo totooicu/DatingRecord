@@ -342,12 +342,23 @@
 
 
 /* ---------- 事件集详情：列表 / 表格切换（F-C10） ---------- */
-.collect-view-bar {
+/* 开关放在事件卡片头里，跟着卡片走：标题占一行，窄屏也不会把「事件（N）」挤断 */
+.event-card-head {
+  margin-bottom: 8px;
+}
+
+.event-card-head .card-title {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+/* 新建 / 添加已有放在卡片内单独一行，避免和标题、开关抢宽度 */
+.event-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin: -2px 0 10px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0 0 10px;
 }
 
 .seg {

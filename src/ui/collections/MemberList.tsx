@@ -1,14 +1,21 @@
-// 成员列表：事件/子集合混排，支持上移下移与移出
+// 事件列表：只列事件，按手动顺序排列，支持上移下移与移出。
+//
+// 子事件集不混进来——它们在上面的「子事件集」卡片里，标题和计数才对得上
+// 旁边的表格视图（表格也只列事件）。
 import { getCollection, listMembers, moveMemberTo, removeMember } from '../../core/repo/collections';
 import { getEvent } from '../../core/repo/events';
 import { getPerson } from '../../core/repo/persons';
 import { bump } from '../../store';
 import { formatTime } from '../../core/time';
 import type { MemberItem } from '../../core/repo/collections';
+import type { CollectionView } from '../prefs';
+import { EventViewToggle } from './EventViewToggle';
 
 export function MemberList({
   collectionId,
   members,
+  view,
+  onView,
   onEditEvent,
   onAdd,
   onNew,
@@ -16,6 +23,8 @@ export function MemberList({
 }: {
   collectionId: string;
   members: MemberItem[];
+  view: CollectionView;
+  onView: (v: CollectionView) => void;
   onEditEvent: (id: string) => void;
   /** 打开「添加已有事件」弹窗 */
   onAdd: () => void;
@@ -24,32 +33,37 @@ export function MemberList({
   /** 当前模板事件 id：成员行上打「模板」标记 */
   templateEventId?: string | null;
 }) {
-  const eventCount = members.filter((m) => m.memberType === 'event').length;
+  // 留一份全长列表里的下标：moveMemberTo 的 targetIndex 是按完整成员表算的
+  const eventRows = members
+    .map((member, fullIndex) => ({ member, fullIndex }))
+    .filter(({ member }) => member.memberType === 'event');
 
   return (
     <section className="card">
-      <div className="card-head">
-        <h4 className="card-title">成员（{members.length}）</h4>
-        <div className="card-head-actions">
-          {onNew && (
-            <button className="btn btn-sm btn-primary" onClick={onNew}>
-              ＋ 新建事件
-            </button>
-          )}
-          <button className="btn btn-sm" onClick={onAdd}>
-            添加已有
-          </button>
-        </div>
+      <div className="card-head event-card-head">
+        <h4 className="card-title">事件（{eventRows.length}）</h4>
+        <EventViewToggle view={view} onChange={onView} />
       </div>
-      {members.length === 0 && <p className="muted">还没有成员。成员可以是事件，也可以是子事件集。</p>}
+      <div className="event-toolbar">
+        {onNew && (
+          <button className="btn btn-sm btn-primary" onClick={onNew}>
+            ＋ 新建事件
+          </button>
+        )}
+        <button className="btn btn-sm" onClick={onAdd}>
+          添加已有
+        </button>
+      </div>
+      {eventRows.length === 0 && (
+        <p className="muted">还没有事件。可以新建，也可以从已有事件里挑。</p>
+      )}
       <ul className="member-list">
-        {members.map((m, i) => {
-          const ev = m.memberType === 'event' ? getEvent(m.memberId) : null;
-          const col = m.memberType === 'collection' ? getCollection(m.memberId) : null;
-          const title = ev ? ev.title : col ? col.name : '(已删除)';
+        {eventRows.map(({ member: m, fullIndex }) => {
+          const ev = getEvent(m.memberId);
+          const title = ev ? ev.title : '(已删除)';
           return (
             <li key={`${m.memberType}-${m.memberId}`}>
-              <span className="member-type">{m.memberType === 'event' ? '事件' : '集合'}</span>
+              <span className="member-type">事件</span>
               {ev && templateEventId === ev.id && <span className="member-type">模板</span>}
               <div className="member-main">
                 <button className="member-title" onClick={() => ev && onEditEvent(ev.id)}>
@@ -72,7 +86,7 @@ export function MemberList({
                   className="icon-btn"
                   title="上移"
                   onClick={() => {
-                    moveMemberTo(collectionId, m.memberType, m.memberId, i - 1);
+                    moveMemberTo(collectionId, m.memberType, m.memberId, fullIndex - 1);
                     bump();
                   }}
                 >
@@ -82,7 +96,7 @@ export function MemberList({
                   className="icon-btn"
                   title="下移"
                   onClick={() => {
-                    moveMemberTo(collectionId, m.memberType, m.memberId, i + 2);
+                    moveMemberTo(collectionId, m.memberType, m.memberId, fullIndex + 2);
                     bump();
                   }}
                 >
@@ -103,29 +117,53 @@ export function MemberList({
           );
         })}
       </ul>
-      {eventCount > 0 && (
-        <p className="muted small">
-          共 {eventCount} 个事件；排序键为字符串（fractional index），跨端合并不会错乱。
-        </p>
-      )}
+      {eventRows.length > 0 && <p className="muted small">共 {eventRows.length} 个事件；↑↓ 调整顺序。</p>}
     </section>
   );
 }
 
-export function ChildList({ children }: { children: { id: string; name: string }[] }) {
+export function ChildList({
+  children,
+  memberCollections = [],
+  onRemoveMember,
+}: {
+  children: { id: string; name: string }[];
+  /** 通过成员关系挂进来的集合（不是 parent_id 子集），别让它们看不见 */
+  memberCollections?: { id: string; name: string }[];
+  onRemoveMember?: (collectionId: string) => void;
+}) {
+  // 同一个集合可能既是子集又是成员：按 id 去重，子集优先
+  const rows = [
+    ...children.map((c) => ({ ...c, viaMember: false })),
+    ...memberCollections
+      .filter((m) => !children.some((c) => c.id === m.id))
+      .map((m) => ({ ...m, viaMember: true })),
+  ];
+
   return (
     <section className="card">
       <div className="card-head">
-        <h4 className="card-title">子事件集（{children.length}）</h4>
+        <h4 className="card-title">子事件集（{rows.length}）</h4>
       </div>
-      {children.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="muted">暂无子事件集。事件集可无限嵌套。</p>
       ) : (
         <ul className="plain-list">
-          {children.map((c) => (
+          {rows.map((c) => (
             <li key={c.id}>
-              <span className="tree-name">{c.name}</span>
-              <span className="muted">{listMembers(c.id).length} 个成员</span>
+              <span className="tree-name">{getCollection(c.id)?.name ?? c.name}</span>
+              <span className="muted">
+                {listMembers(c.id).filter((m) => m.memberType === 'event').length} 个事件
+              </span>
+              {c.viaMember && onRemoveMember && (
+                <button
+                  className="icon-btn"
+                  title="移出集合（不删除子集）"
+                  onClick={() => onRemoveMember(c.id)}
+                >
+                  ×
+                </button>
+              )}
             </li>
           ))}
         </ul>

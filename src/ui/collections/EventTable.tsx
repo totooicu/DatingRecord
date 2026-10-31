@@ -6,6 +6,8 @@
 import { useMemo, useState } from 'react';
 import type { DREvent } from '../../core/types';
 import { eventTableRows, type EventTableRow } from '../../core/repo/collections';
+import type { CollectionView } from '../prefs';
+import { EventViewToggle } from './EventViewToggle';
 
 type SortKey = 'time' | 'title' | 'kind' | 'rating' | 'cost';
 
@@ -33,7 +35,17 @@ function fmtMoney(n: number): string {
   return n.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 }
 
-export function EventTable({ events, onOpen }: { events: DREvent[]; onOpen: (id: string) => void }) {
+export function EventTable({
+  events,
+  view,
+  onView,
+  onOpen,
+}: {
+  events: DREvent[];
+  view: CollectionView;
+  onView: (v: CollectionView) => void;
+  onOpen: (id: string) => void;
+}) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'time', desc: true });
   const rows = useMemo(() => eventTableRows(events), [events]);
 
@@ -64,15 +76,15 @@ export function EventTable({ events, onOpen }: { events: DREvent[]; onOpen: (id:
 
   return (
     <section className="card">
-      <div className="card-head">
-        <h4 className="card-title">事件表格（{rows.length}）</h4>
-        <span className="muted small">只读 · 点标题查看</span>
+      <div className="card-head event-card-head">
+        <h4 className="card-title">事件（{rows.length}）</h4>
+        <EventViewToggle view={view} onChange={onView} />
       </div>
       {rows.length === 0 ? (
         <p className="muted">这个事件集还没有事件。</p>
       ) : (
         <>
-          <p className="muted small ev-table-hint">手机可左右滑动查看全部列</p>
+          <p className="muted small ev-table-hint">只读 · 点标题查看；手机可左右滑动查看全部列</p>
           <div className="ev-table-wrap">
             <table className="ev-table">
               <thead>
