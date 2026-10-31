@@ -7,6 +7,9 @@
 //
 // 四步共用一个 state，任意一步都能退回改，改完再往后走时前面算出来的东西
 // 会按新选择重算：选人物只看当前事件，预览只看当前全部选择。
+//
+// 本文件只留「状态 + 派生 + 动作」：四步的界面在 ./wizard/ 下各有一个文件，
+// 取数（树摊平、两种事件集详情）在 wizard/model.ts。
 import { useEffect, useMemo, useState } from 'react';
 import {
   buildShare,
@@ -15,18 +18,9 @@ import {
   personsInCollections,
   type ShareOptions,
 } from '../../core/io';
-import {
-  getBreadcrumb,
-  getCollection,
-  getTree,
-  listChildren,
-  listSmartEvents,
-  type TreeNode,
-} from '../../core/repo/collections';
+import { getTree, type TreeNode } from '../../core/repo/collections';
 import { listDefs, listPersons } from '../../core/repo/persons';
-import { formatTime } from '../../core/time';
 import {
-  SHARE_LEVELS,
   type Collection,
   type DREvent,
   type Person,
@@ -34,147 +28,25 @@ import {
   type ShareLevel,
 } from '../../core/types';
 import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
-import { formatAttrValue } from '../attr';
-import { Modal, Empty } from '../common';
-import { EventView } from '../event/EventView';
-import { Avatar } from '../persons/Avatar';
+import { Modal } from '../common';
 import { showToast } from '../toast';
+import { ColPeekModal, RepoEventPeek, type ColPeekData } from './SharePeeks';
+import { PickCollections } from './wizard/PickCollections';
+import { PickPersons } from './wizard/PickPersons';
+import { PickLevel } from './wizard/PickLevel';
+import { PreviewStep } from './wizard/PreviewStep';
+import { PersonViewModal } from './wizard/PersonViewModal';
+import { EventViewModal } from './wizard/EventViewModal';
+import { ConfirmCloseModal, StepBar } from './wizard/StepBar';
 import {
-  ChatPreview,
-  ColPeekModal,
-  RepoEventPeek,
-  ruleTextOf,
-  type ColPeekData,
-} from './SharePeeks';
-
-const STEPS = ['事件集', '人物', '程度', '预览'];
-
-/** 草稿只存「选到哪儿了」，不存预览结果与派生的 id 集合 */
-const DRAFT_KEY = 'share-wizard';
-
-interface WizardDraft {
-  step: number;
-  colIds: string[];
-  excluded: string[];
-  expanded: string[];
-  extraPicked: string[];
-  level: ShareLevel;
-  attrKeys: string[];
-  withAttachments: boolean;
-}
-
-
-interface ColRow {
-  id: string;
-  name: string;
-  depth: number;
-  smart: boolean;
-  /** 含子集在内的事件数 */
-  eventCount: number;
-  /** 从根到父的 id，用来判断这一行是不是「选择根」 */
-  ancestors: string[];
-}
-
-/** 把树摊平，根集合本身不列出来——分享「全部」没有意义，也从顶层事件集开始选 */
-function rowsOf(tree: TreeNode | null): ColRow[] {
-  const out: ColRow[] = [];
-  const walk = (n: TreeNode, depth: number, ancestors: string[]) => {
-    out.push({
-      id: n.id,
-      name: n.name,
-      depth,
-      smart: n.kind === 'smart',
-      eventCount: n.totalEventCount,
-      ancestors,
-    });
-    for (const c of n.children) walk(c, depth + 1, [...ancestors, n.id]);
-  };
-  for (const c of tree?.children ?? []) walk(c, 0, []);
-  return out;
-}
-
-/** 属性值的展示：按字典顺序，找不到定义就退回 key */
-function attrsOf(p: Person, defs: ReturnType<typeof listDefs>) {
-  return Object.entries(p.attrs).map(([key, av]) => {
-    const def = defs.find((d) => d.key === key);
-    return {
-      key,
-      label: def?.label ?? key,
-      text: def ? formatAttrValue(def, av.v) : String(av.v ?? ''),
-    };
-  });
-}
-
-const STATUS_TEXT: Record<Collection['status'], string> = {
-  ongoing: '进行中',
-  finished: '已完成',
-  archived: '已归档',
-};
-
-/** 本库的事件集详情：事件按当前勾选状态标出「不分享」 */
-function repoColPeek(id: string, excluded: Set<string>): ColPeekData | null {
-  const c = getCollection(id);
-  if (!c) return null;
-  return {
-    name: c.name,
-    smart: c.kind === 'smart',
-    path: getBreadcrumb(id)
-      .filter((x) => !x.isRoot && x.id !== id)
-      .map((x) => x.name)
-      .join(' / '),
-    description: c.description,
-    ruleText: ruleTextOf(c),
-    statusLabel: STATUS_TEXT[c.status] ?? c.status,
-    isPrivate: c.isPrivate,
-    children: listChildren(id).map((x) => x.name),
-    events: eventsOfCollections([id]).map((e) => ({ event: e, off: excluded.has(e.id) })),
-  };
-}
-
-/** 预览里的事件集详情：只能看打包带走的那些事件与子集 */
-function shareColPeek(c: Collection, share: ShareFile): ColPeekData {
-  const byId = new Map(share.collections.map((x) => [x.id, x]));
-  const path: string[] = [];
-  let p = c.parentId ? byId.get(c.parentId) : null;
-  while (p) {
-    if (!p.isRoot) path.unshift(p.name);
-    p = p.parentId ? byId.get(p.parentId) : null;
-  }
-
-  // 子集 + 直接挂在本集合上的事件；智能集合没有成员行，事件得按规则现算再和包内事件取交集
-  const ids = new Set([c.id]);
-  const stack = [c.id];
-  while (stack.length) {
-    const cur = stack.pop() as string;
-    for (const x of share.collections) {
-      if (x.parentId === cur && !ids.has(x.id)) {
-        ids.add(x.id);
-        stack.push(x.id);
-      }
-    }
-  }
-  const eventIds = new Set(
-    share.members
-      .filter((m) => m.memberType === 'event' && ids.has(m.collectionId))
-      .map((m) => m.memberId),
-  );
-  for (const x of share.collections) {
-    if (!ids.has(x.id) || x.kind !== 'smart') continue;
-    for (const e of listSmartEvents(x)) eventIds.add(e.id);
-  }
-
-  return {
-    name: c.name,
-    smart: c.kind === 'smart',
-    path: path.join(' / '),
-    description: c.description,
-    ruleText: ruleTextOf(c),
-    statusLabel: STATUS_TEXT[c.status] ?? c.status,
-    isPrivate: c.isPrivate,
-    children: share.collections.filter((x) => x.parentId === c.id).map((x) => x.name),
-    events: share.events.filter((e) => eventIds.has(e.id)).map((e) => ({ event: e })),
-  };
-}
+  DRAFT_KEY,
+  countsOf,
+  repoColPeek,
+  rowsOf,
+  shareColPeek,
+  type ColRow,
+  type WizardDraft,
+} from './wizard/model';
 
 export function ShareWizard({ onClose }: { onClose: () => void }) {
   // 打开时先看看有没有上次没做完的草稿（开关关着时 loadDraft 恒为 null）
@@ -234,10 +106,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
     [colsKey, eventsKey],
   );
   const involvedIds = useMemo(() => new Set(involved.map((r) => r.person.id)), [involved]);
-  const extras = useMemo(
-    () => listPersons().filter((p) => !involvedIds.has(p.id)),
-    [involvedIds],
-  );
+  const extras = useMemo(() => listPersons().filter((p) => !involvedIds.has(p.id)), [involvedIds]);
 
   const pickedIds = useMemo(() => {
     const set = new Set(involved.map((r) => r.person.id));
@@ -444,13 +313,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
           : '预览并导出';
 
   // 预览里每个人出现在几个事件中（额外多选的人会是 0）
-  const previewCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const e of preview?.events ?? []) {
-      for (const p of e.participants) map.set(p.personId, (map.get(p.personId) ?? 0) + 1);
-    }
-    return map;
-  }, [preview]);
+  const previewCounts = useMemo(() => countsOf(preview), [preview]);
 
   const viewMessages = useMemo(
     () => (eventView ? (preview?.messages ?? []).filter((m) => m.eventId === eventView.id) : []),
@@ -494,23 +357,7 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
           </>
         }
       >
-        <div className="share-steps" aria-label="分享步骤">
-          {STEPS.map((label, i) => {
-            const n = i + 1;
-            const cls =
-              n === step
-                ? 'share-step share-step-on'
-                : n < step
-                  ? 'share-step share-step-done'
-                  : 'share-step';
-            return (
-              <span key={label} className={cls}>
-                <em>{n}</em>
-                {label}
-              </span>
-            );
-          })}
-        </div>
+        <StepBar step={step} />
 
         <h4 className="share-wizard-title">{stepTitle}</h4>
 
@@ -524,487 +371,92 @@ export function ShareWizard({ onClose }: { onClose: () => void }) {
         )}
 
         {step === 1 && (
-          <>
-            <div className="share-wizard-tools">
-              <span className="muted small">
-                选中的事件集会连同子事件集一起带走；需要时展开「挑事件」，取消勾选的那些就不分享。
-              </span>
-              <span className="share-wizard-btns">
-                <button
-                  className="btn btn-sm"
-                  onClick={() => setColIds(treeRows.filter((r) => r.depth === 0).map((r) => r.id))}
-                >
-                  全选
-                </button>
-                <button className="btn btn-sm" onClick={() => setColIds([])}>
-                  清空
-                </button>
-              </span>
-            </div>
-            {treeRows.length === 0 ? (
-              <Empty compact text="还没有事件集。" />
-            ) : (
-              <div className="share-pick-list">
-                {treeRows.map((row) => {
-                  const implied = impliedIds.has(row.id);
-                  const checked = implied || colIds.includes(row.id);
-                  const root = selectionRoots.includes(row.id);
-                  const group = groups.find((g) => g.id === row.id);
-                  const expandedHere = root && expanded.has(row.id);
-                  return (
-                    <div key={row.id}>
-                      <div
-                        className={checked ? 'share-pick-row share-pick-on' : 'share-pick-row'}
-                        style={{ paddingLeft: 12 + row.depth * 18 }}
-                      >
-                        <label className="share-pick-main">
-                          <input type="checkbox" checked={checked} disabled={implied} onChange={() => toggleCol(row)} />
-                          <span className="share-pick-name">
-                            {row.name}
-                            {row.smart && <em title="智能集合：成员由规则实时算出">⚡</em>}
-                          </span>
-                        </label>
-                        <span className="muted small">{row.eventCount} 个事件</span>
-                        {implied && <span className="share-pick-tag">随上级</span>}
-                        <button
-                          className="btn btn-sm share-expand"
-                          onClick={() => openRepoCol(row.id)}
-                          title="看看这个事件集里都有什么"
-                        >
-                          详情
-                        </button>
-                        {root && (group?.events.length ?? 0) > 0 && (
-                          <button
-                            className="btn btn-sm share-expand"
-                            onClick={() => toggleExpand(row.id)}
-                            aria-expanded={expandedHere}
-                          >
-                            {expandedHere ? '收起' : '挑事件'}
-                          </button>
-                        )}
-                      </div>
-
-                      {expandedHere && group && (
-                        <div className="share-event-picks">
-                          <div className="share-event-picks-head">
-                            <span className="muted small">
-                              {group.events.length} 个事件 · 取消勾选的不分享（跨事件集生效）
-                            </span>
-                            <span className="share-wizard-btns">
-                              <button className="btn btn-sm" onClick={() => setGroupEvents(group.events, true)}>
-                                全选
-                              </button>
-                              <button className="btn btn-sm" onClick={() => setGroupEvents(group.events, false)}>
-                                清空
-                              </button>
-                            </span>
-                          </div>
-                          {group.events.map((e) => {
-                            const on = !excluded.has(e.id);
-                            return (
-                              <div
-                                key={e.id}
-                                className={on ? 'share-event-pick' : 'share-event-pick share-event-off'}
-                              >
-                                <label className="share-event-pick-main">
-                                  <input type="checkbox" checked={on} onChange={() => toggleEvent(e.id)} />
-                                  <span className="share-event-pick-text">
-                                    <span className="share-pick-name">{e.title || '未命名事件'}</span>
-                                    <span className="muted small">{formatTime(e.time)}</span>
-                                  </span>
-                                </label>
-                                <button
-                                  className="btn btn-sm share-expand"
-                                  onClick={() => setRepoEventPeek(e)}
-                                  title="看这个事件的正文"
-                                >
-                                  查看
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
+          <PickCollections
+            rows={treeRows}
+            colIds={colIds}
+            impliedIds={impliedIds}
+            selectionRoots={selectionRoots}
+            groups={groups}
+            excluded={excluded}
+            expanded={expanded}
+            onSetCols={setColIds}
+            onToggleCol={toggleCol}
+            onToggleExpand={toggleExpand}
+            onToggleEvent={toggleEvent}
+            onSetGroupEvents={setGroupEvents}
+            onOpenCol={openRepoCol}
+            onPeekEvent={setRepoEventPeek}
+          />
         )}
 
         {step === 2 && (
-          <>
-            <div className="share-wizard-tools">
-              <span className="muted small">
-                事件里出现的人必须带上资料，否则事件会指向一个不存在的人；下面还可以多选没涉及到的人。
-              </span>
-              <span className="share-wizard-btns">
-                <button
-                  className="btn btn-sm"
-                  onClick={() => setExtraPicked(new Set(extras.map((p) => p.id)))}
-                  disabled={extras.length === 0}
-                >
-                  全选其他
-                </button>
-                <button
-                  className="btn btn-sm"
-                  onClick={() => setExtraPicked(new Set())}
-                  disabled={extraPicked.size === 0}
-                >
-                  清空其他
-                </button>
-              </span>
-            </div>
-
-            <div className="share-person-section">事件里的人物（必带）</div>
-            {involved.length === 0 ? (
-              <p className="muted small">当前挑出的事件里没有人物。</p>
-            ) : (
-              <div className="share-pick-list">
-                {involved.map(({ person, eventCount }) => (
-                  <div key={person.id} className="share-pick-row share-pick-on">
-                    <label className="share-pick-main">
-                      <input type="checkbox" checked disabled />
-                      <Avatar name={person.displayName} avatar={person.avatar} icon={person.icon} size="sm" />
-                      <span className="share-pick-name">{person.displayName}</span>
-                    </label>
-                    <span className="muted small">出现 {eventCount} 次</span>
-                    <span className="share-pick-tag">必带</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {extras.length > 0 && (
-              <>
-                <div className="share-person-section">其他人物（可选）</div>
-                <p className="muted small">
-                  这些人没有出现在当前事件里，勾上会连他们的资料一起带走，导入后是一个没有事件指向的人。
-                </p>
-                <div className="share-pick-list">
-                  {extras.map((person) => {
-                    const on = extraPicked.has(person.id);
-                    return (
-                      <label
-                        key={person.id}
-                        className={on ? 'share-pick-row share-pick-on' : 'share-pick-row'}
-                      >
-                        <input type="checkbox" checked={on} onChange={() => toggleExtra(person.id)} />
-                        <Avatar name={person.displayName} avatar={person.avatar} icon={person.icon} size="sm" />
-                        <span className="share-pick-name">{person.displayName}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {involved.length === 0 && extras.length === 0 && (
-              <Empty compact text="库里还没有人物。" />
-            )}
-          </>
+          <PickPersons
+            involved={involved}
+            extras={extras}
+            extraPicked={extraPicked}
+            onSetExtras={setExtraPicked}
+            onToggleExtra={toggleExtra}
+          />
         )}
 
         {step === 3 && (
-          <div className="share-levels">
-            <p className="muted small">
-              事件集和事件固定就是前两步圈定的那些，这里只决定人物资料留多少。
-            </p>
-            {SHARE_LEVELS.map((lv) => (
-              <label
-                key={lv.key}
-                className={level === lv.key ? 'share-level share-level-on' : 'share-level'}
-              >
-                <input
-                  type="radio"
-                  name="share-level"
-                  checked={level === lv.key}
-                  onChange={() => setLevel(lv.key)}
-                />
-                <span className="share-level-text">
-                  <strong>{lv.title}</strong>
-                  <span className="muted small">{lv.desc}</span>
-                </span>
-              </label>
-            ))}
-
-            {level === 'custom' && (
-              <div className="share-attrs">
-                <div className="share-attrs-title">带哪些属性</div>
-                {levelDefs.length === 0 && <p className="muted small">属性字典还是空的，只能带走姓名。</p>}
-                <div className="share-attr-list">
-                  {levelDefs.map((d) => (
-                    <label key={d.key} className="checkbox">
-                      <input
-                        type="checkbox"
-                        checked={attrKeys.includes(d.key)}
-                        onChange={(e) =>
-                          setAttrKeys((old) =>
-                            e.target.checked ? [...old, d.key] : old.filter((k) => k !== d.key),
-                          )
-                        }
-                      />
-                      {d.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <label className="checkbox share-attach-toggle">
-              <input
-                type="checkbox"
-                checked={withAttachments}
-                onChange={(e) => setWithAttachments(e.target.checked)}
-              />
-              带上正文引用的图片与附件
-            </label>
-
-            {level !== 'full' && (
-              <p className="muted small">这个程度下，标记为隐私的事件整条不带走。</p>
-            )}
-          </div>
+          <PickLevel
+            level={level}
+            attrKeys={attrKeys}
+            withAttachments={withAttachments}
+            levelDefs={levelDefs}
+            onLevel={setLevel}
+            onAttrKeys={setAttrKeys}
+            onAttachments={setWithAttachments}
+          />
         )}
 
         {step === 4 && (
-          <div className="share-preview">
-            {previewError && <div className="alert alert-err">{previewError}</div>}
-            {!preview && !previewError && <p className="muted">正在统计…</p>}
-            {preview && (
-              <>
-                <div className="share-summary">
-                  <span>
-                    <em>{preview.sourceName ?? '分享'}</em>
-                  </span>
-                  <span className="muted small">
-                    事件集 {preview.collections.length} 个（含子集） · 事件 {preview.events.length} 个 · 人物{' '}
-                    {preview.persons.length} 位（资料 {preview.pickedPersonIds?.length ?? 0} 位） · 引用附件{' '}
-                    {preview.missingAttachments} 个
-                  </span>
-                </div>
-
-                <section className="share-block">
-                  <h4>事件集</h4>
-                  <div className="share-tree">
-                    {preview.collections.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className={
-                          preview.collectionIds?.includes(c.id)
-                            ? 'share-tree-row share-tree-root'
-                            : 'share-tree-row'
-                        }
-                        onClick={() => openShareCol(c)}
-                        title="查看事件集详情"
-                      >
-                        {c.name}
-                        {c.kind === 'smart' && <em title="智能集合">⚡</em>}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="share-block">
-                  <h4>事件（点开预览）</h4>
-                  <div className="share-events">
-                    {(showAllEvents ? preview.events : preview.events.slice(0, 8)).map((e) => (
-                      <button
-                        key={e.id}
-                        type="button"
-                        className="share-event-row share-row-btn"
-                        onClick={() => setEventView(e)}
-                      >
-                        <span className="share-event-row-text">
-                          <strong>{e.title || '未命名事件'}</strong>
-                          <span className="muted small">{formatTime(e.time)}</span>
-                        </span>
-                        <span className="share-row-caret">›</span>
-                      </button>
-                    ))}
-                    {preview.events.length === 0 && <p className="muted small">没有事件。</p>}
-                  </div>
-                  {preview.events.length > 8 && (
-                    <button className="btn btn-sm" onClick={() => setShowAllEvents((v) => !v)}>
-                      {showAllEvents ? '收起' : `展开全部 ${preview.events.length} 个`}
-                    </button>
-                  )}
-                </section>
-
-                <section className="share-block">
-                  <h4>人物（点开看资料）</h4>
-                  <div className="share-pick-list">
-                    {preview.persons.map((p) => {
-                      const full = preview.pickedPersonIds?.includes(p.id);
-                      const count = previewCounts.get(p.id) ?? 0;
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className="share-pick-row share-row-btn"
-                          onClick={() => setPersonView(p)}
-                        >
-                          <Avatar name={p.displayName} avatar={p.avatar} icon={p.icon} size="sm" />
-                          <span className="share-pick-name">{p.displayName}</span>
-                          <span className="muted small">
-                            {count > 0 ? `出现 ${count} 次` : '未出现在事件里'}
-                          </span>
-                          <span className={full ? 'share-pick-tag' : 'share-pick-tag share-pick-muted'}>
-                            {full ? '带资料' : level === 'alias' ? '仅化名' : '仅姓名'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {preview.persons.length === 0 && <p className="muted small">没有人物。</p>}
-                  </div>
-                </section>
-
-                <p className="muted small">
-                  {withAttachments
-                    ? `正文引用到的 ${preview.missingAttachments} 个附件会一起打进压缩包（库里找不到的会略过）。`
-                    : '按你的选择，不打包附件；对方看到的图片位置会显示不出来。'}
-                </p>
-              </>
-            )}
-          </div>
+          <PreviewStep
+            preview={preview}
+            previewError={previewError}
+            showAllEvents={showAllEvents}
+            level={level}
+            withAttachments={withAttachments}
+            counts={previewCounts}
+            onShowAllEvents={setShowAllEvents}
+            onOpenCol={openShareCol}
+            onOpenEvent={setEventView}
+            onOpenPerson={setPersonView}
+          />
         )}
 
         {error && <div className="alert alert-err">{error}</div>}
       </Modal>
 
       {/* ---- 事件集详情：挑事件和预览都能点开，事件行还能继续往下看正文 ---- */}
-      {colPeek && (
-        <ColPeekModal
-          data={colPeek.data}
-          onClose={() => setColPeek(null)}
-          onEvent={peekEvent}
-        />
-      )}
+      {colPeek && <ColPeekModal data={colPeek.data} onClose={() => setColPeek(null)} onEvent={peekEvent} />}
 
       {repoEventPeek && <RepoEventPeek event={repoEventPeek} onClose={() => setRepoEventPeek(null)} />}
 
       {/* 明确放弃：把「选择会丢」说清楚，并顺手把草稿一起删掉 */}
       {confirmClose && (
-        <Modal
-          title="取消这次分享？"
-          onClose={() => setConfirmClose(false)}
-          footer={
-            <>
-              <button className="btn" onClick={() => setConfirmClose(false)}>
-                继续编辑
-              </button>
-              <button className="btn btn-danger" onClick={discardAndClose}>
-                放弃并关闭
-              </button>
-            </>
-          }
-        >
-          <p>取消后这次的选择会丢掉：事件集、挑掉的事件、多选的人物、分享程度都要重新选一遍。</p>
-          <p className="muted small">
-            {draftsEnabled()
-              ? '只有刷新、切走或误关页面时才会自动留底；点「放弃并关闭」会把草稿一起删掉。'
-              : '「设置 → 功能体验 → 未完成的记录」可以打开草稿保护，误关页面时自动留底。'}
-          </p>
-        </Modal>
+        <ConfirmCloseModal onKeep={() => setConfirmClose(false)} onDiscard={discardAndClose} />
       )}
 
       {/* ---- 预览里的两个放大镜：资料 / 事件 ---- */}
       {personView && (
-        <Modal title={`人物资料 · ${personView.displayName}`} onClose={() => setPersonView(null)}>
-          <div className="share-person-view">
-            <div className="share-person-view-head">
-              <Avatar
-                name={personView.displayName}
-                avatar={personView.avatar}
-                icon={personView.icon}
-                size="lg"
-              />
-              <div>
-                <strong>{personView.displayName}</strong>
-                <span className="muted small">
-                  {previewCounts.get(personView.id)
-                    ? `在这些事件里出现 ${previewCounts.get(personView.id)} 次`
-                    : '没有出现在这些事件里'}
-                </span>
-              </div>
-            </div>
-
-            {personView.aliases.length > 0 && (
-              <div className="share-view-row">
-                <span className="share-view-label">别名</span>
-                <span>{personView.aliases.join('、')}</span>
-              </div>
-            )}
-            {personView.tags.length > 0 && (
-              <div className="share-view-row">
-                <span className="share-view-label">标签</span>
-                <span>{personView.tags.join('、')}</span>
-              </div>
-            )}
-
-            {attrsOf(personView, defs).length > 0 && (
-              <div className="share-view-attrs">
-                <div className="share-view-label">属性</div>
-                <div className="share-attr-list">
-                  {attrsOf(personView, defs).map((a) => (
-                    <span key={a.key} className="share-attr-pill">
-                      <em>{a.label}</em>
-                      {a.text}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {personView.notes.trim() && (
-              <div className="share-view-row">
-                <span className="share-view-label">备注</span>
-                <p className="share-person-note">{personView.notes}</p>
-              </div>
-            )}
-
-            {personView.aliases.length === 0 &&
-              personView.tags.length === 0 &&
-              Object.keys(personView.attrs).length === 0 &&
-              !personView.notes.trim() && (
-                <p className="muted small">
-                  这份分享按「{SHARE_LEVELS.find((l) => l.key === level)?.title ?? '原样'}」程度只带了姓名。
-                </p>
-              )}
-
-            <p className="muted small">以上是这份分享里实际带走的资料，导入方看到的就是这些。</p>
-          </div>
-        </Modal>
+        <PersonViewModal
+          person={personView}
+          defs={defs}
+          level={level}
+          eventCount={previewCounts.get(personView.id) ?? 0}
+          onClose={() => setPersonView(null)}
+        />
       )}
 
       {eventView && preview && (
-        <Modal
-          wide
-          title={`事件预览 · ${eventView.title || '未命名事件'}`}
+        <EventViewModal
+          event={eventView}
+          preview={preview}
+          messages={viewMessages}
           onClose={() => setEventView(null)}
-        >
-          <EventView
-            event={eventView}
-            persons={preview.persons.map((p) => ({ id: p.id, displayName: p.displayName }))}
-            flat={preview.collections.map((c) => ({ c, depth: 0 }))}
-            collectionIds={preview.members
-              .filter((m) => m.memberType === 'event' && m.memberId === eventView.id)
-              .map((m) => m.collectionId)}
-            candidates={preview.events.map((e) => ({ id: e.id, title: e.title }))}
-            missingTitle="（未包含在分享里）"
-            body={
-              eventView.viewMode === 'chat' && viewMessages.length > 0 ? (
-                <ChatPreview
-                  messages={viewMessages}
-                  nameOf={(id) =>
-                    preview.persons.find((p) => p.id === id)?.displayName ?? '旁白'
-                  }
-                />
-              ) : undefined
-            }
-          />
-        </Modal>
+        />
       )}
     </>
   );
