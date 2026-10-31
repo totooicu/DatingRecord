@@ -4,10 +4,15 @@
 //   M2 新存档里记上 music
 //   M3 旧 key 被清掉（只搬一次，不会反复搬迁）
 //
-// 依赖：vite preview + 全局 playwright。
+// 依赖：vite preview + 全局 playwright（路径按机器不同：nvm / 系统 node，两处都试一次）。
 // 用法：node tools/e2e/music-migrate-e2e.mjs [url]
 
-import { chromium } from '/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs';
+let chromium;
+try {
+  ({ chromium } = await import('/root/.nvm/versions/node/v22.13.1/lib/node_modules/playwright/index.mjs'));
+} catch {
+  ({ chromium } = await import('/usr/local/node/lib/node_modules/playwright/index.mjs'));
+}
 
 const APP = process.argv[2] || 'http://localhost:4173/';
 
@@ -20,7 +25,8 @@ const check = (label, cond, extra = '') => {
   }
 };
 
-const browser = await chromium.launch();
+// 系统里没装 playwright 自带的浏览器，统一用 /usr/bin/chromium（CHROMIUM 可覆盖）。
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const p = await ctx.newPage();
 p.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 200)));
@@ -50,7 +56,9 @@ await p.locator('.settings-nav-title', { hasText: /^功能面板$/ }).click();
 await p.waitForTimeout(400);
 await p.locator('.settings-hub-title', { hasText: '音乐' }).first().click();
 await p.waitForTimeout(900);
-await p.locator('input[type=file]').setInputFiles('/tmp/tone.wav');
+// 音乐页现在有两个 file input：音频上传（audio/*）和歌单导入（.drpl），
+// 只点第一个会撞 strict mode。按 accept 精确选音频那一个。
+await p.locator('input[accept="audio/*"]').setInputFiles('/tmp/tone.wav');
 await p.waitForTimeout(1500);
 await p.locator('.tabbar-item', { hasText: '人物' }).click();
 await p.waitForTimeout(500);
