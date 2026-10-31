@@ -9,6 +9,10 @@
 // 挤掉一半，体验很碎。现在各占一屏，切换只是换显示，组件不卸载、agent 循环
 // 不中断——AI 在后台跑着，你切到「成果」看备份也照样跑。
 //
+// 本文件只负责「状态 + 动作」：轮次执行态在 core/runtime/aiChat 单例里，
+// 四个 tab 的界面在 ./labAi/ 下各有一个文件，弹窗同理。以前这些都挤在一个
+// 1345 行的文件里，改一个气泡要翻过 900 行 JSX。
+//
 // 模型配置（别名 / 服务商 / 密钥 / 连通测试）2026-10-24 抽到同组的「模型」子页：
 // 配密钥是低频动作，不该长期占着聊天页的标签位置。
 //
@@ -31,24 +35,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { bump, useVersion } from '../../store';
-import { clearDraft, draftsEnabled, draftTimeLabel, loadDraft, saveDraft } from '../../core/drafts';
+import { clearDraft, draftsEnabled, loadDraft, saveDraft } from '../../core/drafts';
 import { findByAlias, getDefaultModel, listModels, type AiModel } from '../../core/ai';
 // 轮次执行已抽到 core/runtime/aiChat 单例，本组件只做订阅式视图
-import { type AiItem as Item, loadSessionInto, markChatRead, newSession as aiNewSession, removeItem as aiRemoveItem, sendTurn, setErr as setAiErr, setItems as aiSetItems, stopTurn, useAiChat } from '../../core/runtime/aiChat';
 import {
-  MAX_ATTACHMENTS,
-  fmtSize,
-  fromFile,
-  fromStored,
-  previewOf,
-  type Attachment,
-} from '../../core/ai/attach';
-import {
-  deleteSessions,
-  listSessions,
-  renameSession,
-  type AiSession,
-} from '../../core/ai/sessions';
+  type AiItem as Item,
+  loadSessionInto,
+  markChatRead,
+  newSession as aiNewSession,
+  removeItem as aiRemoveItem,
+  sendTurn,
+  setErr as setAiErr,
+  setItems as aiSetItems,
+  stopTurn,
+  useAiChat,
+} from '../../core/runtime/aiChat';
+import { MAX_ATTACHMENTS, fromFile, fromStored, type Attachment } from '../../core/ai/attach';
+import { deleteSessions, listSessions, renameSession, type AiSession } from '../../core/ai/sessions';
 import {
   applyPendingSnapshot,
   deleteSnapshot,
@@ -57,312 +60,28 @@ import {
   listSnapshots,
   renamePendingRecord,
   restoreSnapshot,
-  summarizeOps,
-  fmtSnapTime,
-  fmtBytes,
+  type SnapDiffItem,
   type SnapMeta,
   type SnapTarget,
 } from '../../core/snapshots';
 import type { StoredFile } from '../../core/repo/files';
-import { openPerson } from '../openPerson';
-import { openEvent } from '../openEvent';
-import { openCollection } from '../openCollection';
-import { PencilIcon } from '../files/rowIcons';
-import { FilePickInput, Modal, Empty } from '../common';
+import { FilePickInput, Modal } from '../common';
 import { usePaged } from '../common/usePaged';
-import { Paginator } from '../common/Paginator';
 import { usePageSize } from '../prefs';
 import { FilesSection } from '../files';
-import { MarkdownView } from '../markdown';
 import { LabHead } from './LabEdgeSection';
-import { clearSnapReturn, setSnapReturn, takeSnapReturn } from '../snapReturn';
+import { clearSnapReturn, takeSnapReturn } from '../snapReturn';
 import { showToast } from '../toast';
+import { ChatTab } from './labAi/ChatTab';
+import { HistoryTab } from './labAi/HistoryTab';
+import { SnapTab } from './labAi/SnapTab';
+import { HelpTab } from './labAi/HelpTab';
+import { SnapDetailModal } from './labAi/SnapDetailModal';
+import { RecordDetailModal } from './labAi/RecordDetailModal';
+import { SnapPreviewModal } from './labAi/SnapPreviewModal';
+import { actionOf, type TabKey } from './labAi/model';
 
 // Item（聊天气泡）类型由 aiChat 单例导出（见上方 import），与运行时共用同一份。
-
-type TabKey = 'chat' | 'history' | 'snap' | 'help';
-
-const QUICK = ['这个库里都有什么？', '最近发生了哪些事？', '把这份文件里的内容整理成一条事件'];
-
-/** 输入区左边的小图标：内联 SVG 而不是 emoji，部分安卓机会把 📎 渲染成方框 */
-const ICON = {
-  width: 14,
-  height: 14,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.9,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-};
-
-function AttachIcon() {
-  return (
-    <svg {...ICON} aria-hidden>
-      <path d="M20 11.4l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.4-8.4a3.4 3.4 0 0 1 4.8 4.8l-8.3 8.3a1.8 1.8 0 0 1-2.6-2.6l7.6-7.6" />
-    </svg>
-  );
-}
-
-function LibIcon() {
-  return (
-    <svg {...ICON} aria-hidden>
-      <path d="M3.6 7.4h6l1.8 2.2h8.9v9.2a1.6 1.6 0 0 1-1.6 1.6H5.2a1.6 1.6 0 0 1-1.6-1.6z" />
-      <path d="M3.6 7.4V5.2a1.6 1.6 0 0 1 1.6-1.6h3.6l1.6 2" />
-    </svg>
-  );
-}
-
-/**
- * 附件卡片的缩略图。
- *
- * 三类：真图片直接缩略；文本露几行正文；读不了的（pdf/zip…）把后缀放大显示。
- * 纯展示，不参与发送——发什么由 core/ai/attach.ts 决定。
- */
-function AttThumb({ att }: { att: Attachment }) {
-  const p = previewOf(att);
-  if (p.type === 'image') {
-    return <img className="aichat-att-img" src={p.src} alt="" loading="lazy" />;
-  }
-  if (p.type === 'text') {
-    return <span className="aichat-att-text">{p.snippet}</span>;
-  }
-  return <span className="aichat-att-ext">{p.ext}</span>;
-}
-
-/** 附件清单：一张张卡片，横向排不开就换行 */
-function AttachmentChips({
-  atts,
-  onRemove,
-}: {
-  atts: Attachment[];
-  onRemove?: (key: string) => void;
-}) {
-  return (
-    <ul className="aichat-atts">
-      {atts.map((a) => (
-        <li key={a.key} className={a.warning ? 'aichat-att aichat-att-warn' : 'aichat-att'}>
-          <span className="aichat-att-thumb" aria-hidden>
-            <AttThumb att={a} />
-          </span>
-          <span className="aichat-att-meta">
-            <span className="aichat-att-name" title={`${a.name}（${fmtSize(a.size)}）`}>
-              {a.name}
-            </span>
-            <span className="aichat-att-size">{fmtSize(a.size)}</span>
-          </span>
-          {a.warning && (
-            <span className="aichat-att-warn-text" title={a.warning}>
-              {a.warning}
-            </span>
-          )}
-          {onRemove && (
-            <button className="aichat-att-x" onClick={() => onRemove(a.key)} aria-label={`移除 ${a.name}`}>
-              ×
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** 快照来源的人话标签 */
-const SNAP_SRC: Record<SnapMeta['source'], string> = {
-  manual: '手动',
-  ai: 'AI',
-  cli: 'CLI',
-  auto: '自动',
-};
-
-/**
- * 快照列表的主标题：概括这份快照对应的那次操作。
- *
- * 有 ops（AI 轮次结束回写的）就用人话概括，比如「新建人物「林小满」、记 2 条事件」；
- * 没有就退到备注，再没有就按来源说「AI 自动备份」。扫一眼就知道每份快照是干什么的，
- * 不用点开猜。
- */
-function snapTitle(s: SnapMeta): string {
-  // 用户想看的是「这轮是为了什么」：AI 轮次结束后把第一条用户指令回写成 note，
-  // 比如「把这批聊天记录整理进去」，比罗列九个工具调用更像人话。
-  if (s.note) return s.note;
-  // 没有意图（CLI 触发、手动备份）才退回按操作概括
-  if (s.ops?.length) return summarizeOps(s.ops);
-  return `${SNAP_SRC[s.source] ?? ''}备份`.replace(/^备份$/, '记录');
-}
-
-/**
- * 成果卡 / 详情里的「具体结果」：人名 + 头像、事件集图标、事件名。
- * 点一下直接跳到对应详情——看到「新建人物「林小满」」就能点开确认长什么样。
- */
-import type { SnapDiffItem } from '../../core/snapshots';
-
-function DiffChip({ item, onPreview, checked, onToggle, snapId, selectable = true, onOpenItem }: {
-  item: SnapDiffItem;
-  onPreview?: (t: SnapTarget) => void;
-  checked: boolean;
-  onToggle: () => void;
-  /** 这份成果的 id：点开对象详情前记住它，回来能原样回到这份成果 */
-  snapId?: string;
-  /** 待执行的成果里对象还没进库，不能接受 / 拒绝勾选，也不该跳去详情页 */
-  selectable?: boolean;
-  /** 不跳页，改成弹本页的记录详情 */
-  onOpenItem?: (item: SnapDiffItem) => void;
-}) {
-  const open = () => {
-    if (onOpenItem) {
-      onOpenItem(item);
-      return;
-    }
-    // 删除类只弹「删前内容」的小窗，不离开本页，不需要记来路
-    if (item.before && onPreview) {
-      onPreview({
-        kind: item.kind,
-        id: item.id,
-        name: item.name,
-        snapshot: item.before,
-      });
-      return;
-    }
-    // 跳到真实详情页前记一下来路：否则看完就回不到这份成果了
-    if (snapId) setSnapReturn(snapId);
-    if (item.kind === 'person') openPerson(item.id);
-    else if (item.kind === 'event') openEvent(item.id);
-    else openCollection(item.id);
-  };
-  return (
-    <label className={`aichat-diff-chip ${selectable && !checked ? 'aichat-diff-chip-reject' : ''}`}>
-      {selectable && <input type="checkbox" checked={checked} onChange={onToggle} />}
-      <button type="button" className="aichat-target" onClick={open} title={item.before ? `查看「${item.name}」删除前内容` : `打开「${item.name}」`}>
-        <span className="aichat-target-mark" aria-hidden>
-          {item.kind === 'person' ? '人' : item.kind === 'event' ? '事' : '集'}
-        </span>
-        <span className="aichat-target-name">{item.name}</span>
-      </button>
-    </label>
-  );
-}
-
-const DIFF_KIND: Record<SnapDiffItem['kind'], string> = {
-  person: '人物',
-  event: '事件',
-  collection: '事件集',
-};
-
-/** 成果卡上直接露名字：新增（+）、删除（−），点一下看详情 */
-function SnapNameChips({ snap, onPick }: { snap: SnapMeta; onPick: (item: SnapDiffItem) => void }) {
-  const created = snap.diff?.created ?? [];
-  const deleted = snap.diff?.deleted ?? [];
-  if (!created.length && !deleted.length) return null;
-  return (
-    <div className="aichat-targets aichat-review-chips">
-      {created.map((item) => (
-        <button
-          key={`add:${item.kind}:${item.id}`}
-          type="button"
-          className="aichat-target aichat-review-chip aichat-review-add"
-          onClick={() => onPick(item)}
-          title={`新增：${item.name}（点开看详情）`}
-        >
-          <span className="aichat-review-sign" aria-hidden>+</span>
-          <span className="aichat-target-name">{item.name}</span>
-        </button>
-      ))}
-      {deleted.map((item) => (
-        <button
-          key={`del:${item.kind}:${item.id}`}
-          type="button"
-          className="aichat-target aichat-review-chip aichat-review-del"
-          onClick={() => onPick(item)}
-          title={`删除：${item.name}（点开看详情）`}
-        >
-          <span className="aichat-review-sign" aria-hidden>−</span>
-          <span className="aichat-target-name">{item.name}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function RecordDetailModal({
-  item,
-  action,
-  name,
-  onName,
-  onSave,
-  onClose,
-  canRename,
-}: {
-  item: SnapDiffItem;
-  action: 'created' | 'updated' | 'deleted';
-  name: string;
-  onName: (v: string) => void;
-  onSave: () => void;
-  onClose: () => void;
-  canRename: boolean;
-}) {
-  const label = action === 'deleted' ? '已删除' : action === 'updated' ? '已修改' : '新增';
-  const detail = item.detail ?? [];
-  const before = item.before;
-  return (
-    <Modal title={`${label} · ${DIFF_KIND[item.kind]}`} onClose={onClose}>
-      <div className="aichat-record">
-        <div className="aichat-record-head">
-          <span className="aichat-target-mark" aria-hidden>
-            {item.kind === 'person' ? '人' : item.kind === 'event' ? '事' : '集'}
-          </span>
-          <div className="aichat-record-title">
-            <b>{item.name}</b>
-            <span className="muted small">
-              {action === 'deleted'
-                ? '这份成果执行后，它会从库里删掉'
-                : action === 'created'
-                  ? '暂存中，执行后才进库'
-                  : '执行后这些修改才会生效'}
-            </span>
-          </div>
-        </div>
-        {detail.length ? (
-          <ul className="aichat-record-detail">
-            {detail.map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted small">这条记录没有更多可看的字段。</p>
-        )}
-        {before?.content && !detail.some((x) => x.startsWith('正文：')) && (
-          <p className="aichat-note">改前正文：{before.content.slice(0, 200)}</p>
-        )}
-        {action === 'created' && canRename && (
-          <div className="aichat-record-edit">
-            <label className="aichat-record-label" htmlFor="aichat-record-name">
-              名称
-            </label>
-            <input
-              id="aichat-record-name"
-              value={name}
-              onChange={(e) => onName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onSave();
-              }}
-              placeholder="给它起个名字"
-            />
-            <button
-              type="button"
-              className="aichat-record-save"
-              disabled={!name.trim() || name.trim() === item.name}
-              onClick={onSave}
-            >
-              保存名称
-            </button>
-            <p className="muted small aichat-record-hint">改名只改这份暂存的成果；点「执行」后才会写进库。</p>
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
 
 export function LabAiSection() {
   const [models, setModels] = useState<AiModel[]>(() => listModels());
@@ -399,7 +118,6 @@ export function LabAiSection() {
   const [sessions, setSessions] = useState<AiSession[]>(() => listSessions());
   const [libOpen, setLibOpen] = useState(false);
   const [rollbackId, setRollbackId] = useState<string | null>(null);
-  /** 历史会话点开后的操作菜单（继续 / 复制 / 删除） */
   /** 聊天页点开的那条对话（显示删除 / 复制到对话框） */
   const [itemMenu, setItemMenu] = useState<number | null>(null);
   /** 历史会话：批量管理（勾选删除） */
@@ -742,14 +460,6 @@ export function LabAiSection() {
     showToast('名字已改，执行后才生效');
   };
 
-  /** 这条记录在成果里属于新增 / 修改 / 删除哪一组 */
-  const actionOf = (snap: SnapMeta, item: SnapDiffItem): 'created' | 'updated' | 'deleted' => {
-    const d = snap.diff;
-    if (d?.deleted.some((r) => r.id === item.id && r.kind === item.kind)) return 'deleted';
-    if (d?.updated.some((r) => r.id === item.id && r.kind === item.kind)) return 'updated';
-    return 'created';
-  };
-
   const toggleReject = (key: string) => {
     setRejected((s) => {
       const n = new Set(s);
@@ -838,361 +548,75 @@ export function LabAiSection() {
             提示必须当场看得见，不能藏到「聊天」tab 里 */}
         {err && <p className="aichat-err">{err}</p>}
         {tab === 'chat' && (
-          <div className="aichat-chat">
-            <div className="aichat-log" ref={logRef}>
-              {items.length === 0 && (
-                <div className="aichat-empty">
-                  <p>比如可以问我：</p>
-                  <ul>
-                    {QUICK.map((q) => (
-                      <li key={q}>
-                        <button className="aichat-quick" onClick={() => send(q)} disabled={busy || !model}>
-                          {q}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {items.map((it, i) => (
-                <div
-                  key={i}
-                  className={
-                    itemMenu === i
-                      ? `aichat-item aichat-${it.kind} aichat-item-open`
-                      : `aichat-item aichat-${it.kind}`
-                  }
-                  onClick={(e) => {
-                    // 气泡里的链接 / 按钮自己有事要做，别顺手把操作菜单也切出来
-                    if ((e.target as HTMLElement).closest('a,button')) return;
-                    setItemMenu(itemMenu === i ? null : i);
-                  }}
-                >
-                  {it.attachments && it.attachments.length > 0 && <AttachmentChips atts={it.attachments} />}
-                  {/* 气泡内容按 Markdown 渲染：模型的回复天生带标题/列表/代码块，
-                      当纯文本显示就是把 ** 和 # 原样甩给用户。安全性由 core/markdown
-                      （marked 解析 + DOMPurify 白名单）保证，这里只管展示。 */}
-                  <div className="aichat-bubble">
-                    <MarkdownView source={it.text} />
-                  </div>
-                  {it.tools && it.tools.length > 0 && <div className="aichat-tools">调用了 {it.tools.join('、')}</div>}
-                  {it.pendingId && !busy && (
-                    <button className="aichat-rollback aichat-review-btn" onClick={() => switchTab('snap')}>
-                      待审核：去「成果」执行或放弃
-                    </button>
-                  )}
-                  {it.snapshotId && !it.pendingId && !busy && (
-                    <button className="aichat-rollback" onClick={() => rollback(it.snapshotId!)}>
-                      回退本轮改动
-                    </button>
-                  )}
-                  {itemMenu === i && !busy && (
-                    <div className="aichat-item-actions">
-                      <button
-                        className="aichat-linkbtn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copyItem(it);
-                        }}
-                      >
-                        复制到对话框
-                      </button>
-                      <button
-                        className="aichat-linkbtn aichat-linkbtn-dim"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeItem(i);
-                        }}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {busy && activity.length > 0 && (
-                <div className="aichat-item aichat-assistant">
-                  <div className="aichat-activity">
-                    {activity.map((a, i) => (
-                      <div key={i} className="aichat-activity-line">
-                        {a}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {busy && activity.length === 0 && <div className="aichat-item aichat-assistant">思考中…</div>}
-            </div>
-
-            {/* 待发送的附件：贴在输入框上方，发出去就清空 */}
-            {atts.length > 0 && (
-              <div className="aichat-pending">
-                <AttachmentChips atts={atts} onRemove={removeAtt} />
-              </div>
-            )}
-
-            <div className="aichat-input">
-              {inputRestoredAt !== null && (
-                <div className="draft-restored">
-                  <span className="muted small">
-                    已恢复上次没发出去的内容 · {draftTimeLabel(inputRestoredAt)}
-                  </span>
-                  <button className="btn btn-sm" onClick={() => setInput('')}>
-                    清空
-                  </button>
-                </div>
-              )}
-              <div className="aichat-input-tools">
-                <button
-                  className="aichat-toolbtn"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={busy || atts.length >= MAX_ATTACHMENTS}
-                  title="从本地选文件（手机上就是系统文件选择器）"
-                >
-                  <AttachIcon /> 选文件
-                </button>
-                <button
-                  className="aichat-toolbtn"
-                  onClick={() => setLibOpen(true)}
-                  disabled={busy || atts.length >= MAX_ATTACHMENTS}
-                  title="从本库的文件里挑一个"
-                >
-                  <LibIcon /> 文件库
-                </button>
-                <label className="aichat-model aichat-model-inline" title="选择模型">
-                  <select value={alias} onChange={(e) => setAlias(e.target.value)} disabled={busy}>
-                    {models.length === 0 && <option value="">（未配置模型）</option>}
-                    {models.map((m) => (
-                      <option key={m.id} value={m.alias}>
-                        {m.alias} · {m.model}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {busy && (
-                  <span className="aichat-busy-chip" role="status">
-                    <span className="aichat-status-dot" aria-hidden />
-                    AI 干活中{roundNo > 1 ? ` · 第 ${roundNo} 轮` : ''}
-                    <button className="aichat-busy-stop" onClick={stop}>
-                      停止
-                    </button>
-                  </span>
-                )}
-                {rollbackId && (
-                  <button className="aichat-toolbtn aichat-toolbtn-warn" onClick={() => rollback(rollbackId)}>
-                    回退本轮
-                  </button>
-                )}
-              </div>
-              <div className="aichat-input-row">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    // Enter 只换行；Cmd/Ctrl+Enter 才发送（用户要求「换行不要触发发送」）
-                    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'Enter') {
-                      e.preventDefault();
-                      void send(input);
-                    }
-                  }}
-                  placeholder={busy ? 'AI 正在干活，说不了话…' : '说点什么，Enter 换行，Cmd/Ctrl+Enter 发送'}
-                  rows={2}
-                  disabled={busy}
-                />
-                <button className="btn-primary aichat-send" onClick={() => send(input)} disabled={!canSend}>
-                  发送
-                </button>
-              </div>
-            </div>
-          </div>
+          <ChatTab
+            items={items}
+            busy={busy}
+            activity={activity}
+            roundNo={roundNo}
+            itemMenu={itemMenu}
+            onItemMenu={setItemMenu}
+            onCopy={copyItem}
+            onRemove={removeItem}
+            atts={atts}
+            onRemoveAtt={removeAtt}
+            input={input}
+            onInput={setInput}
+            inputRestoredAt={inputRestoredAt}
+            onClearInput={() => setInput('')}
+            models={models}
+            alias={alias}
+            onAlias={setAlias}
+            onStop={stop}
+            rollbackId={rollbackId}
+            onRollback={(id) => void rollback(id)}
+            canSend={canSend}
+            onSend={(t) => send(t)}
+            onPickFile={() => fileRef.current?.click()}
+            onOpenLib={() => setLibOpen(true)}
+            onGoSnap={() => switchTab('snap')}
+            logRef={logRef}
+            hasModel={!!model}
+          />
         )}
 
         {tab === 'history' && (
-          <div className="aichat-history">
-            <div className="aichat-subhead">
-              <span className="muted small">点一个会话就打开继续；改名、批量删除在右边。</span>
-              <span className="aichat-subhead-actions">
-                {manage ? (
-                  <>
-                    <button className="aichat-chipbtn aichat-chipbtn-danger" onClick={removePicked} disabled={picked.size === 0}>
-                      删除选中{picked.size > 0 ? `（${picked.size}）` : ''}
-                    </button>
-                    <button
-                      className="aichat-chipbtn aichat-chipbtn-primary"
-                      onClick={() => {
-                        setManage(false);
-                        setPicked(new Set());
-                      }}
-                    >
-                      完成
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button className="aichat-chipbtn" onClick={() => setManage(true)}>
-                      批量删除
-                    </button>
-                    <button className="aichat-chipbtn aichat-chipbtn-primary" onClick={newSession}>
-                      ＋ 新会话
-                    </button>
-                  </>
-                )}
-              </span>
-            </div>
-            {sessions.length === 0 ? (
-              <Empty compact text="还没有历史会话。在「聊天」里说点什么，会自动存下来。" />
-            ) : (
-              <ul className="aichat-session-list">
-                {pagedSessions.pageItems.map((s) => (
-                  <li
-                    key={s.id}
-                    className={
-                      manage && picked.has(s.id) ? 'aichat-session aichat-session-picked' : 'aichat-session'
-                    }
-                  >
-                    {manage && (
-                      <button
-                        type="button"
-                        className={picked.has(s.id) ? 'aichat-pick aichat-pick-on' : 'aichat-pick'}
-                        onClick={() => togglePick(s.id)}
-                        aria-pressed={picked.has(s.id)}
-                        aria-label={picked.has(s.id) ? '取消选择' : '选择这个会话'}
-                      >
-                        {picked.has(s.id) ? '✓' : ''}
-                      </button>
-                    )}
-                    {renameId === s.id ? (
-                      <div className="aichat-session-rename">
-                        <input
-                          value={renameText}
-                          autoFocus
-                          onChange={(e) => setRenameText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') commitRename();
-                            if (e.key === 'Escape') setRenameId(null);
-                          }}
-                          aria-label="会话名"
-                        />
-                        <button className="aichat-linkbtn" onClick={commitRename}>
-                          保存
-                        </button>
-                        <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => setRenameId(null)}>
-                          取消
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="aichat-session-main"
-                          onClick={() => (manage ? togglePick(s.id) : loadSession(s.id))}
-                          title={manage ? '选中这个会话' : '打开这个会话'}
-                        >
-                          <span className="aichat-session-title">{s.title}</span>
-                          <span className="aichat-session-sub">
-                            <span className="aichat-session-time">{fmtSnapTime(s.updatedAt)}</span>
-                            <span className="aichat-session-meta">{s.items.length} 条消息</span>
-                          </span>
-                        </button>
-                        {!manage && (
-                          <button
-                            type="button"
-                            className="aichat-session-edit"
-                            title="修改会话名"
-                            aria-label="修改会话名"
-                            onClick={() => startRename(s)}
-                          >
-                            <PencilIcon />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Paginator paged={pagedSessions} />
-          </div>
+          <HistoryTab
+            sessions={sessions}
+            paged={pagedSessions}
+            manage={manage}
+            onManage={setManage}
+            picked={picked}
+            onTogglePick={togglePick}
+            onRemovePicked={removePicked}
+            onFinishManage={() => {
+              setManage(false);
+              setPicked(new Set());
+            }}
+            onNew={newSession}
+            onLoad={loadSession}
+            renameId={renameId}
+            renameText={renameText}
+            onRenameText={setRenameText}
+            onStartRename={startRename}
+            onCommitRename={commitRename}
+            onCancelRename={() => setRenameId(null)}
+          />
         )}
 
         {tab === 'snap' && (
-          <div className="aichat-snaps">
-            <div className="aichat-subhead">
-              <span className="muted small">AI / CLI 动手前会自动记录：做了什么、做成了什么都在这里，点开能看具体结果。</span>
-            </div>
-            {snaps.length === 0 ? (
-              <Empty compact text="还没有成果。" />
-            ) : (
-              <ul className="aichat-snap-list">
-                {pagedSnaps.pageItems.map((s) => (
-                  <li key={s.id}>
-                    {/* 卡片只给「标题 + 时间」。具体改了谁、加了谁、删了谁，
-                        点开详情里按 新增 / 修改 / 删除 分组看——列表上再堆净变化数字和
-                        对象 chip，既占地方又和详情重复，用户扫一眼也分不清哪个是哪个。 */}
-                    <div className="aichat-snap-block">
-                      <button
-                        type="button"
-                        className="aichat-snap-main"
-                        onClick={() => setSnapDetail(s)}
-                        title="查看这份成果的具体操作"
-                      >
-                        <span className="aichat-snap-title">{snapTitle(s)}</span>
-                        <span className="aichat-snap-sub">
-                          {s.review === 'pending' && <span className="aichat-snap-status aichat-snap-status-pending">待执行</span>}
-                          {s.review === 'applied' && <span className="aichat-snap-status aichat-snap-status-done">已执行</span>}
-                          <span className="aichat-snap-time">{fmtSnapTime(s.createdAt)}</span>
-                        </span>
-                      </button>
-                      <SnapNameChips snap={s} onPick={(item) => openRecord(s.id, item)} />
-                    </div>
-                    <span className="aichat-snap-ops">
-                      {s.review === 'pending' ? (
-                        <>
-                          <button className="aichat-linkbtn aichat-linkbtn-go" onClick={() => void applySnap(s.id)}>
-                            执行
-                          </button>
-                          <button className="aichat-linkbtn aichat-linkbtn-dim" onClick={() => void discardSnap(s.id)}>
-                            放弃
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button className="aichat-linkbtn" onClick={() => removeSnap(s.id)}>
-                            接受
-                          </button>
-                          <button className="aichat-linkbtn aichat-linkbtn-danger" onClick={() => rollback(s.id)}>
-                            放弃改动
-                          </button>
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Paginator paged={pagedSnaps} />
-          </div>
+          <SnapTab
+            snaps={snaps}
+            paged={pagedSnaps}
+            onOpen={setSnapDetail}
+            onOpenRecord={openRecord}
+            onApply={(id) => void applySnap(id)}
+            onDiscard={(id) => void discardSnap(id)}
+            onAccept={(id) => void removeSnap(id)}
+            onRollback={(id) => void rollback(id)}
+          />
         )}
 
-        {tab === 'help' && (
-          <div className="aichat-help">
-            <p>
-              能查数据、建人物、记事件、整理聊天记录。<b>每次写库前自动备份</b>，聊完不满意可以整轮回退。
-              支持上传文件（文本读内容、图片走视觉），附件只随这一条消息发送，不进文件库。
-            </p>
-            <p className="muted small">
-              我能调用 person / event / chat / collection / file / snapshot / io / system 八组工具。
-              模型的别名、服务商、密钥和连通测试在「设置 → AI → 模型」里。
-            </p>
-            <p className="muted small">
-              顶部四个按钮：<b>聊天</b>是和 AI 对话；<b>历史会话</b>是自动保存的对话记录，可载入继续；
-              <b>成果</b>是 AI / CLI 做过的改动记录，能看到具体建了谁、删了谁、记了什么事。AI 写完先暂存、不动你的库：点进去核对后，<b>执行</b>才让改动真正进库，<b>放弃</b>则当什么都没发生；已执行的成果也能<b>放弃改动</b>整轮回退到动手前。一份成果处理完才能继续下一轮对话。<b>说明</b>是本页。切换不中断 AI 正在做的事。
-            </p>
-          </div>
-        )}
+        {tab === 'help' && <HelpTab />}
       </div>
 
       <FilePickInput inputRef={fileRef} multiple onFiles={(files) => void pickFiles(files)} />
@@ -1204,94 +628,20 @@ export function LabAiSection() {
       )}
 
       {snapDetail && (
-        <Modal
-          title="成果详情"
+        <SnapDetailModal
+          snap={snapDetail}
+          rejected={rejected}
+          onToggleReject={toggleReject}
+          onRejectPicked={() => void applyRejected()}
+          onApply={(id) => void applySnap(id)}
+          onDiscard={(id) => void discardSnap(id)}
+          onOpenRecord={openRecord}
+          onPreview={setPreviewTarget}
           onClose={() => {
             setSnapDetail(null);
             clearSnapReturn();
           }}
-          wide
-        >
-          <div className="aichat-snap-detail">
-            <p className="aichat-snap-detail-title">{snapTitle(snapDetail)}</p>
-            <p className="muted small">
-              {fmtSnapTime(snapDetail.createdAt)} · {SNAP_SRC[snapDetail.source] ?? snapDetail.source} ·{' '}
-              {snapDetail.persons} 人 / {snapDetail.events} 事件 / {fmtBytes(snapDetail.bytes)}
-            </p>
-
-            {snapDetail.diff ? (
-              <div className="aichat-diff">
-                {snapDetail.diff.created.length > 0 && (
-                  <div className="aichat-diff-group aichat-diff-created">
-                    <div className="aichat-diff-head">新增 {snapDetail.diff.created.length}</div>
-                    <div className="aichat-diff-items">
-                      {snapDetail.diff.created.map((t) => (
-                        <DiffChip key={`c:${t.id}`} item={t} snapId={snapDetail.id}
-                          selectable={snapDetail.review !== 'pending'}
-                          onOpenItem={snapDetail.review === 'pending' ? (it) => openRecord(snapDetail.id, it) : undefined}
-                          checked={!rejected.has(`created:${t.id}`)}
-                          onToggle={() => toggleReject(`created:${t.id}`)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {snapDetail.diff.updated.length > 0 && (
-                  <div className="aichat-diff-group aichat-diff-updated">
-                    <div className="aichat-diff-head">修改 {snapDetail.diff.updated.length}</div>
-                    <div className="aichat-diff-items">
-                      {snapDetail.diff.updated.map((t) => (
-                        <DiffChip key={`u:${t.id}`} item={t} snapId={snapDetail.id}
-                          selectable={snapDetail.review !== 'pending'}
-                          onOpenItem={snapDetail.review === 'pending' ? (it) => openRecord(snapDetail.id, it) : undefined}
-                          checked={!rejected.has(`updated:${t.id}`)}
-                          onToggle={() => toggleReject(`updated:${t.id}`)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {snapDetail.diff.deleted.length > 0 && (
-                  <div className="aichat-diff-group aichat-diff-deleted">
-                    <div className="aichat-diff-head">删除 {snapDetail.diff.deleted.length}</div>
-                    <div className="aichat-diff-items">
-                      {snapDetail.diff.deleted.map((t) => (
-                        <DiffChip key={`d:${t.id}`} item={t} snapId={snapDetail.id} onPreview={setPreviewTarget}
-                          selectable={snapDetail.review !== 'pending'}
-                          onOpenItem={snapDetail.review === 'pending' ? (it) => openRecord(snapDetail.id, it) : undefined}
-                          checked={!rejected.has(`deleted:${t.id}`)}
-                          onToggle={() => toggleReject(`deleted:${t.id}`)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(snapDetail.diff.reverted?.length ?? 0) > 0 && (
-                  <p className="muted small aichat-diff-note">
-                    另有 {snapDetail.diff.reverted.length} 个对象这一轮动过又复原（比如建了又删），
-                    净变化为零，所以不在上面三组里：
-                    {snapDetail.diff.reverted.map((t) => t.name).join('、')}
-                  </p>
-                )}
-                {snapDetail.review === 'pending' ? (
-                  <div className="aichat-diff-actions">
-                    <button className="aichat-chipbtn aichat-chipbtn-primary" onClick={() => void applySnap(snapDetail.id)}>
-                      执行这轮改动
-                    </button>
-                    <button className="aichat-chipbtn aichat-chipbtn-danger" onClick={() => void discardSnap(snapDetail.id)}>
-                      放弃
-                    </button>
-                    <span className="muted small">执行前库里的数据没有变</span>
-                  </div>
-                ) : rejected.size > 0 ? (
-                  <div className="aichat-diff-actions">
-                    <button className="aichat-chipbtn aichat-chipbtn-danger" onClick={applyRejected}>
-                      拒绝选中的 {rejected.size} 项改动
-                    </button>
-                    <span className="muted small">其余保留</span>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </Modal>
+        />
       )}
 
       {recordView &&
@@ -1320,25 +670,7 @@ export function LabAiSection() {
         })()}
 
       {previewTarget && (
-        <Modal title={`删除前的${previewTarget.kind === 'event' ? '事件' : previewTarget.kind === 'person' ? '人物' : '事件集'}`} onClose={() => setPreviewTarget(null)}>
-          <div className="aichat-snap-preview">
-            <p className="aichat-snap-preview-name">{previewTarget.name}</p>
-            {previewTarget.snapshot?.timeLabel && (
-              <p className="muted small">时间：{previewTarget.snapshot.timeLabel}</p>
-            )}
-            {previewTarget.snapshot?.placeName && (
-              <p className="muted small">地点：{previewTarget.snapshot.placeName}</p>
-            )}
-            {previewTarget.snapshot?.personNames?.length ? (
-              <p className="muted small">参与：{previewTarget.snapshot.personNames.join('、')}</p>
-            ) : null}
-            {previewTarget.snapshot?.content ? (
-              <div className="aichat-snap-preview-body">{previewTarget.snapshot.content}</div>
-            ) : (
-              <p className="muted small">（这条记录没有存正文内容，可点「放弃改动」回退后查看完整记录）</p>
-            )}
-          </div>
-        </Modal>
+        <SnapPreviewModal target={previewTarget} onClose={() => setPreviewTarget(null)} />
       )}
     </div>
   );
