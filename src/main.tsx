@@ -13,6 +13,7 @@ import {
   savedHostConfig,
   startHost,
   takeRemoteTip,
+  initRemoteResilience,
   type RemoteConfig,
 } from './core/remote';
 import { showToast } from './ui/toast';
@@ -25,6 +26,8 @@ import './styles.css';
 initAppearance();
 // 外观随连接同步：服务端的配色会在客户端连上后贴过去（不覆盖本机存档）
 initAppearanceShare();
+// 连接自愈：回到前台补同步，心跳发现假死连接就原地重连
+initRemoteResilience();
 // 界面引导强度（陪伴 / 专注）同步贴上，驱动 .guide-only 的显隐
 initPrefs();
 

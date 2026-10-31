@@ -19,6 +19,7 @@ export {
   startHost,
   stopHost,
   broadcastAppearance,
+  initRemoteResilience,
   localDeviceName,
   relayInfo,
   ensureRelayListener,

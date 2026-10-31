@@ -11,6 +11,7 @@
 //   S4 第二台设备（无桥）从 http://IP:端口 打开，作为客户端连上并使用服务端数据
 //   S4b 服务端换配色 → 客户端同步（且不覆盖客户端自己的存档）
 //   S4c 一键地址 ?token= 打开直接是客户端，地址栏里的 token 用完即抹
+//   S4d 连上时不回传开机那次落盘；回到前台补一次心跳 + 版本探针
 //   S5 服务端停止 → 客户端被断开并回到本地
 //   S6 关掉自启动 → 壳端存档同步
 //
@@ -68,6 +69,34 @@ async function waitRelay() {
   throw new Error('中继没起来');
 }
 await waitRelay();
+
+/** 记录客户端的 WS 收发（只看类型，不碰内容）：用来断言「没有多余的整库回传」 */
+const WS_LOG = `
+(() => {
+  window.__wsFrames = [];
+  const label = (raw) => {
+    try {
+      const o = JSON.parse(raw);
+      const m = o.msg || {};
+      return o.t + (m.k ? ':' + m.k : '');
+    } catch {
+      return '?';
+    }
+  };
+  const Orig = window.WebSocket;
+  window.WebSocket = function (...a) {
+    const ws = new Orig(...a);
+    const send = ws.send.bind(ws);
+    ws.send = (d) => { window.__wsFrames.push('OUT ' + label(d)); return send(d); };
+    ws.addEventListener('message', (ev) => {
+      if (typeof ev.data === 'string') window.__wsFrames.push('IN ' + label(ev.data));
+    });
+    return ws;
+  };
+  window.WebSocket.prototype = Orig.prototype;
+  Object.assign(window.WebSocket, Orig);
+})();
+`;
 
 const FAKE_BRIDGE = `
 (() => {
@@ -237,6 +266,7 @@ check('设置页自启动已勾选', (await p.locator('.remote-auto input').isCh
 // ---- S4 客户端（无桥，http 源）----
 console.log('\nS4 第二台设备作为客户端连上');
 const clientCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+await clientCtx.addInitScript(WS_LOG);
 const cp = await clientCtx.newPage();
 cp.on('pageerror', (e) => console.log('[client pageerror]', String(e).slice(0, 300)));
 await cp.goto(APP, { waitUntil: 'load' });
@@ -326,6 +356,36 @@ const backToOne = await waitFor(async () => (await relayInfo()).clients === 1, 1
 check('一键客户端断开后回到 1 个', backToOne);
 await jp.close();
 await joinCtx.close();
+
+// ---- S4d 不留回传、回前台补同步 ----
+console.log('\nS4d 连上时不回传、回到前台补同步');
+const connectFrames = await cp.evaluate(() => window.__wsFrames.slice());
+check(
+  '连上后没有把开机落盘回传（无多余 apply）',
+  connectFrames.filter((f) => f === 'OUT to:apply').length === 0,
+  connectFrames.join(' | '),
+);
+const beforeWake = connectFrames.length;
+// 手机切走再切回来：不刷新页面，靠 focus/visibilitychange 补一次
+await cp.evaluate(() => {
+  window.dispatchEvent(new Event('focus'));
+  document.dispatchEvent(new Event('visibilitychange'));
+});
+const wakeFrames = await waitFor(async () => {
+  const f = await cp.evaluate(() => window.__wsFrames.slice());
+  return (
+    f.includes('OUT to:ping') &&
+    f.includes('IN msg:pong') &&
+    f.includes('OUT to:version') &&
+    f.some((x) => x.startsWith('IN msg:version'))
+  );
+}, 12000);
+check('回到前台补心跳 + 版本探针并收到回包', wakeFrames, (await cp.evaluate(() => window.__wsFrames.slice(-8))).join(' | '));
+const wakeSnapshots = await cp.evaluate(
+  (n) => window.__wsFrames.slice(n).filter((x) => x === 'IN msg:snapshot').length,
+  beforeWake,
+);
+check('版本一致时不白拉整库', wakeSnapshots === 0, String(wakeSnapshots));
 
 // ---- S5 停止服务端 ----
 console.log('\nS5 停止服务端 → 客户端回到本地');

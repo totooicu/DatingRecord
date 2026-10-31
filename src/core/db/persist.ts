@@ -128,6 +128,26 @@ function noteUserWrite(): void {
   lastWriteAt = Date.now();
 }
 
+/**
+ * 丢掉「还没发出去」的那次落盘。
+ *
+ * 客户端接管数据的那一刻用：本地库刚被服务端快照换掉，开机时
+ * migrate 打的那次 markDirty 还挂在 500ms 定时器上，不管它就会把
+ * 刚收到的快照原样当成一次用户写入发回去（版本号白涨一轮，整库白传一趟）。
+ */
+export function dropPendingPersist(): void {
+  if (saveTimer !== null) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  dirty = false;
+}
+
+/** 有没有还没发出去的本地写入（重连/换快照前要避开） */
+export function hasPendingPersist(): boolean {
+  return dirty || saveTimer !== null;
+}
+
 /** 立即落盘（关闭页面、撤销换库、清空数据等场景用，避免 debounce 未触发导致丢数据） */
 export function flushPersist(): void {
   if (saveTimer !== null) {

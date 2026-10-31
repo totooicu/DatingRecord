@@ -12,7 +12,15 @@
 // 再把新快照广播给其余客户端——所有来源最终都汇到服务端这一份权威数据上。
 
 import type { Database } from 'sql.js';
-import { getDbInstance, resetUndo, setPersistSink, onPersisted, flushPersist } from '../db';
+import {
+  getDbInstance,
+  resetUndo,
+  setPersistSink,
+  onPersisted,
+  flushPersist,
+  dropPendingPersist,
+  hasPendingPersist,
+} from '../db';
 import { getSql, setDbInstance } from '../db/state';
 import {
   setBlobStore,
@@ -216,6 +224,16 @@ let clientVersion = 0;
 let clientConnected = false;
 /** 收到过快照的次数：判断「换库是否已经发生」，不依赖具体传输层的回调 */
 let snapshotSeq = 0;
+/** 最近一次收到任何业务消息的时刻：心跳用它判活 */
+let lastInboundAt = 0;
+/** 对端回过 pong 才算它能心跳。老版本页面不回 pong，不能因此被判成「假连接」 */
+let pongSeen = false;
+/** 回到前台的补同步节流 */
+let lastWakeAt = 0;
+let reconnecting = false;
+let heartbeat: ReturnType<typeof setInterval> | null = null;
+const HEARTBEAT_MS = 15000;
+const DEAD_MS = 30000;
 
 function clientSend(msg: ClientMessage): void {
   if (!clientTransport) throw new Error('尚未连接到服务端');
@@ -254,6 +272,9 @@ export async function bootClient(cfg: RemoteConfig, onProgress?: (msg: string) =
 
 /** 客户端接管落盘与附件：此后再也不碰本地 IndexedDB */
 function installClientRouting(transport: RemoteLink): void {
+  // 接管前先把开机时 migrate 留下的那次 markDirty 丢掉：那是本地库的账，
+  // 现在库已经是服务端快照了，再落一次就是把快照原样传回去。
+  dropPendingPersist();
   setPersistSink(async (bytes) => {
     try {
       transport.send({ k: 'apply', baseVersion: clientVersion, db: toBase64(bytes) });
@@ -266,6 +287,31 @@ function installClientRouting(transport: RemoteLink): void {
 
 /** 客户端侧收到服务端消息：快照换库 / 附件回包 / 错误 */
 function handleClientPayload(msg: RemotePayload, _from: string): void {
+  lastInboundAt = Date.now();
+  if (msg.k === 'ping') {
+    try {
+      clientTransport?.send({ k: 'pong', ts: msg.ts });
+    } catch {
+      /* 连接刚好断了：心跳会兜底 */
+    }
+    return;
+  }
+  if (msg.k === 'pong') {
+    pongSeen = true;
+    return;
+  }
+  if (msg.k === 'version') {
+    // 版本对不上就自己拉一份：比直接推快照省流量，老服务端也不会被问懵
+    const v = 'version' in msg ? msg.version : undefined;
+    if (typeof v === 'number' && v !== clientVersion && !hasPendingPersist()) {
+      try {
+        clientTransport?.send({ k: 'request-snapshot' });
+      } catch {
+        /* 心跳兜底 */
+      }
+    }
+    return;
+  }
   if (msg.k === 'snapshot') {
     snapshotSeq += 1;
     clientVersion = msg.version;
@@ -330,6 +376,8 @@ async function attachClient(
   };
   link.attach?.(handlers);
   clientTransport = link;
+  lastInboundAt = Date.now();
+  pongSeen = false;
 
   const connectable = link as RemoteLink & { connect?: (timeoutMs?: number) => Promise<void> };
   try {
@@ -415,6 +463,106 @@ export function takeRemoteTip(): string {
   } catch {
     return '';
   }
+}
+
+// ---------------- 连接自愈 ----------------
+//
+// 手机上的网页随时会被切到后台、锁屏、换网络。socket 有可能已经不通了，
+// 浏览器却不触发 close——界面还挂着「已连接」，数据却一动不动，
+// 用户只能靠刷新页面恢复。这里补三件事：
+//   · 客户端每 15 秒 ping 一次；对端回过 pong 之后，30 秒没有任何消息就原地重连
+//   · 回到前台时，服务端广播一次版本号、客户端问一次版本号，对不上才拉整库
+//   · 服务端回到前台顺手 bump 一下：后台期间换过库可能来不及重绘
+//
+// 老版本页面不认 ping / version，最多是这次补同步不生效（和现在一样），
+// 不会因为「没回 pong」被误判成断线——pongSeen 就是这么用的。
+
+/** 回到前台：补一次同步，不必刷新页面 */
+function onWake(): void {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  if (state.mode === 'local') return;
+  const now = Date.now();
+  if (now - lastWakeAt < 2000) return;
+  lastWakeAt = now;
+  if (state.mode === 'client') {
+    if (state.status !== 'connected' || !clientTransport) return;
+    try {
+      clientTransport.send({ k: 'ping', ts: now });
+    } catch {
+      /* 发不出去就交给心跳 */
+    }
+    try {
+      clientTransport.send({ k: 'version' });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (hostTransport) {
+    // 后台期间换过库：先让界面按当前库重画一遍
+    bump();
+    if (hostTransport.clients.length > 0) {
+      try {
+        hostTransport.broadcast({ k: 'version', version: hostVersion });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+/** 客户端原地重连：保留界面和远程数据，只换一条链路重新要快照 */
+async function reconnectClient(): Promise<void> {
+  const cfg = savedClientConfig();
+  if (!cfg || reconnecting) return;
+  reconnecting = true;
+  publish({ status: 'connecting', error: '' });
+  try {
+    clientTransport?.close();
+  } catch {
+    /* ignore */
+  }
+  clientTransport = null;
+  const transport = new RemoteTransport(cfg.url, cfg.token, 'client', deviceName(), {
+    onMessage(msg) {
+      handleClientPayload(msg, '');
+    },
+    onClose() {
+      leaveRemoteAndReload('服务端已断开，已切回本地数据');
+    },
+  });
+  try {
+    await attachClient(transport, cfg.label, 'relay', null);
+  } catch {
+    // 重连也失败：老老实实回本地库，别让人对着连不上的远程库继续写
+    leaveRemoteAndReload('连接中断，已切回本地数据');
+  } finally {
+    reconnecting = false;
+  }
+}
+
+function heartbeatTick(): void {
+  if (state.mode !== 'client' || !clientTransport || reconnecting) return;
+  // 只有对端答过 pong 才敢用「没消息」判断断线，否则老服务端会被冤枉
+  if (pongSeen && Date.now() - lastInboundAt > DEAD_MS) {
+    void reconnectClient();
+    return;
+  }
+  try {
+    clientTransport.send({ k: 'ping', ts: Date.now() });
+  } catch {
+    /* onClose 会接手 */
+  }
+}
+
+/** 页面启动时调一次：回到前台补同步 + 心跳兜底（重复调用无副作用） */
+export function initRemoteResilience(): void {
+  if (typeof window === 'undefined' || heartbeat !== null) return;
+  document.addEventListener('visibilitychange', onWake);
+  window.addEventListener('focus', onWake);
+  window.addEventListener('online', onWake);
+  window.addEventListener('pageshow', onWake);
+  heartbeat = setInterval(heartbeatTick, HEARTBEAT_MS);
 }
 
 // ---------------- 服务端 ----------------
@@ -562,7 +710,24 @@ export async function adoptDirectHost(session: DirectHostSession): Promise<void>
 async function handleClientMessage(msg: RemotePayload, from: string): Promise<void> {
   if (!hostTransport) return;
   const transport = hostTransport;
+  lastInboundAt = Date.now();
   switch (msg.k) {
+    case 'ping':
+      try {
+        transport.sendTo(from, { k: 'pong', ts: msg.ts });
+      } catch {
+        /* ignore */
+      }
+      return;
+    case 'pong':
+      return;
+    case 'version':
+      try {
+        transport.sendTo(from, { k: 'version', version: hostVersion });
+      } catch {
+        /* ignore */
+      }
+      return;
     case 'request-snapshot':
       try {
         broadcastSnapshot('init', from);

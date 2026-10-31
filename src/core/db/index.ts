@@ -246,6 +246,8 @@ export { getMeta, setMeta } from './meta';
 export {
   markDirty,
   flushPersist,
+  dropPendingPersist,
+  hasPendingPersist,
   persist,
   setPersistSink,
   onPersisted,

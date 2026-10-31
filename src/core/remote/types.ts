@@ -36,10 +36,32 @@ export interface RemoteAppearance {
   mode: 'light' | 'dark';
 }
 
+/** 心跳：收到就原样回 pong。用来发现「socket 还在、其实已经不通」的假连接 */
+export interface Ping {
+  k: 'ping';
+  ts: number;
+}
+export interface Pong {
+  k: 'pong';
+  ts: number;
+}
+/** 版本探针：客户端问一句「你那边是第几版」，服务端回 VersionInfo */
+export interface VersionProbe {
+  k: 'version';
+}
+/** 版本回包 / 服务端回到前台时广播的当前版本：不一样就让客户端自己拉快照 */
+export interface VersionInfo {
+  k: 'version';
+  version: number;
+}
+
 /** 业务层：服务端 → 客户端 */
 export type RemoteMessage =
   | { k: 'snapshot'; version: number; db: string; reason?: 'init' | 'update' | 'conflict' }
   | { k: 'applied'; version: number }
+  | Ping
+  | Pong
+  | VersionInfo
   | { k: 'appearance'; appearance: RemoteAppearance }
   | { k: 'blob'; reqId: string; data: string | null }
   | { k: 'error'; error: string };
@@ -70,7 +92,16 @@ export interface BlobDel {
 export interface BlobClear {
   k: 'blob-clear';
 }
-export type ClientMessage = ClientHello | ClientApply | BlobGet | BlobPut | BlobDel | BlobClear;
+export type ClientMessage =
+  | ClientHello
+  | ClientApply
+  | BlobGet
+  | BlobPut
+  | BlobDel
+  | BlobClear
+  | Ping
+  | Pong
+  | VersionProbe;
 
 /** 两个方向的消息并集：传输层不关心方向，路由层按 k 分派 */
 export type RemotePayload = RemoteMessage | ClientMessage;
