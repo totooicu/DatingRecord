@@ -118,3 +118,17 @@ GeckoView 默认会把 `alipays://` 这种非 http(s) 请求丢给页面自己�
 - 壳：`tools/pay-test/run.sh`（照 `tools/datashare-test/run.sh` 的样子 `javac` 起真服务器 + Node 客户端走协议）；
 - 网页：`tools/e2e/pay-one-time-e2e.mjs`——**直接编译并拉起壳那份 Java 服务器**（`../geckoview_example`），
   这样协议只有一份实现，跨仓对不上会当场红。
+
+## 5. 这条线怎么访问
+
+产物发到 gh-pages 的子路径：`https://totooicu.github.io/DatingRecord/pay-test/`（手动从
+`test/payment-recharge` 构建推上去的，**不在任何 CI 里**）。`deploy-pages.yml` 每次部署只保留
+`assets/` 与 `releases/`，其余根目录全删——**下次推 main 这个子目录就没了**，要用得重发。
+
+壳不加载那个 https 地址，加载的是 `http://127.0.0.1:4173/pay-test/`（壳自己那台 `DataShareServer`
+把 Pages 反代出来，页面于是与 `/__pay/*` 同源）。原因：浏览器现在拦「公网 https 源 → 本机回环」，
+实测报 `Permission was denied for this request to access the loopback address`，补
+`Access-Control-Allow-Private-Network` 也不够。细节与代价写在壳仓库 `docs/PAY_MOCK.md` §6b。
+
+回归两种地址都跑过：本地 preview（`http://localhost:4173/` + `PAY_PORT=41788`）和壳那种同源形态
+（`PAY_PORT=4173 node tools/e2e/pay-one-time-e2e.mjs http://127.0.0.1:4173/pay-test/`）各 39 项全绿。

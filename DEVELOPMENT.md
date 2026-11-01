@@ -917,6 +917,13 @@ scheme/绝对 webUrl 结构、已付进购买记录、重复回调不产生第�
 收银台回跳自查单并抹参数、刷新后记录与地址仍在（写的是库）、两边张数与金额对得上、
 胡来的状态转换被服务器挡（409 / 404）。
 
+**这条线怎么访问**：产物手动发到 gh-pages 子路径 `https://totooicu.github.io/DatingRecord/pay-test/`
+（不在 CI 里；`deploy-pages.yml` 只保留 `assets/` 与 `releases/`，下次推 main 就被清掉，要用得重发）。
+壳那边不加载这个 https 地址，而加载 `http://127.0.0.1:4173/pay-test/`——浏览器拦「公网 https 源 →
+本机回环」（实测 `Permission was denied for this request to access the loopback address`，补
+`Access-Control-Allow-Private-Network` 也只是必要条件），页面由壳那台 `DataShareServer` 反代出来
+就跟 `/__pay/*` 同源了。回归在这两种地址上各跑过一次 39 项全绿。细节在壳仓库 `docs/PAY_MOCK.md` §6b。
+
 ---
 
 # 第二部分 · 功能规格
