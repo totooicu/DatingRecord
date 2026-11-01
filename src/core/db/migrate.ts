@@ -6,6 +6,7 @@
 
 import type { Database } from 'sql.js';
 import { SCHEMA_VERSION } from '../types';
+import { PAY_ORDERS_SQL } from './schema';
 import { setMeta } from './meta';
 
 function hasColumn(d: Database, table: string, col: string): boolean {
@@ -188,6 +189,12 @@ export function runMigrations(d: Database, current: number): string {
       d.run(`ALTER TABLE persons ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`);
     }
     v = 14;
+  }
+  if (v < 15) {
+    // 一次性服务购买（v15，测试线）：新表，不回填。DDL 与 SCHEMA_SQL 共用一份常量，
+    // 免得「老库升上来的表」和「新库建出来的表」差一个 UNIQUE 索引。
+    d.run(PAY_ORDERS_SQL);
+    v = 15;
   }
   if (v !== SCHEMA_VERSION) v = SCHEMA_VERSION;
   setMeta('schema_version', String(v));

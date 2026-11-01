@@ -39,7 +39,9 @@ export type SettingsKey =
   | 'aiModel'
   | 'panel'
   | 'panelMusic'
-  | 'panelLocation';
+  | 'panelLocation'
+  /** 一次性服务购买（测试线，docs/PAY_MOCK.md）；只活在 test/payment-recharge */
+  | 'panelPay';
 
 /** 分组只用于目录渲染时划线分区，不影响路由 */
 export type SettingsGroup = 'general' | 'ai' | 'security' | 'people' | 'data' | 'trial';
@@ -85,6 +87,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { key: 'panel', title: '功能面板', hint: '背景音乐 · 定位记录 · 数据分析', group: 'trial' },
   { key: 'panelMusic', title: '音乐', hint: '背景音乐歌单', group: 'trial' },
   { key: 'panelLocation', title: '定位', hint: 'GPS 打点 + 地图轨迹（.drloc）', group: 'trial' },
+  // 测试线：付款充值（一次性服务）。钱由壳那台局域网服务器模拟，没有真商户号。
+  { key: 'panelPay', title: '服务购买（测试）', hint: '一次性服务 · 壳模拟收费', group: 'trial' },
 ];
 
 export const GROUP_TITLES: Record<SettingsGroup, string> = {
@@ -108,7 +112,7 @@ export const SUB_PAGES: Partial<Record<SettingsKey, SettingsKey[]>> = {
   ai: ['labAi', 'labChat', 'aiModel'],
   lab: ['labEdge', 'labDraft', 'labCompat', 'labTrack'],
   backup: ['backupData', 'sync', 'share', 'remote'],
-  panel: ['panelMusic', 'panelLocation'],
+  panel: ['panelMusic', 'panelLocation', 'panelPay'],
 };
 
 /** 这个 key 是不是某个入口页的子页 */

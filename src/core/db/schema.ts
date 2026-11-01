@@ -3,6 +3,30 @@
 // 单独放一个文件：它是一段 130 多行的纯字符串，混在 db.ts 里会把真正的
 // 初始化逻辑挤到看不见的地方。改表结构时只需要动这里。
 
+/**
+ * v15 的订单表单独成段：老库升级（migrate.ts）和新库建表（SCHEMA_SQL）要用**同一份** DDL，
+ * 抄两遍迟早会漂——这张表的 order_id UNIQUE 索引一旦只在其中一处，重复到账就会多记一行。
+ */
+export const PAY_ORDERS_SQL = `
+CREATE TABLE IF NOT EXISTS pay_orders (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  service_id TEXT NOT NULL DEFAULT '',
+  service_title TEXT NOT NULL DEFAULT '',
+  amount_cents INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  channel TEXT NOT NULL DEFAULT '',
+  trade_no TEXT NOT NULL DEFAULT '',
+  notify_count INTEGER NOT NULL DEFAULT 0,
+  expire_at INTEGER,
+  paid_at INTEGER,
+  device_id TEXT, rev INTEGER NOT NULL DEFAULT 1, hlc TEXT, deleted_at TEXT,
+  created_at TEXT, updated_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_orders_order ON pay_orders(order_id);
+CREATE INDEX IF NOT EXISTS idx_pay_orders_status ON pay_orders(status);
+`;
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
@@ -230,4 +254,8 @@ CREATE TABLE IF NOT EXISTS oplog (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_oplog_hlc ON oplog(hlc);
+
+-- 一次性服务购买的订单（测试线，docs/PAY_MOCK.md）。
+-- 主键是本地 ULID，服务器单号另建 UNIQUE 索引：重复到账撞不上第二条行。
+${PAY_ORDERS_SQL}
 `;

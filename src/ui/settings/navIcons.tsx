@@ -283,6 +283,15 @@ export function SettingsIcon({ k }: { k: NavIconKey }) {
           <circle cx="12" cy="10" r="2.2" />
         </>,
       );
+    // 服务购买（测试）：收据（锯齿底 + 一道金额线）
+    case 'panelPay':
+      return wrap(
+        <>
+          <path d="M6 3.4h12v17.2l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z" />
+          <path d="M9 8h6" />
+          <path d="M9 12h6" />
+        </>,
+      );
     // 库概览：仪表盘
     case 'overview':
       return wrap(

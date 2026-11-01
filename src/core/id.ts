@@ -47,7 +47,9 @@ export type IdPrefix =
   | 'mem'
   | 'snap'
   /** AI 待审核改动的「之后」整库字节 */
-  | 'pend';
+  | 'pend'
+  /** 一次性服务购买的订单（测试线，见 docs/PAY_MOCK.md） */
+  | 'po';
 
 /** 生成带前缀的实体 ID，如 p_01J... */
 export function newId(prefix: IdPrefix): string {

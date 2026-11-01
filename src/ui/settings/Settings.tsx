@@ -44,6 +44,8 @@ const MusicPanel = lazy(() => import('../panel/MusicPanel').then((m) => ({ defau
 const LocationPanel = lazy(() =>
   import('../panel/LocationPanel').then((m) => ({ default: m.LocationPanel })),
 );
+// 测试线：一次性服务购买（钱由壳模拟，见 docs/PAY_MOCK.md）。同样按需加载。
+const PaySection = lazy(() => import('./PaySection').then((m) => ({ default: m.PaySection })));
 const FilesPanel = lazy(() => import('../files').then((m) => ({ default: m.FilesPanel })));
 const ArchiveSection = lazy(() =>
   import('./ArchiveSection').then((m) => ({ default: m.ArchiveSection })),
@@ -166,6 +168,8 @@ export function Settings({ sub, onSub }: { sub: SettingsKey | null; onSub: (k: S
         {active === 'panelMusic' && <MusicPanel />}
 
         {active === 'panelLocation' && <LocationPanel />}
+
+        {active === 'panelPay' && <PaySection />}
 
         {active === 'labDraft' && <LabDraftSection onPick={go} />}
       </div>
