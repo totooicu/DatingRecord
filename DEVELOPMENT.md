@@ -907,8 +907,9 @@ M7 先建一段修正再从它前面删点，锚点 4→3、生效范围和「�
 「重复回调」按钮发两次通知之后仍然要查单才算数。回跳那条路读完 `?orderId=&status=` 立刻
 `history.replaceState` 把参数抹掉，不然刷新又重查一次、再弹一条莫名其妙的「已到账」。
 
-**没验到的**：沙箱里没设备、gradle 也起不来，所以 scheme 拦截那段只过了 `javac`（纯 `java.*`，不要 Android SDK），
-真机跳转待测；`继续支付`靠服务器那侧「同服务同金额待支付 dedupe」而不是客户端编 scheme，这条在 R5 里钉住了。
+**没验到的**：沙箱里没设备，真机 scheme 跳转待测；`继续支付`靠服务器那侧「同服务同金额待支付 dedupe」而不是客户端编 scheme，这条在 R5 里钉住了。
+`WebViewActivity.java` 那段拦截在沙箱只能做语法探测，**由隔壁仓库新加的 Actions 真编**（`assembleDebug`，
+run `41286281262` 已绿）——见壳 `docs/CI_GUIDE.md`。
 
 **回归**：`node tools/e2e/pay-one-time-e2e.mjs [url]`（默认 preview :4173，390×844，R1–R10 共 39 项）——
 **直接 `javac` 编并拉起壳那份 Java 服务器**（隔壁仓库默认 `/app/geckoview_example`，`DR_SHELL` 可改；
