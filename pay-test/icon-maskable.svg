@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" width="512" height="512">
+  <!-- maskable 版：同一图形整体缩放进安卓自适应图标安全区（中心 66.7% = 96/144），
+       背景渐变铺满全幅（自适应图标外壳会把超出部分裁掉）。缩放系数 0.88 使
+       渐变圆直径 2×54.55×0.88 ≈ 96，刚好落在安全区内。 -->
+  <defs>
+    <linearGradient id="dr-bg-m" gradientUnits="userSpaceOnUse" x1="33" y1="33" x2="109" y2="109">
+      <stop offset="0" stop-color="#29C1A1"/>
+      <stop offset="1" stop-color="#038B89"/>
+    </linearGradient>
+  </defs>
+  <rect width="144" height="144" fill="url(#dr-bg-m)"/>
+  <g transform="translate(71.05 71.05) scale(0.88) translate(-71.05 -71.05)">
+    <circle cx="71.05" cy="71.05" r="54.55" fill="url(#dr-bg-m)"/>
+    <g stroke="#ffffff" stroke-width="6" stroke-linecap="round">
+      <line x1="71.25" y1="53.75" x2="71.25" y2="93.7"/>
+      <line x1="48.5" y1="71.25" x2="71.25" y2="93.7"/>
+      <line x1="94.1" y1="71.25" x2="71.25" y2="93.7"/>
+    </g>
+    <g fill="#ffffff">
+      <circle cx="71.25" cy="53.75" r="7.85"/>
+      <circle cx="48.5" cy="71.25" r="7.8"/>
+      <circle cx="94.1" cy="71.25" r="7.8"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,189 @@
+{
+  "version": "2026-11-01T06:12:44.015Z",
+  "release": "1.2.0",
+  "proto": 1,
+  "shellMin": "1.0.0",
+  "link": "/index.html",
+  "subversion": [
+    {
+      "version": "c5e4ef7520bfdd40",
+      "link": "/assets/AiHubSection-BwoE-Cvm.js"
+    },
+    {
+      "version": "3f7329191cf88840",
+      "link": "/assets/AiSection-CdtN-Qv0.js"
+    },
+    {
+      "version": "30798a7b2f66f09a",
+      "link": "/assets/AppearanceSection-DBYPyuhg.js"
+    },
+    {
+      "version": "790e84f732f8c090",
+      "link": "/assets/archive-BwHOMcLY.js"
+    },
+    {
+      "version": "ee16a766c6dda00b",
+      "link": "/assets/ArchiveSection-DELpA_Ma.js"
+    },
+    {
+      "version": "ed0b4aca55fa56ca",
+      "link": "/assets/BackupSection-Q6s5j-0B.js"
+    },
+    {
+      "version": "fd0b601cd554016b",
+      "link": "/assets/DataSection-BHq56Ems.js"
+    },
+    {
+      "version": "171abd03c5baea59",
+      "link": "/assets/diff-CNTFfV-X.js"
+    },
+    {
+      "version": "7b1b9e0b40e7ffd7",
+      "link": "/assets/format-Cb-sJqcX.js"
+    },
+    {
+      "version": "360d801d6174ba26",
+      "link": "/assets/import-DvtYho6O.js"
+    },
+    {
+      "version": "f61f15d73213811d",
+      "link": "/assets/index-cRNka0gD.js"
+    },
+    {
+      "version": "ec1562543e4b4dd8",
+      "link": "/assets/index-DG537svg.css"
+    },
+    {
+      "version": "e637543b59321026",
+      "link": "/assets/LabAiSection-BwobQGWO.js"
+    },
+    {
+      "version": "540b582c11d4aace",
+      "link": "/assets/LabCompatSection-CmoB3BGF.js"
+    },
+    {
+      "version": "9b00044d2f03325c",
+      "link": "/assets/LabDraftSection-DBYy2NG1.js"
+    },
+    {
+      "version": "15b59111895f4373",
+      "link": "/assets/LabEdgeSection-Bv-Shk34.js"
+    },
+    {
+      "version": "b7b02b9c4a15736e",
+      "link": "/assets/LabExtractSection-CxNxwdCp.js"
+    },
+    {
+      "version": "7f0cfbecb7741669",
+      "link": "/assets/LabSection-BQqwAmjs.js"
+    },
+    {
+      "version": "2c7425fe33b11adf",
+      "link": "/assets/LabTrackSection-BubOwpHl.js"
+    },
+    {
+      "version": "25a865ee826375d9",
+      "link": "/assets/LocationPanel-Dsnm93O4.js"
+    },
+    {
+      "version": "d553495c9d02af78",
+      "link": "/assets/maintenance-CkMf4mrM.js"
+    },
+    {
+      "version": "e2757055097f614c",
+      "link": "/assets/merge-DLK4p9x0.js"
+    },
+    {
+      "version": "c9452439ae5a4369",
+      "link": "/assets/PanelHubSection-fnFMYo8m.js"
+    },
+    {
+      "version": "02082d3e67323082",
+      "link": "/assets/PaySection-DBd5TwGU.js"
+    },
+    {
+      "version": "c5f40a3d4fed39fe",
+      "link": "/assets/PeopleSection-DzKOVJkH.js"
+    },
+    {
+      "version": "4bec18fdb1961f97",
+      "link": "/assets/RemoteSection-CdbPhrfD.js"
+    },
+    {
+      "version": "26d5af6c71612516",
+      "link": "/assets/SecuritySection-D9tIRHpz.js"
+    },
+    {
+      "version": "04c461b085539244",
+      "link": "/assets/share-DfndVy0i.js"
+    },
+    {
+      "version": "9a13dac796afdc4a",
+      "link": "/assets/ShareSection-DggVcXhg.js"
+    },
+    {
+      "version": "e510c6d056f76ee3",
+      "link": "/assets/ShareWizard-Cb6c2czR.js"
+    },
+    {
+      "version": "cf5c0f0a316df67f",
+      "link": "/assets/store-DuCGZN82.js"
+    },
+    {
+      "version": "10701a8b61c2537f",
+      "link": "/assets/SyncSection-C0lPjVuc.js"
+    },
+    {
+      "version": "8be885f0a6a49903",
+      "link": "/edge-split.html"
+    },
+    {
+      "version": "9612e108baaebc29",
+      "link": "/icon-192.png"
+    },
+    {
+      "version": "a04018e7804e0460",
+      "link": "/icon-512.png"
+    },
+    {
+      "version": "cf27b621b7c0cb75",
+      "link": "/icon-maskable-512.png"
+    },
+    {
+      "version": "4f0e31664ceea134",
+      "link": "/icon-maskable.svg"
+    },
+    {
+      "version": "c7d5b7c327640d6b",
+      "link": "/icon.png"
+    },
+    {
+      "version": "a3430b91c702db99",
+      "link": "/icon.svg"
+    },
+    {
+      "version": "7e1228985c093148",
+      "link": "/index.html"
+    },
+    {
+      "version": "58a45dfe572d5130",
+      "link": "/location-lab/index.html"
+    },
+    {
+      "version": "a783710282418482",
+      "link": "/location-lab/leaflet.css"
+    },
+    {
+      "version": "db49d009c841f5ca",
+      "link": "/location-lab/leaflet.js"
+    },
+    {
+      "version": "a0eca1b0a556139a",
+      "link": "/manifest.webmanifest"
+    },
+    {
+      "version": "f3aaaa47b7957d08",
+      "link": "/sql-wasm.wasm"
+    }
+  ]
+}
