@@ -880,6 +880,43 @@ M6 两步内联确认（取消不删 / 确认少一个点且文件里少的就�
 M7 先建一段修正再从它前面删点，锚点 4→3、生效范围和「修正起点」标记一起挪。
 导入用 12 点等距轨迹（`十二点轨迹.drloc`），坐标 `31/121 + i*0.001` 好算也好断言。
 
+### 1.21 一次性服务购买：壳当收费服务器（测试线，只在 `test/payment-recharge`）
+
+**这一节的内容不进 main**：付款充值还在试，所有代码、迁移、回归都留在 `test/payment-recharge` 上，
+`docs/PAY_MOCK.md` 那份协议也只活在这条线上。要合进 main 得先单独点头。
+
+**要买的是「一次性服务」**：没有余额、没有自动续费、没有订阅——买一次算一次（AI 加急解析 ¥6、
+整库 PDF 导出 ¥12、分享页去标识 ¥30）。金额**按分存**（`amount_cents INTEGER`），`fmtYuan()` 只在显示时
+换算成 `¥6.00`；钱这个东西不能在页面上做浮点加减，一条 `600 + 1200 + 3000 = 36.00` 的合计要能对得上账。
+
+**壳那侧是唯一的收费服务器实现**：`/__pay/*` 挂在 1.17 那个 `DataShareServer` 上（同一个端口、
+同一台局域网服务器，没加新桥也没加新端口），路由、状态机、`PAYMOCK-` 假单号都在
+`jsbridge/PayMock.java`。页面拿地址的顺序写在 `src/core/pay/server.ts` 的 `resolvePayBase()`：
+**手填地址优先**，留空退回 `remote.status` 探到的壳端口，两边都没有就把买按钮灰掉、把「没有可用收费服务器」
+说在人话里。跨域是硬性前提——页面在 :4173、服务器在另一个端口，`Access-Control-Allow-Origin` 不给就全废。
+
+**跳到支付宝 / 微信**：服务器回两条渠道（`alipays://platformapi/startapp?...orderVo=PAYMOCK-单号` 与
+`weixin://app/paymock/pay?prepayId=PAYMOCK-`），页面不自动跳转，而是把「打开 app」「网页收银台」两条
+链接一起摆出来——浏览器里点 scheme 没反应是预期行为，必须有退路，而且摆出来才好测。壳那侧
+`WebViewActivity` 拦 `alipays|weixin|alipay` 起 `ACTION_VIEW`，没装 app 就落到自己的假收银台。
+判「装没装」用 `getLaunchIntentForPackage`，`AndroidManifest` 得声明 `<queries>`，否则 Android 11+ 永远返回 null。
+
+**状态只有一条收敛路径**：`pay_orders`（schema v15，同步清单齐全：ULID 主键 + `device_id`/`rev`/`hlc`/
+软删 + 同事务 `appendOplog`）里的行**只由查单结果写**——`applyServerOrder()` 幂等 upsert，
+`mergeStatus()` 让 `paid` 不被迟到的回调打回去，`notify_count` 只涨条数。异步通知不当账用，
+「重复回调」按钮发两次通知之后仍然要查单才算数。回跳那条路读完 `?orderId=&status=` 立刻
+`history.replaceState` 把参数抹掉，不然刷新又重查一次、再弹一条莫名其妙的「已到账」。
+
+**没验到的**：沙箱里没设备、gradle 也起不来，所以 scheme 拦截那段只过了 `javac`（纯 `java.*`，不要 Android SDK），
+真机跳转待测；`继续支付`靠服务器那侧「同服务同金额待支付 dedupe」而不是客户端编 scheme，这条在 R5 里钉住了。
+
+**回归**：`node tools/e2e/pay-one-time-e2e.mjs [url]`（默认 preview :4173，390×844，R1–R10 共 39 项）——
+**直接 `javac` 编并拉起壳那份 Java 服务器**（隔壁仓库默认 `/app/geckoview_example`，`DR_SHELL` 可改；
+`PAY_PORT` 默认 41788），协议只有一份实现，跨仓对不上就当场红。覆盖：没地址时灰、下单两条渠道与
+scheme/绝对 webUrl 结构、已付进购买记录、重复回调不产生第二条、继续支付不攒单、取消两步、
+收银台回跳自查单并抹参数、刷新后记录与地址仍在（写的是库）、两边张数与金额对得上、
+胡来的状态转换被服务器挡（409 / 404）。
+
 ---
 
 # 第二部分 · 功能规格

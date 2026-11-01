@@ -352,7 +352,9 @@ console.log('\nK schema v14');
     const row = db.queryOne('SELECT group_name FROM persons WHERE group_name IS NOT NULL LIMIT 1');
     return { version: db.getMeta('schema_version'), hasColumn: row !== null && 'group_name' in row };
   });
-  check('迁移跑到 v14', r.version === '14', String(r.version));
+  // 不写死「=== '14'」：这条要验的是「迁移至少走到加了 group_name 的那一版」，
+  // 后面再加表（v15 订单）时把这里顶红毫无意义。
+  check('迁移跑到 v14 或更高', Number(r.version) >= 14, String(r.version));
   check('persons 表有 group_name 列', r.hasColumn, JSON.stringify(r));
 }
 

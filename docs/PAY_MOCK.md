@@ -107,8 +107,10 @@ GeckoView 默认会把 `alipays://` 这种非 http(s) 请求丢给页面自己�
 ## 3. 页面侧
 
 - 核心层 `src/core/pay/`：订单表（schema v15，`pay_orders`）+ 购买记录，状态机、幂等应用查单结果都在这里；
-- 壳桥 `src/core/pay/shellPay.ts`：照 `remote/shellRelay.ts` 的路子先探测 `pay.capabilities`，
-  探得到就用 `http://127.0.0.1:4173`，探不到退回**设置里手填的服务器地址**（浏览器里测试就填本地起的 mock）；
+- 服务器地址在 `src/core/pay/server.ts` 的 `resolvePayBase()` 里定：**手填地址优先**；留空就复用
+  `remote/shellRelay.ts` 那条 `remote.status` 桥拿到的局域网端口——`/__pay/*` 挂在壳那个
+  `DataShareServer` 上，跟跨设备同步是同一个 server，**没有新的桥、也没有新的端口**；两边都没有时
+  页面直说「没有可用收费服务器」，买按钮全灰（浏览器里测就手填一个本地 mock 的地址）；
 - UI 挂在设置「功能面板」下面一条「服务购买（测试）」：目录、下单、待支付订单（带「查单」「继续支付」）、购买记录。
 
 ## 4. 回归

@@ -92,7 +92,9 @@ console.log('\nS2 二级入口图标');
 await p.locator('.settings-nav-title', { hasText: /^功能面板$/ }).click();
 await p.waitForTimeout(500);
 const panelIcons = await hubIcons();
-check('功能面板 2 条都有图标（高精度定位已下线）', panelIcons.length === 2 && panelIcons.every(Boolean), JSON.stringify(panelIcons));
+// 原来钉死「2 条」，但条数会随测试线加的入口变（本分支多了「服务购买（测试）」）。
+// 这条真正要验的是「高精度定位下线后，二级入口没有一条缺图标」——那就别把条数写进断言。
+check('功能面板每条二级入口都有图标（高精度定位已下线）', panelIcons.length >= 2 && panelIcons.every(Boolean), JSON.stringify(panelIcons));
 await p.locator('.back-btn').first().click();
 await p.waitForTimeout(400);
 await p.locator('.settings-nav-title', { hasText: '功能体验' }).click();

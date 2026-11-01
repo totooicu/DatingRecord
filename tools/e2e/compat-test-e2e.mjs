@@ -140,7 +140,9 @@ await p.waitForTimeout(400);
 await p.locator('.settings-nav-title', { hasText: /^功能面板$/ }).click();
 await p.waitForTimeout(500);
 const panelTitles = await p.locator('.settings-hub-title').allInnerTexts();
-check('功能面板只剩音乐 / 定位', panelTitles.length === 2, JSON.stringify(panelTitles));
+// 这条原本钉死「只剩 2 条」，但 test/payment-recharge 上「服务购买（测试）」也挂在这个面板里，
+// 条数是会变的。要验的其实是两件事：音乐/定位还在，「高精度定位」那条已经没了。
+check('功能面板里有音乐 / 定位', ['音乐', '定位'].every((k) => panelTitles.some((t) => t.includes(k))), JSON.stringify(panelTitles));
 check('没有「高精度定位」', !panelTitles.some((t) => t.includes('高精度')));
 
 // 截图留档：手机上这一页很长，截前两屏即可
