@@ -13,9 +13,10 @@ import { listPersons } from '../repo/persons';
 import { dbSizeBytes } from '../io/maintenance';
 import { getTree } from '../repo/collections';
 import { currentChannel } from '../sync/nativeHttp';
-import { EVERY_CHOICES, isConfigured, loadSettings, saveSettings } from '../sync/settings';
+import { EVERY_CHOICES, isConfigured, loadSettings, saveSettings, toConfig } from '../sync/settings';
 import { humanSize, inspectAttachments } from '../sync/attachments';
 import { autoStatus, setAutoEnabled, startAutoSync, type AutoStatus } from '../sync/auto';
+import { overwriteLocalFromRemote } from '../sync/engine';
 
 /** 毫秒时间戳 → 本地时分秒；0（没发生过）返回 null，省得 AI 拿 1970 当时间算 */
 function clockText(ts: number): string | null {
@@ -309,6 +310,38 @@ export const SYSTEM_TOOLS: ToolDef[] = [
         onChanged: st.onChanged,
         configured: st.configured,
         hint: autoHint(st),
+      };
+    },
+  },
+  {
+    name: 'system.syncOverwriteLocal',
+    group: 'system',
+    title: '强制用云端备份覆盖本地',
+    desc:
+      '危险操作：丢弃本机所有未同步改动，用坚果云上最新那份云端快照**完整替换**本地库（不做 hlc 合并）。' +
+      '只在用户明确说「用云端的覆盖 / 不要本地改动 / 换机恢复」时才调用；普通「同步一下」应走设置页的立即同步，那个会合并、不丢数据。' +
+      '覆盖前自动留一份整库快照（结果 backupId，可在「设置 → AI → 成果」里恢复），' +
+      '与正在跑的同步排队、不并发；云端清单缺失 / 版本过高 / 分片不全会在动本地库之前报错。' +
+      '全程只读云端、不上传任何东西；附件二进制不在快照里，覆盖后请再点一次「立即同步」把缺的字节补回来。' +
+      '需要先在设置里填好坚果云账号与应用密码。',
+    mutating: true,
+    params: [],
+    run: async () => {
+      const s = loadSettings();
+      if (!isConfigured(s)) throw new Error('坚果云账号或应用密码还没填，先到设置 → 坚果云备份里配置');
+      const r = await overwriteLocalFromRemote(toConfig(s));
+      return {
+        backupId: r.backupId,
+        digest: r.digest,
+        remoteAt: r.remoteAt,
+        remoteDeviceId: r.remoteDeviceId,
+        bytes: r.bytes,
+        imported: r.imported.counts,
+        skipped: r.imported.skipped,
+        at: r.at,
+        hint:
+          `已用云端快照替换本地；覆盖前的库留在快照 ${r.backupId}，可在「设置 → AI → 成果」里恢复。` +
+          '附件字节要再点一次「立即同步」补回来',
       };
     },
   },

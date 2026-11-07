@@ -15,6 +15,7 @@ import {
   getSyncStatus,
   isConfigured,
   loadSettings,
+  overwriteLocalFromRemote,
   saveSettings,
   setAutoEnabled,
   syncNow,
@@ -22,6 +23,7 @@ import {
   toConfig,
   type AutoStatus,
   type NutstoreSettings,
+  type OverwriteResult,
   type SyncResult,
 } from '../../core/sync';
 import { useServices } from '../../core/runtime/store';
@@ -51,10 +53,11 @@ const ACTION_TEXT: Record<SyncResult['action'], string> = {
 
 export function SyncSection() {
   const [s, setS] = useState<NutstoreSettings>(() => loadSettings());
-  const [busy, setBusy] = useState<'' | 'test' | 'sync'>('');
+  const [busy, setBusy] = useState<'' | 'test' | 'sync' | 'overwrite'>('');
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<SyncResult | null>(null);
+  const [overwrite, setOverwrite] = useState<OverwriteResult | null>(null);
   const [status, setStatus] = useState(() => getSyncStatus());
   const [progress, setProgress] = useState('');
   // 自动同步的状态由服务自己报（每跑一趟就改 detail），订阅服务表就跟着刷新
@@ -113,6 +116,7 @@ export function SyncSection() {
     setBusy('sync');
     setErr(null);
     setMsg(null);
+    setOverwrite(null);
     setProgress('');
     try {
       saveSettings(s);
@@ -132,6 +136,40 @@ export function SyncSection() {
       ) {
         bump();
       }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+      setProgress('');
+    }
+  };
+
+  /**
+   * 「强制覆盖本地」：这是本页唯一会丢本机数据的动作，先弹二次确认把后果说清，
+   * 再交给 core（它还会自动留一份整库快照）。按钮用 btn-danger，和「强制完整上传」
+   * 那颗普通按钮一眼分得开——后者只是把本机推上去，不碰本地内容。
+   */
+  const doOverwrite = async () => {
+    const warned =
+      '确定用坚果云上的最新备份覆盖本机吗？\n\n' +
+      '· 本机所有还没同步上去的改动会被丢弃，云端那份成为唯一版本；\n' +
+      '· 覆盖前会自动存一份整库快照，可在「设置 → AI → 成果」里恢复；\n' +
+      '· 这一步不会往云端传任何东西。\n\n' +
+      '只是想把两台设备对齐、不想丢本机改动的话，请改用「立即同步」。';
+    if (!window.confirm(warned)) return;
+    setBusy('overwrite');
+    setErr(null);
+    setMsg(null);
+    setResult(null);
+    setOverwrite(null);
+    setProgress('');
+    try {
+      saveSettings(s);
+      const r = await overwriteLocalFromRemote(toConfig(s), { onProgress: setProgress });
+      setOverwrite(r);
+      setMsg(`已用云端备份覆盖本地（覆盖前的库已留底：${r.backupId}）`);
+      setStatus(getSyncStatus());
+      bump();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -285,10 +323,57 @@ export function SyncSection() {
         <span className="muted small">上次同步：{fmtMeta(status.lastAt)}</span>
       </div>
 
-      {busy === 'sync' && <p className="muted small sync-progress">{progress || '正在连接…'}</p>}
+      <div className="row-actions">
+        <button
+          className="btn btn-danger"
+          disabled={!ready || busy !== ''}
+          onClick={() => void doOverwrite()}
+          title="丢弃本机未同步改动，用云端备份完整替换"
+        >
+          {busy === 'overwrite' ? '覆盖中…' : '强制覆盖本地'}
+        </button>
+        <span className="muted small">
+          用云端那份替换本机：换机恢复、或本机改乱了想回到云端版本时用
+        </span>
+      </div>
+
+      {(busy === 'sync' || busy === 'overwrite') && (
+        <p className="muted small sync-progress">{progress || '正在连接…'}</p>
+      )}
 
       {msg && <p className="sync-ok">{msg}</p>}
       {err && <p className="sync-err">{err}</p>}
+
+      {overwrite && (
+        <div className="sync-result">
+          <p>
+            <strong>已用云端备份覆盖本地</strong>
+            <span className="muted small">
+              {' '}
+              （云端快照 {fmtMeta(overwrite.remoteAt)} · {kb(overwrite.bytes)} · 设备{' '}
+              {overwrite.remoteDeviceId}）
+            </span>
+          </p>
+          <p className="muted small">
+            覆盖前的库已存为整库快照 <code>{overwrite.backupId}</code>，到「设置 → AI → 成果」里可一键恢复。
+          </p>
+          <table className="sync-table">
+            <tbody>
+              <tr>
+                <td>替换进来的记录</td>
+                <td>
+                  人物 {overwrite.imported.counts.persons} · 事件 {overwrite.imported.counts.events} · 事件集{' '}
+                  {overwrite.imported.counts.collections}
+                </td>
+              </tr>
+              <tr>
+                <td>附件字节</td>
+                <td>覆盖后再点一次「立即同步」补齐</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {result && (
         <div className="sync-result">

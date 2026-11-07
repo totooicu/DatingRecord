@@ -1473,6 +1473,26 @@ FTS5 + `unicode61`，覆盖事件标题/正文/标签、人物名/别名；中�
 - **坚果云不返回 CORS 头**，浏览器直连必被拦。两条出路：走壳的网络代理（F-S01c，装了壳就是这条路，用户不用部署任何东西），
   或把 `DavConfig.base` 填成自建反代（F-S01b）；测试时也用本地转发代理（`proxy.mjs`）绕过。
 
+**「强制覆盖本地」**（`overwriteLocalFromRemote()`，设置 → 坚果云备份 → 同名按钮）：
+
+三方比对再怎么合并，都保不住「我就想要云端那一版」的场景（换机恢复、本机改乱了）。
+这个入口**不做合并**：读 `manifest.json` → 下载并校验整份云端快照 → 交给
+`importLibrary(text, 'replace')` 清空重建 → 把同步水位对齐到云端 digest。
+
+| 护栏 | 做法 |
+|---|---|
+| 二次确认 | UI 弹窗写明「本机未同步改动会被丢弃」，并指路「立即同步」；AI 工具 desc 写明只在用户明确要求时调用 |
+| 自动留底 | 动手前 `createSnapshot('manual', …)` 存整库字节，返回 `backupId`，可在「设置 → AI → 成果」里恢复；`onReplaceBackup` 钩子避免再触发一次浏览器下载 |
+| 动库前校验 | manifest 缺失 / `schemaVersion` 高于本机 / 分片缺失或大小不符 / 快照不是合法 `LibraryFile`，一律在改本地之前抛错 |
+| 并发 | 与 `syncNow` 共用同一把 `inFlight` 锁，自动同步撞上来只能排队 |
+| 不上传 | 全程只读云端。刻意不调 `syncAttachments`：IndexedDB 里还留着覆盖前的旧 blob，此刻调它会把旧对象当成「本地新增」推上云端，等于拿旧数据污染云端。附件字节要补，覆盖后再点一次「立即同步」（引擎 noop 分支也会跑补齐） |
+| 水位 | 成功后 `setMeta(sync.baseline, remote.digest)` + `markSynced(currentWrites())`，否则下一趟普通同步会拿旧 baseline 误判成「两边都改过」 |
+
+按铁律四同时登记 `system.syncOverwriteLocal`（`mutating: true`，AI 调用前自动拍快照），
+CLI 可用 `node dist-cli/cli.cjs system.syncOverwriteLocal` 触发。
+注意 `importLibrary` 的 replace 模式是**原地 SQL 重建**、不换库实例，它自己压的
+「替换导入」撤销步指向覆盖前的库，当场按撤销即可退回；落盘快照则管刷新之后的反悔，两者各管一段。
+
 #### F-S01b 跨域代理（tools/nutstore-proxy）
 
 浏览器直连 `dav.jianguoyun.com` 会被同源策略在发请求前拦掉（报 `Failed to fetch`）。

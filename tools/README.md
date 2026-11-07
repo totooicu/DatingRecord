@@ -60,6 +60,8 @@
 ## src/core/tools/
 
 AI / CLI / UI 三入口共用的工具注册表（`registry.ts` + `<分组>.ts`）。新增能力时按 `CLAUDE.md` 铁律四在这里登记，不要另起一套。
+工具的用途、入口与依赖写在各条 `ToolDef` 的 `desc` 里，CLI 用 `node dist-cli/cli.cjs help <工具名>` 查看；
+危险工具（如 `system.syncOverwriteLocal`，用云端快照完整替换本地库）另见 `DEVELOPMENT.md` 对应功能卡。
 
 **非注册表的纯算法模块**（不产生 `ToolDef`，只被 UI 直接 import）：
 
